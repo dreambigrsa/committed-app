@@ -23,6 +23,7 @@ const OPENAI_SETTINGS_KEY = 'openai_api_key';
 // Keep this compact; it runs on every AI turn and affects latency/cost.
 const COMMITTED_APP_KNOWLEDGE = `
 ABOUT THE APP (COMMITTED)
+
 - Committed is a relationship-focused social app: profiles, relationship registration, verification, posts, reels, messages, notifications, and admin tools.
 
 MAIN NAVIGATION (TABS)

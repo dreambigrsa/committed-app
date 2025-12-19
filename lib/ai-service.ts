@@ -896,9 +896,10 @@ export async function getAIResponse(
           professionalType: helpDetection.professionalType,
         });
       }
+      // Only suggest professional help for high/medium confidence (not low)
       return {
         ...response,
-        suggestProfessionalHelp: helpDetection.needsHelp, // Include all confidence levels
+        suggestProfessionalHelp: helpDetection.needsHelp && (helpDetection.confidence === 'high' || helpDetection.confidence === 'medium'),
         suggestedProfessionalType: helpDetection.professionalType || 'professional',
       };
     }
@@ -920,9 +921,11 @@ export async function getAIResponse(
           professionalType: helpDetection.professionalType,
         });
       }
+      // Only suggest professional help for high/medium confidence (not low)
+      // Low confidence requires substantial conversation context and should be more conservative
       return {
         ...fnResponse,
-        suggestProfessionalHelp: helpDetection.needsHelp, // Include all confidence levels
+        suggestProfessionalHelp: helpDetection.needsHelp && (helpDetection.confidence === 'high' || helpDetection.confidence === 'medium'),
         suggestedProfessionalType: helpDetection.professionalType || 'professional',
       };
     }
@@ -1287,8 +1290,17 @@ function detectProfessionalHelpNeeded(
     }
   }
 
-  // Low confidence indicators (repeated concerns, relationship issues, emotional distress)
-  const repeatedConcerns = conversationHistory.filter(m => m.role === 'user').length >= 3;
+  // Low confidence indicators - ONLY trigger after substantial conversation (at least 5 user messages)
+  // This prevents false positives on simple greetings like "Hi"
+  const userMessageCount = conversationHistory.filter(m => m.role === 'user').length;
+  const requiresMinimumContext = userMessageCount >= 5; // Require at least 5 user messages
+  
+  if (!requiresMinimumContext) {
+    // Don't suggest help for new or short conversations
+    return { needsHelp: false, confidence: 'low' };
+  }
+  
+  const repeatedConcerns = userMessageCount >= 5;
   const relationshipIssues = /(relationship|partner|marriage|breakup|cheating|trust issues|break up|fighting|arguing)/i.test(message) || 
                             /(relationship|partner|marriage|breakup|cheating|trust issues|break up|fighting|arguing)/i.test(recentHistory);
   
@@ -1298,17 +1310,9 @@ function detectProfessionalHelpNeeded(
   const needHelp = /(need help|need support|need advice|don't know what to do|what should i do|need guidance)/i.test(message) ||
                   /(need help|need support|need advice|don't know what to do|what should i do|need guidance)/i.test(recentHistory);
   
-  if (repeatedConcerns && (relationshipIssues || emotionalDistress || needHelp || /(struggling|difficult|hard|don't know|confused|lost)/i.test(message))) {
+  // Only suggest help if there are clear indicators AND sufficient conversation context
+  if (repeatedConcerns && (relationshipIssues || emotionalDistress || needHelp)) {
     return { needsHelp: true, professionalType: 'Counselor', confidence: 'low' };
-  }
-
-  // Also check for standalone emotional distress or help requests
-  if (emotionalDistress && repeatedConcerns) {
-    return { needsHelp: true, professionalType: 'Mental Health Professional', confidence: 'low' };
-  }
-  
-  if (needHelp && repeatedConcerns) {
-    return { needsHelp: true, professionalType: 'professional', confidence: 'low' };
   }
 
   return { needsHelp: false, confidence: 'low' };

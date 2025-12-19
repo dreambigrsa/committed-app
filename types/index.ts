@@ -499,6 +499,7 @@ export interface ProfessionalSession {
   // Joined data
   professional?: ProfessionalProfile;
   user?: User;
+  role?: ProfessionalRole;
 }
 
 export interface EscalationRule {

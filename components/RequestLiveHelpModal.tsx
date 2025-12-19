@@ -178,7 +178,7 @@ export default function RequestLiveHelpModal({
       const bestMatch = matches[0];
 
       // Create session
-      const session = await createProfessionalSession({
+      const result = await createProfessionalSession({
         conversationId,
         userId,
         professionalId: bestMatch.profile.id,
@@ -187,7 +187,7 @@ export default function RequestLiveHelpModal({
         userConsentGiven: consentGiven,
       });
 
-      if (session) {
+      if (result.session) {
         Alert.alert(
           'Request Sent',
           `Your request has been sent to ${bestMatch.profile.fullName}. They will join the conversation shortly if available.`,
@@ -202,11 +202,20 @@ export default function RequestLiveHelpModal({
           ]
         );
       } else {
-        throw new Error('Failed to create session');
+        // Show specific error message
+        const errorMessage = result.error || 'Unknown error occurred';
+        console.error('[RequestLiveHelpModal] Failed to create session:', errorMessage);
+        Alert.alert(
+          'Error',
+          result.error 
+            ? `Failed to send request: ${errorMessage}. Please try again.`
+            : 'Failed to send request. Please try again.'
+        );
       }
     } catch (error: any) {
-      console.error('Error requesting help:', error);
-      Alert.alert('Error', 'Failed to send request. Please try again.');
+      console.error('[RequestLiveHelpModal] Error requesting help:', error);
+      const errorMessage = error?.message || 'Unknown error occurred';
+      Alert.alert('Error', `Failed to send request: ${errorMessage}. Please try again.`);
     } finally {
       setRequesting(false);
     }

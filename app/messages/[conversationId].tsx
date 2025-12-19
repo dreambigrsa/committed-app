@@ -995,18 +995,19 @@ export default function ConversationDetailScreen() {
       createdAt: new Date().toISOString(),
     };
 
-    // Add optimistic message immediately
-    setLocalMessages(prev => [...prev, optimisticMessage]);
+    // Add optimistic message immediately and clear input
     setMessageText('');
     setSelectedImage(null);
     setSelectedDocument(null);
+    setSelectedSticker(null);
+    
+    // Add optimistic message to state immediately so user sees their message
+    setLocalMessages(prev => [...prev, optimisticMessage]);
 
-    // Scroll to bottom to show new message (only if auto-scroll is enabled)
-    if (shouldAutoScroll.current) {
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-    }
+    // Scroll to bottom immediately to show the user's message
+    setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }, 50);
 
     try {
       await sendMessage(

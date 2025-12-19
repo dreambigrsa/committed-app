@@ -21,8 +21,17 @@ export interface CreateSessionParams {
  */
 export async function createProfessionalSession(
   params: CreateSessionParams
-): Promise<ProfessionalSession | null> {
+): Promise<{ session: ProfessionalSession | null; error?: string }> {
   try {
+    console.log('[Professional Sessions] Creating session with params:', {
+      conversationId: params.conversationId,
+      userId: params.userId,
+      professionalId: params.professionalId,
+      roleId: params.roleId,
+      hasAiSummary: !!params.aiSummary,
+      userConsentGiven: params.userConsentGiven,
+    });
+
     const { data, error } = await supabase
       .from('professional_sessions')
       .insert({
@@ -30,7 +39,7 @@ export async function createProfessionalSession(
         user_id: params.userId,
         professional_id: params.professionalId,
         role_id: params.roleId,
-        ai_summary: params.aiSummary,
+        ai_summary: params.aiSummary || null,
         user_consent_given: params.userConsentGiven,
         consent_given_at: params.userConsentGiven ? new Date().toISOString() : null,
         status: 'pending_acceptance',
@@ -39,11 +48,28 @@ export async function createProfessionalSession(
       .select()
       .single();
 
-    if (error) throw error;
-    return mapSession(data);
+    if (error) {
+      console.error('[Professional Sessions] Database error:', error);
+      throw error;
+    }
+
+    if (!data) {
+      throw new Error('No data returned from insert');
+    }
+
+    const session = mapSession(data);
+    console.log('[Professional Sessions] Session created successfully:', session?.id);
+    return { session };
   } catch (error: any) {
-    console.error('Error creating professional session:', error);
-    return null;
+    console.error('[Professional Sessions] Error creating professional session:', error);
+    const errorMessage = error?.message || error?.code || 'Unknown error occurred';
+    console.error('[Professional Sessions] Error details:', {
+      message: errorMessage,
+      code: error?.code,
+      details: error?.details,
+      hint: error?.hint,
+    });
+    return { session: null, error: errorMessage };
   }
 }
 
@@ -199,7 +225,7 @@ export async function declineProfessionalSession(
         const nextProfessional = alternativeMatches[0].profile;
         
         // Create a new session with the next professional
-        const newSession = await createProfessionalSession({
+        const escalationResult = await createProfessionalSession({
           conversationId: session.conversation_id,
           userId: session.user_id,
           professionalId: nextProfessional.id,
@@ -208,7 +234,7 @@ export async function declineProfessionalSession(
           userConsentGiven: true, // User already gave consent for original request
         });
 
-        if (newSession) {
+        if (escalationResult.session) {
           console.log(`Auto-escalated to next professional: ${nextProfessional.id}`);
           
           // Send notification to user that a new professional has been requested
@@ -383,7 +409,18 @@ function mapSession(session: any): ProfessionalSession {
       id: session.role.id,
       name: session.role.name,
       category: session.role.category,
-    } as any; // Partial ProfessionalRole type
+      description: session.role.description,
+      requiresCredentials: session.role.requires_credentials ?? true,
+      requiresVerification: session.role.requires_verification ?? true,
+      eligibleForLiveChat: session.role.eligible_for_live_chat ?? true,
+      approvalRequired: session.role.approval_required ?? true,
+      disclaimerText: session.role.disclaimer_text,
+      aiMatchingRules: session.role.ai_matching_rules || {},
+      isActive: session.role.is_active ?? true,
+      displayOrder: session.role.display_order ?? 0,
+      createdAt: session.role.created_at,
+      updatedAt: session.role.updated_at,
+    };
   }
 
   return mapped;

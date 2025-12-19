@@ -1053,11 +1053,16 @@ export default function ConversationDetailScreen() {
                 createdAt: new Date().toISOString(),
               },
             ]);
+            
+            // Scroll to bottom immediately to show typing indicator
+            setTimeout(() => {
+              flatListRef.current?.scrollToEnd({ animated: true });
+            }, 100);
 
             // Get conversation history for context
             const existingMessages = localMessages || [];
             const conversationHistory = existingMessages
-              .slice(-15) // Last 15 messages for context (reduced for speed)
+              .slice(-10) // Last 10 messages for context (reduced for speed)
               .map((msg: any) => ({
                 role: msg.senderId === currentUser.id ? 'user' as const : 'assistant' as const,
                 content: msg.content || '',
@@ -1087,12 +1092,22 @@ export default function ConversationDetailScreen() {
 
             if (aiResponse.success) {
               // Check if AI suggests professional help
+              // Log for debugging
+              if (aiResponse.suggestProfessionalHelp) {
+                console.log('[Conversation] Professional help suggested:', {
+                  professionalType: aiResponse.suggestedProfessionalType,
+                  hasProfessionalSession: !!professionalSession,
+                  currentUser: currentUser?.id,
+                });
+              }
+              
               if (aiResponse.suggestProfessionalHelp && !professionalSession) {
                 // Show beautiful custom modal instead of basic alert
                 const professionalType = aiResponse.suggestedProfessionalType || 'professional';
                 setTimeout(() => {
                   setSuggestedProfessionalType(professionalType);
                   setShowHelpSuggestionModal(true);
+                  console.log('[Conversation] Setting help suggestion modal to visible');
                 }, 1000); // Small delay to let AI message appear first
               }
 

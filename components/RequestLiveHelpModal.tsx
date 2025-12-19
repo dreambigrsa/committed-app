@@ -68,11 +68,17 @@ export default function RequestLiveHelpModal({
         .eq('eligible_for_live_chat', true)
         .order('display_order', { ascending: true });
 
-      if (error) throw error;
+      if (error) {
+        console.error('[RequestLiveHelpModal] Error loading professional roles:', error);
+        throw error;
+      }
+      
+      console.log('[RequestLiveHelpModal] Loaded roles:', data?.length || 0);
       setRoles(data || []);
     } catch (error: any) {
-      console.error('Error loading roles:', error);
-      Alert.alert('Error', 'Failed to load professional roles');
+      console.error('[RequestLiveHelpModal] Error loading professional roles:', error);
+      // Don't show alert - just log the error so modal can still be used
+      setRoles([]);
     }
   };
 
@@ -122,7 +128,8 @@ export default function RequestLiveHelpModal({
 
       const location = onboardingData?.location_provided || undefined;
 
-      const professionalMatches = await findMatchingProfessionals(
+      // First try to find online professionals
+      let professionalMatches = await findMatchingProfessionals(
         {
           roleId,
           location,
@@ -131,6 +138,19 @@ export default function RequestLiveHelpModal({
         },
         5
       );
+
+      // If no online professionals found, also include offline ones (they might still accept)
+      if (professionalMatches.length === 0) {
+        professionalMatches = await findMatchingProfessionals(
+          {
+            roleId,
+            location,
+            requiresOnlineOnly: false,
+            minRating: 0,
+          },
+          5
+        );
+      }
 
       setMatches(professionalMatches);
     } catch (error: any) {

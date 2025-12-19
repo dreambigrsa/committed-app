@@ -81,15 +81,20 @@ export async function findMatchingProfessionals(
     const matches: ProfessionalMatch[] = [];
 
     for (const profile of profiles) {
-      const status = statusMap.get(profile.id);
-      if (!status) continue;
+      // Default to offline status if not found (status should exist due to trigger, but handle gracefully)
+      const status = statusMap.get(profile.id) || {
+        professional_id: profile.id,
+        status: 'offline',
+        current_session_count: 0,
+        last_seen_at: new Date().toISOString(),
+      };
 
-      // Skip offline professionals if online only is required
+      // Skip offline professionals if online only is strictly required
       if (criteria.requiresOnlineOnly && status.status !== 'online') {
         continue;
       }
 
-      // Skip busy professionals at capacity
+      // Skip busy professionals at capacity (only if online)
       if (
         status.status === 'online' &&
         status.current_session_count >= (profile.max_concurrent_sessions || 3)
@@ -306,7 +311,6 @@ function mapRole(role: any): ProfessionalRole {
     aiMatchingRules: role.ai_matching_rules || {},
     isActive: role.is_active,
     displayOrder: role.display_order,
-    createdBy: role.created_by,
     createdAt: role.created_at,
     updatedAt: role.updated_at,
   };

@@ -889,10 +889,16 @@ export async function getAIResponse(
       }
       
       // Include professional help suggestion based on detection
-      // For high/medium confidence, we'll suggest it even if AI doesn't explicitly mention it
+      // Include all confidence levels to be more helpful
+      if (helpDetection.needsHelp) {
+        console.log('[AI Service] Professional help detected (direct OpenAI):', {
+          confidence: helpDetection.confidence,
+          professionalType: helpDetection.professionalType,
+        });
+      }
       return {
         ...response,
-        suggestProfessionalHelp: helpDetection.needsHelp && (helpDetection.confidence === 'high' || helpDetection.confidence === 'medium'),
+        suggestProfessionalHelp: helpDetection.needsHelp, // Include all confidence levels
         suggestedProfessionalType: helpDetection.professionalType || 'professional',
       };
     }
@@ -907,9 +913,16 @@ export async function getAIResponse(
     });
     if (fnResponse.success) {
       // Include professional help suggestion based on detection
+      // Include all confidence levels (high, medium, low) to be more helpful
+      if (helpDetection.needsHelp) {
+        console.log('[AI Service] Professional help detected:', {
+          confidence: helpDetection.confidence,
+          professionalType: helpDetection.professionalType,
+        });
+      }
       return {
         ...fnResponse,
-        suggestProfessionalHelp: helpDetection.needsHelp && (helpDetection.confidence === 'high' || helpDetection.confidence === 'medium'),
+        suggestProfessionalHelp: helpDetection.needsHelp, // Include all confidence levels
         suggestedProfessionalType: helpDetection.professionalType || 'professional',
       };
     }
@@ -948,7 +961,7 @@ async function getOpenAIResponse(
 
     const messages = [
       { role: 'system', content: systemPrompt },
-      ...conversationHistory.slice(-15), // Keep last 15 messages for context (reduced from 20 for speed)
+      ...conversationHistory.slice(-10), // Keep last 10 messages for context (reduced for speed)
       { role: 'user', content: userMessage },
     ];
 
@@ -969,7 +982,7 @@ async function getOpenAIResponse(
         model: 'gpt-3.5-turbo',
         messages: messages,
         temperature: 0.7, // Slightly reduced for faster, more focused responses
-        max_tokens: 300, // Reduced for faster responses (still sufficient for quality)
+        max_tokens: 250, // Reduced further for faster responses
         stream: false, // Set to false for now (streaming would require more complex handling)
       }),
     });
@@ -1029,8 +1042,8 @@ async function getOpenAIResponseViaSupabaseFunction(params: {
         systemPrompt: params.systemPrompt,
         userId: params.userId,
       },
-      // Add timeout to prevent hanging
-      signal: AbortSignal.timeout(30000), // 30 second timeout
+      // Add timeout to prevent hanging (reduced from 30s to 15s for faster failure)
+      signal: AbortSignal.timeout(15000), // 15 second timeout
     });
     if (error) throw error;
     if (!data?.success) throw new Error(data?.error || 'AI function failed');
@@ -1274,13 +1287,28 @@ function detectProfessionalHelpNeeded(
     }
   }
 
-  // Low confidence indicators (repeated concerns, relationship issues)
+  // Low confidence indicators (repeated concerns, relationship issues, emotional distress)
   const repeatedConcerns = conversationHistory.filter(m => m.role === 'user').length >= 3;
-  const relationshipIssues = /(relationship|partner|marriage|breakup|cheating|trust issues)/i.test(message) || 
-                            /(relationship|partner|marriage|breakup|cheating|trust issues)/i.test(recentHistory);
+  const relationshipIssues = /(relationship|partner|marriage|breakup|cheating|trust issues|break up|fighting|arguing)/i.test(message) || 
+                            /(relationship|partner|marriage|breakup|cheating|trust issues|break up|fighting|arguing)/i.test(recentHistory);
   
-  if (repeatedConcerns && (relationshipIssues || /(struggling|difficult|hard|don't know|confused|lost)/i.test(message))) {
+  const emotionalDistress = /(sad|upset|angry|frustrated|stressed|worried|anxious|lonely|hurt|pain|suffering)/i.test(message) ||
+                           /(sad|upset|angry|frustrated|stressed|worried|anxious|lonely|hurt|pain|suffering)/i.test(recentHistory);
+  
+  const needHelp = /(need help|need support|need advice|don't know what to do|what should i do|need guidance)/i.test(message) ||
+                  /(need help|need support|need advice|don't know what to do|what should i do|need guidance)/i.test(recentHistory);
+  
+  if (repeatedConcerns && (relationshipIssues || emotionalDistress || needHelp || /(struggling|difficult|hard|don't know|confused|lost)/i.test(message))) {
     return { needsHelp: true, professionalType: 'Counselor', confidence: 'low' };
+  }
+
+  // Also check for standalone emotional distress or help requests
+  if (emotionalDistress && repeatedConcerns) {
+    return { needsHelp: true, professionalType: 'Mental Health Professional', confidence: 'low' };
+  }
+  
+  if (needHelp && repeatedConcerns) {
+    return { needsHelp: true, professionalType: 'professional', confidence: 'low' };
   }
 
   return { needsHelp: false, confidence: 'low' };

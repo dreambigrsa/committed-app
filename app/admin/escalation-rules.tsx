@@ -66,14 +66,17 @@ export default function AdminEscalationRulesScreen() {
   const mapRule = (rule: any): EscalationRule => {
     return {
       id: rule.id,
-      ruleName: rule.rule_name,
-      ruleType: rule.rule_type,
+      name: rule.name || rule.rule_name || '',
+      description: rule.description,
+      roleId: rule.role_id,
+      triggerType: (rule.trigger_type || rule.rule_type || 'timeout') as EscalationRule['triggerType'],
       timeoutSeconds: rule.timeout_seconds || 300,
-      maxAttempts: rule.max_attempts || 3,
-      enabled: rule.enabled ?? true,
-      fallbackRuleId: rule.fallback_rule_id,
+      maxEscalationAttempts: rule.max_escalation_attempts || rule.max_attempts || 3,
+      escalationStrategy: (rule.escalation_strategy || 'sequential') as EscalationRule['escalationStrategy'],
+      fallbackRules: rule.fallback_rules || {},
+      requireUserConfirmation: rule.require_user_confirmation ?? true,
+      isActive: rule.is_active ?? rule.enabled ?? true,
       priority: rule.priority || 0,
-      conditions: rule.conditions || {},
       createdAt: rule.created_at,
       updatedAt: rule.updated_at,
     };
@@ -135,12 +138,16 @@ export default function AdminEscalationRulesScreen() {
 
   const handleEdit = (rule: EscalationRule) => {
     setEditingRule(rule);
-    setRuleName(rule.ruleName);
-    setRuleType(rule.ruleType);
-    setTimeoutSeconds(rule.timeoutSeconds);
-    setMaxAttempts(rule.maxAttempts);
-    setEnabled(rule.enabled);
-    setFallbackRuleId(rule.fallbackRuleId || null);
+    setName(rule.name);
+    setDescription(rule.description || '');
+    setRoleId(rule.roleId || null);
+    setTriggerType(rule.triggerType);
+    setTimeoutSeconds(rule.timeoutSeconds || 300);
+    setMaxAttempts(rule.maxEscalationAttempts);
+    setEscalationStrategy(rule.escalationStrategy);
+    setFallbackRules(rule.fallbackRules || {});
+    setRequireUserConfirmation(rule.requireUserConfirmation);
+    setEnabled(rule.isActive);
     setPriority(rule.priority);
     setShowForm(true);
   };
@@ -233,12 +240,12 @@ export default function AdminEscalationRulesScreen() {
                     <View key={rule.id} style={styles.ruleCard}>
                       <View style={styles.ruleHeader}>
                         <View style={styles.ruleHeaderLeft}>
-                          <Text style={styles.ruleName}>{rule.ruleName}</Text>
+                          <Text style={styles.ruleName}>{rule.name}</Text>
                           <View style={styles.ruleBadges}>
                             <View
                               style={[
                                 styles.badge,
-                                rule.enabled
+                                rule.isActive
                                   ? styles.badgeEnabled
                                   : styles.badgeDisabled,
                               ]}
@@ -246,14 +253,14 @@ export default function AdminEscalationRulesScreen() {
                               <Text
                                 style={[
                                   styles.badgeText,
-                                  rule.enabled && styles.badgeTextEnabled,
+                                  rule.isActive && styles.badgeTextEnabled,
                                 ]}
                               >
-                                {rule.enabled ? 'Enabled' : 'Disabled'}
+                                {rule.isActive ? 'Enabled' : 'Disabled'}
                               </Text>
                             </View>
                             <View style={[styles.badge, styles.badgeType]}>
-                              <Text style={styles.badgeText}>{rule.ruleType}</Text>
+                              <Text style={styles.badgeText}>{rule.triggerType}</Text>
                             </View>
                           </View>
                         </View>
@@ -311,39 +318,52 @@ export default function AdminEscalationRulesScreen() {
                   <Text style={styles.label}>Rule Name *</Text>
                   <TextInput
                     style={styles.input}
-                    value={ruleName}
-                    onChangeText={setRuleName}
+                    value={name}
+                    onChangeText={setName}
                     placeholder="e.g., Default Timeout Rule"
                     placeholderTextColor={themeColors.text.tertiary}
                   />
                 </View>
 
                 <View style={styles.formGroup}>
-                  <Text style={styles.label}>Rule Type</Text>
+                  <Text style={styles.label}>Description</Text>
+                  <TextInput
+                    style={[styles.input, styles.textArea]}
+                    value={description}
+                    onChangeText={setDescription}
+                    placeholder="Optional description for this rule"
+                    placeholderTextColor={themeColors.text.tertiary}
+                    multiline
+                    numberOfLines={3}
+                  />
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>Trigger Type</Text>
                   <View style={styles.typeButtons}>
-                    {(['timeout', 'manual', 'automatic'] as const).map((type) => (
+                    {(['timeout', 'user_request', 'ai_detection', 'manual'] as const).map((type) => (
                       <TouchableOpacity
                         key={type}
                         style={[
                           styles.typeButton,
-                          ruleType === type && styles.typeButtonActive,
+                          triggerType === type && styles.typeButtonActive,
                         ]}
-                        onPress={() => setRuleType(type)}
+                        onPress={() => setTriggerType(type)}
                       >
                         <Text
                           style={[
                             styles.typeButtonText,
-                            ruleType === type && styles.typeButtonTextActive,
+                            triggerType === type && styles.typeButtonTextActive,
                           ]}
                         >
-                          {type.charAt(0).toUpperCase() + type.slice(1)}
+                          {type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')}
                         </Text>
                       </TouchableOpacity>
                     ))}
                   </View>
                 </View>
 
-                {ruleType === 'timeout' && (
+                {triggerType === 'timeout' && (
                   <View style={styles.formGroup}>
                     <Text style={styles.label}>Timeout (seconds)</Text>
                     <TextInput
@@ -359,6 +379,46 @@ export default function AdminEscalationRulesScreen() {
                     />
                   </View>
                 )}
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>Escalation Strategy</Text>
+                  <View style={styles.typeButtons}>
+                    {(['sequential', 'broadcast', 'round_robin'] as const).map((strategy) => (
+                      <TouchableOpacity
+                        key={strategy}
+                        style={[
+                          styles.typeButton,
+                          escalationStrategy === strategy && styles.typeButtonActive,
+                        ]}
+                        onPress={() => setEscalationStrategy(strategy)}
+                      >
+                        <Text
+                          style={[
+                            styles.typeButtonText,
+                            escalationStrategy === strategy && styles.typeButtonTextActive,
+                          ]}
+                        >
+                          {strategy.charAt(0).toUpperCase() + strategy.slice(1).replace('_', ' ')}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                <View style={styles.formGroup}>
+                  <View style={styles.switchRow}>
+                    <Text style={styles.label}>Require User Confirmation</Text>
+                    <Switch
+                      value={requireUserConfirmation}
+                      onValueChange={setRequireUserConfirmation}
+                      trackColor={{
+                        false: themeColors.border.light,
+                        true: themeColors.primary,
+                      }}
+                      thumbColor={themeColors.text.white}
+                    />
+                  </View>
+                </View>
 
                 <View style={styles.formGroup}>
                   <Text style={styles.label}>Max Escalation Attempts</Text>
@@ -391,34 +451,30 @@ export default function AdminEscalationRulesScreen() {
                 </View>
 
                 <View style={styles.formGroup}>
-                  <Text style={styles.label}>Fallback Rule (optional)</Text>
-                  <View style={styles.selectContainer}>
-                    <Text style={styles.selectText}>
-                      {fallbackRuleId
-                        ? rules.find((r) => r.id === fallbackRuleId)?.ruleName || 'Select rule...'
-                        : 'None (select a rule)'}
-                    </Text>
-                    <TouchableOpacity
-                      style={styles.selectButton}
-                      onPress={() => {
-                        // Simple selection - in production, use a proper picker
-                        Alert.alert(
-                          'Fallback Rule',
-                          'Select a fallback rule (or None to clear)',
-                          [
-                            { text: 'None', onPress: () => setFallbackRuleId(null) },
-                            ...rules
-                              .filter((r) => r.id !== editingRule?.id)
-                              .map((r) => ({
-                                text: r.ruleName,
-                                onPress: () => setFallbackRuleId(r.id),
-                              })),
-                          ]
-                        );
+                  <Text style={styles.label}>Fallback Rules</Text>
+                  <View style={styles.switchRow}>
+                    <Text style={styles.label}>Local → Online</Text>
+                    <Switch
+                      value={fallbackRules.local_to_online || false}
+                      onValueChange={(value) => setFallbackRules({ ...fallbackRules, local_to_online: value })}
+                      trackColor={{
+                        false: themeColors.border.light,
+                        true: themeColors.primary,
                       }}
-                    >
-                      <ArrowRight size={20} color={themeColors.primary} />
-                    </TouchableOpacity>
+                      thumbColor={themeColors.text.white}
+                    />
+                  </View>
+                  <View style={styles.switchRow}>
+                    <Text style={styles.label}>Role Expansion</Text>
+                    <Switch
+                      value={fallbackRules.role_expansion || false}
+                      onValueChange={(value) => setFallbackRules({ ...fallbackRules, role_expansion: value })}
+                      trackColor={{
+                        false: themeColors.border.light,
+                        true: themeColors.primary,
+                      }}
+                      thumbColor={themeColors.text.white}
+                    />
                   </View>
                 </View>
 

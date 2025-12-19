@@ -151,13 +151,13 @@ export async function escalateSession(
     const rule = escalationCheck.rule!;
 
     // Find alternative professional
-    const alternativeProfessionals = await findMatchingProfessionals({
+    const alternativeMatches = await findMatchingProfessionals({
       roleId: session.role_id,
       excludeProfessionalId: session.professional_id,
-      escalationLevel: session.escalation_level + 1,
+      requiresOnlineOnly: true,
     });
 
-    if (alternativeProfessionals.length === 0) {
+    if (alternativeMatches.length === 0) {
       // Apply fallback rules
       const fallbackResult = await applyFallbackRules(session, rule);
       if (!fallbackResult.success) {
@@ -165,6 +165,9 @@ export async function escalateSession(
       }
       return fallbackResult;
     }
+
+    // Extract profiles from matches
+    const alternativeProfessionals = alternativeMatches.map(match => match.profile);
 
     // Select professional based on escalation strategy
     const selectedProfessional = selectProfessionalByStrategy(
@@ -222,18 +225,18 @@ async function applyFallbackRules(
 ): Promise<{ success: boolean; newSessionId?: string; error?: string }> {
   const fallbackRules = rule.fallbackRules || {};
 
-  // Local to online fallback
-  if (fallbackRules.local_to_online) {
-    // Try to find any available professional online (ignoring location)
-    const onlineProfessionals = await findMatchingProfessionals({
-      roleId: session.role_id,
-      excludeProfessionalId: session.professional_id,
-      escalationLevel: session.escalation_level + 1,
-      requireOnline: true,
-    });
+    // Local to online fallback
+    if (fallbackRules.local_to_online) {
+      // Try to find any available professional online (ignoring location)
+      const onlineMatches = await findMatchingProfessionals({
+        roleId: session.role_id,
+        excludeProfessionalId: session.professional_id,
+        requiresOnlineOnly: true,
+      });
 
-    if (onlineProfessionals.length > 0) {
-      const selected = selectProfessionalByStrategy(onlineProfessionals, rule.escalationStrategy);
+      if (onlineMatches.length > 0) {
+        const onlineProfessionals = onlineMatches.map(match => match.profile);
+        const selected = selectProfessionalByStrategy(onlineProfessionals, rule.escalationStrategy);
       if (selected) {
         // Create escalation event and accept
         const { data: escalationEvent } = await supabase
@@ -308,12 +311,21 @@ export async function acceptEscalation(
       console.error('Error updating escalation event:', eventError);
     }
 
+    // Get current session to read escalation_level
+    const { data: currentSession } = await supabase
+      .from('professional_sessions')
+      .select('escalation_level')
+      .eq('id', sessionId)
+      .single();
+
+    const newEscalationLevel = (currentSession?.escalation_level || 0) + 1;
+
     // Update session with new professional
     const { error: sessionError } = await supabase
       .from('professional_sessions')
       .update({
         professional_id: newProfessionalId,
-        escalation_level: supabase.raw('escalation_level + 1'),
+        escalation_level: newEscalationLevel,
         escalation_reason: 'Session escalated',
         professional_joined_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),

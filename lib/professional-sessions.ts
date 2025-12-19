@@ -245,7 +245,7 @@ export async function getPendingSessionRequests(
  * Map database session to TypeScript type
  */
 function mapSession(session: any): ProfessionalSession {
-  return {
+  const mapped: ProfessionalSession = {
     id: session.id,
     conversationId: session.conversation_id,
     userId: session.user_id,
@@ -266,5 +266,25 @@ function mapSession(session: any): ProfessionalSession {
     createdAt: session.created_at,
     updatedAt: session.updated_at,
   };
+
+  // Map joined user data if present
+  if (session.user) {
+    mapped.user = {
+      id: session.user.id,
+      fullName: session.user.full_name,
+      profilePicture: session.user.profile_picture,
+    } as any; // Partial User type
+  }
+
+  // Map joined role data if present
+  if (session.role) {
+    mapped.role = {
+      id: session.role.id,
+      name: session.role.name,
+      category: session.role.category,
+    } as any; // Partial ProfessionalRole type
+  }
+
+  return mapped;
 }
 

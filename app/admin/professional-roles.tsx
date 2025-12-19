@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,9 +11,11 @@ import {
   Modal,
   TextInput,
   Switch,
+  Animated,
 } from 'react-native';
 import { Stack } from 'expo-router';
-import { Briefcase, Plus, Edit, Trash2, X, Save, Settings as SettingsIcon } from 'lucide-react-native';
+import { Briefcase, Plus, Edit, Trash2, X, Save, CheckCircle2, Shield, AlertCircle } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
@@ -229,65 +231,96 @@ export default function AdminProfessionalRolesScreen() {
             </View>
           ) : (
             <View style={styles.rolesList}>
-              {roles.map((role: ProfessionalRole | any) => (
-                <View key={role.id} style={styles.roleCard}>
-                  <View style={styles.roleHeader}>
-                    <View style={styles.roleInfo}>
-                      <View style={styles.roleTitleRow}>
-                        <Text style={styles.roleName}>{role.name}</Text>
-                        <View style={[styles.statusBadge, role.isActive ? styles.activeBadge : styles.inactiveBadge]}>
-                          <Text style={[styles.statusText, role.isActive ? styles.activeText : styles.inactiveText]}>
-                            {role.isActive ? 'Active' : 'Inactive'}
-                          </Text>
-                        </View>
+              {roles.map((role: ProfessionalRole | any, index: number) => (
+                <TouchableOpacity
+                  key={role.id}
+                  style={styles.roleCard}
+                  activeOpacity={0.9}
+                  onPress={() => handleEdit(role)}
+                >
+                  <LinearGradient
+                    colors={role.isActive ? [themeColors.primary + '10', 'transparent'] : [themeColors.background.secondary, themeColors.background.secondary]}
+                    style={styles.roleCardGradient}
+                  >
+                    <View style={styles.roleCardHeader}>
+                      <View style={styles.roleCardIconContainer}>
+                        <Briefcase size={24} color={role.isActive ? themeColors.primary : themeColors.text.secondary} />
                       </View>
-                      <Text style={styles.roleCategory}>{role.category}</Text>
-                      {role.description && (
-                        <Text style={styles.roleDescription}>{role.description}</Text>
-                      )}
+                      <View style={styles.roleCardContent}>
+                        <View style={styles.roleCardTitleRow}>
+                          <Text style={[styles.roleCardName, !role.isActive && styles.roleCardNameInactive]}>
+                            {role.name}
+                          </Text>
+                          <View style={[styles.statusBadge, role.isActive ? styles.activeBadge : styles.inactiveBadge]}>
+                            {role.isActive ? (
+                              <CheckCircle2 size={14} color={colors.secondary} />
+                            ) : (
+                              <AlertCircle size={14} color={themeColors.text.tertiary} />
+                            )}
+                            <Text style={[styles.statusText, role.isActive ? styles.activeText : styles.inactiveText]}>
+                              {role.isActive ? 'Active' : 'Inactive'}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={styles.roleCategoryBadge}>
+                          <Text style={styles.roleCategoryText}>{role.category}</Text>
+                        </View>
+                        {role.description && (
+                          <Text style={styles.roleCardDescription} numberOfLines={2}>
+                            {role.description}
+                          </Text>
+                        )}
+                      </View>
                     </View>
-                  </View>
-                  
-                  <View style={styles.roleDetails}>
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Credentials Required:</Text>
-                      <Text style={styles.detailValue}>{role.requiresCredentials ? 'Yes' : 'No'}</Text>
-                    </View>
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Live Chat Eligible:</Text>
-                      <Text style={styles.detailValue}>{role.eligibleForLiveChat ? 'Yes' : 'No'}</Text>
-                    </View>
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Approval Required:</Text>
-                      <Text style={styles.detailValue}>{role.approvalRequired ? 'Yes' : 'No'}</Text>
-                    </View>
-                  </View>
 
-                  <View style={styles.roleActions}>
-                    <TouchableOpacity
-                      style={[styles.actionButton, styles.toggleButton]}
-                      onPress={() => handleToggleActive(role)}
-                    >
-                      <Text style={[styles.actionButtonText, role.isActive ? styles.deactivateText : styles.activateText]}>
-                        {role.isActive ? 'Deactivate' : 'Activate'}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.actionButton, styles.editButton]}
-                      onPress={() => handleEdit(role)}
-                    >
-                      <Edit size={16} color={themeColors.primary} />
-                      <Text style={[styles.actionButtonText, styles.editText]}>Edit</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.actionButton, styles.deleteButton]}
-                      onPress={() => handleDelete(role)}
-                    >
-                      <Trash2 size={16} color={colors.danger} />
-                      <Text style={[styles.actionButtonText, styles.deleteText]}>Delete</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
+                    <View style={styles.roleFeaturesGrid}>
+                      <View style={styles.featureItem}>
+                        <Shield size={16} color={role.requiresCredentials ? colors.secondary : themeColors.text.tertiary} />
+                        <Text style={[styles.featureText, !role.requiresCredentials && styles.featureTextInactive]}>
+                          {role.requiresCredentials ? 'Credentials' : 'No Credentials'}
+                        </Text>
+                      </View>
+                      <View style={styles.featureItem}>
+                        <CheckCircle2 size={16} color={role.eligibleForLiveChat ? colors.secondary : themeColors.text.tertiary} />
+                        <Text style={[styles.featureText, !role.eligibleForLiveChat && styles.featureTextInactive]}>
+                          {role.eligibleForLiveChat ? 'Live Chat' : 'No Live Chat'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.roleCardActions}>
+                      <TouchableOpacity
+                        style={[styles.actionButtonSmall, styles.toggleButtonSmall]}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleToggleActive(role);
+                        }}
+                      >
+                        <Text style={[styles.actionButtonSmallText, role.isActive ? styles.deactivateText : styles.activateText]}>
+                          {role.isActive ? 'Deactivate' : 'Activate'}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.actionButtonSmall, styles.editButtonSmall]}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleEdit(role);
+                        }}
+                      >
+                        <Edit size={16} color={themeColors.primary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.actionButtonSmall, styles.deleteButtonSmall]}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleDelete(role);
+                        }}
+                      >
+                        <Trash2 size={16} color={colors.danger} />
+                      </TouchableOpacity>
+                    </View>
+                  </LinearGradient>
+                </TouchableOpacity>
               ))}
             </View>
           )}
@@ -522,125 +555,159 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontWeight: '600',
   },
   rolesList: {
-    padding: 16,
-    gap: 16,
+    padding: 20,
+    gap: 20,
   },
   roleCard: {
-    backgroundColor: colors.background.primary,
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: colors.border.light,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
   },
-  roleHeader: {
-    marginBottom: 12,
+  roleCardGradient: {
+    padding: 20,
   },
-  roleInfo: {
+  roleCardHeader: {
+    flexDirection: 'row',
+    gap: 16,
+    marginBottom: 16,
+  },
+  roleCardIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: colors.background.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  roleCardContent: {
     flex: 1,
+    gap: 8,
   },
-  roleTitleRow: {
+  roleCardTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 4,
+    gap: 12,
   },
-  roleName: {
-    fontSize: 18,
-    fontWeight: '700',
+  roleCardName: {
+    fontSize: 22,
+    fontWeight: '800',
     color: colors.text.primary,
     flex: 1,
   },
+  roleCardNameInactive: {
+    color: colors.text.secondary,
+    opacity: 0.7,
+  },
   statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
   },
   activeBadge: {
-    backgroundColor: colors.success + '20',
+    backgroundColor: colors.secondary + '20',
   },
   inactiveBadge: {
     backgroundColor: colors.text.tertiary + '20',
   },
   statusText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   activeText: {
-    color: colors.success,
+    color: colors.secondary,
   },
   inactiveText: {
     color: colors.text.tertiary,
   },
-  roleCategory: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.primary,
-    marginBottom: 4,
+  roleCategoryBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.primary + '20',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
   },
-  roleDescription: {
+  roleCategoryText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  roleCardDescription: {
     fontSize: 14,
     color: colors.text.secondary,
+    lineHeight: 20,
     marginTop: 4,
   },
-  roleDetails: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    gap: 8,
-  },
-  detailRow: {
+  roleFeaturesGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: 16,
+    marginTop: 4,
+    marginBottom: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.light,
   },
-  detailLabel: {
-    fontSize: 14,
-    color: colors.text.secondary,
+  featureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
   },
-  detailValue: {
-    fontSize: 14,
+  featureText: {
+    fontSize: 13,
     fontWeight: '600',
     color: colors.text.primary,
   },
-  roleActions: {
+  featureTextInactive: {
+    color: colors.text.tertiary,
+  },
+  roleCardActions: {
     flexDirection: 'row',
-    marginTop: 16,
+    gap: 8,
     paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: colors.border,
-    gap: 8,
+    borderTopColor: colors.border.light,
   },
-  actionButton: {
+  actionButtonSmall: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
     gap: 6,
     flex: 1,
-    justifyContent: 'center',
   },
-  toggleButton: {
+  toggleButtonSmall: {
     backgroundColor: colors.background.secondary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
   },
-  editButton: {
-    backgroundColor: colors.primary + '15',
+  editButtonSmall: {
+    backgroundColor: colors.primary + '20',
+    borderWidth: 1,
+    borderColor: colors.primary + '40',
   },
-  deleteButton: {
-    backgroundColor: colors.danger + '15',
+  deleteButtonSmall: {
+    backgroundColor: colors.danger + '20',
+    borderWidth: 1,
+    borderColor: colors.danger + '40',
   },
-  actionButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  editText: {
-    color: colors.primary,
-  },
-  deleteText: {
-    color: colors.danger,
+  actionButtonSmallText: {
+    fontSize: 13,
+    fontWeight: '700',
   },
   activateText: {
-    color: colors.success,
+    color: colors.secondary,
   },
   deactivateText: {
     color: colors.text.secondary,

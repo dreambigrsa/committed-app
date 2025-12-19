@@ -1212,33 +1212,6 @@ export default function SettingsScreen() {
                 </View>
               </TouchableOpacity>
 
-              {isProfessional ? (
-                <TouchableOpacity
-                  style={styles.settingItem}
-                  onPress={() => router.push('/settings/professional-availability' as any)}
-                >
-                  <View style={styles.settingLeft}>
-                    <Radio size={20} color={colors.text.secondary} />
-                    <Text style={styles.settingLabel}>Professional Availability</Text>
-                  </View>
-                  <View style={styles.settingRight}>
-                    <ChevronRight size={20} color={colors.text.tertiary} />
-                  </View>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  style={styles.settingItem}
-                  onPress={() => router.push('/settings/become-professional' as any)}
-                >
-                  <View style={styles.settingLeft}>
-                    <Briefcase size={20} color={colors.text.secondary} />
-                    <Text style={styles.settingLabel}>Become a Professional</Text>
-                  </View>
-                  <View style={styles.settingRight}>
-                    <ChevronRight size={20} color={colors.text.tertiary} />
-                  </View>
-                </TouchableOpacity>
-              )}
 
               <TouchableOpacity
                 style={styles.settingItem}

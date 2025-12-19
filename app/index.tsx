@@ -25,6 +25,7 @@ import {
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
+import LoadingScreen from '@/components/LoadingScreen';
 
 export default function LandingScreen() {
   const router = useRouter();
@@ -50,6 +51,11 @@ export default function LandingScreen() {
       }
     }
   }, [currentUser, hasCompletedOnboarding, isLoading, router]);
+
+  // Show loading screen while user data is loading or onboarding status is being checked
+  if (currentUser && (isLoading || hasCompletedOnboarding === null)) {
+    return <LoadingScreen visible={true} />;
+  }
 
   useEffect(() => {
     Animated.parallel([

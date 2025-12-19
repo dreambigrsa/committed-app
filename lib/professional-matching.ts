@@ -12,6 +12,7 @@ export interface MatchingCriteria {
   minRating?: number;
   requiresOnlineOnly?: boolean;
   maxDistance?: number; // in kilometers
+  excludeProfessionalId?: string; // Exclude a specific professional (for escalations)
 }
 
 export interface ProfessionalMatch {
@@ -43,6 +44,11 @@ export async function findMatchingProfessionals(
     // Filter by role if specified
     if (criteria.roleId) {
       query = query.eq('role_id', criteria.roleId);
+    }
+
+    // Exclude a specific professional if specified
+    if (criteria.excludeProfessionalId) {
+      query = query.neq('id', criteria.excludeProfessionalId);
     }
 
     // Filter by minimum rating

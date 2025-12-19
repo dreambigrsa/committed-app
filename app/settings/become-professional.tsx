@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,16 +9,20 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  Animated,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
-import { Briefcase, Upload, Save, CheckCircle, XCircle, Clock } from 'lucide-react-native';
+import { Briefcase, Upload, CheckCircle2, X, ArrowRight, ArrowLeft, Shield, MapPin, FileText, User, Edit2, ChevronRight } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import * as ImagePicker from 'expo-image-picker';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { ProfessionalRole, ProfessionalApplication, ProfessionalProfile } from '@/types';
-import colors from '@/constants/colors';
+import { LinearGradient } from 'expo-linear-gradient';
+
+type Step = 1 | 2 | 3 | 4;
 
 export default function BecomeProfessionalScreen() {
   const router = useRouter();
@@ -26,6 +30,7 @@ export default function BecomeProfessionalScreen() {
   const { colors: themeColors } = useTheme();
   const styles = createStyles(themeColors);
 
+  const [currentStep, setCurrentStep] = useState<Step>(1);
   const [roles, setRoles] = useState<ProfessionalRole[]>([]);
   const [selectedRole, setSelectedRole] = useState<ProfessionalRole | null>(null);
   const [existingProfile, setExistingProfile] = useState<ProfessionalProfile | null>(null);
@@ -33,20 +38,50 @@ export default function BecomeProfessionalScreen() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  // Form fields
+  // User info from account (auto-populated)
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+
+  // Professional profile fields
   const [bio, setBio] = useState('');
   const [location, setLocation] = useState('');
   const [credentials, setCredentials] = useState<string[]>([]);
   const [credentialInput, setCredentialInput] = useState('');
   const [credentialDocuments, setCredentialDocuments] = useState<Array<{ type: string; url: string; verified: boolean }>>([]);
 
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+
   useEffect(() => {
     loadData();
   }, []);
 
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [currentStep]);
+
   const loadData = async () => {
     try {
       setLoading(true);
+      
+      // Auto-populate user info from account
+      if (currentUser) {
+        setFullName(currentUser.fullName || '');
+        setEmail(currentUser.email || '');
+        setPhoneNumber(currentUser.phoneNumber || '');
+      }
       
       // Load available roles
       const { data: rolesData, error: rolesError } = await supabase
@@ -99,6 +134,26 @@ export default function BecomeProfessionalScreen() {
     }
   };
 
+  const handleNext = () => {
+    if (currentStep === 1 && !selectedRole) {
+      Alert.alert('Please Select a Role', 'Choose a professional role to continue');
+      return;
+    }
+    if (currentStep === 2 && !bio.trim()) {
+      Alert.alert('Bio Required', 'Please provide a professional bio');
+      return;
+    }
+    if (currentStep < 4) {
+      setCurrentStep((currentStep + 1) as Step);
+    }
+  };
+
+  const handleBack = () => {
+    if (currentStep > 1) {
+      setCurrentStep((currentStep - 1) as Step);
+    }
+  };
+
   const handleAddCredential = () => {
     if (credentialInput.trim()) {
       setCredentials([...credentials, credentialInput.trim()]);
@@ -107,7 +162,7 @@ export default function BecomeProfessionalScreen() {
   };
 
   const handleRemoveCredential = (index: number) => {
-      setCredentials(credentials.filter((_: string, i: number) => i !== index));
+    setCredentials(credentials.filter((_: string, i: number) => i !== index));
   };
 
   const handleUploadDocument = async () => {
@@ -175,7 +230,6 @@ export default function BecomeProfessionalScreen() {
       };
 
       if (existingProfile) {
-        // Update existing profile
         const { error } = await supabase
           .from('professional_profiles')
           .update({
@@ -190,7 +244,6 @@ export default function BecomeProfessionalScreen() {
         if (error) throw error;
         Alert.alert('Success', 'Profile updated and submitted for review');
       } else {
-        // Create new application
         const { error } = await supabase
           .from('professional_applications')
           .insert([{
@@ -213,40 +266,10 @@ export default function BecomeProfessionalScreen() {
     }
   };
 
-  const getStatusDisplay = () => {
-    if (existingProfile) {
-      switch (existingProfile.approvalStatus) {
-        case 'approved':
-          return { text: 'Approved', icon: CheckCircle, color: colors.secondary };
-        case 'pending':
-          return { text: 'Pending Review', icon: Clock, color: colors.accent };
-        case 'rejected':
-          return { text: 'Rejected', icon: XCircle, color: colors.danger };
-        case 'suspended':
-          return { text: 'Suspended', icon: XCircle, color: colors.danger };
-        default:
-          return null;
-      }
-    }
-    if (existingApplication) {
-      switch (existingApplication.status) {
-        case 'pending':
-          return { text: 'Application Pending', icon: Clock, color: colors.accent };
-        case 'approved':
-          return { text: 'Application Approved', icon: CheckCircle, color: colors.secondary };
-        case 'rejected':
-          return { text: 'Application Rejected', icon: XCircle, color: colors.danger };
-        default:
-          return null;
-      }
-    }
-    return null;
-  };
-
   if (!currentUser) {
     return (
       <SafeAreaView style={styles.container}>
-        <Stack.Screen options={{ title: 'Become a Professional' }} />
+        <Stack.Screen options={{ title: 'Become a Professional', headerShown: true }} />
         <View style={styles.emptyContainer}>
           <Text style={styles.errorText}>Please log in to continue</Text>
         </View>
@@ -257,7 +280,7 @@ export default function BecomeProfessionalScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <Stack.Screen options={{ title: 'Become a Professional' }} />
+        <Stack.Screen options={{ title: 'Become a Professional', headerShown: true }} />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={themeColors.primary} />
         </View>
@@ -265,174 +288,352 @@ export default function BecomeProfessionalScreen() {
     );
   }
 
-  const statusDisplay = getStatusDisplay();
-  const StatusIcon = statusDisplay?.icon;
+  const renderStepIndicator = () => {
+    const steps = [
+      { number: 1, label: 'Role' },
+      { number: 2, label: 'Your Info' },
+      { number: 3, label: 'Profile' },
+      { number: 4, label: 'Credentials' },
+    ];
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <Stack.Screen options={{ title: 'Become a Professional' }} />
-      
-      <ScrollView style={styles.content}>
-        {statusDisplay && StatusIcon && (
-          <View style={[styles.statusBanner, { backgroundColor: statusDisplay.color + '20' }]}>
-            <StatusIcon size={20} color={statusDisplay.color} />
-            <Text style={[styles.statusText, { color: statusDisplay.color }]}>
-              {statusDisplay.text}
-            </Text>
-          </View>
-        )}
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Select Professional Role</Text>
-          <Text style={styles.sectionDescription}>
-            Choose the role that best matches your expertise
-          </Text>
-          
-          <View style={styles.rolesList}>
-            {roles.map((role: ProfessionalRole) => (
-              <TouchableOpacity
-                key={role.id}
+    return (
+      <View style={styles.stepIndicator}>
+        {steps.map((step, index) => (
+          <React.Fragment key={step.number}>
+            <View style={styles.stepItem}>
+              <View
                 style={[
-                  styles.roleOption,
-                  selectedRole?.id === role.id && styles.roleOptionSelected,
+                  styles.stepCircle,
+                  currentStep >= step.number && styles.stepCircleActive,
+                  currentStep === step.number && styles.stepCircleCurrent,
                 ]}
-                onPress={() => setSelectedRole(role)}
               >
-                <View style={styles.roleOptionContent}>
-                  <Briefcase size={24} color={selectedRole?.id === role.id ? themeColors.primary : themeColors.text.secondary} />
-                  <View style={styles.roleOptionText}>
-                    <Text style={[
-                      styles.roleOptionName,
-                      selectedRole?.id === role.id && styles.roleOptionNameSelected,
-                    ]}>
-                      {role.name}
-                    </Text>
-                    <Text style={styles.roleOptionCategory}>{role.category}</Text>
-                    {role.description && (
-                      <Text style={styles.roleOptionDescription}>{role.description}</Text>
-                    )}
-                    {role.requiresCredentials && (
-                      <Text style={styles.roleRequirement}>✓ Credentials required</Text>
-                    )}
-                  </View>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {selectedRole && (
-          <>
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Profile Information</Text>
-              
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Bio</Text>
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  value={bio}
-                  onChangeText={setBio}
-                  placeholder="Tell us about your professional background and experience"
-                  multiline
-                  numberOfLines={6}
-                  placeholderTextColor={themeColors.text.tertiary}
-                />
+                {currentStep > step.number ? (
+                  <CheckCircle2 size={20} color={themeColors.text.white} />
+                ) : (
+                  <Text style={[styles.stepNumber, currentStep >= step.number && styles.stepNumberActive]}>
+                    {step.number}
+                  </Text>
+                )}
               </View>
+              <Text style={[styles.stepLabel, currentStep >= step.number && styles.stepLabelActive]}>
+                {step.label}
+              </Text>
+            </View>
+            {index < steps.length - 1 && (
+              <View
+                style={[
+                  styles.stepConnector,
+                  currentStep > step.number && styles.stepConnectorActive,
+                ]}
+              />
+            )}
+          </React.Fragment>
+        ))}
+      </View>
+    );
+  };
 
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Location (Optional)</Text>
-                <TextInput
-                  style={styles.input}
-                  value={location}
-                  onChangeText={setLocation}
-                  placeholder="City, Country"
-                  placeholderTextColor={themeColors.text.tertiary}
-                />
+  const renderStepContent = () => {
+    switch (currentStep) {
+      case 1:
+        return (
+          <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+            <View style={styles.stepHeader}>
+              <View style={styles.iconCircle}>
+                <Briefcase size={32} color={themeColors.primary} />
               </View>
+              <Text style={styles.stepTitle}>Choose Your Professional Role</Text>
+              <Text style={styles.stepDescription}>
+                Select the role that best matches your expertise and qualifications
+              </Text>
             </View>
 
-            {selectedRole.requiresCredentials && (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Credentials</Text>
-                <Text style={styles.sectionDescription}>
-                  Add your professional credentials, certifications, or licenses
-                </Text>
+            <ScrollView style={styles.rolesScroll} showsVerticalScrollIndicator={false}>
+              {roles.map((role: ProfessionalRole) => (
+                <TouchableOpacity
+                  key={role.id}
+                  style={[
+                    styles.roleCard,
+                    selectedRole?.id === role.id && styles.roleCardSelected,
+                  ]}
+                  onPress={() => setSelectedRole(role)}
+                >
+                  <View style={styles.roleCardContent}>
+                    <View style={styles.roleCardHeader}>
+                      <View style={styles.roleIconContainer}>
+                        <Briefcase size={24} color={selectedRole?.id === role.id ? themeColors.primary : themeColors.text.secondary} />
+                      </View>
+                      <View style={styles.roleCardText}>
+                        <Text style={[styles.roleName, selectedRole?.id === role.id && styles.roleNameSelected]}>
+                          {role.name}
+                        </Text>
+                        <Text style={styles.roleCategory}>{role.category}</Text>
+                      </View>
+                      {selectedRole?.id === role.id && (
+                        <View style={styles.selectedBadge}>
+                          <CheckCircle2 size={24} color={themeColors.primary} />
+                        </View>
+                      )}
+                    </View>
+                    {role.description && (
+                      <Text style={styles.roleDescription}>{role.description}</Text>
+                    )}
+                    {role.requiresCredentials && (
+                      <View style={styles.requirementBadge}>
+                        <Shield size={14} color={themeColors.accent} />
+                        <Text style={styles.requirementText}>Credentials Required</Text>
+                      </View>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </Animated.View>
+        );
 
+      case 2:
+        return (
+          <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+            <View style={styles.stepHeader}>
+              <View style={styles.iconCircle}>
+                <User size={32} color={themeColors.primary} />
+              </View>
+              <Text style={styles.stepTitle}>Verify Your Information</Text>
+              <Text style={styles.stepDescription}>
+                Review and update your account information if needed
+              </Text>
+            </View>
+
+            <View style={styles.infoCard}>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Full Name</Text>
+                <View style={styles.infoValueContainer}>
+                  <TextInput
+                    style={styles.infoInput}
+                    value={fullName}
+                    onChangeText={setFullName}
+                    placeholder="Your full name"
+                    placeholderTextColor={themeColors.text.tertiary}
+                  />
+                  <Edit2 size={18} color={themeColors.text.secondary} />
+                </View>
+              </View>
+
+              <View style={styles.infoDivider} />
+
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Email</Text>
+                <View style={styles.infoValueContainer}>
+                  <Text style={styles.infoValue}>{email}</Text>
+                  <View style={styles.verifiedBadge}>
+                    <CheckCircle2 size={16} color={themeColors.secondary} />
+                    <Text style={styles.verifiedText}>Verified</Text>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.infoDivider} />
+
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Phone Number</Text>
+                <View style={styles.infoValueContainer}>
+                  <TextInput
+                    style={styles.infoInput}
+                    value={phoneNumber}
+                    onChangeText={setPhoneNumber}
+                    placeholder="Your phone number"
+                    placeholderTextColor={themeColors.text.tertiary}
+                  />
+                  <View style={styles.verifiedBadge}>
+                    <CheckCircle2 size={16} color={themeColors.secondary} />
+                    <Text style={styles.verifiedText}>Verified</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+          </Animated.View>
+        );
+
+      case 3:
+        return (
+          <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+            <View style={styles.stepHeader}>
+              <View style={styles.iconCircle}>
+                <FileText size={32} color={themeColors.primary} />
+              </View>
+              <Text style={styles.stepTitle}>Create Your Professional Profile</Text>
+              <Text style={styles.stepDescription}>
+                Tell us about your professional background and experience
+              </Text>
+            </View>
+
+            <View style={styles.formCard}>
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Professional Bio *</Text>
+                <Text style={styles.formHint}>Share your expertise, experience, and what makes you unique</Text>
+                <TextInput
+                  style={[styles.formInput, styles.textArea]}
+                  value={bio}
+                  onChangeText={setBio}
+                  placeholder="e.g., Licensed therapist with 10+ years of experience helping couples navigate relationship challenges..."
+                  multiline
+                  numberOfLines={8}
+                  placeholderTextColor={themeColors.text.tertiary}
+                />
+                <Text style={styles.characterCount}>{bio.length}/500</Text>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Location (Optional)</Text>
+                <Text style={styles.formHint}>City and country where you provide services</Text>
+                <View style={styles.inputWithIcon}>
+                  <MapPin size={20} color={themeColors.text.secondary} />
+                  <TextInput
+                    style={[styles.formInput, styles.inputWithIconText]}
+                    value={location}
+                    onChangeText={setLocation}
+                    placeholder="e.g., New York, USA"
+                    placeholderTextColor={themeColors.text.tertiary}
+                  />
+                </View>
+              </View>
+            </View>
+          </Animated.View>
+        );
+
+      case 4:
+        return (
+          <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+            <View style={styles.stepHeader}>
+              <View style={styles.iconCircle}>
+                <Shield size={32} color={themeColors.primary} />
+              </View>
+              <Text style={styles.stepTitle}>
+                {selectedRole?.requiresCredentials ? 'Add Your Credentials' : 'Credentials (Optional)'}
+              </Text>
+              <Text style={styles.stepDescription}>
+                {selectedRole?.requiresCredentials
+                  ? 'This role requires professional credentials. Please add your certifications, licenses, or qualifications.'
+                  : 'Add any professional credentials, certifications, or licenses you hold'}
+              </Text>
+            </View>
+
+            <View style={styles.formCard}>
+              {credentials.length > 0 && (
                 <View style={styles.credentialsList}>
                   {credentials.map((cred: string, index: number) => (
-                    <View key={index} style={styles.credentialItem}>
-                      <Text style={styles.credentialText}>{cred}</Text>
+                    <View key={index} style={styles.credentialTag}>
+                      <Text style={styles.credentialTagText}>{cred}</Text>
                       <TouchableOpacity onPress={() => handleRemoveCredential(index)}>
-                        <XCircle size={20} color={colors.danger} />
+                        <X size={18} color={themeColors.text.secondary} />
                       </TouchableOpacity>
                     </View>
                   ))}
                 </View>
-
-                <View style={styles.addCredentialContainer}>
-                  <TextInput
-                    style={styles.credentialInput}
-                    value={credentialInput}
-                    onChangeText={setCredentialInput}
-                    placeholder="Add credential (e.g., Licensed Therapist, MBA)"
-                    placeholderTextColor={themeColors.text.tertiary}
-                    onSubmitEditing={handleAddCredential}
-                  />
-                  <TouchableOpacity
-                    style={styles.addCredentialButton}
-                    onPress={handleAddCredential}
-                  >
-                    <Text style={styles.addCredentialButtonText}>Add</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <TouchableOpacity
-                  style={styles.uploadButton}
-                  onPress={handleUploadDocument}
-                >
-                  <Upload size={20} color={themeColors.primary} />
-                  <Text style={styles.uploadButtonText}>Upload Credential Document</Text>
-                </TouchableOpacity>
-
-                {credentialDocuments.length > 0 && (
-                  <View style={styles.documentsList}>
-                    {credentialDocuments.map((doc: { type: string; url: string; verified: boolean }, index: number) => (
-                      <View key={index} style={styles.documentItem}>
-                        <Text style={styles.documentText}>{doc.type.toUpperCase()} Document</Text>
-                        <Text style={styles.documentUrl} numberOfLines={1}>{doc.url}</Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-              </View>
-            )}
-
-            {selectedRole.disclaimerText && (
-              <View style={styles.disclaimerContainer}>
-                <Text style={styles.disclaimerTitle}>Important Notice</Text>
-                <Text style={styles.disclaimerText}>{selectedRole.disclaimerText}</Text>
-              </View>
-            )}
-
-            <TouchableOpacity
-              style={[styles.submitButton, submitting && styles.submitButtonDisabled]}
-              onPress={handleSubmit}
-              disabled={submitting}
-            >
-              {submitting ? (
-                <ActivityIndicator color={colors.text.white} />
-              ) : (
-                <>
-                  <Save size={20} color={colors.text.white} />
-                  <Text style={styles.submitButtonText}>
-                    {existingProfile ? 'Update Application' : 'Submit Application'}
-                  </Text>
-                </>
               )}
+
+              <View style={styles.addCredentialRow}>
+                <TextInput
+                  style={styles.credentialInput}
+                  value={credentialInput}
+                  onChangeText={setCredentialInput}
+                  placeholder="e.g., Licensed Marriage and Family Therapist"
+                  placeholderTextColor={themeColors.text.tertiary}
+                  onSubmitEditing={handleAddCredential}
+                />
+                <TouchableOpacity style={styles.addButton} onPress={handleAddCredential}>
+                  <Text style={styles.addButtonText}>Add</Text>
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity style={styles.uploadCard} onPress={handleUploadDocument}>
+                <Upload size={24} color={themeColors.primary} />
+                <View style={styles.uploadCardText}>
+                  <Text style={styles.uploadCardTitle}>Upload Credential Document</Text>
+                  <Text style={styles.uploadCardHint}>PDF, JPG, or PNG files accepted</Text>
+                </View>
+                <ChevronRight size={20} color={themeColors.text.tertiary} />
+              </TouchableOpacity>
+
+              {credentialDocuments.length > 0 && (
+                <View style={styles.documentsList}>
+                  {credentialDocuments.map((doc: { type: string; url: string; verified: boolean }, index: number) => (
+                    <View key={index} style={styles.documentCard}>
+                      <FileText size={20} color={themeColors.primary} />
+                      <View style={styles.documentCardText}>
+                        <Text style={styles.documentCardTitle}>{doc.type.toUpperCase()} Document</Text>
+                        <Text style={styles.documentCardUrl} numberOfLines={1}>{doc.url}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {selectedRole?.disclaimerText && (
+                <View style={styles.disclaimerBox}>
+                  <Shield size={20} color={themeColors.accent} />
+                  <View style={styles.disclaimerBoxText}>
+                    <Text style={styles.disclaimerBoxTitle}>Important Notice</Text>
+                    <Text style={styles.disclaimerBoxContent}>{selectedRole.disclaimerText}</Text>
+                  </View>
+                </View>
+              )}
+            </View>
+          </Animated.View>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <Stack.Screen options={{ title: 'Become a Professional', headerShown: true }} />
+      
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
+        <LinearGradient
+          colors={[themeColors.primary + '15', 'transparent']}
+          style={styles.gradientHeader}
+        >
+          {renderStepIndicator()}
+        </LinearGradient>
+
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          {renderStepContent()}
+        </ScrollView>
+
+        <View style={styles.footer}>
+          {currentStep > 1 && (
+            <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+              <ArrowLeft size={20} color={themeColors.text.primary} />
+              <Text style={styles.backButtonText}>Back</Text>
             </TouchableOpacity>
-          </>
-        )}
-      </ScrollView>
+          )}
+          
+          <TouchableOpacity
+            style={[styles.nextButton, submitting && styles.nextButtonDisabled]}
+            onPress={currentStep === 4 ? handleSubmit : handleNext}
+            disabled={submitting}
+          >
+            {submitting ? (
+              <ActivityIndicator color={themeColors.text.white} />
+            ) : (
+              <>
+                <Text style={styles.nextButtonText}>
+                  {currentStep === 4 ? 'Submit Application' : 'Continue'}
+                </Text>
+                <ArrowRight size={20} color={themeColors.text.white} />
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -442,25 +643,18 @@ const createStyles = (colors: any) => StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background.secondary,
   },
+  keyboardView: {
+    flex: 1,
+  },
+  gradientHeader: {
+    paddingTop: 20,
+    paddingBottom: 24,
+    paddingHorizontal: 20,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  content: {
-    flex: 1,
-  },
-  statusBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    margin: 16,
-    borderRadius: 12,
-    gap: 8,
-  },
-  statusText: {
-    fontSize: 16,
-    fontWeight: '600',
   },
   emptyContainer: {
     flex: 1,
@@ -472,210 +666,435 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontSize: 16,
     color: colors.text.secondary,
   },
-  section: {
-    padding: 16,
-    backgroundColor: colors.background.primary,
-    marginBottom: 12,
+  stepIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.text.primary,
+  stepItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  stepCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.background.secondary,
+    borderWidth: 2,
+    borderColor: colors.border.light,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 8,
   },
-  sectionDescription: {
-    fontSize: 14,
+  stepCircleActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  stepCircleCurrent: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  stepNumber: {
+    fontSize: 16,
+    fontWeight: '700',
     color: colors.text.secondary,
+  },
+  stepNumberActive: {
+    color: colors.text.white,
+  },
+  stepLabel: {
+    fontSize: 12,
+    color: colors.text.tertiary,
+    fontWeight: '600',
+  },
+  stepLabelActive: {
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  stepConnector: {
+    flex: 1,
+    height: 2,
+    backgroundColor: colors.border.light,
+    marginHorizontal: 8,
+    marginBottom: 28,
+  },
+  stepConnectorActive: {
+    backgroundColor: colors.primary,
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  stepHeader: {
+    alignItems: 'center',
+    marginBottom: 32,
+    marginTop: 16,
+  },
+  iconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: colors.primary + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  stepTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: colors.text.primary,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  stepDescription: {
+    fontSize: 16,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    lineHeight: 24,
+    paddingHorizontal: 20,
+  },
+  rolesScroll: {
+    maxHeight: 400,
+  },
+  roleCard: {
+    backgroundColor: colors.background.primary,
+    borderRadius: 16,
+    padding: 20,
     marginBottom: 16,
-  },
-  rolesList: {
-    gap: 12,
-  },
-  roleOption: {
     borderWidth: 2,
-    borderColor: colors.border,
-    borderRadius: 12,
-    padding: 16,
+    borderColor: colors.border.light,
   },
-  roleOptionSelected: {
+  roleCardSelected: {
     borderColor: colors.primary,
     backgroundColor: colors.primary + '10',
   },
-  roleOptionContent: {
-    flexDirection: 'row',
+  roleCardContent: {
     gap: 12,
   },
-  roleOptionText: {
+  roleCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  roleIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.background.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  roleCardText: {
     flex: 1,
   },
-  roleOptionName: {
-    fontSize: 16,
+  roleName: {
+    fontSize: 20,
     fontWeight: '700',
     color: colors.text.primary,
     marginBottom: 4,
   },
-  roleOptionNameSelected: {
+  roleNameSelected: {
     color: colors.primary,
   },
-  roleOptionCategory: {
+  roleCategory: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.primary,
-    marginBottom: 4,
+    color: colors.accent,
   },
-  roleOptionDescription: {
-    fontSize: 13,
+  selectedBadge: {
+    marginLeft: 'auto',
+  },
+  roleDescription: {
+    fontSize: 14,
     color: colors.text.secondary,
-    marginTop: 4,
+    lineHeight: 20,
   },
-  roleRequirement: {
+  requirementBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: colors.accent + '20',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  requirementText: {
     fontSize: 12,
-    color: colors.text.tertiary,
-    marginTop: 4,
-    fontStyle: 'italic',
+    fontWeight: '600',
+    color: colors.accent,
   },
-  formGroup: {
-    marginBottom: 16,
+  infoCard: {
+    backgroundColor: colors.background.primary,
+    borderRadius: 16,
+    padding: 24,
+    marginBottom: 24,
   },
-  label: {
+  infoRow: {
+    paddingVertical: 16,
+  },
+  infoLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.text.primary,
+    color: colors.text.secondary,
     marginBottom: 8,
   },
-  input: {
+  infoValueContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  infoInput: {
+    flex: 1,
+    fontSize: 16,
+    color: colors.text.primary,
+    fontWeight: '600',
+  },
+  infoValue: {
+    fontSize: 16,
+    color: colors.text.primary,
+    fontWeight: '600',
+  },
+  verifiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.secondary + '20',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  verifiedText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.secondary,
+  },
+  infoDivider: {
+    height: 1,
+    backgroundColor: colors.border.light,
+  },
+  formCard: {
+    backgroundColor: colors.background.primary,
+    borderRadius: 16,
+    padding: 24,
+    marginBottom: 24,
+  },
+  formGroup: {
+    marginBottom: 24,
+  },
+  formLabel: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text.primary,
+    marginBottom: 6,
+  },
+  formHint: {
+    fontSize: 13,
+    color: colors.text.secondary,
+    marginBottom: 12,
+  },
+  formInput: {
     backgroundColor: colors.background.secondary,
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    padding: 12,
+    borderColor: colors.border.light,
+    borderRadius: 12,
+    padding: 16,
     fontSize: 16,
     color: colors.text.primary,
   },
   textArea: {
-    minHeight: 120,
+    minHeight: 150,
     textAlignVertical: 'top',
   },
-  credentialsList: {
-    marginBottom: 12,
-    gap: 8,
+  characterCount: {
+    fontSize: 12,
+    color: colors.text.tertiary,
+    textAlign: 'right',
+    marginTop: 6,
   },
-  credentialItem: {
+  inputWithIcon: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: colors.background.secondary,
-    padding: 12,
-    borderRadius: 8,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.border.light,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    gap: 12,
   },
-  credentialText: {
-    fontSize: 14,
-    color: colors.text.primary,
+  inputWithIconText: {
     flex: 1,
+    paddingVertical: 16,
+    paddingHorizontal: 0,
+    borderWidth: 0,
   },
-  addCredentialContainer: {
+  credentialsList: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 12,
+    marginBottom: 16,
+  },
+  credentialTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.primary + '20',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  credentialTagText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  addCredentialRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
   },
   credentialInput: {
     flex: 1,
     backgroundColor: colors.background.secondary,
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    padding: 12,
+    borderColor: colors.border.light,
+    borderRadius: 12,
+    padding: 16,
     fontSize: 14,
     color: colors.text.primary,
   },
-  addCredentialButton: {
+  addButton: {
     backgroundColor: colors.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderRadius: 12,
     justifyContent: 'center',
   },
-  addCredentialButtonText: {
+  addButtonText: {
     color: colors.text.white,
-    fontWeight: '600',
+    fontWeight: '700',
+    fontSize: 14,
   },
-  uploadButton: {
+  uploadCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     backgroundColor: colors.background.secondary,
     borderWidth: 2,
     borderColor: colors.primary,
     borderStyle: 'dashed',
-    borderRadius: 8,
-    padding: 16,
-    gap: 8,
-    marginBottom: 12,
-  },
-  uploadButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.primary,
-  },
-  documentsList: {
-    marginTop: 12,
-    gap: 8,
-  },
-  documentItem: {
-    backgroundColor: colors.background.secondary,
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  documentText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.text.secondary,
-    marginBottom: 4,
-  },
-  documentUrl: {
-    fontSize: 12,
-    color: colors.text.tertiary,
-  },
-  disclaimerContainer: {
-    backgroundColor: colors.warning + '20',
-    padding: 16,
-    margin: 16,
     borderRadius: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.warning,
+    padding: 20,
+    gap: 16,
+    marginBottom: 16,
   },
-  disclaimerTitle: {
+  uploadCardText: {
+    flex: 1,
+  },
+  uploadCardTitle: {
     fontSize: 16,
     fontWeight: '700',
     color: colors.text.primary,
-    marginBottom: 8,
+    marginBottom: 4,
   },
-  disclaimerText: {
+  uploadCardHint: {
+    fontSize: 13,
+    color: colors.text.secondary,
+  },
+  documentsList: {
+    gap: 12,
+    marginBottom: 20,
+  },
+  documentCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background.secondary,
+    borderRadius: 12,
+    padding: 16,
+    gap: 12,
+  },
+  documentCardText: {
+    flex: 1,
+  },
+  documentCardTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text.primary,
+    marginBottom: 4,
+  },
+  documentCardUrl: {
+    fontSize: 12,
+    color: colors.text.tertiary,
+  },
+  disclaimerBox: {
+    flexDirection: 'row',
+    backgroundColor: colors.accent + '20',
+    borderRadius: 12,
+    padding: 16,
+    gap: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.accent,
+  },
+  disclaimerBoxText: {
+    flex: 1,
+  },
+  disclaimerBoxTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text.primary,
+    marginBottom: 6,
+  },
+  disclaimerBoxContent: {
     fontSize: 14,
     color: colors.text.secondary,
     lineHeight: 20,
   },
-  submitButton: {
+  footer: {
+    flexDirection: 'row',
+    padding: 20,
+    gap: 12,
+    backgroundColor: colors.background.primary,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.light,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background.secondary,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    gap: 8,
+    minWidth: 100,
+  },
+  backButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text.primary,
+  },
+  nextButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primary,
-    padding: 16,
-    margin: 16,
+    paddingVertical: 16,
     borderRadius: 12,
     gap: 8,
   },
-  submitButtonDisabled: {
+  nextButtonDisabled: {
     opacity: 0.6,
   },
-  submitButtonText: {
+  nextButtonText: {
     fontSize: 16,
     fontWeight: '700',
     color: colors.text.white,
   },
 });
-

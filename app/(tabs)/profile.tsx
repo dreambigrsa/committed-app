@@ -21,6 +21,9 @@ import {
   Plus,
   BarChart3,
   Camera,
+  Briefcase,
+  UserCheck,
+  ChevronRight,
 } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -34,11 +37,37 @@ export default function ProfileScreen() {
   const { colors } = useTheme();
   const relationship = getCurrentUserRelationship();
   const [isUploading, setIsUploading] = useState(false);
+  const [isProfessional, setIsProfessional] = useState(false);
+  const [isCheckingProfessional, setIsCheckingProfessional] = useState(true);
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
   const styles = useMemo(() => createStyles(colors), [colors]);
+
+  useEffect(() => {
+    checkProfessionalStatus();
+  }, [currentUser]);
+
+  const checkProfessionalStatus = async () => {
+    if (!currentUser) {
+      setIsCheckingProfessional(false);
+      return;
+    }
+    try {
+      const { data } = await supabase
+        .from('professional_profiles')
+        .select('id, approval_status')
+        .eq('user_id', currentUser.id)
+        .eq('approval_status', 'approved')
+        .maybeSingle();
+      setIsProfessional(!!data);
+    } catch (error) {
+      console.error('Error checking professional status:', error);
+    } finally {
+      setIsCheckingProfessional(false);
+    }
+  };
 
   React.useEffect(() => {
     Animated.parallel([
@@ -314,6 +343,32 @@ export default function ProfileScreen() {
                 <BarChart3 size={20} color={colors.primary} />
                 <Text style={[styles.menuItemText, styles.adminText]}>Manage Advertisements</Text>
               </View>
+            </TouchableOpacity>
+          )}
+
+          {isProfessional ? (
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => router.push('/settings/professional-availability' as any)}
+            >
+              <View style={styles.menuItemLeft}>
+                <UserCheck size={20} color={colors.primary} />
+                <Text style={[styles.menuItemText, { color: colors.primary }]}>Professional Availability</Text>
+              </View>
+              <View style={styles.professionalBadge}>
+                <Text style={styles.professionalBadgeText}>Active</Text>
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => router.push('/settings/become-professional' as any)}
+            >
+              <View style={styles.menuItemLeft}>
+                <Briefcase size={20} color={colors.primary} />
+                <Text style={[styles.menuItemText, { color: colors.primary, fontWeight: '700' }]}>Become a Professional</Text>
+              </View>
+              <ChevronRight size={20} color={colors.text.tertiary} />
             </TouchableOpacity>
           )}
 
@@ -598,5 +653,16 @@ const createStyles = (colors: any) => StyleSheet.create({
   adminText: {
     color: colors.primary,
     fontWeight: '600' as const,
+  },
+  professionalBadge: {
+    backgroundColor: colors.secondary + '20',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  professionalBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.secondary,
   },
 });

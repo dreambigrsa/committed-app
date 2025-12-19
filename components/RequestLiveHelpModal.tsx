@@ -195,7 +195,7 @@ export default function RequestLiveHelpModal({
   return (
     <Modal
       visible={visible}
-      animationType="slide"
+      animationType="fade"
       transparent={true}
       onRequestClose={onClose}
     >
@@ -354,14 +354,15 @@ const createStyles = (colors: any) =>
     overlay: {
       flex: 1,
       backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      justifyContent: 'flex-end',
+      justifyContent: 'center',
+      alignItems: 'center',
     },
     modal: {
       backgroundColor: colors.background.primary,
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
-      maxHeight: '90%',
-      paddingBottom: 20,
+      borderRadius: 20,
+      maxHeight: '85%',
+      width: '90%',
+      maxWidth: 500,
     },
     header: {
       flexDirection: 'row',
@@ -380,8 +381,8 @@ const createStyles = (colors: any) =>
       padding: 4,
     },
     content: {
-      flex: 1,
       padding: 20,
+      maxHeight: 450,
     },
     summaryContainer: {
       backgroundColor: colors.background.secondary,

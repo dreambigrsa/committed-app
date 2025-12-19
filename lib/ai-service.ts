@@ -40,15 +40,25 @@ KEY FLOWS (SHORT)
 - Post/Reel: Post → Create, Reel → Create.
 - Status: Status → Create (photo/video/text).
 
+PROFESSIONAL CONNECTIONS SYSTEM (IMPORTANT)
+- The app has a built-in professional connection system that allows users to connect with verified professionals in real-time.
+- Available professional types include: Counselors, Relationship Therapists, Psychologists, Mental Health Professionals, Life Coaches, Business Mentors, General Mentors, Legal Advisors, and Lawyers/Legal Consultants.
+- Users can request live professional help by tapping the "Request Live Help" button in AI conversations.
+- When a user asks for business mentorship, career advice, therapy, counseling, legal advice, or any professional guidance, you should inform them about the "Request Live Help" feature.
+- The system matches users with available professionals based on their needs, location, and availability.
+- All professionals are verified and approved by admins before they can provide services.
+- IMPORTANT: When users ask about connecting with business mentors, professionals, therapists, counselors, or any type of expert, always mention that the app has a "Request Live Help" feature in the chat interface that can connect them with verified professionals. Never say the app doesn't have this feature.
+
 COMMON TROUBLESHOOTING
 - Photos/Gallery not working: grant photo/media permissions in phone settings; on Android 13+ allow Photos and Videos permissions. After changing plugins/permissions, rebuild/reinstall the app.
 - Camera not working: grant camera permission.
-- Notifications not showing: enable notifications permission; on Android ensure notifications are allowed and the channel isn’t muted.
-- If something errors: ask what screen they’re on, what they tapped, and the exact error text or a screenshot.
+- Notifications not showing: enable notifications permission; on Android ensure notifications are allowed and the channel isn't muted.
+- If something errors: ask what screen they're on, what they tapped, and the exact error text or a screenshot.
 
 ADMIN CAPABILITIES
 - Super Admin can access Admin dashboard and settings.
 - Admin Settings includes OpenAI key management (save/test) for Committed AI.
+- Admins can manage professional roles, approve/reject professional applications, and configure the professional system.
 `;
 
 let cachedOpenAIKey: string | null | undefined = undefined; // undefined = not loaded
@@ -747,6 +757,12 @@ RESPONSE GUIDELINES:
 - Don't repeat information unnecessarily or go off-topic
 - Never use generic "I'm here to help" responses when asked specific questions - always answer the actual question asked
 
+PROFESSIONAL CONNECTIONS:
+- When users ask about connecting with professionals (business mentors, therapists, counselors, lawyers, coaches, or any experts), ALWAYS inform them about the "Request Live Help" feature.
+- Say something like: "I can help guide you, and if you'd like to speak with a verified professional, you can tap the 'Request Live Help' button in this chat. This will connect you with an available professional who can provide personalized support."
+- Never say the app doesn't have this feature - it does, and it's available through the "Request Live Help" button in AI conversations.
+- If the conversation suggests they need professional help, proactively mention the feature: "If you'd like to speak with a verified [type] professional, tap 'Request Live Help' in this chat."
+
 COMMANDS:
 - When users ask for images (e.g., "generate an image of...", "create a picture of..."), respond with just "GENERATE_IMAGE: [their prompt]"
 - When users ask for documents (e.g., "create a document", "write a...", "generate a PDF"), respond with just "GENERATE_DOCUMENT: [document type and content]"`;
@@ -777,6 +793,31 @@ export async function getAIResponse(
     };
   }
   try {
+    // Check if user is asking for professional help - proactively offer connection
+    const professionalHelpPatterns = [
+      /(need|want|looking for|find|connect with|speak with|talk to).*professional/i,
+      /(need|want|looking for|find|connect with|speak with|talk to).*(therapist|counselor|mentor|coach|lawyer|advisor|psychologist)/i,
+      /(business mentor|life coach|relationship therapist|legal advisor|professional help)/i,
+      /can.*you.*connect.*me.*with/i,
+      /help.*me.*find.*(professional|therapist|counselor|mentor)/i,
+    ];
+
+    const isProfessionalHelpRequest = professionalHelpPatterns.some(pattern => pattern.test(userMessage));
+    if (isProfessionalHelpRequest) {
+      // Extract the type of professional they're looking for
+      let professionalType = 'professional';
+      if (/business.*mentor|mentor/i.test(userMessage)) professionalType = 'Business Mentor';
+      else if (/therapist|counselor/i.test(userMessage)) professionalType = 'Therapist or Counselor';
+      else if (/lawyer|legal/i.test(userMessage)) professionalType = 'Legal Advisor';
+      else if (/coach/i.test(userMessage)) professionalType = 'Life Coach';
+
+      return {
+        success: true,
+        message: `I'd be happy to help you connect with a verified ${professionalType}! You can tap the "Request Live Help" button in this chat, and I'll find the best available professional to assist you. They'll join our conversation and provide personalized support. Would you like me to help you get started?`,
+        contentType: 'text',
+      };
+    }
+
     // Check for image generation requests
     const imagePatterns = [
       /generate (an? )?image (of|for|showing)/i,
@@ -1145,6 +1186,20 @@ export async function suggestProfessionalRole(
         }
 
         if (
+          (categoryLower.includes('business') || categoryLower.includes('mentor')) &&
+          (combinedText.includes('business') ||
+            combinedText.includes('mentor') ||
+            combinedText.includes('career') ||
+            combinedText.includes('professional development') ||
+            combinedText.includes('startup') ||
+            combinedText.includes('entrepreneur') ||
+            combinedText.includes('work') ||
+            combinedText.includes('job'))
+        ) {
+          return role.id;
+        }
+
+        if (
           categoryLower.includes('relationship') &&
           (combinedText.includes('relationship') ||
             combinedText.includes('partner') ||
@@ -1166,6 +1221,97 @@ export async function suggestProfessionalRole(
   } catch (error) {
     console.error('Error suggesting professional role:', error);
     return null;
+  }
+}
+
+/**
+ * Monitor conversation for non-agreement patterns and suggest alternative professional
+ * This runs in observer mode to detect if user and professional aren't reaching agreement
+ */
+export async function detectNonAgreementAndSuggestAlternative(
+  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
+  conversationId: string,
+  userId: string,
+  sessionId: string
+): Promise<{ shouldEscalate: boolean; suggestion?: string }> {
+  try {
+    // Only analyze if we have recent messages (last 10)
+    const recentMessages = conversationHistory.slice(-10);
+    if (recentMessages.length < 3) {
+      return { shouldEscalate: false };
+    }
+
+    // Check for negative sentiment indicators
+    const negativePatterns = [
+      /not (helping|working|good|satisfied|happy|clear)/i,
+      /doesn't (understand|help|work|make sense)/i,
+      /can't (help|understand|figure out)/i,
+      /wrong|incorrect|inaccurate/i,
+      /disappointed|frustrated|confused|stuck/i,
+      /try (a|another) (different|other) (professional|person|therapist|counselor|mentor)/i,
+      /want (a|another) (different|other) (professional|person|therapist|counselor|mentor)/i,
+      /this (isn't|is not) (working|helping)/i,
+    ];
+
+    const conversationText = recentMessages
+      .filter(m => m.role === 'user')
+      .map(m => m.content)
+      .join(' ')
+      .toLowerCase();
+
+    const hasNegativeSentiment = negativePatterns.some(pattern => pattern.test(conversationText));
+
+    if (hasNegativeSentiment) {
+      const shouldUseDirectOpenAI = __DEV__ && !!(await getOpenAIApiKeyAsync());
+      let suggestion = '';
+
+      if (shouldUseDirectOpenAI) {
+        const openaiApiKey = await getOpenAIApiKeyAsync();
+        if (openaiApiKey) {
+          try {
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${openaiApiKey}`,
+              },
+              body: JSON.stringify({
+                model: 'gpt-3.5-turbo',
+                messages: [
+                  {
+                    role: 'system',
+                    content: 'You are an assistant that helps detect if a user might benefit from speaking with a different professional. Respond with a brief, empathetic suggestion.',
+                  },
+                  {
+                    role: 'user',
+                    content: `Based on this conversation, should we suggest connecting with a different professional? Conversation: ${conversationText.substring(0, 500)}`,
+                  },
+                ],
+                temperature: 0.7,
+                max_tokens: 100,
+              }),
+            });
+
+            if (response.ok) {
+              const data = await response.json();
+              suggestion = data.choices[0]?.message?.content || '';
+            }
+          } catch (error) {
+            console.error('Error getting AI suggestion:', error);
+          }
+        }
+      }
+
+      return {
+        shouldEscalate: true,
+        suggestion: suggestion || "I notice you might benefit from speaking with a different professional. Would you like me to find another professional who might be a better match?",
+      };
+    }
+
+    return { shouldEscalate: false };
+  } catch (error: any) {
+    console.error('Error detecting non-agreement:', error);
+    return { shouldEscalate: false };
   }
 }
 

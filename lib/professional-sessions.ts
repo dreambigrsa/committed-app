@@ -5,6 +5,7 @@
 
 import { supabase } from './supabase';
 import { ProfessionalSession } from '@/types';
+import { getOrCreateAIUser } from './ai-service';
 
 export interface CreateSessionParams {
   conversationId: string;
@@ -120,6 +121,28 @@ export async function acceptProfessionalSession(
       });
     }
 
+    // Get session details with professional and role info for introduction
+    const { data: fullSession } = await supabase
+      .from('professional_sessions')
+      .select(`
+        conversation_id,
+        user_id,
+        professional:professional_profiles(full_name),
+        role:professional_roles(name)
+      `)
+      .eq('id', sessionId)
+      .single();
+
+    if (fullSession && fullSession.professional && fullSession.role) {
+      // Send AI introduction message
+      await sendProfessionalIntroductionMessage(
+        fullSession.conversation_id,
+        fullSession.user_id,
+        (fullSession.professional as any).full_name || 'a professional',
+        (fullSession.role as any).name || 'professional'
+      );
+    }
+
     return true;
   } catch (error: any) {
     console.error('Error accepting session:', error);
@@ -138,7 +161,7 @@ export async function declineProfessionalSession(
     // Verify the professional owns this session
     const { data: session } = await supabase
       .from('professional_sessions')
-      .select('professional_id, status')
+      .select('professional_id, status, conversation_id, user_id, role_id, escalation_level')
       .eq('id', sessionId)
       .single();
 
@@ -160,6 +183,84 @@ export async function declineProfessionalSession(
       .eq('id', sessionId);
 
     if (error) throw error;
+
+    // Attempt automatic escalation to next professional
+    try {
+      const { findMatchingProfessionals } = await import('./professional-matching');
+      
+      // Find alternative professionals (excluding the one who declined)
+      const alternativeMatches = await findMatchingProfessionals({
+        roleId: session.role_id,
+        excludeProfessionalId: session.professional_id,
+        requiresOnlineOnly: true,
+      }, 1); // Get just the best match
+
+      if (alternativeMatches.length > 0) {
+        const nextProfessional = alternativeMatches[0].profile;
+        
+        // Create a new session with the next professional
+        const newSession = await createProfessionalSession({
+          conversationId: session.conversation_id,
+          userId: session.user_id,
+          professionalId: nextProfessional.id,
+          roleId: session.role_id,
+          aiSummary: undefined, // Could preserve original summary if needed
+          userConsentGiven: true, // User already gave consent for original request
+        });
+
+        if (newSession) {
+          console.log(`Auto-escalated to next professional: ${nextProfessional.id}`);
+          
+          // Send notification to user that a new professional has been requested
+          const aiUser = await getOrCreateAIUser();
+          if (aiUser) {
+            try {
+              const roleName = alternativeMatches[0].role?.name || 'professional';
+              await supabase.rpc('send_ai_message', {
+                p_conversation_id: session.conversation_id,
+                p_receiver_id: session.user_id,
+                p_content: `The previous professional wasn't available, but I've automatically requested help from ${nextProfessional.fullName}, another verified ${roleName}. They'll join shortly if available.`,
+                p_message_type: 'text',
+                p_media_url: null,
+                p_document_url: null,
+                p_document_name: null,
+                p_sticker_id: null,
+                p_status_id: null,
+                p_status_preview_url: null,
+              });
+            } catch (msgError) {
+              console.error('Error sending escalation notification:', msgError);
+            }
+          }
+        }
+      } else {
+        console.log('No alternative professionals available for auto-escalation');
+        // Send message to user that no professionals are available
+        const aiUser = await getOrCreateAIUser();
+        if (aiUser) {
+          try {
+            await supabase.rpc('send_ai_message', {
+              p_conversation_id: session.conversation_id,
+              p_receiver_id: session.user_id,
+              p_content: 'I\'m sorry, but no other professionals are currently available. Please try again later, or I can help you in the meantime.',
+              p_message_type: 'text',
+              p_media_url: null,
+              p_document_url: null,
+              p_document_name: null,
+              p_sticker_id: null,
+              p_status_id: null,
+              p_status_preview_url: null,
+            });
+          } catch (msgError) {
+            console.error('Error sending no-professional message:', msgError);
+          }
+        }
+      }
+    } catch (escalationError) {
+      console.error('Error attempting automatic escalation after decline:', escalationError);
+      // Don't fail the decline if escalation fails
+    }
+
     return true;
   } catch (error: any) {
     console.error('Error declining session:', error);
@@ -286,5 +387,55 @@ function mapSession(session: any): ProfessionalSession {
   }
 
   return mapped;
+}
+
+/**
+ * Send AI introduction message when professional joins
+ */
+async function sendProfessionalIntroductionMessage(
+  conversationId: string,
+  userId: string,
+  professionalName: string,
+  roleName: string
+): Promise<void> {
+  try {
+    const aiUser = await getOrCreateAIUser();
+    if (!aiUser) {
+      console.error('AI user not found - cannot send introduction message');
+      return;
+    }
+
+    const introductionMessage = `Great news! ${professionalName}, a verified ${roleName}, has joined our conversation to help you. I'll be observing in the background, and they'll be leading the conversation from here. Feel free to continue chatting, and I'm here if you need anything else!`;
+
+    // Try direct insert first
+    const { error: insertError } = await supabase
+      .from('messages')
+      .insert({
+        conversation_id: conversationId,
+        sender_id: aiUser.id,
+        receiver_id: userId,
+        content: introductionMessage,
+        message_type: 'text',
+      });
+
+    if (insertError) {
+      // If direct insert fails, try using the RPC function
+      await supabase.rpc('send_ai_message', {
+        p_conversation_id: conversationId,
+        p_receiver_id: userId,
+        p_content: introductionMessage,
+        p_message_type: 'text',
+        p_media_url: null,
+        p_document_url: null,
+        p_document_name: null,
+        p_sticker_id: null,
+        p_status_id: null,
+        p_status_preview_url: null,
+      });
+    }
+  } catch (error: any) {
+    console.error('Error sending professional introduction message:', error);
+    // Don't throw - this is a nice-to-have feature
+  }
 }
 

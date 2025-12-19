@@ -47,6 +47,8 @@ import SessionReviewModal from '@/components/SessionReviewModal';
 import { getActiveSession } from '@/lib/professional-sessions';
 import { ProfessionalSession } from '@/types';
 import { Users, Shield } from 'lucide-react-native';
+import { monitorActiveSessionForNonAgreement } from '@/lib/session-monitor';
+import { escalateSession } from '@/lib/escalation-service';
 
 /**
  * Status Preview Attachment Component
@@ -1015,6 +1017,15 @@ export default function ConversationDetailScreen() {
       if (messageType === 'text' && messageContent.trim()) {
         const aiUser = await getOrCreateAIUser();
         if (aiUser && otherParticipantId === aiUser.id) {
+          // Check if there's an active professional session - if so, AI is in observer mode
+          const activeSession = await getActiveSession(conversationId);
+          if (activeSession && activeSession.status === 'active' && activeSession.aiObserverMode) {
+            // AI is in observer mode - do not respond, just monitor
+            // The professional should be handling the conversation
+            console.log('AI is in observer mode - professional is leading the conversation');
+            return;
+          }
+          
           // This is a conversation with the AI, trigger AI response
           try {
             setAiIsThinking(true);
@@ -2012,8 +2023,22 @@ export default function ConversationDetailScreen() {
             renderItem={renderMessage}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.messagesList}
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-            onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
+            onContentSizeChange={() => {
+              // Only scroll to end if not at the top and user isn't scrolling
+              flatListRef.current?.scrollToEnd({ animated: false });
+            }}
+            onLayout={() => {
+              // Only scroll on initial layout, not on every layout change
+              if (localMessages.length > 0) {
+                flatListRef.current?.scrollToEnd({ animated: false });
+              }
+            }}
+            removeClippedSubviews={false}
+            maintainVisibleContentPosition={{
+              minIndexForVisible: 0,
+            }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
             ListHeaderComponent={
               smartAds.length > 0 ? (
                 <View style={styles.adHeaderContainer}>
@@ -2541,17 +2566,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 6,
     backgroundColor: colors.secondary,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
     marginRight: 8,
+    flex: 1,
+    minWidth: 140,
   },
   requestHelpButtonText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: colors.text.white,
+    flex: 1,
+    textAlign: 'center',
   },
   sessionStatusBadge: {
     flexDirection: 'row',

@@ -58,8 +58,45 @@ export async function configureAndroidNotificationChannel(options?: { soundEnabl
   });
 }
 
+/**
+ * Check if we're running in Expo Go (where remote push notifications are not supported in SDK 53+)
+ */
+function isRunningInExpoGo(): boolean {
+  try {
+    // Check appOwnership - 'expo' means Expo Go, 'standalone' means production build
+    if (Constants.appOwnership === 'expo') {
+      return true;
+    }
+    
+    // Check executionEnvironment - STORE_CLIENT means Expo Go
+    const executionEnvironment = Constants.executionEnvironment;
+    if (executionEnvironment !== undefined) {
+      // Constants.ExecutionEnvironment.STORE_CLIENT is the enum value for Expo Go
+      const anyConstants = Constants as any;
+      if (executionEnvironment === anyConstants?.ExecutionEnvironment?.STORE_CLIENT) {
+        return true;
+      }
+      // Also check string value as fallback
+      if (String(executionEnvironment) === 'storeClient') {
+        return true;
+      }
+    }
+    
+    return false;
+  } catch {
+    // If we can't determine, assume it's not Expo Go to avoid breaking production builds
+    return false;
+  }
+}
+
 export async function registerForPushNotificationsAsync(userId: string): Promise<string | null> {
   try {
+    // Skip push notification registration in Expo Go (not supported in SDK 53+)
+    if (isRunningInExpoGo()) {
+      console.log('Push notifications are not available in Expo Go. Use a development build for push notifications.');
+      return null;
+    }
+
     if (!Device.isDevice) {
       // Push tokens do not work on emulators/simulators.
       return null;
@@ -107,6 +144,13 @@ export async function registerForPushNotificationsAsync(userId: string): Promise
 
     return expoPushToken;
   } catch (e) {
+    // Silently handle the Expo Go error - we've already checked for it above
+    // but catch it here in case the check misses it
+    const errorMessage = e instanceof Error ? e.message : String(e);
+    if (errorMessage.includes('Expo Go') || errorMessage.includes('development build')) {
+      console.log('Push notifications are not available in Expo Go. Use a development build for push notifications.');
+      return null;
+    }
     console.error('Failed to register for push notifications:', e);
     return null;
   }

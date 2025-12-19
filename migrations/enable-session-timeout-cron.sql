@@ -53,28 +53,37 @@ $$;
 -- Schedule every 5 minutes
 -- Format: minute hour day-of-month month day-of-week
 -- '*/5 * * * *' means: every 5 minutes, every hour, every day
-select
-  cron.schedule(
+-- Note: If the job already exists, you'll need to unschedule it first:
+--   SELECT cron.unschedule('check_session_timeouts');
+-- Then run this again.
+DO $$
+BEGIN
+  -- Check if job already exists
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'check_session_timeouts') THEN
+    -- Unschedule existing job
+    PERFORM cron.unschedule('check_session_timeouts');
+  END IF;
+  
+  -- Schedule the job
+  PERFORM cron.schedule(
     'check_session_timeouts',
     '*/5 * * * *',
     $$select public.run_session_timeout_check();$$
-  )
-on conflict (jobname) do update
-  set schedule = '*/5 * * * *',
-      command = $$select public.run_session_timeout_check();$$
-;
+  );
+END $$;
 
 -- Alternative: If you want to run it every minute (more aggressive):
--- select
---   cron.schedule(
+-- DO $$
+-- BEGIN
+--   IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'check_session_timeouts') THEN
+--     PERFORM cron.unschedule('check_session_timeouts');
+--   END IF;
+--   PERFORM cron.schedule(
 --     'check_session_timeouts',
 --     '* * * * *',
 --     $$select public.run_session_timeout_check();$$
---   )
--- on conflict (jobname) do update
---   set schedule = '* * * * *',
---       command = $$select public.run_session_timeout_check();$$
--- ;
+--   );
+-- END $$;
 
 comment on function public.run_session_timeout_check() is 
   'Triggers the check-session-timeouts Edge Function to check for timed-out professional sessions. Called by pg_cron every 5 minutes.';

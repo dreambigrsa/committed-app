@@ -98,7 +98,113 @@ serve(async (req: Request) => {
       { role: 'user', content: userMessage },
     ];
 
+    // Check if client wants streaming (default to false - requires client-side streaming support)
+    const stream = body?.stream === true; // Only stream if explicitly requested
+
     // Use a modern, cost-effective model. If your key lacks access, OpenAI will return a clear error.
+    if (stream) {
+      // Streaming mode: stream responses in real-time
+      const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: selectedModel || 'gpt-4o-mini',
+          messages,
+          temperature: Number.isFinite(selectedTemperature) ? selectedTemperature : 0.65,
+          max_tokens: Number.isFinite(selectedMaxTokens) ? selectedMaxTokens : 200,
+          stream: true, // Enable streaming
+        }),
+      });
+
+      if (!openaiRes.ok) {
+        const errorData = await openaiRes.json().catch(() => ({}));
+        return json(502, {
+          success: false,
+          error: errorData?.error?.message || `OpenAI error: ${openaiRes.status}`,
+        }, req);
+      }
+
+      // Stream the response back to client
+      const stream = new ReadableStream({
+        async start(controller) {
+          const reader = openaiRes.body?.getReader();
+          const decoder = new TextDecoder();
+          let fullContent = '';
+
+          if (!reader) {
+            controller.close();
+            return;
+          }
+
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+
+              const chunk = decoder.decode(value);
+              const lines = chunk.split('\n').filter(line => line.trim() !== '');
+
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const data = line.slice(6);
+                  if (data === '[DONE]') {
+                    // Send final message with full content
+                    controller.enqueue(
+                      new TextEncoder().encode(`data: ${JSON.stringify({
+                        type: 'done',
+                        content: fullContent,
+                        success: true,
+                      })}\n\n`)
+                    );
+                    controller.close();
+                    return;
+                  }
+
+                  try {
+                    const parsed = JSON.parse(data);
+                    const delta = parsed.choices?.[0]?.delta?.content;
+                    if (delta) {
+                      fullContent += delta;
+                      // Stream each chunk to client
+                      controller.enqueue(
+                        new TextEncoder().encode(`data: ${JSON.stringify({
+                          type: 'chunk',
+                          content: delta,
+                        })}\n\n`)
+                      );
+                    }
+                  } catch (e) {
+                    // Skip invalid JSON
+                  }
+                }
+              }
+            }
+          } catch (error: any) {
+            controller.enqueue(
+              new TextEncoder().encode(`data: ${JSON.stringify({
+                type: 'error',
+                error: error.message,
+              })}\n\n`)
+            );
+            controller.close();
+          }
+        },
+      });
+
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          ...corsHeaders(req),
+        },
+      });
+    }
+
+    // Non-streaming mode (fallback) - still faster with typing indicators
     const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -108,8 +214,8 @@ serve(async (req: Request) => {
       body: JSON.stringify({
         model: selectedModel || 'gpt-4o-mini',
         messages,
-        temperature: Number.isFinite(selectedTemperature) ? selectedTemperature : 0.65, // Optimized for speed
-        max_tokens: Number.isFinite(selectedMaxTokens) ? selectedMaxTokens : 200, // Optimized for faster responses
+        temperature: Number.isFinite(selectedTemperature) ? selectedTemperature : 0.65,
+        max_tokens: Number.isFinite(selectedMaxTokens) ? selectedMaxTokens : 200,
       }),
     });
 

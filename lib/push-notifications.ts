@@ -19,10 +19,14 @@ Notifications.setNotificationHandler({
 
 function getExpoProjectId(): string | undefined {
   const anyConstants = Constants as any;
+  // Try multiple paths to find projectId
   return (
     anyConstants?.expoConfig?.extra?.eas?.projectId ??
+    anyConstants?.manifest2?.extra?.eas?.projectId ??
+    anyConstants?.manifest?.extra?.eas?.projectId ??
     anyConstants?.easConfig?.projectId ??
-    undefined
+    // Fallback: use the projectId from app.json if available
+    '1ce53350-c138-459b-b181-9a1a06406108' // From app.json extra.eas.projectId
   );
 }
 
@@ -77,8 +81,12 @@ export async function registerForPushNotificationsAsync(userId: string): Promise
     }
 
     const projectId = getExpoProjectId();
+    // Always pass projectId explicitly - getExpoPushTokenAsync requires it in bare workflow
+    if (!projectId) {
+      console.warn('Expo projectId not found. Push notifications may not work correctly.');
+    }
     const tokenResponse = await Notifications.getExpoPushTokenAsync(
-      projectId ? { projectId } : undefined
+      projectId ? { projectId } : {}
     );
     const expoPushToken = tokenResponse.data;
 

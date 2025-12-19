@@ -323,7 +323,7 @@ export default function AdminProfessionalProfilesScreen() {
                         </View>
                       </View>
                       <Text style={styles.cardDate}>
-                        Applied {new Date(app.createdAt).toLocaleDateString()}
+                        Applied {new Date(app.created_at || app.createdAt || Date.now()).toLocaleDateString()}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -360,17 +360,17 @@ export default function AdminProfessionalProfilesScreen() {
                           ) : (
                             <View style={[styles.avatar, styles.avatarPlaceholder]}>
                               <Text style={styles.avatarText}>
-                                {profile.fullName[0]}
+                                {(profile.full_name || profile.fullName || '?')[0]}
                               </Text>
                             </View>
                           )}
                           <View style={styles.cardDetails}>
-                            <Text style={styles.cardName}>{profile.fullName}</Text>
+                            <Text style={styles.cardName}>{profile.full_name || profile.fullName || 'Professional'}</Text>
                             <Text style={styles.cardEmail}>{profile.user?.email}</Text>
                             <Text style={styles.cardRole}>{profile.role?.name}</Text>
                             <View style={styles.ratingRow}>
                               <Text style={styles.ratingText}>
-                                ⭐ {profile.ratingAverage.toFixed(1)} ({profile.ratingCount} ratings)
+                                ⭐ {((profile.rating_average ?? profile.ratingAverage) || 0).toFixed(1)} ({(profile.rating_count ?? profile.ratingCount) || 0} ratings)
                               </Text>
                             </View>
                           </View>

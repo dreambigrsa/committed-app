@@ -7,6 +7,7 @@ import {
   SafeAreaView,
   ActivityIndicator,
   RefreshControl,
+  TouchableOpacity,
 } from 'react-native';
 import { Stack } from 'expo-router';
 import { BarChart3, Users, MessageSquare, TrendingUp, Clock, CheckCircle2 } from 'lucide-react-native';
@@ -200,23 +201,23 @@ export default function AdminProfessionalAnalyticsScreen() {
           <Text style={styles.filterLabel}>Time Range:</Text>
           <View style={styles.filterButtons}>
             {(['7d', '30d', '90d', 'all'] as const).map((range) => (
-              <View
+              <TouchableOpacity
                 key={range}
                 style={[
                   styles.filterButton,
                   dateRange === range && styles.filterButtonActive,
                 ]}
+                onPress={() => setDateRange(range)}
               >
                 <Text
                   style={[
                     styles.filterButtonText,
                     dateRange === range && styles.filterButtonTextActive,
                   ]}
-                  onPress={() => setDateRange(range)}
                 >
                   {range === '7d' ? '7 Days' : range === '30d' ? '30 Days' : range === '90d' ? '90 Days' : 'All Time'}
                 </Text>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         </View>

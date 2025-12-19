@@ -31,6 +31,7 @@ import {
   Briefcase,
   TrendingUp,
   Clock,
+  Star,
 } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -292,6 +293,15 @@ export default function AdminDashboardScreen() {
           color: '#16A085',
           gradient: ['#16A085', '#138D75'],
           visible: currentUser.role === 'super_admin' || currentUser.role === 'admin',
+        },
+        {
+          title: 'Professional Reviews',
+          icon: Star,
+          description: 'Moderate reviews',
+          route: '/admin/professional-reviews',
+          color: '#F39C12',
+          gradient: ['#F39C12', '#E67E22'],
+          visible: currentUser.role === 'super_admin' || currentUser.role === 'admin' || currentUser.role === 'moderator',
         },
       ],
     },

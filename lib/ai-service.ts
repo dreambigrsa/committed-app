@@ -1066,23 +1066,39 @@ export async function summarizeConversationForProfessional(
   userMessage: string
 ): Promise<string> {
   try {
-    // Build context from recent conversation
-    const recentMessages = conversationHistory.slice(-10);
+    // Check if we have enough meaningful conversation to summarize
+    const userMessages = conversationHistory.filter(m => m.role === 'user');
+    const greetingPatterns = /^(hi|hello|hey|good morning|good afternoon|good evening|thanks|thank you|bye|goodbye)[\s!.,]*$/i;
+    const meaningfulMessages = userMessages.filter(msg => {
+      const content = msg.content.trim();
+      return content.length > 10 && !greetingPatterns.test(content);
+    });
+    
+    // Require at least 5 meaningful messages before generating a summary
+    if (meaningfulMessages.length < 5) {
+      console.log('[AI Service] Not enough meaningful conversation for summary. Message count:', meaningfulMessages.length);
+      return 'The user is just starting the conversation. More context is needed to provide a meaningful summary for a professional.';
+    }
+    
+    // Build context from recent conversation (use more messages if available)
+    const recentMessages = conversationHistory.slice(-15); // Get more context for better summary
     const conversationContext = recentMessages
       .map((msg) => `${msg.role === 'user' ? 'User' : 'AI'}: ${msg.content}`)
       .join('\n');
 
-    const summaryPrompt = `Summarize this conversation briefly for a professional helper. Focus on:
-1. The main issue or concern the user has
-2. Key details that would help a professional understand the situation
-3. What type of help might be needed
+    const summaryPrompt = `Summarize this conversation for a professional helper. The user is requesting professional assistance. Focus on:
+1. The main issue or concern the user has expressed
+2. Key details that would help a professional understand the situation (emotions, circumstances, context)
+3. What specific type of help might be needed
+
+Important: Only include actual concerns and issues. If the conversation is mostly greetings or casual chat without clear concerns, note that more information is needed.
 
 Conversation:
 ${conversationContext}
 
 Latest message: ${userMessage}
 
-Provide a concise summary (2-3 sentences):`;
+Provide a concise but informative summary (3-4 sentences) that would help a professional understand why the user needs help:`;
 
     // Try to get AI summary, fallback to simple extraction
     const shouldUseDirectOpenAI = __DEV__ && !!(await getOpenAIApiKeyAsync());
@@ -1290,17 +1306,27 @@ function detectProfessionalHelpNeeded(
     }
   }
 
-  // Low confidence indicators - ONLY trigger after substantial conversation (at least 5 user messages)
-  // This prevents false positives on simple greetings like "Hi"
-  const userMessageCount = conversationHistory.filter(m => m.role === 'user').length;
-  const requiresMinimumContext = userMessageCount >= 5; // Require at least 5 user messages
+  // Low confidence indicators - ONLY trigger after substantial meaningful conversation
+  // Require at least 8 user messages with meaningful content (not just greetings)
+  const userMessages = conversationHistory.filter(m => m.role === 'user');
+  const userMessageCount = userMessages.length;
+  
+  // Check if conversation has meaningful content (not just greetings)
+  const greetingPatterns = /^(hi|hello|hey|good morning|good afternoon|good evening|thanks|thank you|bye|goodbye)[\s!.,]*$/i;
+  const meaningfulMessages = userMessages.filter(msg => {
+    const content = msg.content.trim();
+    return content.length > 10 && !greetingPatterns.test(content);
+  }).length;
+  
+  // Require at least 8 user messages AND at least 5 meaningful (non-greeting) messages
+  const requiresMinimumContext = userMessageCount >= 8 && meaningfulMessages >= 5;
   
   if (!requiresMinimumContext) {
-    // Don't suggest help for new or short conversations
+    // Don't suggest help for new, short, or greeting-only conversations
     return { needsHelp: false, confidence: 'low' };
   }
   
-  const repeatedConcerns = userMessageCount >= 5;
+  // Now check for actual concerns/issues
   const relationshipIssues = /(relationship|partner|marriage|breakup|cheating|trust issues|break up|fighting|arguing)/i.test(message) || 
                             /(relationship|partner|marriage|breakup|cheating|trust issues|break up|fighting|arguing)/i.test(recentHistory);
   
@@ -1310,8 +1336,8 @@ function detectProfessionalHelpNeeded(
   const needHelp = /(need help|need support|need advice|don't know what to do|what should i do|need guidance)/i.test(message) ||
                   /(need help|need support|need advice|don't know what to do|what should i do|need guidance)/i.test(recentHistory);
   
-  // Only suggest help if there are clear indicators AND sufficient conversation context
-  if (repeatedConcerns && (relationshipIssues || emotionalDistress || needHelp)) {
+  // Only suggest help if there are clear indicators AND substantial meaningful conversation
+  if (relationshipIssues || emotionalDistress || needHelp) {
     return { needsHelp: true, professionalType: 'Counselor', confidence: 'low' };
   }
 

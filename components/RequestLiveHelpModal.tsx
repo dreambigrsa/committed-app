@@ -85,6 +85,21 @@ export default function RequestLiveHelpModal({
   const generateSummary = async () => {
     setSummarizing(true);
     try {
+      // Check if we have enough conversation history for a meaningful summary
+      const userMessages = conversationHistory.filter((m) => m.role === 'user');
+      const greetingPatterns = /^(hi|hello|hey|good morning|good afternoon|good evening|thanks|thank you|bye|goodbye)[\s!.,]*$/i;
+      const meaningfulMessages = userMessages.filter(msg => {
+        const content = msg.content.trim();
+        return content.length > 10 && !greetingPatterns.test(content);
+      });
+      
+      // Require at least 5 meaningful messages before generating summary
+      if (meaningfulMessages.length < 5) {
+        setAiSummary('Please continue the conversation so we can better understand how to help you. More context is needed to provide a meaningful summary for a professional.');
+        setSummarizing(false);
+        return;
+      }
+      
       const latestUserMessage =
         conversationHistory
           .filter((m) => m.role === 'user')

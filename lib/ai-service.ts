@@ -986,7 +986,7 @@ async function getOpenAIResponse(
 
     const messages = [
       { role: 'system', content: systemPrompt },
-      ...conversationHistory.slice(-10), // Keep last 10 messages for context (reduced for speed)
+      ...conversationHistory.slice(-6), // Keep last 6 messages for context (optimized for speed)
       { role: 'user', content: userMessage },
     ];
 
@@ -1006,8 +1006,8 @@ async function getOpenAIResponse(
       body: JSON.stringify({
         model: 'gpt-3.5-turbo',
         messages: messages,
-        temperature: 0.7, // Slightly reduced for faster, more focused responses
-        max_tokens: 250, // Reduced further for faster responses
+        temperature: 0.65, // Optimized for faster, more focused responses
+        max_tokens: 200, // Optimized for faster responses
         stream: false, // Set to false for now (streaming would require more complex handling)
       }),
     });
@@ -1063,12 +1063,12 @@ async function getOpenAIResponseViaSupabaseFunction(params: {
     const { data, error } = await supabase.functions.invoke('ai-chat', {
       body: {
         userMessage: params.userMessage,
-        conversationHistory: params.conversationHistory.slice(-10), // Already optimized to 10
+        conversationHistory: params.conversationHistory.slice(-6), // Optimized to 6 for speed
         systemPrompt: params.systemPrompt,
         userId: params.userId,
       },
-      // Add timeout to prevent hanging (reduced from 30s to 15s for faster failure)
-      signal: AbortSignal.timeout(15000), // 15 second timeout
+      // Add timeout to prevent hanging (optimized for speed)
+      signal: AbortSignal.timeout(10000), // 10 second timeout for faster failure
     });
     if (error) throw error;
     if (!data?.success) throw new Error(data?.error || 'AI function failed');

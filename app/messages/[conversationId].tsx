@@ -1038,9 +1038,28 @@ export default function ConversationDetailScreen() {
           }
           
           // This is a conversation with the AI, trigger AI response
+          const typingId = `ai_typing_${Date.now()}`;
+          let statusUpdateInterval: NodeJS.Timeout | null = null;
+          
           try {
             setAiIsThinking(true);
-            const typingId = `ai_typing_${Date.now()}`;
+            
+            // Progressive status messages to show what AI is doing
+            const statusMessages = [
+              'Committed AI is thinking…',
+              'Analyzing your message…',
+              'Generating response…',
+            ];
+            let statusIndex = 0;
+            
+            const updateStatusMessage = () => {
+              statusIndex = (statusIndex + 1) % statusMessages.length;
+              setLocalMessages(prev => prev.map(m => 
+                m.id === typingId 
+                  ? { ...m, content: statusMessages[statusIndex] }
+                  : m
+              ));
+            };
             
             // Add typing indicator immediately
             setLocalMessages(prev => {
@@ -1051,7 +1070,7 @@ export default function ConversationDetailScreen() {
                   conversationId,
                   senderId: aiUser.id,
                   receiverId: currentUser.id,
-                  content: 'Committed AI is thinking…',
+                  content: statusMessages[0],
                   messageType: 'text',
                   read: true,
                   deletedForSender: false,
@@ -1065,6 +1084,10 @@ export default function ConversationDetailScreen() {
                   flatListRef.current?.scrollToEnd({ animated: true });
                 }, 50);
               });
+              
+              // Update status message every 1.5 seconds to show progress
+              statusUpdateInterval = setInterval(updateStatusMessage, 1500);
+              
               return updated;
             });
 
@@ -1086,7 +1109,7 @@ export default function ConversationDetailScreen() {
                 role: 'user' as const,
                 content: messageContent,
               },
-            ].slice(-11); // Get last 11 (10 + current message)
+            ].slice(-7); // Get last 7 (6 + current message) - optimized for speed
 
             const isNewConversation = existingMessages.length === 0;
 
@@ -1100,6 +1123,12 @@ export default function ConversationDetailScreen() {
               currentUser.id
             );
 
+            // Clear status update interval
+            if (statusUpdateInterval) {
+              clearInterval(statusUpdateInterval);
+              statusUpdateInterval = null;
+            }
+            
             // Remove typing indicator
             setLocalMessages(prev => prev.filter(m => m.id !== typingId));
             setAiIsThinking(false);
@@ -1175,6 +1204,14 @@ export default function ConversationDetailScreen() {
               }
             }
           } catch (error: any) {
+            // Clear status update interval on error
+            if (statusUpdateInterval) {
+              clearInterval(statusUpdateInterval);
+              statusUpdateInterval = null;
+            }
+            
+            // Remove typing indicator on error
+            setLocalMessages(prev => prev.filter(m => m.id !== typingId));
             setAiIsThinking(false);
             console.error('Error generating AI response:', error);
             // Don't show error to user - AI failure shouldn't block the conversation

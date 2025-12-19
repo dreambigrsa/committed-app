@@ -94,7 +94,7 @@ serve(async (req: Request) => {
     // Keep history shorter for latency/cost. The system prompt already carries global context.
     const messages = [
       ...((selectedPrompt || fallbackSystemPrompt) ? [{ role: 'system', content: selectedPrompt || fallbackSystemPrompt }] : []),
-      ...conversationHistory.slice(-10),
+      ...conversationHistory.slice(-6), // Optimized to 6 messages for speed
       { role: 'user', content: userMessage },
     ];
 
@@ -108,8 +108,8 @@ serve(async (req: Request) => {
       body: JSON.stringify({
         model: selectedModel || 'gpt-4o-mini',
         messages,
-        temperature: Number.isFinite(selectedTemperature) ? selectedTemperature : 0.7,
-        max_tokens: Number.isFinite(selectedMaxTokens) ? selectedMaxTokens : 350,
+        temperature: Number.isFinite(selectedTemperature) ? selectedTemperature : 0.65, // Optimized for speed
+        max_tokens: Number.isFinite(selectedMaxTokens) ? selectedMaxTokens : 200, // Optimized for faster responses
       }),
     });
 

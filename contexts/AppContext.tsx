@@ -51,6 +51,9 @@ export const [AppContext, useApp] = createContextHook(() => {
     missingDocuments: LegalDocument[];
     needsReAcceptance: LegalDocument[];
   } | null>(null);
+
+  // Onboarding state
+  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState<boolean | null>(null);
   
   // Helper function to show ban modal
   const showBanModal = useCallback((restriction: {
@@ -201,6 +204,20 @@ export const [AppContext, useApp] = createContextHook(() => {
           setLegalAcceptanceStatus(acceptanceStatus);
         } catch (error) {
           console.error('Failed to check legal acceptances:', error);
+        }
+
+        // Check onboarding status
+        try {
+          const { data: onboardingData } = await supabase
+            .from('user_onboarding_data')
+            .select('has_completed_onboarding')
+            .eq('user_id', user.id)
+            .maybeSingle();
+          
+          setHasCompletedOnboarding(onboardingData?.has_completed_onboarding ?? false);
+        } catch (error) {
+          console.error('Failed to check onboarding status:', error);
+          setHasCompletedOnboarding(false);
         }
       }
 
@@ -5800,6 +5817,25 @@ export const [AppContext, useApp] = createContextHook(() => {
     updateUserStatus,
     updateStatusPrivacy,
     loadUserStatus,
+    // Onboarding
+    hasCompletedOnboarding,
+    checkOnboardingStatus: useCallback(async (userId: string): Promise<boolean> => {
+      try {
+        const { data, error } = await supabase
+          .from('user_onboarding_data')
+          .select('has_completed_onboarding')
+          .eq('user_id', userId)
+          .maybeSingle();
+        
+        if (error) throw error;
+        const completed = data?.has_completed_onboarding ?? false;
+        setHasCompletedOnboarding(completed);
+        return completed;
+      } catch (error) {
+        console.error('Failed to check onboarding status:', error);
+        return false;
+      }
+    }, []),
   };
 });
 

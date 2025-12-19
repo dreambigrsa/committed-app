@@ -37,7 +37,8 @@ export default function AuthScreen() {
 
   useEffect(() => {
     if (currentUser) {
-      router.replace('/(tabs)/home');
+      // Redirect to index which will check onboarding status
+      router.replace('/');
     }
   }, [currentUser, router]);
 
@@ -189,8 +190,8 @@ export default function AuthScreen() {
           // Redirect to email verification screen
           router.replace('/verify-email');
         } else {
-          // Email already confirmed, go to home
-          router.replace('/(tabs)/home');
+          // Email already confirmed, redirect to index which will check onboarding
+          router.replace('/');
         }
       } else {
         if (!formData.email || !formData.password) {
@@ -200,7 +201,8 @@ export default function AuthScreen() {
         }
 
         await login(formData.email, formData.password);
-        router.replace('/(tabs)/home');
+        // Redirect to index which will check onboarding status
+        router.replace('/');
       }
     } catch (error: any) {
       console.error('Auth error:', error);

@@ -28,16 +28,21 @@ import { useApp } from '@/contexts/AppContext';
 
 export default function LandingScreen() {
   const router = useRouter();
-  const { currentUser } = useApp();
+  const { currentUser, hasCompletedOnboarding, isLoading } = useApp();
   const { colors } = useTheme();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
 
   useEffect(() => {
-    if (currentUser) {
-      router.replace('/(tabs)/home');
+    if (currentUser && !isLoading) {
+      // Check if user needs to complete onboarding
+      if (hasCompletedOnboarding === false) {
+        router.replace('/onboarding');
+      } else {
+        router.replace('/(tabs)/home');
+      }
     }
-  }, [currentUser, router]);
+  }, [currentUser, hasCompletedOnboarding, isLoading, router]);
 
   useEffect(() => {
     Animated.parallel([

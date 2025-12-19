@@ -75,12 +75,12 @@ export default function VerifyEmailScreen() {
           if (currentUser) {
             // Give a moment for the user to see the success message
             setTimeout(() => {
-              router.replace('/(tabs)/home');
+              router.replace('/'); // Redirect to index which will check onboarding
             }, showMessage ? 1500 : 500);
           } else {
             // If no currentUser yet, wait a bit for it to load
             setTimeout(() => {
-              router.replace('/(tabs)/home');
+              router.replace('/'); // Redirect to index which will check onboarding
             }, 2000);
           }
         } else {
@@ -205,7 +205,7 @@ export default function VerifyEmailScreen() {
               </Text>
               <TouchableOpacity
                 style={styles.continueButton}
-                onPress={() => router.replace('/(tabs)/home')}
+                onPress={() => router.replace('/')}
               >
                 <Text style={styles.continueButtonText}>Continue to App</Text>
               </TouchableOpacity>

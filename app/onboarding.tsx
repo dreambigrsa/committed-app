@@ -487,7 +487,7 @@ const createStyles = (colors: any) => StyleSheet.create({
   nextButtonText: {
     fontSize: 16,
     fontWeight: '700',
-    color: themeColors.text.white,
+    color: colors.text.white,
   },
 });
 

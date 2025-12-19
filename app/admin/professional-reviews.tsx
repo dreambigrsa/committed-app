@@ -396,37 +396,47 @@ const createStyles = (colors: any) =>
       flex: 1,
       backgroundColor: colors.background.secondary,
     },
-    filtersContainer: {
-      backgroundColor: colors.background.primary,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border.light,
-    },
-    filtersContent: {
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      gap: 8,
-    },
-    filterButton: {
-      paddingHorizontal: 16,
-      paddingVertical: 8,
-      borderRadius: 20,
-      backgroundColor: colors.background.secondary,
-      marginRight: 8,
-      borderWidth: 1,
-      borderColor: colors.border.light,
-    },
-    filterButtonActive: {
-      backgroundColor: colors.primary,
-      borderColor: colors.primary,
-    },
-    filterButtonText: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: colors.text.primary,
-    },
-    filterButtonTextActive: {
-      color: colors.text.white,
-    },
+  filtersContainer: {
+    padding: 16,
+    backgroundColor: colors.background.primary,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.light,
+  },
+  segmentedControl: {
+    flexDirection: 'row',
+    backgroundColor: colors.background.secondary,
+    borderRadius: 10,
+    padding: 4,
+    gap: 0,
+  },
+  segmentedButton: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+  },
+  segmentedButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  segmentedButtonFirst: {
+    borderTopLeftRadius: 8,
+    borderBottomLeftRadius: 8,
+  },
+  segmentedButtonLast: {
+    borderTopRightRadius: 8,
+    borderBottomRightRadius: 8,
+  },
+  segmentedButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text.secondary,
+  },
+  segmentedButtonTextActive: {
+    color: colors.text.white,
+    fontWeight: '700',
+  },
     content: {
       flex: 1,
     },

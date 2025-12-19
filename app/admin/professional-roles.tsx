@@ -380,7 +380,7 @@ export default function AdminProfessionalRolesScreen() {
                 <Switch
                   value={requiresCredentials}
                   onValueChange={setRequiresCredentials}
-                  trackColor={{ false: themeColors.border, true: themeColors.primary + '80' }}
+                  trackColor={{ false: themeColors.border.light, true: themeColors.primary + '80' }}
                   thumbColor={requiresCredentials ? themeColors.primary : themeColors.text.tertiary}
                 />
               </View>
@@ -393,7 +393,7 @@ export default function AdminProfessionalRolesScreen() {
                 <Switch
                   value={requiresVerification}
                   onValueChange={setRequiresVerification}
-                  trackColor={{ false: themeColors.border, true: themeColors.primary + '80' }}
+                  trackColor={{ false: themeColors.border.light, true: themeColors.primary + '80' }}
                   thumbColor={requiresVerification ? themeColors.primary : themeColors.text.tertiary}
                 />
               </View>
@@ -406,7 +406,7 @@ export default function AdminProfessionalRolesScreen() {
                 <Switch
                   value={eligibleForLiveChat}
                   onValueChange={setEligibleForLiveChat}
-                  trackColor={{ false: themeColors.border, true: themeColors.primary + '80' }}
+                  trackColor={{ false: themeColors.border.light, true: themeColors.primary + '80' }}
                   thumbColor={eligibleForLiveChat ? themeColors.primary : themeColors.text.tertiary}
                 />
               </View>
@@ -419,7 +419,7 @@ export default function AdminProfessionalRolesScreen() {
                 <Switch
                   value={approvalRequired}
                   onValueChange={setApprovalRequired}
-                  trackColor={{ false: themeColors.border, true: themeColors.primary + '80' }}
+                  trackColor={{ false: themeColors.border.light, true: themeColors.primary + '80' }}
                   thumbColor={approvalRequired ? themeColors.primary : themeColors.text.tertiary}
                 />
               </View>
@@ -432,7 +432,7 @@ export default function AdminProfessionalRolesScreen() {
                 <Switch
                   value={isActive}
                   onValueChange={setIsActive}
-                  trackColor={{ false: themeColors.border, true: themeColors.primary + '80' }}
+                  trackColor={{ false: themeColors.border.light, true: themeColors.primary + '80' }}
                   thumbColor={isActive ? themeColors.primary : themeColors.text.tertiary}
                 />
               </View>

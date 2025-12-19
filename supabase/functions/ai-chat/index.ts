@@ -124,9 +124,82 @@ serve(async (req: Request) => {
     const content = openaiJson?.choices?.[0]?.message?.content;
     if (!content) return json(502, { success: false, error: 'No content returned from OpenAI' }, req);
 
+    // AI-based professional help detection - analyze conversation for emotional distress, stress, frustration, mental health needs
+    let suggestProfessionalHelp = false;
+    let suggestedProfessionalType: string | null = null;
+    
+    try {
+      // Use AI to analyze the conversation for professional help needs
+      const detectionPrompt = `Analyze this conversation and determine if the user needs professional help (counselor, therapist, business mentor, legal advisor, etc.).
+
+Consider:
+- Emotional distress: sadness, anxiety, depression, overwhelming feelings, frustration, anger
+- Stress indicators: feeling overwhelmed, can't cope, struggling, having a hard time
+- Mental health concerns: depression, anxiety, trauma, abuse, suicidal thoughts, self-harm
+- Relationship issues: relationship problems, breakups, marital issues, trust issues
+- Business/career needs: career guidance, business mentorship, professional development
+- Legal needs: legal advice, divorce, custody, legal issues
+
+Conversation history (last 10 messages):
+${conversationHistory.slice(-10).map(m => `${m.role === 'user' ? 'User' : 'AI'}: ${m.content}`).join('\n')}
+
+Latest user message: ${userMessage}
+
+Respond with ONLY valid JSON (no other text). Use this exact format:
+{
+  "needsProfessionalHelp": true,
+  "professionalType": "Counselor",
+  "confidence": "high",
+  "reason": "brief explanation"
+}
+
+Possible professionalType values: "Counselor", "Therapist", "Business Mentor", "Legal Advisor", "Relationship Therapist", "Mental Health Professional", or null if not applicable.
+Possible confidence values: "high", "medium", "low", or "none".`;
+
+      const detectionRes = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: selectedModel || 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: 'You are an expert at analyzing conversations to determine if users need professional help. Respond with only valid JSON.' },
+            { role: 'user', content: detectionPrompt },
+          ],
+          temperature: 0.3, // Lower temperature for more consistent detection
+          max_tokens: 200,
+          response_format: { type: 'json_object' }, // Force JSON output
+        }),
+      });
+
+      if (detectionRes.ok) {
+        const detectionJson = await detectionRes.json().catch(() => ({}));
+        const detectionContent = detectionJson?.choices?.[0]?.message?.content;
+        if (detectionContent) {
+          try {
+            const detection = JSON.parse(detectionContent);
+            // Only suggest if confidence is high or medium (not low or none)
+            if (detection.needsProfessionalHelp && (detection.confidence === 'high' || detection.confidence === 'medium')) {
+              suggestProfessionalHelp = true;
+              suggestedProfessionalType = detection.professionalType || 'professional';
+            }
+          } catch (e) {
+            console.error('Error parsing detection JSON:', e);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Error in professional help detection:', e);
+      // Continue without detection if it fails
+    }
+
     return json(200, {
       success: true,
       message: content,
+      suggestProfessionalHelp,
+      suggestedProfessionalType,
       meta: {
         promptVersionId: selectedPromptId,
         model: selectedModel || 'gpt-4o-mini',

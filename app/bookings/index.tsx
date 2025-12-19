@@ -8,6 +8,7 @@ import {
   SafeAreaView,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import {
@@ -152,7 +153,13 @@ export default function BookingsScreen() {
     }
   };
 
-  const handleMessage = (booking: ProfessionalSession) => {
+  const handleMessage = async (booking: ProfessionalSession) => {
+    if (!booking.conversationId) {
+      Alert.alert('Error', 'No conversation found for this booking. Please contact support.');
+      return;
+    }
+
+    // Navigate to conversation for booking-related messaging
     router.push(`/messages/${booking.conversationId}`);
   };
 

@@ -43,11 +43,11 @@ KEY FLOWS (SHORT)
 PROFESSIONAL CONNECTIONS SYSTEM (IMPORTANT)
 - The app has a built-in professional connection system that allows users to connect with verified professionals in real-time.
 - Available professional types include: Counselors, Relationship Therapists, Psychologists, Mental Health Professionals, Life Coaches, Business Mentors, General Mentors, Legal Advisors, and Lawyers/Legal Consultants.
-- Users can request live professional help by tapping the "Request Live Help" button in AI conversations.
-- When a user asks for business mentorship, career advice, therapy, counseling, legal advice, or any professional guidance, you should inform them about the "Request Live Help" feature.
+- The system automatically detects when users need professional help (stress, emotional distress, expressed need for help) and proactively offers to connect them with a professional.
+- DO NOT tell users to "tap buttons" or explain UI features - the system handles professional connections automatically.
+- When users express stress, emotional distress, relationship issues, or need for help, focus on being supportive and understanding. The system will detect their need and offer professional connection automatically.
 - The system matches users with available professionals based on their needs, location, and availability.
 - All professionals are verified and approved by admins before they can provide services.
-- IMPORTANT: When users ask about connecting with business mentors, professionals, therapists, counselors, or any type of expert, always mention that the app has a "Request Live Help" feature in the chat interface that can connect them with verified professionals. Never say the app doesn't have this feature.
 
 COMMON TROUBLESHOOTING
 - Photos/Gallery not working: grant photo/media permissions in phone settings; on Android 13+ allow Photos and Videos permissions. After changing plugins/permissions, rebuild/reinstall the app.
@@ -776,10 +776,11 @@ RESPONSE GUIDELINES:
 - Never use generic "I'm here to help" responses when asked specific questions - always answer the actual question asked
 
 PROFESSIONAL CONNECTIONS:
-- When users ask about connecting with professionals (business mentors, therapists, counselors, lawyers, coaches, or any experts), ALWAYS inform them about the "Request Live Help" feature.
-- Say something like: "I can help guide you, and if you'd like to speak with a verified professional, you can tap the 'Request Live Help' button in this chat. This will connect you with an available professional who can provide personalized support."
-- Never say the app doesn't have this feature - it does, and it's available through the "Request Live Help" button in AI conversations.
-- If the conversation suggests they need professional help, proactively mention the feature: "If you'd like to speak with a verified [type] professional, tap 'Request Live Help' in this chat."
+- DO NOT tell users to "tap the Request Live Help button" or give directions about UI elements.
+- When users need professional help, the system will automatically detect this and show them an option to connect with a professional.
+- Focus on understanding their needs, providing empathy, and being supportive.
+- If they explicitly ask about talking to a professional, acknowledge their request naturally without explaining how to use buttons or features.
+- The system handles professional connections automatically - your job is to listen, understand, and provide support until a professional can be connected.
 
 COMMANDS:
 - When users ask for images (e.g., "generate an image of...", "create a picture of..."), respond with just "GENERATE_IMAGE: [their prompt]"
@@ -873,8 +874,8 @@ export async function getAIResponse(
         });
     }
 
-    // Detect if professional help might be needed (even if user didn't explicitly ask)
-    // This runs before the OpenAI call to check patterns
+    // Professional help detection is now handled by AI in the edge function
+    // For direct OpenAI path, we'll still use pattern-based detection as fallback
     const helpDetection = detectProfessionalHelpNeeded(userMessage, conversationHistory);
 
     if (shouldUseDirectOpenAI) {
@@ -933,6 +934,7 @@ export async function getAIResponse(
     }
 
     // Default path (including production builds): Call Supabase Edge Function (server-side OpenAI).
+    // The edge function now handles AI-based professional help detection internally
     const systemPrompt = buildPersonalizedSystemPrompt(userName || '', userUsername, userLearnings);
     const fnResponse = await getOpenAIResponseViaSupabaseFunction({
       userMessage,
@@ -941,31 +943,15 @@ export async function getAIResponse(
       userId,
     });
     if (fnResponse.success) {
-      // Include professional help suggestion based on detection
-      // Include all confidence levels (high, medium, low) to be more helpful
-      if (helpDetection.needsHelp) {
-        console.log('[AI Service] Professional help detected:', {
-          confidence: helpDetection.confidence,
-          professionalType: helpDetection.professionalType,
-        });
-      }
-      // Only suggest professional help for HIGH or MEDIUM confidence
-      // Low confidence is disabled - we require explicit requests or serious issues
-      const shouldSuggest = helpDetection.needsHelp && 
-                           (helpDetection.confidence === 'high' || helpDetection.confidence === 'medium');
-      
-      if (shouldSuggest) {
-        console.log('[AI Service] Professional help suggested (Supabase Function):', {
-          confidence: helpDetection.confidence,
-          professionalType: helpDetection.professionalType,
+      // The edge function now returns suggestProfessionalHelp and suggestedProfessionalType
+      // based on AI analysis, not hardcoded patterns
+      if (fnResponse.suggestProfessionalHelp) {
+        console.log('[AI Service] Professional help suggested (AI-based detection):', {
+          professionalType: fnResponse.suggestedProfessionalType,
         });
       }
       
-      return {
-        ...fnResponse,
-        suggestProfessionalHelp: shouldSuggest,
-        suggestedProfessionalType: helpDetection.professionalType || 'professional',
-      };
+      return fnResponse;
     }
 
     // Final fallback
@@ -1079,16 +1065,21 @@ async function getOpenAIResponseViaSupabaseFunction(params: {
     const { data, error } = await supabase.functions.invoke('ai-chat', {
       body: {
         userMessage: params.userMessage,
-        conversationHistory: params.conversationHistory.slice(-6), // Optimized to 6 for speed
+        conversationHistory: params.conversationHistory.slice(-10), // Use more history for better AI detection
         systemPrompt: params.systemPrompt,
         userId: params.userId,
       },
       // Add timeout to prevent hanging (optimized for speed)
-      signal: createTimeoutAbortSignal(10000), // 10 second timeout for faster failure
+      signal: createTimeoutAbortSignal(15000), // 15 second timeout to allow for AI detection
     });
     if (error) throw error;
     if (!data?.success) throw new Error(data?.error || 'AI function failed');
-    return { success: true, message: String(data.message ?? '') };
+    return { 
+      success: true, 
+      message: String(data.message ?? ''),
+      suggestProfessionalHelp: data.suggestProfessionalHelp || false,
+      suggestedProfessionalType: data.suggestedProfessionalType || undefined,
+    };
   } catch (e: any) {
     console.error('[AI Service] ai-chat function error:', e);
     return { success: false, error: e?.message ?? 'AI function error' };
@@ -1314,14 +1305,25 @@ function detectProfessionalHelpNeeded(
 ): { needsHelp: boolean; professionalType?: string; confidence: 'high' | 'medium' | 'low' } {
   const message = userMessage.toLowerCase().trim();
   
-  // Only use recent conversation history (last 8 messages) - ignore old messages
-  // This prevents triggering on old conversation data
-  const recentConversation = conversationHistory.slice(-8);
+  // Use recent conversation history (last 10 messages) for context
+  const recentConversation = conversationHistory.slice(-10);
   const recentHistory = recentConversation.map(m => m.content).join(' ').toLowerCase();
   
-  // High confidence indicators (explicit, clear requests for professional help)
-  // Check FIRST - explicit requests should work even with few messages
-  // Only trigger on very explicit requests - user is clearly asking for professional help
+  // Filter out thinking indicators and empty messages
+  const validMessages = recentConversation.filter(m => 
+    m.content && 
+    m.content.trim().length > 0 && 
+    !m.content.toLowerCase().includes('thinking')
+  );
+  
+  const recentUserMessages = validMessages.filter((m: any) => m.role === 'user');
+  const userMessageCount = recentUserMessages.length;
+  
+  // Check for greetings to filter them out
+  const greetingPatterns = /^(hi|hello|hey|good morning|good afternoon|good evening|thanks|thank you|bye|goodbye)[\s!.,]*$/i;
+  const isGreeting = greetingPatterns.test(message.trim());
+  
+  // HIGH CONFIDENCE: Explicit requests for professional help
   const explicitPatterns = [
     { pattern: /(i need|i want|can i|please).*(talk to|speak with|connect with|get help from|see|meet).*(a |an )?(professional|therapist|counselor|psychologist|mentor|coach|lawyer|legal advisor)/i, type: 'professional' },
     { pattern: /(need|want).*(a |an )?(therapist|counselor|psychologist|mental health professional)/i, type: 'Therapist or Counselor' },
@@ -1330,84 +1332,89 @@ function detectProfessionalHelpNeeded(
     { pattern: /(need|want|looking for).*(a |an )?(life coach)/i, type: 'Life Coach' },
   ];
 
-  // Only check the CURRENT message for explicit requests - NOT history
-  // This prevents triggering on casual mentions in old messages
-  // Also require message to be substantial (more than just keywords)
   for (const { pattern, type } of explicitPatterns) {
-    if (pattern.test(message) && message.length > 15) {
-      // User explicitly requested professional help in current message
+    if (pattern.test(message) && message.length > 15 && !isGreeting) {
       return { needsHelp: true, professionalType: type, confidence: 'high' };
     }
   }
   
-  // Filter out thinking indicators and empty messages for medium/low confidence checks
-  const validMessages = recentConversation.filter(m => 
-    m.content && 
-    m.content.trim().length > 0 && 
-    !m.content.toLowerCase().includes('thinking')
-  );
-
-  // Medium confidence indicators (serious emotional/mental health issues)
-  // Only trigger if these serious issues are mentioned AND there's context suggesting need for help
-  const seriousIssuePatterns = [
-    { pattern: /(depressed|suicidal|self.?harm|want to die|kill myself|thinking about suicide)/i, type: 'Mental Health Professional' },
-    { pattern: /(panic attack|anxiety attack|can't breathe|feeling overwhelmed|having a breakdown)/i, type: 'Mental Health Professional' },
-    { pattern: /(trauma|abuse|violence|assault|domestic violence)/i, type: 'Counselor' },
+  // HIGH CONFIDENCE: Crisis situations (immediate professional help needed)
+  const crisisPatterns = [
+    { pattern: /(depressed|suicidal|self.?harm|want to die|kill myself|thinking about suicide|ending my life)/i, type: 'Mental Health Professional' },
+    { pattern: /(panic attack|anxiety attack|can't breathe|feeling overwhelmed|having a breakdown|breaking down)/i, type: 'Mental Health Professional' },
+    { pattern: /(trauma|abuse|violence|assault|domestic violence|being hurt|being abused)/i, type: 'Counselor' },
   ];
   
-  // Check current message for serious issues - require substantial context
-  for (const { pattern, type } of seriousIssuePatterns) {
-    if (pattern.test(message) && message.length > 20) {
-      // Serious issues mentioned - check if user is expressing need for help
-      const helpIndicators = /(help|support|can't cope|don't know what to do|struggling|need)/i;
-      if (helpIndicators.test(message) || recentHistory.length > 100) {
+  for (const { pattern, type } of crisisPatterns) {
+    if (pattern.test(message) || pattern.test(recentHistory)) {
+      return { needsHelp: true, professionalType: type, confidence: 'high' };
+    }
+  }
+  
+  // MEDIUM CONFIDENCE: Strong emotional distress indicators
+  // Require at least 3 user messages (some context) but be more sensitive
+  if (userMessageCount >= 3) {
+    // Stress and emotional distress patterns
+    const stressPatterns = [
+      /(i'm stressed|i am stressed|feeling stressed|so stressed|really stressed|extremely stressed)/i,
+      /(overwhelmed|feeling overwhelmed|i'm overwhelmed|so overwhelmed)/i,
+      /(anxious|feeling anxious|really anxious|so anxious|extremely anxious)/i,
+      /(depressed|feeling depressed|i'm depressed|really depressed)/i,
+      /(sad|feeling sad|i'm sad|really sad|so sad)/i,
+      /(worried|feeling worried|really worried|so worried)/i,
+      /(struggling|i'm struggling|really struggling|having a hard time|having trouble)/i,
+      /(can't cope|can't handle|don't know what to do|lost|confused|helpless)/i,
+      /(hurt|feeling hurt|really hurt|in pain|suffering)/i,
+      /(lonely|feeling lonely|really lonely|isolated)/i,
+      /(frustrated|feeling frustrated|really frustrated|stuck)/i,
+    ];
+    
+    // Relationship/career/legal issues with emotional distress
+    const issuePatterns = [
+      { pattern: /(relationship|partner|marriage|breakup|cheating|trust issues|break up|fighting|arguing|divorcing)/i, type: 'Relationship Therapist' },
+      { pattern: /(business|career|job|work|professional|mentor|guidance)/i, type: 'Business Mentor' },
+      { pattern: /(legal|lawyer|divorce|separation|custody|legal advice)/i, type: 'Legal Advisor' },
+    ];
+    
+    // Check for stress/emotional distress in current message or recent history
+    const hasStressIndicators = stressPatterns.some(pattern => pattern.test(message) || pattern.test(recentHistory));
+    
+    // Check for specific issues
+    for (const { pattern, type } of issuePatterns) {
+      if ((pattern.test(message) || pattern.test(recentHistory)) && hasStressIndicators) {
         return { needsHelp: true, professionalType: type, confidence: 'medium' };
       }
     }
-  }
-  
-  // Legal issues - only if explicitly mentioned as needing help
-  const legalPatterns = /(divorce|separation|custody|legal issue|need a lawyer|need legal advice)/i;
-  if (legalPatterns.test(message) && message.length > 20) {
-    const needsLegalHelp = /(need|want|looking for|help).*(lawyer|legal|advice)/i;
-    if (needsLegalHelp.test(message)) {
-      return { needsHelp: true, professionalType: 'Legal Advisor', confidence: 'medium' };
+    
+    // If stress indicators are present, suggest help even without specific issue type
+    if (hasStressIndicators && message.length > 15 && !isGreeting) {
+      return { needsHelp: true, professionalType: 'Counselor', confidence: 'medium' };
     }
   }
-
-  // Low confidence indicators - ONLY trigger after substantial meaningful conversation
-  // Use the validMessages we already filtered (only recent, non-empty, non-thinking messages)
-  const recentUserMessages = validMessages.filter((m: any) => m.role === 'user');
-  const userMessageCount = recentUserMessages.length;
   
-  // Check if conversation has meaningful content (not just greetings)
-  const greetingPatterns = /^(hi|hello|hey|good morning|good afternoon|good evening|thanks|thank you|bye|goodbye)[\s!.,]*$/i;
-  const meaningfulMessages = recentUserMessages.filter((msg: any) => {
-    const content = msg.content.trim();
-    return content.length > 10 && !greetingPatterns.test(content);
-  }).length;
-  
-  // Require at least 8 user messages AND at least 5 meaningful (non-greeting) messages
-  const requiresMinimumContext = userMessageCount >= 8 && meaningfulMessages >= 5;
-  
-  if (!requiresMinimumContext) {
-    // Don't suggest help for new, short, or greeting-only conversations
-    return { needsHelp: false, confidence: 'low' };
-  }
-  
-  // Now check for actual concerns/issues
-  const relationshipIssues = /(relationship|partner|marriage|breakup|cheating|trust issues|break up|fighting|arguing)/i.test(message) || 
-                            /(relationship|partner|marriage|breakup|cheating|trust issues|break up|fighting|arguing)/i.test(recentHistory);
-  
-  const emotionalDistress = /(sad|upset|angry|frustrated|stressed|worried|anxious|lonely|hurt|pain|suffering)/i.test(message) ||
-                           /(sad|upset|angry|frustrated|stressed|worried|anxious|lonely|hurt|pain|suffering)/i.test(recentHistory);
-  
-  const needHelp = /(need help|need support|need advice|don't know what to do|what should i do|need guidance)/i.test(message) ||
-                  /(need help|need support|need advice|don't know what to do|what should i do|need guidance)/i.test(recentHistory);
-  
-  // Only suggest help if there are clear indicators AND substantial meaningful conversation
-  if (relationshipIssues || emotionalDistress || needHelp) {
-    return { needsHelp: true, professionalType: 'Counselor', confidence: 'low' };
+  // MEDIUM CONFIDENCE: Need for help expressed (after some conversation)
+  // Require at least 4 user messages for context
+  if (userMessageCount >= 4) {
+    const needHelpPatterns = [
+      /(need help|need support|need advice|need someone to talk to|need guidance)/i,
+      /(don't know what to do|what should i do|what can i do|i need help)/i,
+      /(can someone help|anyone can help|help me|i need someone)/i,
+    ];
+    
+    const needsHelp = needHelpPatterns.some(pattern => pattern.test(message) || pattern.test(recentHistory));
+    
+    if (needsHelp && message.length > 15 && !isGreeting) {
+      // Determine professional type based on context
+      if (/(relationship|partner|marriage|breakup)/i.test(recentHistory)) {
+        return { needsHelp: true, professionalType: 'Relationship Therapist', confidence: 'medium' };
+      } else if (/(business|career|job|work)/i.test(recentHistory)) {
+        return { needsHelp: true, professionalType: 'Business Mentor', confidence: 'medium' };
+      } else if (/(legal|lawyer)/i.test(recentHistory)) {
+        return { needsHelp: true, professionalType: 'Legal Advisor', confidence: 'medium' };
+      } else {
+        return { needsHelp: true, professionalType: 'Counselor', confidence: 'medium' };
+      }
+    }
   }
 
   return { needsHelp: false, confidence: 'low' };

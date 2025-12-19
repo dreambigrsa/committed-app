@@ -229,6 +229,11 @@ export default function ProfessionalBookingsScreen() {
   };
 
   const handleMessage = async (booking: ProfessionalSession) => {
+    if (!booking.conversationId) {
+      Alert.alert('Error', 'No conversation found for this booking. Please contact support.');
+      return;
+    }
+
     // Navigate to conversation for booking-related messaging
     router.push(`/messages/${booking.conversationId}`);
   };

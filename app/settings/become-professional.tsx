@@ -349,7 +349,7 @@ export default function BecomeProfessionalScreen() {
               </Text>
             </View>
 
-            <ScrollView style={styles.rolesScroll} showsVerticalScrollIndicator={false}>
+            <View style={styles.rolesContainer}>
               {roles.map((role: ProfessionalRole) => (
                 <TouchableOpacity
                   key={role.id}
@@ -388,7 +388,7 @@ export default function BecomeProfessionalScreen() {
                   </View>
                 </TouchableOpacity>
               ))}
-            </ScrollView>
+            </View>
           </Animated.View>
         );
 
@@ -770,8 +770,8 @@ const createStyles = (colors: any) => StyleSheet.create({
     lineHeight: 24,
     paddingHorizontal: 20,
   },
-  rolesScroll: {
-    maxHeight: 400,
+  rolesContainer: {
+    paddingBottom: 8,
   },
   roleCard: {
     backgroundColor: colors.background.primary,

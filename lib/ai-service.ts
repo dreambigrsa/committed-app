@@ -991,6 +991,185 @@ async function getOpenAIResponseViaSupabaseFunction(params: {
 }
 
 /**
+ * Summarize conversation for professional escalation
+ * Creates a concise summary of the user's issue for professional matching
+ */
+export async function summarizeConversationForProfessional(
+  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
+  userMessage: string
+): Promise<string> {
+  try {
+    // Build context from recent conversation
+    const recentMessages = conversationHistory.slice(-10);
+    const conversationContext = recentMessages
+      .map((msg) => `${msg.role === 'user' ? 'User' : 'AI'}: ${msg.content}`)
+      .join('\n');
+
+    const summaryPrompt = `Summarize this conversation briefly for a professional helper. Focus on:
+1. The main issue or concern the user has
+2. Key details that would help a professional understand the situation
+3. What type of help might be needed
+
+Conversation:
+${conversationContext}
+
+Latest message: ${userMessage}
+
+Provide a concise summary (2-3 sentences):`;
+
+    // Try to get AI summary, fallback to simple extraction
+    const shouldUseDirectOpenAI = __DEV__ && !!(await getOpenAIApiKeyAsync());
+    
+    if (shouldUseDirectOpenAI) {
+      const openaiApiKey = await getOpenAIApiKeyAsync();
+      if (openaiApiKey) {
+        try {
+          const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${openaiApiKey}`,
+            },
+            body: JSON.stringify({
+              model: 'gpt-3.5-turbo',
+              messages: [
+                { role: 'system', content: 'You are a helpful assistant that creates concise summaries for professional referrals.' },
+                { role: 'user', content: summaryPrompt },
+              ],
+              temperature: 0.3,
+              max_tokens: 150,
+            }),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            return data.choices[0]?.message?.content || getFallbackSummary(userMessage);
+          }
+        } catch (error) {
+          console.error('Error getting AI summary:', error);
+        }
+      }
+    }
+
+    // Fallback: simple extraction from latest message
+    return getFallbackSummary(userMessage);
+  } catch (error: any) {
+    console.error('Error summarizing conversation:', error);
+    return getFallbackSummary(userMessage);
+  }
+}
+
+/**
+ * Fallback summary extraction
+ */
+function getFallbackSummary(userMessage: string): string {
+  // Simple fallback: use the latest message or a default
+  if (userMessage.length > 200) {
+    return userMessage.substring(0, 200) + '...';
+  }
+  return userMessage || 'User is seeking professional assistance.';
+}
+
+/**
+ * Suggest appropriate professional role based on conversation
+ * Returns role ID or null if no clear match
+ */
+export async function suggestProfessionalRole(
+  conversationSummary: string,
+  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>
+): Promise<string | null> {
+  try {
+    // Get active professional roles
+    const { data: roles, error } = await supabase
+      .from('professional_roles')
+      .select('id, name, category, ai_matching_rules')
+      .eq('is_active', true)
+      .eq('eligible_for_live_chat', true);
+
+    if (error || !roles || roles.length === 0) return null;
+
+    // Simple keyword matching based on role categories and names
+    const lowerSummary = conversationSummary.toLowerCase();
+    const combinedText = [
+      ...conversationHistory.map(m => m.content),
+      conversationSummary,
+    ].join(' ').toLowerCase();
+
+    // Check each role's matching rules and keywords
+    for (const role of roles) {
+      const rules = role.ai_matching_rules || {};
+      const keywords = rules.keywords || [];
+      const categories = rules.categories || [];
+
+      // Check if summary matches role keywords
+      if (keywords.length > 0) {
+        const matchesKeyword = keywords.some((keyword: string) =>
+          combinedText.includes(keyword.toLowerCase())
+        );
+        if (matchesKeyword) return role.id;
+      }
+
+      // Category-based matching
+      if (role.category) {
+        const categoryLower = role.category.toLowerCase();
+        if (
+          (categoryLower.includes('mental') || categoryLower.includes('therapy')) &&
+          (combinedText.includes('depress') ||
+            combinedText.includes('anxiety') ||
+            combinedText.includes('stress') ||
+            combinedText.includes('therapy') ||
+            combinedText.includes('counsel'))
+        ) {
+          return role.id;
+        }
+
+        if (
+          categoryLower.includes('legal') &&
+          (combinedText.includes('legal') ||
+            combinedText.includes('lawyer') ||
+            combinedText.includes('attorney') ||
+            combinedText.includes('contract') ||
+            combinedText.includes('lawsuit'))
+        ) {
+          return role.id;
+        }
+
+        if (
+          categoryLower.includes('coach') &&
+          (combinedText.includes('goal') ||
+            combinedText.includes('motivation') ||
+            combinedText.includes('career') ||
+            combinedText.includes('life coach'))
+        ) {
+          return role.id;
+        }
+
+        if (
+          categoryLower.includes('relationship') &&
+          (combinedText.includes('relationship') ||
+            combinedText.includes('partner') ||
+            combinedText.includes('marriage') ||
+            combinedText.includes('couple'))
+        ) {
+          return role.id;
+        }
+      }
+    }
+
+    // Default: return first general mental health role if available
+    const mentalHealthRole = roles.find(
+      (r) =>
+        r.category?.toLowerCase().includes('mental') ||
+        r.name?.toLowerCase().includes('counselor')
+    );
+    return mentalHealthRole?.id || roles[0]?.id || null;
+  } catch (error) {
+    console.error('Error suggesting professional role:', error);
+    return null;
+  }
+}
+
+/**
  * Fallback rule-based responses when OpenAI is not available
  * NOTE: This should rarely be used if OpenAI API key is configured properly
  */

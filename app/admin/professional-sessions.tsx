@@ -323,35 +323,45 @@ const createStyles = (colors: any) =>
       backgroundColor: colors.background.secondary,
     },
     filtersContainer: {
+      padding: 16,
       backgroundColor: colors.background.primary,
       borderBottomWidth: 1,
       borderBottomColor: colors.border.light,
     },
-    filtersContent: {
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      gap: 8,
-    },
-    filterButton: {
-      paddingHorizontal: 16,
-      paddingVertical: 8,
-      borderRadius: 20,
+    segmentedControl: {
+      flexDirection: 'row',
       backgroundColor: colors.background.secondary,
-      marginRight: 8,
-      borderWidth: 1,
-      borderColor: colors.border.light,
+      borderRadius: 10,
+      padding: 4,
+      gap: 0,
     },
-    filterButtonActive: {
+    segmentedButton: {
+      flex: 1,
+      paddingVertical: 8,
+      paddingHorizontal: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 8,
+    },
+    segmentedButtonActive: {
       backgroundColor: colors.primary,
-      borderColor: colors.primary,
     },
-    filterButtonText: {
-      fontSize: 14,
+    segmentedButtonFirst: {
+      borderTopLeftRadius: 8,
+      borderBottomLeftRadius: 8,
+    },
+    segmentedButtonLast: {
+      borderTopRightRadius: 8,
+      borderBottomRightRadius: 8,
+    },
+    segmentedButtonText: {
+      fontSize: 13,
       fontWeight: '600',
-      color: colors.text.primary,
+      color: colors.text.secondary,
     },
-    filterButtonTextActive: {
+    segmentedButtonTextActive: {
       color: colors.text.white,
+      fontWeight: '700',
     },
     content: {
       flex: 1,

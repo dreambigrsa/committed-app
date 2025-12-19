@@ -48,6 +48,25 @@ export default function AdminProfessionalRolesScreen() {
     loadRoles();
   }, []);
 
+  const mapRole = (role: any): ProfessionalRole => {
+    return {
+      id: role.id,
+      name: role.name,
+      category: role.category,
+      description: role.description,
+      requiresCredentials: role.requires_credentials ?? role.requiresCredentials ?? false,
+      requiresVerification: role.requires_verification ?? role.requiresVerification ?? false,
+      eligibleForLiveChat: role.eligible_for_live_chat ?? role.eligibleForLiveChat ?? false,
+      approvalRequired: role.approval_required ?? role.approvalRequired ?? false,
+      disclaimerText: role.disclaimer_text ?? role.disclaimerText,
+      aiMatchingRules: role.ai_matching_rules ?? role.aiMatchingRules ?? {},
+      isActive: role.is_active ?? role.isActive ?? false,
+      displayOrder: role.display_order ?? role.displayOrder ?? 0,
+      createdAt: role.created_at ?? role.createdAt ?? new Date().toISOString(),
+      updatedAt: role.updated_at ?? role.updatedAt ?? new Date().toISOString(),
+    };
+  };
+
   const loadRoles = async () => {
     try {
       setLoading(true);
@@ -57,7 +76,7 @@ export default function AdminProfessionalRolesScreen() {
         .order('display_order', { ascending: true });
       
       if (error) throw error;
-      setRoles(data || []);
+      setRoles((data || []).map(mapRole));
     } catch (error: any) {
       console.error('Error loading roles:', error);
       Alert.alert('Error', 'Failed to load professional roles');
@@ -66,18 +85,23 @@ export default function AdminProfessionalRolesScreen() {
     }
   };
 
-  const handleEdit = (role: ProfessionalRole) => {
-    setEditingRole(role);
-    setName(role.name);
-    setCategory(role.category);
-    setDescription(role.description || '');
-    setRequiresCredentials(role.requiresCredentials);
-    setRequiresVerification(role.requiresVerification);
-    setEligibleForLiveChat(role.eligibleForLiveChat);
-    setApprovalRequired(role.approvalRequired);
-    setDisclaimerText(role.disclaimerText || '');
-    setIsActive(role.isActive);
-    setDisplayOrder(role.displayOrder);
+  const handleEdit = (role: ProfessionalRole | any) => {
+    // Map role if it's from database (snake_case)
+    const mappedRole = role.id && (role.is_active !== undefined || role.isActive !== undefined) 
+      ? mapRole(role) 
+      : role;
+    
+    setEditingRole(mappedRole);
+    setName(mappedRole.name || '');
+    setCategory(mappedRole.category || '');
+    setDescription(mappedRole.description || '');
+    setRequiresCredentials(mappedRole.requiresCredentials ?? false);
+    setRequiresVerification(mappedRole.requiresVerification ?? false);
+    setEligibleForLiveChat(mappedRole.eligibleForLiveChat ?? false);
+    setApprovalRequired(mappedRole.approvalRequired ?? false);
+    setDisclaimerText(mappedRole.disclaimerText || '');
+    setIsActive(mappedRole.isActive ?? false);
+    setDisplayOrder(mappedRole.displayOrder ?? 0);
     setShowModal(true);
   };
 
@@ -171,18 +195,24 @@ export default function AdminProfessionalRolesScreen() {
     );
   };
 
-  const handleToggleActive = async (role: ProfessionalRole) => {
+  const handleToggleActive = async (role: ProfessionalRole | any) => {
     try {
+      // Get current active status (handle both snake_case and camelCase)
+      const currentStatus = role.is_active ?? role.isActive ?? false;
+      const newStatus = !currentStatus;
+      
       const { error } = await supabase
         .from('professional_roles')
-        .update({ is_active: !role.isActive })
+        .update({ is_active: newStatus })
         .eq('id', role.id);
       
       if (error) throw error;
-      loadRoles();
+      
+      // Reload roles to reflect the change
+      await loadRoles();
     } catch (error: any) {
       console.error('Error toggling role:', error);
-      Alert.alert('Error', 'Failed to update role status');
+      Alert.alert('Error', error.message || 'Failed to update role status');
     }
   };
 
@@ -231,97 +261,105 @@ export default function AdminProfessionalRolesScreen() {
             </View>
           ) : (
             <View style={styles.rolesList}>
-              {roles.map((role: ProfessionalRole | any, index: number) => (
-                <TouchableOpacity
-                  key={role.id}
-                  style={styles.roleCard}
-                  activeOpacity={0.9}
-                  onPress={() => handleEdit(role)}
-                >
-                  <LinearGradient
-                    colors={role.isActive ? [themeColors.primary + '10', 'transparent'] : [themeColors.background.secondary, themeColors.background.secondary]}
-                    style={styles.roleCardGradient}
+              {roles.map((role: ProfessionalRole | any, index: number) => {
+                // Ensure role is properly mapped
+                const mappedRole = role.id ? (role.is_active !== undefined || role.isActive !== undefined ? mapRole(role) : role) : role;
+                const isActive = mappedRole.isActive ?? false;
+                const requiresCredentials = mappedRole.requiresCredentials ?? false;
+                const eligibleForLiveChat = mappedRole.eligibleForLiveChat ?? false;
+                
+                return (
+                  <TouchableOpacity
+                    key={mappedRole.id}
+                    style={styles.roleCard}
+                    activeOpacity={0.9}
+                    onPress={() => handleEdit(mappedRole)}
                   >
-                    <View style={styles.roleCardHeader}>
-                      <View style={styles.roleCardIconContainer}>
-                        <Briefcase size={24} color={role.isActive ? themeColors.primary : themeColors.text.secondary} />
-                      </View>
-                      <View style={styles.roleCardContent}>
-                        <View style={styles.roleCardTitleRow}>
-                          <Text style={[styles.roleCardName, !role.isActive && styles.roleCardNameInactive]}>
-                            {role.name}
-                          </Text>
-                          <View style={[styles.statusBadge, role.isActive ? styles.activeBadge : styles.inactiveBadge]}>
-                            {role.isActive ? (
-                              <CheckCircle2 size={14} color={colors.secondary} />
-                            ) : (
-                              <AlertCircle size={14} color={themeColors.text.tertiary} />
-                            )}
-                            <Text style={[styles.statusText, role.isActive ? styles.activeText : styles.inactiveText]}>
-                              {role.isActive ? 'Active' : 'Inactive'}
+                    <LinearGradient
+                      colors={isActive ? [themeColors.primary + '10', 'transparent'] : [themeColors.background.secondary, themeColors.background.secondary]}
+                      style={styles.roleCardGradient}
+                    >
+                      <View style={styles.roleCardHeader}>
+                        <View style={styles.roleCardIconContainer}>
+                          <Briefcase size={24} color={isActive ? themeColors.primary : themeColors.text.secondary} />
+                        </View>
+                        <View style={styles.roleCardContent}>
+                          <View style={styles.roleCardTitleRow}>
+                            <Text style={[styles.roleCardName, !isActive && styles.roleCardNameInactive]}>
+                              {mappedRole.name}
                             </Text>
+                            <View style={[styles.statusBadge, isActive ? styles.activeBadge : styles.inactiveBadge]}>
+                              {isActive ? (
+                                <CheckCircle2 size={14} color={colors.secondary} />
+                              ) : (
+                                <AlertCircle size={14} color={themeColors.text.tertiary} />
+                              )}
+                              <Text style={[styles.statusText, isActive ? styles.activeText : styles.inactiveText]}>
+                                {isActive ? 'Active' : 'Inactive'}
+                              </Text>
+                            </View>
                           </View>
+                          <View style={styles.roleCategoryBadge}>
+                            <Text style={styles.roleCategoryText}>{mappedRole.category}</Text>
+                          </View>
+                          {mappedRole.description && (
+                            <Text style={styles.roleCardDescription} numberOfLines={2}>
+                              {mappedRole.description}
+                            </Text>
+                          )}
                         </View>
-                        <View style={styles.roleCategoryBadge}>
-                          <Text style={styles.roleCategoryText}>{role.category}</Text>
-                        </View>
-                        {role.description && (
-                          <Text style={styles.roleCardDescription} numberOfLines={2}>
-                            {role.description}
+                      </View>
+
+                      <View style={styles.roleFeaturesGrid}>
+                        <View style={styles.featureItem}>
+                          <Shield size={16} color={requiresCredentials ? colors.secondary : themeColors.text.tertiary} />
+                          <Text style={[styles.featureText, !requiresCredentials && styles.featureTextInactive]}>
+                            {requiresCredentials ? 'Credentials' : 'No Credentials'}
                           </Text>
-                        )}
+                        </View>
+                        <View style={styles.featureItem}>
+                          <CheckCircle2 size={16} color={eligibleForLiveChat ? colors.secondary : themeColors.text.tertiary} />
+                          <Text style={[styles.featureText, !eligibleForLiveChat && styles.featureTextInactive]}>
+                            {eligibleForLiveChat ? 'Live Chat' : 'No Live Chat'}
+                          </Text>
+                        </View>
                       </View>
-                    </View>
 
-                    <View style={styles.roleFeaturesGrid}>
-                      <View style={styles.featureItem}>
-                        <Shield size={16} color={role.requiresCredentials ? colors.secondary : themeColors.text.tertiary} />
-                        <Text style={[styles.featureText, !role.requiresCredentials && styles.featureTextInactive]}>
-                          {role.requiresCredentials ? 'Credentials' : 'No Credentials'}
-                        </Text>
+                      <View style={styles.roleCardActions}>
+                        <TouchableOpacity
+                          style={[styles.actionButtonSmall, styles.toggleButtonSmall]}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleToggleActive(mappedRole);
+                          }}
+                        >
+                          <Text style={[styles.actionButtonSmallText, isActive ? styles.deactivateText : styles.activateText]}>
+                            {isActive ? 'Deactivate' : 'Activate'}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.actionButtonSmall, styles.editButtonSmall]}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleEdit(mappedRole);
+                          }}
+                        >
+                          <Edit size={16} color={themeColors.primary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.actionButtonSmall, styles.deleteButtonSmall]}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleDelete(mappedRole);
+                          }}
+                        >
+                          <Trash2 size={16} color={colors.danger} />
+                        </TouchableOpacity>
                       </View>
-                      <View style={styles.featureItem}>
-                        <CheckCircle2 size={16} color={role.eligibleForLiveChat ? colors.secondary : themeColors.text.tertiary} />
-                        <Text style={[styles.featureText, !role.eligibleForLiveChat && styles.featureTextInactive]}>
-                          {role.eligibleForLiveChat ? 'Live Chat' : 'No Live Chat'}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.roleCardActions}>
-                      <TouchableOpacity
-                        style={[styles.actionButtonSmall, styles.toggleButtonSmall]}
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          handleToggleActive(role);
-                        }}
-                      >
-                        <Text style={[styles.actionButtonSmallText, role.isActive ? styles.deactivateText : styles.activateText]}>
-                          {role.isActive ? 'Deactivate' : 'Activate'}
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.actionButtonSmall, styles.editButtonSmall]}
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          handleEdit(role);
-                        }}
-                      >
-                        <Edit size={16} color={themeColors.primary} />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.actionButtonSmall, styles.deleteButtonSmall]}
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          handleDelete(role);
-                        }}
-                      >
-                        <Trash2 size={16} color={colors.danger} />
-                      </TouchableOpacity>
-                    </View>
-                  </LinearGradient>
-                </TouchableOpacity>
-              ))}
+                    </LinearGradient>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           )}
         </ScrollView>
@@ -397,7 +435,7 @@ export default function AdminProfessionalRolesScreen() {
               <Text style={styles.label}>Display Order</Text>
               <TextInput
                 style={styles.input}
-                value={displayOrder.toString()}
+                value={(displayOrder ?? 0).toString()}
                 onChangeText={(text: string) => setDisplayOrder(parseInt(text) || 0)}
                 keyboardType="numeric"
                 placeholderTextColor={themeColors.text.tertiary}

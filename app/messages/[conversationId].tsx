@@ -41,7 +41,7 @@ import { ExternalLink } from 'lucide-react-native';
 import StatusIndicator from '@/components/StatusIndicator';
 import { UserStatus } from '@/types';
 import { getSignedUrlForMedia } from '@/lib/status-queries';
-import { getOrCreateAIUser, getAIResponse } from '@/lib/ai-service';
+import { getOrCreateAIUser, getAIResponse, shouldAIRespondInObserverMode } from '@/lib/ai-service';
 import RequestLiveHelpModal from '@/components/RequestLiveHelpModal';
 import SessionReviewModal from '@/components/SessionReviewModal';
 import ProfessionalHelpSuggestionModal from '@/components/ProfessionalHelpSuggestionModal';
@@ -1031,10 +1031,58 @@ export default function ConversationDetailScreen() {
           // Check if there's an active professional session - if so, AI is in observer mode
           const activeSession = await getActiveSession(conversationId);
           if (activeSession && activeSession.status === 'active' && activeSession.aiObserverMode) {
-            // AI is in observer mode - do not respond, just monitor
-            // The professional should be handling the conversation
-            console.log('AI is in observer mode - professional is leading the conversation');
-            return;
+            // AI is in observer mode - check if AI should still respond
+            
+            // Get last professional message time
+            const { data: lastProfessionalMsg } = await supabase
+              .from('messages')
+              .select('created_at')
+              .eq('conversation_id', conversationId)
+              .eq('sender_id', activeSession.professional?.userId || '')
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            
+            const shouldRespond = await shouldAIRespondInObserverMode(
+              messageContent,
+              conversationId,
+              lastProfessionalMsg?.created_at
+            );
+            
+            if (!shouldRespond) {
+              // AI is in observer mode - do not respond, just monitor
+              // The professional should be handling the conversation
+              console.log('AI is in observer mode - professional is leading the conversation');
+              
+              // Still check for inactivity and monitor for non-agreement
+              const { checkActiveSessionsForInactivity, monitorActiveSessionForNonAgreement } = await import('@/lib/session-monitor');
+              
+              // Check for inactivity (will end session if needed)
+              checkActiveSessionsForInactivity().catch(err => {
+                console.error('Error checking session inactivity:', err);
+              });
+              
+              // Monitor for non-agreement patterns
+              const conversationHistory = localMessages
+                .filter((m: any) => m.conversationId === conversationId && m.messageType === 'text')
+                .map((m: any) => ({
+                  role: m.senderId === currentUser.id ? 'user' as const : 'assistant' as const,
+                  content: m.content || '',
+                }));
+              
+              monitorActiveSessionForNonAgreement(conversationId, conversationHistory).then(result => {
+                if (result.shouldEscalate) {
+                  console.log('Non-agreement detected, escalation suggested:', result.suggestion);
+                  // Could show a modal or notification to user here
+                }
+              }).catch(err => {
+                console.error('Error monitoring session:', err);
+              });
+              
+              return;
+            }
+            // If shouldRespond is true, continue with AI response below
+            console.log('AI responding in observer mode - user asked AI directly or professional inactive');
           }
           
           // This is a conversation with the AI, trigger AI response

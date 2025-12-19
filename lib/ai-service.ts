@@ -1398,9 +1398,57 @@ function detectProfessionalHelpNeeded(
 }
 
 /**
- * Monitor conversation for non-agreement patterns and suggest alternative professional
- * This runs in observer mode to detect if user and professional aren't reaching agreement
+ * Determine if AI should respond during observer mode
+ * AI should respond when:
+ * 1. User explicitly asks AI (mentions "AI", "Committed AI", asks AI directly)
+ * 2. Professional hasn't responded in a while (2+ minutes)
+ * 3. User asks a question that doesn't require professional expertise
  */
+export async function shouldAIRespondInObserverMode(
+  message: string,
+  conversationId: string,
+  lastProfessionalMessageTime?: string
+): Promise<boolean> {
+  // Check if user is explicitly asking AI
+  const aiMentions = [
+    /(?:^|\s)(?:ai|committed ai|you)(?:\s|$|,|\!|\.|\?)/i,
+    /ask (?:you|ai|committed ai)/i,
+    /tell (?:you|ai|committed ai)/i,
+    /(?:what|how|why|when|where|can|do|does|is|are|will|would) (?:you|ai|committed ai)/i,
+  ];
+  
+  const mentionsAI = aiMentions.some(pattern => pattern.test(message));
+  if (mentionsAI) {
+    return true;
+  }
+
+  // Check if professional hasn't responded in 2+ minutes
+  if (lastProfessionalMessageTime) {
+    const lastResponseTime = new Date(lastProfessionalMessageTime).getTime();
+    const timeSinceLastResponse = Date.now() - lastResponseTime;
+    const TWO_MINUTES_MS = 2 * 60 * 1000;
+    
+    if (timeSinceLastResponse >= TWO_MINUTES_MS) {
+      return true; // Professional is not responding, AI should step in
+    }
+  }
+
+  // Check if message is a simple question that doesn't require professional help
+  const simpleQuestionPatterns = [
+    /^(?:what|how|why|when|where|can|do|does|is|are|will|would) /i,
+    /^(?:tell me about|explain|describe) /i,
+  ];
+  
+  const isSimpleQuestion = simpleQuestionPatterns.some(pattern => pattern.test(message.trim()));
+  
+  // If it's a simple question and short (< 50 chars), AI can answer
+  if (isSimpleQuestion && message.length < 50) {
+    return true;
+  }
+
+  return false;
+}
+
 export async function detectNonAgreementAndSuggestAlternative(
   conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
   conversationId: string,

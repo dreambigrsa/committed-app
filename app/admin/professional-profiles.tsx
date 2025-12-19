@@ -410,20 +410,80 @@ export default function AdminProfessionalProfilesScreen() {
           <ScrollView style={styles.modalContent}>
             {selectedItem && (
               <>
-                <Text style={styles.modalSectionTitle}>Application Data</Text>
-                <Text style={styles.modalText}>
-                  {JSON.stringify(selectedItem.applicationData || selectedItem, null, 2)}
-                </Text>
-                {tab === 'applications' && selectedItem.status === 'pending' && (
-                  <>
+                {/* User Information */}
+                <View style={styles.detailSection}>
+                  <Text style={styles.modalSectionTitle}>User Information</Text>
+                  <View style={styles.detailCard}>
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Name:</Text>
+                      <Text style={styles.detailValue}>
+                        {selectedItem.user?.full_name || selectedItem.user?.fullName || selectedItem.full_name || selectedItem.fullName || 'N/A'}
+                      </Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Email:</Text>
+                      <Text style={styles.detailValue}>{selectedItem.user?.email || 'N/A'}</Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Applied for Role:</Text>
+                      <Text style={styles.detailValue}>{selectedItem.role?.name || 'N/A'}</Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Status:</Text>
+                      <View style={[styles.statusBadgeInline, { backgroundColor: getStatusColor(selectedItem.status || selectedItem.approvalStatus) + '20' }]}>
+                        <Text style={[styles.statusTextInline, { color: getStatusColor(selectedItem.status || selectedItem.approvalStatus) }]}>
+                          {(selectedItem.status || selectedItem.approvalStatus || 'pending').toUpperCase()}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Application Details */}
+                {(selectedItem.applicationData || selectedItem.bio) && (
+                  <View style={styles.detailSection}>
+                    <Text style={styles.modalSectionTitle}>Application Details</Text>
+                    <View style={styles.detailCard}>
+                      {selectedItem.applicationData?.bio || selectedItem.bio ? (
+                        <View style={styles.detailItem}>
+                          <Text style={styles.detailLabel}>Bio:</Text>
+                          <Text style={styles.detailValueMultiline}>
+                            {selectedItem.applicationData?.bio || selectedItem.bio}
+                          </Text>
+                        </View>
+                      ) : null}
+                      {selectedItem.applicationData?.location || selectedItem.location ? (
+                        <View style={styles.detailRow}>
+                          <Text style={styles.detailLabel}>Location:</Text>
+                          <Text style={styles.detailValue}>
+                            {selectedItem.applicationData?.location || selectedItem.location}
+                          </Text>
+                        </View>
+                      ) : null}
+                      {selectedItem.applicationData?.credentials && selectedItem.applicationData.credentials.length > 0 && (
+                        <View style={styles.detailItem}>
+                          <Text style={styles.detailLabel}>Credentials:</Text>
+                          {selectedItem.applicationData.credentials.map((cred: string, idx: number) => (
+                            <Text key={idx} style={styles.detailValue}>• {cred}</Text>
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                )}
+
+                {/* Review Notes Section - Only for pending applications */}
+                {tab === 'applications' && (selectedItem.status === 'pending' || selectedItem.status === 'under_review') && (
+                  <View style={styles.detailSection}>
                     <Text style={styles.modalSectionTitle}>Review Notes</Text>
                     <TextInput
                       style={styles.textArea}
                       value={reviewNotes}
                       onChangeText={setReviewNotes}
-                      placeholder="Add review notes..."
+                      placeholder="Add review notes (optional)..."
                       multiline
                       numberOfLines={4}
+                      placeholderTextColor={themeColors.text.tertiary}
                     />
                     <View style={styles.modalActions}>
                       <TouchableOpacity
@@ -441,7 +501,32 @@ export default function AdminProfessionalProfilesScreen() {
                         <Text style={styles.modalButtonText}>Approve</Text>
                       </TouchableOpacity>
                     </View>
-                  </>
+                  </View>
+                )}
+
+                {/* Profile Information for approved profiles */}
+                {tab === 'profiles' && (
+                  <View style={styles.detailSection}>
+                    <Text style={styles.modalSectionTitle}>Profile Information</Text>
+                    <View style={styles.detailCard}>
+                      {selectedItem.ratingAverage !== undefined && (
+                        <View style={styles.detailRow}>
+                          <Text style={styles.detailLabel}>Rating:</Text>
+                          <Text style={styles.detailValue}>
+                            ⭐ {((selectedItem.rating_average ?? selectedItem.ratingAverage) || 0).toFixed(1)} ({(selectedItem.rating_count ?? selectedItem.ratingCount) || 0} ratings)
+                          </Text>
+                        </View>
+                      )}
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Approved At:</Text>
+                        <Text style={styles.detailValue}>
+                          {selectedItem.approved_at || selectedItem.approvedAt 
+                            ? new Date(selectedItem.approved_at || selectedItem.approvedAt).toLocaleString()
+                            : 'N/A'}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
                 )}
               </>
             )}
@@ -627,12 +712,61 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontWeight: '700',
     color: colors.text.primary,
     marginTop: 16,
-    marginBottom: 8,
+    marginBottom: 12,
   },
-  modalText: {
+  detailSection: {
+    marginBottom: 24,
+  },
+  detailCard: {
+    backgroundColor: colors.background.secondary,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.light,
+  },
+  detailItem: {
+    marginBottom: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.light,
+  },
+  detailLabel: {
     fontSize: 14,
+    fontWeight: '600',
     color: colors.text.secondary,
-    fontFamily: 'monospace',
+    marginBottom: 4,
+  },
+  detailValue: {
+    fontSize: 14,
+    color: colors.text.primary,
+    fontWeight: '500',
+    flex: 1,
+    textAlign: 'right',
+  },
+  detailValueMultiline: {
+    fontSize: 14,
+    color: colors.text.primary,
+    fontWeight: '400',
+    lineHeight: 20,
+    marginTop: 4,
+  },
+  statusBadgeInline: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusTextInline: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   textArea: {
     backgroundColor: colors.background.primary,

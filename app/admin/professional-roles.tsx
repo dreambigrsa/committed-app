@@ -382,130 +382,147 @@ export default function AdminProfessionalRolesScreen() {
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.modalContent}>
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Name *</Text>
-              <TextInput
-                style={styles.input}
-                value={name}
-                onChangeText={setName}
-                placeholder="e.g., Counselor, Relationship Therapist"
-                placeholderTextColor={themeColors.text.tertiary}
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Category *</Text>
-              <TextInput
-                style={styles.input}
-                value={category}
-                onChangeText={setCategory}
-                placeholder="e.g., Therapy, Coaching, Legal"
-                placeholderTextColor={themeColors.text.tertiary}
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Description</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                value={description}
-                onChangeText={setDescription}
-                placeholder="Describe this professional role"
-                multiline
-                numberOfLines={4}
-                placeholderTextColor={themeColors.text.tertiary}
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Disclaimer Text</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                value={disclaimerText}
-                onChangeText={setDisclaimerText}
-                placeholder="Role-specific disclaimer shown to users"
-                multiline
-                numberOfLines={4}
-                placeholderTextColor={themeColors.text.tertiary}
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Display Order</Text>
-              <TextInput
-                style={styles.input}
-                value={(displayOrder ?? 0).toString()}
-                onChangeText={(text: string) => setDisplayOrder(parseInt(text) || 0)}
-                keyboardType="numeric"
-                placeholderTextColor={themeColors.text.tertiary}
-              />
-            </View>
-
-            <View style={styles.switchGroup}>
-              <View style={styles.switchRow}>
-                <View style={styles.switchLabelContainer}>
-                  <Text style={styles.switchLabel}>Requires Credentials</Text>
-                  <Text style={styles.switchDescription}>Professionals must provide credentials</Text>
-                </View>
-                <Switch
-                  value={requiresCredentials}
-                  onValueChange={setRequiresCredentials}
-                  trackColor={{ false: themeColors.border.light, true: themeColors.primary + '80' }}
-                  thumbColor={requiresCredentials ? themeColors.primary : themeColors.text.tertiary}
+          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+            {/* Basic Information Section */}
+            <View style={styles.formSection}>
+              <Text style={styles.sectionTitle}>Basic Information</Text>
+              
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Name <Text style={styles.required}>*</Text></Text>
+                <TextInput
+                  style={styles.input}
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="e.g., Counselor, Relationship Therapist"
+                  placeholderTextColor={themeColors.text.tertiary}
                 />
               </View>
 
-              <View style={styles.switchRow}>
-                <View style={styles.switchLabelContainer}>
-                  <Text style={styles.switchLabel}>Requires Verification</Text>
-                  <Text style={styles.switchDescription}>Credentials must be verified by admin</Text>
-                </View>
-                <Switch
-                  value={requiresVerification}
-                  onValueChange={setRequiresVerification}
-                  trackColor={{ false: themeColors.border.light, true: themeColors.primary + '80' }}
-                  thumbColor={requiresVerification ? themeColors.primary : themeColors.text.tertiary}
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Category <Text style={styles.required}>*</Text></Text>
+                <TextInput
+                  style={styles.input}
+                  value={category}
+                  onChangeText={setCategory}
+                  placeholder="e.g., Therapy, Coaching, Legal"
+                  placeholderTextColor={themeColors.text.tertiary}
                 />
               </View>
 
-              <View style={styles.switchRow}>
-                <View style={styles.switchLabelContainer}>
-                  <Text style={styles.switchLabel}>Eligible for Live Chat</Text>
-                  <Text style={styles.switchDescription}>Can join live conversations with users</Text>
-                </View>
-                <Switch
-                  value={eligibleForLiveChat}
-                  onValueChange={setEligibleForLiveChat}
-                  trackColor={{ false: themeColors.border.light, true: themeColors.primary + '80' }}
-                  thumbColor={eligibleForLiveChat ? themeColors.primary : themeColors.text.tertiary}
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Description</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder="Describe this professional role"
+                  multiline
+                  numberOfLines={4}
+                  placeholderTextColor={themeColors.text.tertiary}
+                />
+              </View>
+            </View>
+
+            {/* Additional Information Section */}
+            <View style={styles.formSection}>
+              <Text style={styles.sectionTitle}>Additional Information</Text>
+              
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Disclaimer Text</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  value={disclaimerText}
+                  onChangeText={setDisclaimerText}
+                  placeholder="Role-specific disclaimer shown to users"
+                  multiline
+                  numberOfLines={4}
+                  placeholderTextColor={themeColors.text.tertiary}
                 />
               </View>
 
-              <View style={styles.switchRow}>
-                <View style={styles.switchLabelContainer}>
-                  <Text style={styles.switchLabel}>Approval Required</Text>
-                  <Text style={styles.switchDescription}>Admin must approve professionals</Text>
-                </View>
-                <Switch
-                  value={approvalRequired}
-                  onValueChange={setApprovalRequired}
-                  trackColor={{ false: themeColors.border.light, true: themeColors.primary + '80' }}
-                  thumbColor={approvalRequired ? themeColors.primary : themeColors.text.tertiary}
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Display Order</Text>
+                <TextInput
+                  style={styles.input}
+                  value={(displayOrder ?? 0).toString()}
+                  onChangeText={(text: string) => setDisplayOrder(parseInt(text) || 0)}
+                  keyboardType="numeric"
+                  placeholder="0"
+                  placeholderTextColor={themeColors.text.tertiary}
                 />
+                <Text style={styles.helperText}>Lower numbers appear first in lists</Text>
               </View>
+            </View>
 
-              <View style={styles.switchRow}>
-                <View style={styles.switchLabelContainer}>
-                  <Text style={styles.switchLabel}>Active</Text>
-                  <Text style={styles.switchDescription}>Role is visible and available</Text>
+            {/* Settings Section */}
+            <View style={styles.formSection}>
+              <Text style={styles.sectionTitle}>Settings</Text>
+              
+              <View style={styles.switchGroup}>
+                <View style={styles.switchCard}>
+                  <View style={styles.switchLabelContainer}>
+                    <Text style={styles.switchLabel}>Requires Credentials</Text>
+                    <Text style={styles.switchDescription}>Professionals must provide credentials</Text>
+                  </View>
+                  <Switch
+                    value={requiresCredentials}
+                    onValueChange={setRequiresCredentials}
+                    trackColor={{ false: themeColors.border.light, true: themeColors.primary + '80' }}
+                    thumbColor={requiresCredentials ? themeColors.primary : themeColors.text.tertiary}
+                  />
                 </View>
-                <Switch
-                  value={isActive}
-                  onValueChange={setIsActive}
-                  trackColor={{ false: themeColors.border.light, true: themeColors.primary + '80' }}
-                  thumbColor={isActive ? themeColors.primary : themeColors.text.tertiary}
-                />
+
+                <View style={styles.switchCard}>
+                  <View style={styles.switchLabelContainer}>
+                    <Text style={styles.switchLabel}>Requires Verification</Text>
+                    <Text style={styles.switchDescription}>Credentials must be verified by admin</Text>
+                  </View>
+                  <Switch
+                    value={requiresVerification}
+                    onValueChange={setRequiresVerification}
+                    trackColor={{ false: themeColors.border.light, true: themeColors.primary + '80' }}
+                    thumbColor={requiresVerification ? themeColors.primary : themeColors.text.tertiary}
+                  />
+                </View>
+
+                <View style={styles.switchCard}>
+                  <View style={styles.switchLabelContainer}>
+                    <Text style={styles.switchLabel}>Eligible for Live Chat</Text>
+                    <Text style={styles.switchDescription}>Can join live conversations with users</Text>
+                  </View>
+                  <Switch
+                    value={eligibleForLiveChat}
+                    onValueChange={setEligibleForLiveChat}
+                    trackColor={{ false: themeColors.border.light, true: themeColors.primary + '80' }}
+                    thumbColor={eligibleForLiveChat ? themeColors.primary : themeColors.text.tertiary}
+                  />
+                </View>
+
+                <View style={styles.switchCard}>
+                  <View style={styles.switchLabelContainer}>
+                    <Text style={styles.switchLabel}>Approval Required</Text>
+                    <Text style={styles.switchDescription}>Admin must approve professionals</Text>
+                  </View>
+                  <Switch
+                    value={approvalRequired}
+                    onValueChange={setApprovalRequired}
+                    trackColor={{ false: themeColors.border.light, true: themeColors.primary + '80' }}
+                    thumbColor={approvalRequired ? themeColors.primary : themeColors.text.tertiary}
+                  />
+                </View>
+
+                <View style={styles.switchCard}>
+                  <View style={styles.switchLabelContainer}>
+                    <Text style={styles.switchLabel}>Active</Text>
+                    <Text style={styles.switchDescription}>Role is visible and available</Text>
+                  </View>
+                  <Switch
+                    value={isActive}
+                    onValueChange={setIsActive}
+                    trackColor={{ false: themeColors.border.light, true: themeColors.primary + '80' }}
+                    thumbColor={isActive ? themeColors.primary : themeColors.text.tertiary}
+                  />
+                </View>
               </View>
             </View>
           </ScrollView>

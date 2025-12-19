@@ -83,7 +83,7 @@ export default function AdminProfessionalSessionsScreen() {
     }
   };
 
-  const mapSession = (session: any): ProfessionalSession => {
+  const mapSession = (session: any): ProfessionalSession & { user?: any; professional?: any; role?: any } => {
     return {
       id: session.id,
       conversationId: session.conversation_id,
@@ -104,6 +104,9 @@ export default function AdminProfessionalSessionsScreen() {
       endedReason: session.ended_reason,
       createdAt: session.created_at,
       updatedAt: session.updated_at,
+      user: session.user,
+      professional: session.professional,
+      role: session.role,
     };
   };
 
@@ -208,70 +211,98 @@ export default function AdminProfessionalSessionsScreen() {
             </View>
           ) : (
             <View style={styles.sessionsList}>
-              {sessions.map((session) => {
+              {sessions.map((session: any) => {
                 const StatusIcon = getStatusIcon(session.status);
                 const statusColor = getStatusColor(session.status);
+                const sessionWithExtras = session as ProfessionalSession & { user?: any; professional?: any; role?: any };
                 
                 return (
                   <View key={session.id} style={styles.sessionCard}>
+                    {/* Header with Status */}
                     <View style={styles.sessionHeader}>
                       <View style={styles.sessionHeaderLeft}>
                         <View style={[styles.statusIconContainer, { backgroundColor: statusColor + '20' }]}>
-                          <StatusIcon size={20} color={statusColor} />
+                          <StatusIcon size={24} color={statusColor} />
                         </View>
                         <View style={styles.sessionInfo}>
-                          <Text style={styles.sessionStatus}>{session.status.replace('_', ' ').toUpperCase()}</Text>
+                          <View style={styles.sessionStatusRow}>
+                            <Text style={styles.sessionStatus}>
+                              {session.status.replace('_', ' ').toUpperCase()}
+                            </Text>
+                            {sessionWithExtras.role && (
+                              <View style={styles.roleBadge}>
+                                <Text style={styles.roleBadgeText}>{sessionWithExtras.role.name}</Text>
+                              </View>
+                            )}
+                          </View>
                           <Text style={styles.sessionTime}>
-                            Created: {new Date(session.createdAt).toLocaleString()}
+                            {new Date(session.createdAt).toLocaleDateString()} at {new Date(session.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </Text>
                         </View>
                       </View>
                     </View>
 
+                    {/* User and Professional Info */}
+                    <View style={styles.participantsContainer}>
+                      {sessionWithExtras.user && (
+                        <View style={styles.participantItem}>
+                          <Text style={styles.participantLabel}>User:</Text>
+                          <Text style={styles.participantName}>{sessionWithExtras.user.full_name || 'Unknown'}</Text>
+                        </View>
+                      )}
+                      {sessionWithExtras.professional && (
+                        <View style={styles.participantItem}>
+                          <Text style={styles.participantLabel}>Professional:</Text>
+                          <Text style={styles.participantName}>{sessionWithExtras.professional.full_name || 'Unknown'}</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* AI Summary */}
                     {session.aiSummary && (
                       <View style={styles.summaryContainer}>
-                        <Text style={styles.summaryLabel}>AI Summary:</Text>
+                        <Text style={styles.summaryLabel}>AI Summary</Text>
                         <Text style={styles.summaryText}>{session.aiSummary}</Text>
                       </View>
                     )}
 
+                    {/* Session Details Grid */}
                     <View style={styles.sessionDetails}>
-                      <View style={styles.detailRow}>
-                        <Text style={styles.detailLabel}>Session Type:</Text>
-                        <Text style={styles.detailValue}>{session.sessionType.replace('_', ' ')}</Text>
+                      <View style={styles.detailGrid}>
+                        <View style={styles.detailItem}>
+                          <Text style={styles.detailLabel}>Session Type</Text>
+                          <Text style={styles.detailValue}>{session.sessionType.replace('_', ' ')}</Text>
+                        </View>
+                        {session.professionalJoinedAt && (
+                          <View style={styles.detailItem}>
+                            <Text style={styles.detailLabel}>Started</Text>
+                            <Text style={styles.detailValue}>
+                              {new Date(session.professionalJoinedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </Text>
+                          </View>
+                        )}
+                        {session.professionalEndedAt && (
+                          <View style={styles.detailItem}>
+                            <Text style={styles.detailLabel}>Ended</Text>
+                            <Text style={styles.detailValue}>
+                              {new Date(session.professionalEndedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </Text>
+                          </View>
+                        )}
+                        {session.escalationLevel > 0 && (
+                          <View style={styles.detailItem}>
+                            <Text style={styles.detailLabel}>Escalation</Text>
+                            <Text style={styles.detailValue}>Level {session.escalationLevel}</Text>
+                          </View>
+                        )}
                       </View>
-                      {session.professionalJoinedAt && (
-                        <View style={styles.detailRow}>
-                          <Text style={styles.detailLabel}>Professional Joined:</Text>
-                          <Text style={styles.detailValue}>
-                            {new Date(session.professionalJoinedAt).toLocaleString()}
-                          </Text>
-                        </View>
-                      )}
-                      {session.professionalEndedAt && (
-                        <View style={styles.detailRow}>
-                          <Text style={styles.detailLabel}>Ended:</Text>
-                          <Text style={styles.detailValue}>
-                            {new Date(session.professionalEndedAt).toLocaleString()}
-                          </Text>
-                        </View>
-                      )}
+                      
                       {session.endedBy && (
-                        <View style={styles.detailRow}>
-                          <Text style={styles.detailLabel}>Ended By:</Text>
-                          <Text style={styles.detailValue}>{session.endedBy}</Text>
-                        </View>
-                      )}
-                      {session.escalationLevel > 0 && (
-                        <View style={styles.detailRow}>
-                          <Text style={styles.detailLabel}>Escalation Level:</Text>
-                          <Text style={styles.detailValue}>{session.escalationLevel}</Text>
-                        </View>
-                      )}
-                      {session.aiObserverMode && (
-                        <View style={styles.detailRow}>
-                          <Text style={styles.detailLabel}>AI Observer Mode:</Text>
-                          <Text style={styles.detailValue}>Active</Text>
+                        <View style={styles.endedByContainer}>
+                          <Text style={styles.endedByLabel}>Ended by: {session.endedBy}</Text>
+                          {session.endedReason && (
+                            <Text style={styles.endedByReason}>{session.endedReason}</Text>
+                          )}
                         </View>
                       )}
                     </View>
@@ -362,76 +393,163 @@ const createStyles = (colors: any) =>
     },
     sessionCard: {
       backgroundColor: colors.background.primary,
-      borderRadius: 12,
-      padding: 16,
+      borderRadius: 16,
+      padding: 20,
       borderWidth: 1,
       borderColor: colors.border.light,
+      marginBottom: 16,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 8,
+      elevation: 2,
     },
     sessionHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'flex-start',
-      marginBottom: 12,
+      marginBottom: 16,
+      paddingBottom: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border.light,
     },
     sessionHeaderLeft: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 12,
+      gap: 14,
       flex: 1,
     },
     statusIconContainer: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
+      width: 48,
+      height: 48,
+      borderRadius: 24,
       justifyContent: 'center',
       alignItems: 'center',
     },
     sessionInfo: {
       flex: 1,
     },
+    sessionStatusRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 6,
+      flexWrap: 'wrap',
+    },
     sessionStatus: {
-      fontSize: 14,
+      fontSize: 16,
       fontWeight: '700',
       color: colors.text.primary,
-      marginBottom: 4,
       textTransform: 'capitalize',
     },
-    sessionTime: {
+    roleBadge: {
+      backgroundColor: colors.primary + '20',
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 12,
+    },
+    roleBadgeText: {
       fontSize: 12,
-      color: colors.text.tertiary,
+      fontWeight: '600',
+      color: colors.primary,
     },
-    summaryContainer: {
-      backgroundColor: colors.background.secondary,
-      padding: 12,
-      borderRadius: 8,
-      marginBottom: 12,
+    sessionTime: {
+      fontSize: 13,
+      color: colors.text.secondary,
+      fontWeight: '500',
     },
-    summaryLabel: {
+    participantsContainer: {
+      flexDirection: 'row',
+      gap: 16,
+      marginBottom: 16,
+      paddingBottom: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border.light,
+    },
+    participantItem: {
+      flex: 1,
+    },
+    participantLabel: {
       fontSize: 12,
       fontWeight: '600',
       color: colors.text.secondary,
       marginBottom: 4,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    participantName: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.text.primary,
+    },
+    summaryContainer: {
+      backgroundColor: colors.background.secondary,
+      padding: 16,
+      borderRadius: 12,
+      marginBottom: 16,
+      borderLeftWidth: 4,
+      borderLeftColor: colors.primary,
+    },
+    summaryLabel: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.text.secondary,
+      marginBottom: 8,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
     },
     summaryText: {
       fontSize: 14,
       color: colors.text.primary,
-      lineHeight: 20,
+      lineHeight: 22,
+      fontWeight: '400',
     },
     sessionDetails: {
-      gap: 8,
+      gap: 12,
     },
-    detailRow: {
+    detailGrid: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 12,
+    },
+    detailItem: {
+      flex: 1,
+      minWidth: '45%',
+      backgroundColor: colors.background.secondary,
+      padding: 12,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border.light,
     },
     detailLabel: {
-      fontSize: 14,
+      fontSize: 12,
       fontWeight: '600',
       color: colors.text.secondary,
+      marginBottom: 6,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
     },
     detailValue: {
-      fontSize: 14,
+      fontSize: 15,
+      fontWeight: '600',
       color: colors.text.primary,
+    },
+    endedByContainer: {
+      backgroundColor: colors.background.secondary,
+      padding: 12,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border.light,
+    },
+    endedByLabel: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text.primary,
+      marginBottom: 4,
+    },
+    endedByReason: {
+      fontSize: 13,
+      color: colors.text.secondary,
+      fontStyle: 'italic',
     },
   });

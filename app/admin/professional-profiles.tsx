@@ -324,7 +324,7 @@ export default function AdminProfessionalProfilesScreen() {
           onPress={() => setTab('applications')}
         >
           <Text style={[styles.tabText, tab === 'applications' && styles.activeTabText]}>
-            Applications ({applications.filter((a: any) => a.status === 'pending' || a.status === 'under_review').length})
+            Applications ({applications.length})
           </Text>
         </TouchableOpacity>
         <TouchableOpacity

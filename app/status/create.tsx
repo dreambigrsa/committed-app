@@ -119,6 +119,21 @@ export default function CreateStatusScreen() {
   const [previewSize, setPreviewSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const overlayDragging = useRef(false);
   const overlayStartPos = useRef<{ x: number; y: number }>({ x: 0.5, y: 0.35 });
+  const [activeStickerIndex, setActiveStickerIndex] = useState<number | null>(null);
+  const stickerStartPos = useRef<Record<number, { x: number; y: number }>>({});
+  const stickerStartScale = useRef<Record<number, number>>({});
+  const stickerPanResponders = useRef<Record<number, any>>({});
+  const selectedStickersRef = useRef(selectedStickers);
+  const previewSizeRef = useRef(previewSize);
+  
+  // Keep refs in sync with state
+  useEffect(() => {
+    selectedStickersRef.current = selectedStickers;
+  }, [selectedStickers]);
+  
+  useEffect(() => {
+    previewSizeRef.current = previewSize;
+  }, [previewSize]);
 
   const overlayPan = useRef(
     PanResponder.create({
@@ -141,6 +156,110 @@ export default function CreateStatusScreen() {
       },
     })
   ).current;
+
+  // Create PanResponder for a sticker
+  const createStickerPanResponder = (index: number) => {
+    // Store initial touch positions for pinch gesture
+    let initialTouchDistance = 0;
+    let initialScale = 1;
+    
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2;
+      },
+      onPanResponderGrant: (evt) => {
+        setActiveStickerIndex(index);
+        const stickers = selectedStickersRef.current;
+        const size = previewSizeRef.current;
+        const sticker = stickers[index];
+        if (!sticker) return;
+        
+        const currentPosX = sticker.positionX ?? 0.5;
+        const currentPosY = sticker.positionY ?? 0.4;
+        
+        stickerStartPos.current[index] = {
+          x: currentPosX * (size.w || width),
+          y: currentPosY * (size.h || height),
+        };
+        initialScale = sticker.scale ?? 1.0;
+        stickerStartScale.current[index] = initialScale;
+        
+        // Calculate initial distance for pinch gesture
+        if (evt.nativeEvent.touches.length === 2) {
+          const touch1 = evt.nativeEvent.touches[0];
+          const touch2 = evt.nativeEvent.touches[1];
+          initialTouchDistance = Math.sqrt(
+            Math.pow(touch2.pageX - touch1.pageX, 2) + 
+            Math.pow(touch2.pageY - touch1.pageY, 2)
+          );
+        }
+      },
+      onPanResponderMove: (evt, gestureState) => {
+        const size = previewSizeRef.current;
+        if (!size.w || !size.h) return;
+        
+        const stickers = selectedStickersRef.current;
+        const sticker = stickers[index];
+        if (!sticker) return;
+        const startPos = stickerStartPos.current[index] || { x: 0, y: 0 };
+        const startScale = stickerStartScale.current[index] || 1.0;
+        
+        // Handle two-finger pinch for scaling
+        if (evt.nativeEvent.touches.length === 2) {
+          const touch1 = evt.nativeEvent.touches[0];
+          const touch2 = evt.nativeEvent.touches[1];
+          const currentDistance = Math.sqrt(
+            Math.pow(touch2.pageX - touch1.pageX, 2) + 
+            Math.pow(touch2.pageY - touch1.pageY, 2)
+          );
+          
+          if (initialTouchDistance > 0) {
+            const scaleFactor = currentDistance / initialTouchDistance;
+            const newScale = Math.max(0.3, Math.min(5.0, startScale * scaleFactor));
+            
+            setSelectedStickers((prev) => {
+              const updated = [...prev];
+              if (updated[index]) {
+                updated[index] = {
+                  ...updated[index],
+                  scale: newScale,
+                };
+              }
+              return updated;
+            });
+          }
+        } else {
+          // Single finger drag
+          const currentX = sticker.positionX ?? 0.5;
+          const currentY = sticker.positionY ?? 0.4;
+          
+          const newX = Math.max(0, Math.min(1, currentX + gestureState.dx / size.w));
+          const newY = Math.max(0, Math.min(1, currentY + gestureState.dy / size.h));
+          
+          setSelectedStickers((prev) => {
+            const updated = [...prev];
+            if (updated[index]) {
+              updated[index] = {
+                ...updated[index],
+                positionX: newX,
+                positionY: newY,
+              };
+            }
+            return updated;
+          });
+        }
+      },
+      onPanResponderRelease: () => {
+        setActiveStickerIndex(null);
+        initialTouchDistance = 0;
+      },
+      onPanResponderTerminate: () => {
+        setActiveStickerIndex(null);
+        initialTouchDistance = 0;
+      },
+    });
+  };
 
   const bgColor = isDark ? '#000' : '#fff';
   const textColor = isDark ? '#fff' : '#000';
@@ -709,24 +828,43 @@ export default function CreateStatusScreen() {
               
               {/* Stickers */}
               {selectedStickers.length > 0 && (
-                <View style={styles.previewStickersContainer} pointerEvents="none">
-                  {selectedStickers.map((sticker, index) => (
-                    <Image
-                      key={sticker.id || index}
-                      source={{ uri: sticker.imageUrl }}
-                      style={[styles.previewSticker, {
-                        left: `${(sticker.positionX ?? (0.5 + (index % 2) * 0.2)) * 100}%`,
-                        top: `${(sticker.positionY ?? (0.4 + (index * 0.15))) * 100}%`,
-                        transform: [
-                          { translateX: -40 },
-                          { translateY: -40 },
-                          { scale: sticker.scale ?? 1.0 },
-                          { rotate: `${sticker.rotation ?? 0}deg` },
-                        ],
-                      }]}
-                      contentFit="contain"
-                    />
-                  ))}
+                <View style={styles.previewStickersContainer}>
+                  {selectedStickers.map((sticker, index) => {
+                    if (!stickerPanResponders.current[index]) {
+                      stickerPanResponders.current[index] = createStickerPanResponder(index);
+                    }
+                    const panResponder = stickerPanResponders.current[index];
+                    
+                    return (
+                      <View
+                        key={sticker.id || index}
+                        style={[styles.previewStickerWrapper, {
+                          left: `${(sticker.positionX ?? (0.5 + (index % 2) * 0.2)) * 100}%`,
+                          top: `${(sticker.positionY ?? (0.4 + (index * 0.15))) * 100}%`,
+                          transform: [
+                            { translateX: -40 },
+                            { translateY: -40 },
+                          ],
+                        }]}
+                        {...panResponder.panHandlers}
+                      >
+                        <Image
+                          source={{ uri: sticker.imageUrl }}
+                          style={[styles.previewSticker, {
+                            transform: [
+                              { scale: sticker.scale ?? 1.0 },
+                              { rotate: `${sticker.rotation ?? 0}deg` },
+                            ],
+                            opacity: activeStickerIndex === index ? 0.8 : 1,
+                          }]}
+                          contentFit="contain"
+                        />
+                        {activeStickerIndex === index && (
+                          <View style={styles.stickerSelectionIndicator} />
+                        )}
+                      </View>
+                    );
+                  })}
                 </View>
               )}
             </View>
@@ -747,24 +885,43 @@ export default function CreateStatusScreen() {
 
               {/* Stickers on Media */}
               {selectedStickers.length > 0 && (
-                <View style={styles.previewStickersContainer} pointerEvents="none">
-                  {selectedStickers.map((sticker, index) => (
-                    <Image
-                      key={sticker.id || index}
-                      source={{ uri: sticker.imageUrl }}
-                      style={[styles.previewSticker, {
-                        left: `${(sticker.positionX ?? (0.5 + (index % 2) * 0.2)) * 100}%`,
-                        top: `${(sticker.positionY ?? (0.3 + (index * 0.15))) * 100}%`,
-                        transform: [
-                          { translateX: -40 },
-                          { translateY: -40 },
-                          { scale: sticker.scale ?? 1.0 },
-                          { rotate: `${sticker.rotation ?? 0}deg` },
-                        ],
-                      }]}
-                      contentFit="contain"
-                    />
-                  ))}
+                <View style={styles.previewStickersContainer}>
+                  {selectedStickers.map((sticker, index) => {
+                    if (!stickerPanResponders.current[index]) {
+                      stickerPanResponders.current[index] = createStickerPanResponder(index);
+                    }
+                    const panResponder = stickerPanResponders.current[index];
+                    
+                    return (
+                      <View
+                        key={sticker.id || index}
+                        style={[styles.previewStickerWrapper, {
+                          left: `${(sticker.positionX ?? (0.5 + (index % 2) * 0.2)) * 100}%`,
+                          top: `${(sticker.positionY ?? (0.3 + (index * 0.15))) * 100}%`,
+                          transform: [
+                            { translateX: -40 },
+                            { translateY: -40 },
+                          ],
+                        }]}
+                        {...panResponder.panHandlers}
+                      >
+                        <Image
+                          source={{ uri: sticker.imageUrl }}
+                          style={[styles.previewSticker, {
+                            transform: [
+                              { scale: sticker.scale ?? 1.0 },
+                              { rotate: `${sticker.rotation ?? 0}deg` },
+                            ],
+                            opacity: activeStickerIndex === index ? 0.8 : 1,
+                          }]}
+                          contentFit="contain"
+                        />
+                        {activeStickerIndex === index && (
+                          <View style={styles.stickerSelectionIndicator} />
+                        )}
+                      </View>
+                    );
+                  })}
                 </View>
               )}
 
@@ -1120,24 +1277,43 @@ export default function CreateStatusScreen() {
 
           {/* Stickers on Text Screen */}
           {selectedStickers.length > 0 && (
-            <View style={styles.textStickersContainer} pointerEvents="none">
-              {selectedStickers.map((sticker, index) => (
-                <Image
-                  key={sticker.id || index}
-                  source={{ uri: sticker.imageUrl }}
-                  style={[styles.textScreenSticker, {
-                    left: `${(sticker.positionX ?? (0.5 + (index % 2) * 0.2)) * 100}%`,
-                    top: `${(sticker.positionY ?? (0.4 + (index * 0.15))) * 100}%`,
-                    transform: [
-                      { translateX: -40 },
-                      { translateY: -40 },
-                      { scale: sticker.scale ?? 1.0 },
-                      { rotate: `${sticker.rotation ?? 0}deg` },
-                    ],
-                  }]}
-                  contentFit="contain"
-                />
-              ))}
+            <View style={styles.textStickersContainer}>
+              {selectedStickers.map((sticker, index) => {
+                if (!stickerPanResponders.current[index]) {
+                  stickerPanResponders.current[index] = createStickerPanResponder(index);
+                }
+                const panResponder = stickerPanResponders.current[index];
+                
+                return (
+                  <View
+                    key={sticker.id || index}
+                    style={[styles.textScreenStickerWrapper, {
+                      left: `${(sticker.positionX ?? (0.5 + (index % 2) * 0.2)) * 100}%`,
+                      top: `${(sticker.positionY ?? (0.4 + (index * 0.15))) * 100}%`,
+                      transform: [
+                        { translateX: -40 },
+                        { translateY: -40 },
+                      ],
+                    }]}
+                    {...panResponder.panHandlers}
+                  >
+                    <Image
+                      source={{ uri: sticker.imageUrl }}
+                      style={[styles.textScreenSticker, {
+                        transform: [
+                          { scale: sticker.scale ?? 1.0 },
+                          { rotate: `${sticker.rotation ?? 0}deg` },
+                        ],
+                        opacity: activeStickerIndex === index ? 0.8 : 1,
+                      }]}
+                      contentFit="contain"
+                    />
+                    {activeStickerIndex === index && (
+                      <View style={styles.stickerSelectionIndicator} />
+                    )}
+                  </View>
+                );
+              })}
             </View>
           )}
         </View>
@@ -1813,10 +1989,26 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  previewSticker: {
+  previewStickerWrapper: {
     position: 'absolute',
     width: 80,
     height: 80,
+    zIndex: 100,
+  },
+  previewSticker: {
+    width: 80,
+    height: 80,
+  },
+  stickerSelectionIndicator: {
+    position: 'absolute',
+    top: -4,
+    left: -4,
+    right: -4,
+    bottom: -4,
+    borderWidth: 2,
+    borderColor: '#fff',
+    borderRadius: 4,
+    borderStyle: 'dashed',
   },
   textStickersContainer: {
     position: 'absolute',
@@ -1826,10 +2018,14 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: '100%',
     height: '100%',
-    pointerEvents: 'none',
+  },
+  textScreenStickerWrapper: {
+    position: 'absolute',
+    width: 80,
+    height: 80,
+    zIndex: 100,
   },
   textScreenSticker: {
-    position: 'absolute',
     width: 80,
     height: 80,
   },

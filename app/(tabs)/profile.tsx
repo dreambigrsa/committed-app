@@ -26,6 +26,7 @@ import {
   ChevronRight,
   MessageSquare,
   Calendar,
+  Star,
 } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';

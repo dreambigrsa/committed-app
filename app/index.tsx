@@ -52,25 +52,29 @@ export default function LandingScreen() {
     }
   }, [currentUser, hasCompletedOnboarding, isLoading, router]);
 
+  useEffect(() => {
+    // Only run animations if we're not showing the loading screen
+    if (!(currentUser && (isLoading || hasCompletedOnboarding === null))) {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [fadeAnim, slideAnim, currentUser, isLoading, hasCompletedOnboarding]);
+
   // Show loading screen while user data is loading or onboarding status is being checked
+  // This must come AFTER all hooks are called
   if (currentUser && (isLoading || hasCompletedOnboarding === null)) {
     return <LoadingScreen visible={true} />;
   }
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 800,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [fadeAnim, slideAnim]);
 
   const features = [
     {

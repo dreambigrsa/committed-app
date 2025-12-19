@@ -420,6 +420,15 @@ export default function ProfessionalAvailabilityScreen() {
             </>
           )}
         </TouchableOpacity>
+
+        {/* View Session Requests Button */}
+        <TouchableOpacity
+          style={styles.sessionRequestsButton}
+          onPress={() => router.push('/professional/session-requests' as any)}
+        >
+          <Users size={20} color={themeColors.primary} />
+          <Text style={styles.sessionRequestsButtonText}>View Session Requests</Text>
+        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );

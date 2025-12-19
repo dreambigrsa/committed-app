@@ -35,10 +35,17 @@ export default function LandingScreen() {
 
   useEffect(() => {
     if (currentUser && !isLoading) {
+      // Only redirect when onboarding status has been loaded (not null)
+      // hasCompletedOnboarding will be null initially, then set to true/false after loading
+      if (hasCompletedOnboarding === null) {
+        // Still loading onboarding status, don't redirect yet
+        return;
+      }
+      
       // Check if user needs to complete onboarding
       if (hasCompletedOnboarding === false) {
         router.replace('/onboarding');
-      } else {
+      } else if (hasCompletedOnboarding === true) {
         router.replace('/(tabs)/home');
       }
     }

@@ -37,8 +37,12 @@ export default function AuthScreen() {
 
   useEffect(() => {
     if (currentUser) {
-      // Redirect to index which will check onboarding status
-      router.replace('/');
+      // Small delay to ensure user data and onboarding status are loaded
+      // before redirecting - index.tsx will handle the redirect based on onboarding status
+      const timer = setTimeout(() => {
+        router.replace('/');
+      }, 100);
+      return () => clearTimeout(timer);
     }
   }, [currentUser, router]);
 
@@ -201,8 +205,11 @@ export default function AuthScreen() {
         }
 
         await login(formData.email, formData.password);
-        // Redirect to index which will check onboarding status
-        router.replace('/');
+        // Wait a moment for user data and onboarding status to load
+        // then redirect to index which will check onboarding status
+        setTimeout(() => {
+          router.replace('/');
+        }, 200);
       }
     } catch (error: any) {
       console.error('Auth error:', error);

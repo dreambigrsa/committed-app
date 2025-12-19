@@ -4441,6 +4441,19 @@ export const [AppContext, useApp] = createContextHook(() => {
           postId = pid;
           break;
         }
+        
+        // Search in replies
+        for (const comment of commentList) {
+          if (comment.replies) {
+            const reply = comment.replies.find(r => r.id === commentId);
+            if (reply) {
+              foundComment = reply;
+              postId = pid;
+              break;
+            }
+          }
+        }
+        if (foundComment) break;
       }
 
       if (!foundComment || foundComment.userId !== currentUser.id || !postId) {
@@ -4464,12 +4477,28 @@ export const [AppContext, useApp] = createContextHook(() => {
 
       if (error) throw error;
 
-      const updatedComments = {
-        ...comments,
-        [postId]: comments[postId].map(c => 
+      const updatedComments = { ...comments };
+      const postCommentsList = comments[postId];
+      const isReply = foundComment.parentCommentId !== undefined;
+      
+      if (isReply) {
+        const parentId = foundComment.parentCommentId!;
+        updatedComments[postId] = postCommentsList.map(comment => {
+          if (comment.id === parentId) {
+            return {
+              ...comment,
+              replies: (comment.replies || []).map(c => 
+                c.id === commentId ? { ...c, content } : c
+              ),
+            };
+          }
+          return comment;
+        });
+      } else {
+        updatedComments[postId] = postCommentsList.map(c => 
           c.id === commentId ? { ...c, content } : c
-        ),
-      };
+        );
+      }
       setComments(updatedComments);
       
       await logActivity('edit_comment', 'comment', commentId);

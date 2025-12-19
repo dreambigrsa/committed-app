@@ -3772,6 +3772,19 @@ export const [AppContext, useApp] = createContextHook(() => {
 
       if (error) throw error;
 
+      // Fetch sticker image URL if it's a sticker comment
+      let stickerImageUrl: string | undefined;
+      if (data.sticker_id && messageType === 'sticker') {
+        const { data: stickerData } = await supabase
+          .from('stickers')
+          .select('image_url')
+          .eq('id', data.sticker_id)
+          .single();
+        if (stickerData) {
+          stickerImageUrl = stickerData.image_url;
+        }
+      }
+
       const newComment: ReelComment = {
         id: data.id,
         reelId,
@@ -3780,6 +3793,7 @@ export const [AppContext, useApp] = createContextHook(() => {
         userAvatar: currentUser.profilePicture,
         content: messageType === 'sticker' ? '' : content,
         stickerId: data.sticker_id || undefined,
+        stickerImageUrl,
         messageType: (data.message_type || 'text') as 'text' | 'sticker',
         likes: [],
         createdAt: data.created_at,
@@ -3890,6 +3904,11 @@ export const [AppContext, useApp] = createContextHook(() => {
 
       if (!foundComment || foundComment.userId !== currentUser.id || !reelId) {
         throw new Error('Unauthorized');
+      }
+
+      // Prevent editing sticker comments - they can only be deleted
+      if (foundComment.messageType === 'sticker') {
+        throw new Error('Sticker comments cannot be edited');
       }
 
       const { data, error } = await supabase
@@ -4426,6 +4445,11 @@ export const [AppContext, useApp] = createContextHook(() => {
 
       if (!foundComment || foundComment.userId !== currentUser.id || !postId) {
         throw new Error('Unauthorized');
+      }
+
+      // Prevent editing sticker comments - they can only be deleted
+      if (foundComment.messageType === 'sticker') {
+        throw new Error('Sticker comments cannot be edited');
       }
 
       const { data, error } = await supabase

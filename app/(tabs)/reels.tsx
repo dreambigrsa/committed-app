@@ -2332,6 +2332,11 @@ function ReelCommentsModal({
   };
 
   const handleEditComment = (comment: any) => {
+    // Prevent editing sticker comments
+    if (comment.messageType === 'sticker') {
+      Alert.alert('Cannot Edit', 'Sticker comments cannot be edited. You can delete them instead.');
+      return;
+    }
     setEditingComment(comment.id);
     setEditCommentText(comment.content);
   };
@@ -2576,8 +2581,13 @@ function ReelCommentsModal({
                                         <>
                                           <TouchableOpacity
                                             onPress={() => {
-                                              setEditingComment(reply.id);
-                                              setEditCommentText(reply.content);
+                                            // Prevent editing sticker comments
+                                            if (reply.messageType === 'sticker') {
+                                              Alert.alert('Cannot Edit', 'Sticker comments cannot be edited. You can delete them instead.');
+                                              return;
+                                            }
+                                            setEditingComment(reply.id);
+                                            setEditCommentText(reply.content);
                                             }}
                                           >
                                             <Edit2 size={12} color={colors.text.secondary} />

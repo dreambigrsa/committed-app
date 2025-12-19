@@ -122,6 +122,7 @@ export default function CreateStatusScreen() {
   const [activeStickerIndex, setActiveStickerIndex] = useState<number | null>(null);
   const stickerStartPos = useRef<Record<number, { x: number; y: number }>>({});
   const stickerStartScale = useRef<Record<number, number>>({});
+  const stickerInitialTouchDistance = useRef<Record<number, number>>({});
   const stickerPanResponders = useRef<Record<number, any>>({});
   const selectedStickersRef = useRef(selectedStickers);
   const previewSizeRef = useRef(previewSize);
@@ -159,10 +160,6 @@ export default function CreateStatusScreen() {
 
   // Create PanResponder for a sticker
   const createStickerPanResponder = (index: number) => {
-    // Store initial touch positions for pinch gesture
-    let initialTouchDistance = 0;
-    let initialScale = 1;
-    
     return PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (_, gestureState) => {
@@ -178,21 +175,23 @@ export default function CreateStatusScreen() {
         const currentPosX = sticker.positionX ?? 0.5;
         const currentPosY = sticker.positionY ?? 0.4;
         
+        // Store initial position in pixels (absolute position)
         stickerStartPos.current[index] = {
           x: currentPosX * (size.w || width),
           y: currentPosY * (size.h || height),
         };
-        initialScale = sticker.scale ?? 1.0;
-        stickerStartScale.current[index] = initialScale;
+        stickerStartScale.current[index] = sticker.scale ?? 1.0;
         
         // Calculate initial distance for pinch gesture
         if (evt.nativeEvent.touches.length === 2) {
           const touch1 = evt.nativeEvent.touches[0];
           const touch2 = evt.nativeEvent.touches[1];
-          initialTouchDistance = Math.sqrt(
+          stickerInitialTouchDistance.current[index] = Math.sqrt(
             Math.pow(touch2.pageX - touch1.pageX, 2) + 
             Math.pow(touch2.pageY - touch1.pageY, 2)
           );
+        } else {
+          stickerInitialTouchDistance.current[index] = 0;
         }
       },
       onPanResponderMove: (evt, gestureState) => {
@@ -204,9 +203,10 @@ export default function CreateStatusScreen() {
         if (!sticker) return;
         const startPos = stickerStartPos.current[index] || { x: 0, y: 0 };
         const startScale = stickerStartScale.current[index] || 1.0;
+        const initialDistance = stickerInitialTouchDistance.current[index] || 0;
         
         // Handle two-finger pinch for scaling
-        if (evt.nativeEvent.touches.length === 2) {
+        if (evt.nativeEvent.touches.length === 2 && initialDistance > 0) {
           const touch1 = evt.nativeEvent.touches[0];
           const touch2 = evt.nativeEvent.touches[1];
           const currentDistance = Math.sqrt(
@@ -214,28 +214,27 @@ export default function CreateStatusScreen() {
             Math.pow(touch2.pageY - touch1.pageY, 2)
           );
           
-          if (initialTouchDistance > 0) {
-            const scaleFactor = currentDistance / initialTouchDistance;
-            const newScale = Math.max(0.3, Math.min(5.0, startScale * scaleFactor));
-            
-            setSelectedStickers((prev) => {
-              const updated = [...prev];
-              if (updated[index]) {
-                updated[index] = {
-                  ...updated[index],
-                  scale: newScale,
-                };
-              }
-              return updated;
-            });
-          }
-        } else {
-          // Single finger drag
-          const currentX = sticker.positionX ?? 0.5;
-          const currentY = sticker.positionY ?? 0.4;
+          const scaleFactor = currentDistance / initialDistance;
+          const newScale = Math.max(0.3, Math.min(5.0, startScale * scaleFactor));
           
-          const newX = Math.max(0, Math.min(1, currentX + gestureState.dx / size.w));
-          const newY = Math.max(0, Math.min(1, currentY + gestureState.dy / size.h));
+          setSelectedStickers((prev) => {
+            const updated = [...prev];
+            if (updated[index]) {
+              updated[index] = {
+                ...updated[index],
+                scale: newScale,
+              };
+            }
+            return updated;
+          });
+        } else if (evt.nativeEvent.touches.length === 1) {
+          // Single finger drag - calculate absolute position from start position
+          const newPixelX = startPos.x + gestureState.dx;
+          const newPixelY = startPos.y + gestureState.dy;
+          
+          // Convert to normalized coordinates (0-1)
+          const newX = Math.max(0, Math.min(1, newPixelX / size.w));
+          const newY = Math.max(0, Math.min(1, newPixelY / size.h));
           
           setSelectedStickers((prev) => {
             const updated = [...prev];
@@ -252,11 +251,9 @@ export default function CreateStatusScreen() {
       },
       onPanResponderRelease: () => {
         setActiveStickerIndex(null);
-        initialTouchDistance = 0;
       },
       onPanResponderTerminate: () => {
         setActiveStickerIndex(null);
-        initialTouchDistance = 0;
       },
     });
   };
@@ -862,6 +859,18 @@ export default function CreateStatusScreen() {
                         {activeStickerIndex === index && (
                           <View style={styles.stickerSelectionIndicator} />
                         )}
+                        <TouchableOpacity
+                          style={styles.removeStickerButton}
+                          onPress={() => {
+                            setSelectedStickers((prev) => prev.filter((_, i) => i !== index));
+                            if (activeStickerIndex === index) {
+                              setActiveStickerIndex(null);
+                            }
+                          }}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                          <X size={16} color="#fff" />
+                        </TouchableOpacity>
                       </View>
                     );
                   })}
@@ -919,6 +928,18 @@ export default function CreateStatusScreen() {
                         {activeStickerIndex === index && (
                           <View style={styles.stickerSelectionIndicator} />
                         )}
+                        <TouchableOpacity
+                          style={styles.removeStickerButton}
+                          onPress={() => {
+                            setSelectedStickers((prev) => prev.filter((_, i) => i !== index));
+                            if (activeStickerIndex === index) {
+                              setActiveStickerIndex(null);
+                            }
+                          }}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                          <X size={16} color="#fff" />
+                        </TouchableOpacity>
                       </View>
                     );
                   })}
@@ -1311,6 +1332,18 @@ export default function CreateStatusScreen() {
                     {activeStickerIndex === index && (
                       <View style={styles.stickerSelectionIndicator} />
                     )}
+                    <TouchableOpacity
+                      style={styles.removeStickerButton}
+                      onPress={() => {
+                        setSelectedStickers((prev) => prev.filter((_, i) => i !== index));
+                        if (activeStickerIndex === index) {
+                          setActiveStickerIndex(null);
+                        }
+                      }}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <X size={16} color="#fff" />
+                    </TouchableOpacity>
                   </View>
                 );
               })}
@@ -2009,6 +2042,18 @@ const styles = StyleSheet.create({
     borderColor: '#fff',
     borderRadius: 4,
     borderStyle: 'dashed',
+  },
+  removeStickerButton: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
   },
   textStickersContainer: {
     position: 'absolute',

@@ -1916,6 +1916,11 @@ function CommentsModal({
   };
 
   const handleEditComment = (comment: any) => {
+    // Prevent editing sticker comments
+    if (comment.messageType === 'sticker') {
+      Alert.alert('Cannot Edit', 'Sticker comments cannot be edited. You can delete them instead.');
+      return;
+    }
     setEditingComment(comment.id);
     setEditCommentText(comment.content);
   };
@@ -2154,6 +2159,11 @@ function CommentsModal({
                                       <>
                                         <TouchableOpacity
                                           onPress={() => {
+                                            // Prevent editing sticker comments
+                                            if (reply.messageType === 'sticker') {
+                                              Alert.alert('Cannot Edit', 'Sticker comments cannot be edited. You can delete them instead.');
+                                              return;
+                                            }
                                             setEditingComment(reply.id);
                                             setEditCommentText(reply.content);
                                           }}

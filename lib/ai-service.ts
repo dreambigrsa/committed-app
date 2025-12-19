@@ -832,10 +832,18 @@ export async function getAIResponse(
      */
     const shouldUseDirectOpenAI = __DEV__ && !!(await getOpenAIApiKeyAsync());
 
-    // Get user learnings if userId provided
+    // Get user learnings if userId provided (with timeout to avoid blocking)
     let userLearnings: UserLearnings | null = null;
     if (userId) {
-      userLearnings = await getUserLearnings(userId);
+      // Try to get learnings quickly, but don't block if it's slow
+      try {
+        userLearnings = await Promise.race([
+          getUserLearnings(userId),
+          new Promise<UserLearnings | null>((resolve) => setTimeout(() => resolve(null), 200)), // 200ms timeout
+        ]);
+      } catch (error) {
+        console.error('Error getting user learnings:', error);
+      }
       
       // Analyze conversation and update learnings asynchronously (don't wait)
       analyzeConversationForLearnings(userMessage, conversationHistory, userId)
@@ -940,7 +948,7 @@ async function getOpenAIResponse(
 
     const messages = [
       { role: 'system', content: systemPrompt },
-      ...conversationHistory.slice(-20), // Keep last 20 messages for better context and flow
+      ...conversationHistory.slice(-15), // Keep last 15 messages for context (reduced from 20 for speed)
       { role: 'user', content: userMessage },
     ];
 
@@ -960,8 +968,9 @@ async function getOpenAIResponse(
       body: JSON.stringify({
         model: 'gpt-3.5-turbo',
         messages: messages,
-        temperature: 0.8, // Slightly higher for more natural conversation while maintaining coherence
-        max_tokens: 500, // Increased to allow for thorough, thoughtful responses
+        temperature: 0.7, // Slightly reduced for faster, more focused responses
+        max_tokens: 300, // Reduced for faster responses (still sufficient for quality)
+        stream: false, // Set to false for now (streaming would require more complex handling)
       }),
     });
 
@@ -1016,10 +1025,12 @@ async function getOpenAIResponseViaSupabaseFunction(params: {
     const { data, error } = await supabase.functions.invoke('ai-chat', {
       body: {
         userMessage: params.userMessage,
-        conversationHistory: params.conversationHistory.slice(-10),
+        conversationHistory: params.conversationHistory.slice(-10), // Already optimized to 10
         systemPrompt: params.systemPrompt,
         userId: params.userId,
       },
+      // Add timeout to prevent hanging
+      signal: AbortSignal.timeout(30000), // 30 second timeout
     });
     if (error) throw error;
     if (!data?.success) throw new Error(data?.error || 'AI function failed');

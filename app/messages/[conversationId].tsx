@@ -1054,7 +1054,7 @@ export default function ConversationDetailScreen() {
             // Get conversation history for context
             const existingMessages = localMessages || [];
             const conversationHistory = existingMessages
-              .slice(-20) // Last 20 messages for context
+              .slice(-15) // Last 15 messages for context (reduced for speed)
               .map((msg: any) => ({
                 role: msg.senderId === currentUser.id ? 'user' as const : 'assistant' as const,
                 content: msg.content || '',

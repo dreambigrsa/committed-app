@@ -139,7 +139,7 @@ export default function BecomeProfessionalScreen() {
       Alert.alert('Please Select a Role', 'Choose a professional role to continue');
       return;
     }
-    if (currentStep === 2 && !bio.trim()) {
+    if (currentStep === 3 && !bio.trim()) {
       Alert.alert('Bio Required', 'Please provide a professional bio');
       return;
     }
@@ -407,8 +407,11 @@ export default function BecomeProfessionalScreen() {
 
             <View style={styles.infoCard}>
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Full Name</Text>
-                <View style={styles.infoValueContainer}>
+                <View style={styles.infoLabelContainer}>
+                  <Text style={styles.infoLabel}>Full Name</Text>
+                  <Text style={styles.infoLabelHint}>This will appear on your professional profile</Text>
+                </View>
+                <View style={styles.infoInputContainer}>
                   <TextInput
                     style={styles.infoInput}
                     value={fullName}
@@ -416,18 +419,23 @@ export default function BecomeProfessionalScreen() {
                     placeholder="Your full name"
                     placeholderTextColor={themeColors.text.tertiary}
                   />
-                  <Edit2 size={18} color={themeColors.text.secondary} />
+                  <TouchableOpacity style={styles.editButton}>
+                    <Edit2 size={16} color={themeColors.primary} />
+                  </TouchableOpacity>
                 </View>
               </View>
 
               <View style={styles.infoDivider} />
 
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Email</Text>
+                <View style={styles.infoLabelContainer}>
+                  <Text style={styles.infoLabel}>Email Address</Text>
+                  <Text style={styles.infoLabelHint}>Verified and secure</Text>
+                </View>
                 <View style={styles.infoValueContainer}>
-                  <Text style={styles.infoValue}>{email}</Text>
+                  <Text style={styles.infoValue} numberOfLines={1}>{email}</Text>
                   <View style={styles.verifiedBadge}>
-                    <CheckCircle2 size={16} color={themeColors.secondary} />
+                    <CheckCircle2 size={14} color={themeColors.secondary} />
                     <Text style={styles.verifiedText}>Verified</Text>
                   </View>
                 </View>
@@ -436,17 +444,21 @@ export default function BecomeProfessionalScreen() {
               <View style={styles.infoDivider} />
 
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Phone Number</Text>
-                <View style={styles.infoValueContainer}>
+                <View style={styles.infoLabelContainer}>
+                  <Text style={styles.infoLabel}>Phone Number</Text>
+                  <Text style={styles.infoLabelHint}>Used for verification and notifications</Text>
+                </View>
+                <View style={styles.infoInputContainer}>
                   <TextInput
                     style={styles.infoInput}
                     value={phoneNumber}
                     onChangeText={setPhoneNumber}
-                    placeholder="Your phone number"
+                    placeholder="+1 (555) 123-4567"
                     placeholderTextColor={themeColors.text.tertiary}
+                    keyboardType="phone-pad"
                   />
                   <View style={styles.verifiedBadge}>
-                    <CheckCircle2 size={16} color={themeColors.secondary} />
+                    <CheckCircle2 size={14} color={themeColors.secondary} />
                     <Text style={styles.verifiedText}>Verified</Text>
                   </View>
                 </View>
@@ -831,52 +843,85 @@ const createStyles = (colors: any) => StyleSheet.create({
   },
   infoCard: {
     backgroundColor: colors.background.primary,
-    borderRadius: 16,
-    padding: 24,
+    borderRadius: 20,
+    padding: 20,
     marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   infoRow: {
-    paddingVertical: 16,
+    paddingVertical: 18,
+  },
+  infoLabelContainer: {
+    marginBottom: 10,
   },
   infoLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text.secondary,
-    marginBottom: 8,
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text.primary,
+    marginBottom: 4,
+  },
+  infoLabelHint: {
+    fontSize: 12,
+    color: colors.text.tertiary,
+    fontWeight: '500',
   },
   infoValueContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 12,
+  },
+  infoInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background.secondary,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1.5,
+    borderColor: colors.border.light,
+    gap: 10,
   },
   infoInput: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 15,
     color: colors.text.primary,
     fontWeight: '600',
+    padding: 0,
+  },
+  editButton: {
+    padding: 4,
   },
   infoValue: {
-    fontSize: 16,
+    flex: 1,
+    fontSize: 15,
     color: colors.text.primary,
     fontWeight: '600',
   },
   verifiedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.secondary + '20',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    gap: 5,
+    backgroundColor: colors.secondary + '15',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    flexShrink: 0,
   },
   verifiedText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
     color: colors.secondary,
+    letterSpacing: 0.2,
   },
   infoDivider: {
     height: 1,
     backgroundColor: colors.border.light,
+    marginVertical: 4,
   },
   formCard: {
     backgroundColor: colors.background.primary,
@@ -908,14 +953,17 @@ const createStyles = (colors: any) => StyleSheet.create({
     color: colors.text.primary,
   },
   textArea: {
-    minHeight: 150,
+    minHeight: 160,
     textAlignVertical: 'top',
+    paddingTop: 14,
+    lineHeight: 22,
   },
   characterCount: {
     fontSize: 12,
     color: colors.text.tertiary,
     textAlign: 'right',
-    marginTop: 6,
+    marginTop: 8,
+    fontWeight: '500',
   },
   inputWithIcon: {
     flexDirection: 'row',

@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useMemo } from 'react';
+import React, { useRef, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -11,9 +11,10 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { Shield, Heart, CheckCircle2, Clock, Plus, AlertCircle, Award, Calendar, Settings } from 'lucide-react-native';
+import { Shield, Heart, CheckCircle2, Clock, Plus, AlertCircle, Award, Calendar, Settings, Briefcase, ArrowRight } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { supabase } from '@/lib/supabase';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -21,6 +22,8 @@ export default function HomeScreen() {
   const { colors } = useTheme();
   const relationship = getCurrentUserRelationship();
   const pendingRequests = getPendingRequests();
+  const [isProfessional, setIsProfessional] = useState(false);
+  const [isCheckingProfessional, setIsCheckingProfessional] = useState(true);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
@@ -28,6 +31,30 @@ export default function HomeScreen() {
   const heartFadeAnim = useRef(new Animated.Value(0)).current;
 
   const styles = useMemo(() => createStyles(colors), [colors]);
+
+  useEffect(() => {
+    checkProfessionalStatus();
+  }, [currentUser]);
+
+  const checkProfessionalStatus = async () => {
+    if (!currentUser) {
+      setIsCheckingProfessional(false);
+      return;
+    }
+    try {
+      const { data } = await supabase
+        .from('professional_profiles')
+        .select('id, approval_status')
+        .eq('user_id', currentUser.id)
+        .eq('approval_status', 'approved')
+        .maybeSingle();
+      setIsProfessional(!!data);
+    } catch (error) {
+      console.error('Error checking professional status:', error);
+    } finally {
+      setIsCheckingProfessional(false);
+    }
+  };
 
   useEffect(() => {
     Animated.parallel([
@@ -442,6 +469,43 @@ export default function HomeScreen() {
               </Text>
             </Animated.View>
           </>
+        )}
+
+        {!isCheckingProfessional && !isProfessional && (
+          <Animated.View
+            style={[
+              styles.card,
+              {
+                opacity: fadeAnim,
+                transform: [{ scale: scaleAnim }],
+              },
+            ]}
+          >
+            <View style={styles.cardHeader}>
+              <View style={styles.cardTitleContainer}>
+                <Briefcase size={20} color={colors.accent} />
+                <Text style={styles.cardTitle}>Become a Professional</Text>
+              </View>
+            </View>
+
+            <View style={styles.professionalCardContent}>
+              <View style={styles.professionalIconContainer}>
+                <Briefcase size={40} color={colors.primary} />
+              </View>
+              <Text style={styles.professionalCardTitle}>Share Your Expertise</Text>
+              <Text style={styles.professionalCardDescription}>
+                Join our network of verified professionals and help others with your knowledge and experience. Get started in just a few simple steps.
+              </Text>
+              <TouchableOpacity
+                style={styles.professionalCardButton}
+                onPress={() => router.push('/settings/become-professional' as any)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.professionalCardButtonText}>Get Started</Text>
+                <ArrowRight size={18} color={colors.text.white} />
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
         )}
 
         {(currentUser.role === 'super_admin' || currentUser.role === 'admin' || currentUser.role === 'moderator') && (
@@ -929,5 +993,53 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontSize: 14,
     color: colors.text.white,
     opacity: 0.9,
+  },
+  professionalCardContent: {
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  professionalIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: colors.primary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  professionalCardTitle: {
+    fontSize: 22,
+    fontWeight: '700' as const,
+    color: colors.text.primary,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  professionalCardDescription: {
+    fontSize: 15,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+    paddingHorizontal: 8,
+  },
+  professionalCardButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 14,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  professionalCardButtonText: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+    color: colors.text.white,
+    letterSpacing: 0.3,
   },
 });

@@ -110,7 +110,7 @@ export default function CreateStatusScreen() {
   const [lastStatusMediaUrl, setLastStatusMediaUrl] = useState<string | null>(null);
   const [selectedMedia, setSelectedMedia] = useState<MediaLibrary.Asset | null>(null);
   const [showStickerPicker, setShowStickerPicker] = useState(false);
-  const [selectedStickers, setSelectedStickers] = useState<Array<{ id: string; imageUrl: string }>>([]);
+  const [selectedStickers, setSelectedStickers] = useState<Array<{ id: string; imageUrl: string; positionX?: number; positionY?: number; scale?: number; rotation?: number }>>([]);
   const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [showMutedStories, setShowMutedStories] = useState(false);
   const [showOverlayEditor, setShowOverlayEditor] = useState(false);
@@ -261,13 +261,13 @@ export default function CreateStatusScreen() {
         textPositionX: overlayEnabled ? overlayPos.x : 0.5,
         textPositionY: overlayEnabled ? overlayPos.y : 0.5,
         backgroundImageUri: contentType === 'text' ? backgroundImageUri : null,
-        stickers: selectedStickers.map((sticker, index) => ({
+        stickers: selectedStickers.map((sticker) => ({
           id: sticker.id,
           imageUrl: sticker.imageUrl,
-          positionX: 0.5, // Default center position
-          positionY: 0.5 + (index * 0.1), // Stack stickers vertically
-          scale: 1.0,
-          rotation: 0,
+          positionX: sticker.positionX ?? 0.5,
+          positionY: sticker.positionY ?? 0.5,
+          scale: sticker.scale ?? 1.0,
+          rotation: sticker.rotation ?? 0,
         })),
       };
 
@@ -715,9 +715,14 @@ export default function CreateStatusScreen() {
                       key={sticker.id || index}
                       source={{ uri: sticker.imageUrl }}
                       style={[styles.previewSticker, {
-                        left: '50%',
-                        top: `${50 + (index * 10)}%`,
-                        transform: [{ scale: 1.0 }],
+                        left: `${(sticker.positionX ?? (0.5 + (index % 2) * 0.2)) * 100}%`,
+                        top: `${(sticker.positionY ?? (0.4 + (index * 0.15))) * 100}%`,
+                        transform: [
+                          { translateX: -40 },
+                          { translateY: -40 },
+                          { scale: sticker.scale ?? 1.0 },
+                          { rotate: `${sticker.rotation ?? 0}deg` },
+                        ],
                       }]}
                       contentFit="contain"
                     />
@@ -738,6 +743,29 @@ export default function CreateStatusScreen() {
                   isLooping
                   useNativeControls
                 />
+              )}
+
+              {/* Stickers on Media */}
+              {selectedStickers.length > 0 && (
+                <View style={styles.previewStickersContainer} pointerEvents="none">
+                  {selectedStickers.map((sticker, index) => (
+                    <Image
+                      key={sticker.id || index}
+                      source={{ uri: sticker.imageUrl }}
+                      style={[styles.previewSticker, {
+                        left: `${(sticker.positionX ?? (0.5 + (index % 2) * 0.2)) * 100}%`,
+                        top: `${(sticker.positionY ?? (0.3 + (index * 0.15))) * 100}%`,
+                        transform: [
+                          { translateX: -40 },
+                          { translateY: -40 },
+                          { scale: sticker.scale ?? 1.0 },
+                          { rotate: `${sticker.rotation ?? 0}deg` },
+                        ],
+                      }]}
+                      contentFit="contain"
+                    />
+                  ))}
+                </View>
               )}
 
               {/* Draggable text overlay */}
@@ -787,6 +815,23 @@ export default function CreateStatusScreen() {
                     }}
                   >
                     <X size={18} color="#fff" />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  style={styles.previewOverlayAction}
+                  onPress={() => setShowStickerPicker(true)}
+                >
+                  <Smile size={20} color="#fff" />
+                </TouchableOpacity>
+                {selectedStickers.length > 0 && (
+                  <TouchableOpacity
+                    style={styles.previewOverlayAction}
+                    onPress={() => {
+                      // Remove last sticker
+                      setSelectedStickers(selectedStickers.slice(0, -1));
+                    }}
+                  >
+                    <Text style={styles.previewOverlayActionText}>✕</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -1072,6 +1117,29 @@ export default function CreateStatusScreen() {
               />
             </View>
           </View>
+
+          {/* Stickers on Text Screen */}
+          {selectedStickers.length > 0 && (
+            <View style={styles.textStickersContainer} pointerEvents="none">
+              {selectedStickers.map((sticker, index) => (
+                <Image
+                  key={sticker.id || index}
+                  source={{ uri: sticker.imageUrl }}
+                  style={[styles.textScreenSticker, {
+                    left: `${(sticker.positionX ?? (0.5 + (index % 2) * 0.2)) * 100}%`,
+                    top: `${(sticker.positionY ?? (0.4 + (index * 0.15))) * 100}%`,
+                    transform: [
+                      { translateX: -40 },
+                      { translateY: -40 },
+                      { scale: sticker.scale ?? 1.0 },
+                      { rotate: `${sticker.rotation ?? 0}deg` },
+                    ],
+                  }]}
+                  contentFit="contain"
+                />
+              ))}
+            </View>
+          )}
         </View>
 
         {/* Text Style Selector at Bottom - All Fonts - Scrollable */}
@@ -1187,9 +1255,16 @@ export default function CreateStatusScreen() {
           visible={showStickerPicker}
           onClose={() => setShowStickerPicker(false)}
           onSelectSticker={(sticker: Sticker) => {
-            setSelectedStickers([...selectedStickers, { id: sticker.id, imageUrl: sticker.imageUrl }]);
-            // For now, we'll just store the sticker - in a full implementation, you'd overlay it on the text/image
-            Alert.alert('Sticker Added', 'Sticker feature integration coming soon!');
+            // Add sticker with default positioning
+            const newSticker = {
+              id: sticker.id,
+              imageUrl: sticker.imageUrl,
+              positionX: 0.5 + (selectedStickers.length % 2) * 0.2,
+              positionY: 0.4 + (selectedStickers.length * 0.1),
+              scale: 1.0,
+              rotation: 0,
+            };
+            setSelectedStickers([...selectedStickers, newSticker]);
             setShowStickerPicker(false);
           }}
         />
@@ -1742,8 +1817,21 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: 80,
     height: 80,
-    marginLeft: -40,
-    marginTop: -40,
+  },
+  textStickersContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
+    pointerEvents: 'none',
+  },
+  textScreenSticker: {
+    position: 'absolute',
+    width: 80,
+    height: 80,
   },
   previewMediaFull: {
     width: width,

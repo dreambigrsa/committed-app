@@ -2261,29 +2261,41 @@ export const [AppContext, useApp] = createContextHook(() => {
     
     try {
       // Delete all messages in the conversation
-      await supabase
+      const { error: messagesError } = await supabase
         .from('messages')
         .delete()
         .eq('conversation_id', conversationId);
 
+      if (messagesError) {
+        console.error('Error deleting messages:', messagesError);
+        // Continue with conversation deletion even if messages deletion fails
+      }
+
       // Delete the conversation
-      await supabase
+      const { error: conversationError } = await supabase
         .from('conversations')
         .delete()
         .eq('id', conversationId);
 
-      // Update local state
-      setConversations(conversations.filter(c => c.id !== conversationId));
-      const updatedMessages = { ...messages };
-      delete updatedMessages[conversationId];
-      setMessages(updatedMessages);
+      if (conversationError) {
+        console.error('Error deleting conversation:', conversationError);
+        return false;
+      }
+
+      // Update local state immediately using functional updates to avoid stale closures
+      setConversations(prev => prev.filter(c => c.id !== conversationId));
+      setMessages(prev => {
+        const updated = { ...prev };
+        delete updated[conversationId];
+        return updated;
+      });
 
       return true;
     } catch (error) {
       console.error('Delete conversation error:', error);
       return false;
     }
-  }, [currentUser, conversations, messages]);
+  }, [currentUser]);
 
   const deleteMessage = useCallback(async (messageId: string, conversationId: string, deleteForEveryone: boolean = false) => {
     if (!currentUser) return false;
@@ -3262,7 +3274,7 @@ export const [AppContext, useApp] = createContextHook(() => {
       });
     subs.push(notificationsChannel);
 
-    // Subscribe to conversation updates (for last_message changes)
+    // Subscribe to conversation updates (for last_message changes) and deletions
     const conversationsChannel = supabase
       .channel('conversations')
       .on(
@@ -3295,6 +3307,24 @@ export const [AppContext, useApp] = createContextHook(() => {
               return prev;
             });
           }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'conversations',
+        },
+        (payload: any) => {
+          // Remove deleted conversation from local state
+          const deletedConvId = payload.old.id;
+          setConversations(prev => prev.filter(c => c.id !== deletedConvId));
+          setMessages(prev => {
+            const updated = { ...prev };
+            delete updated[deletedConvId];
+            return updated;
+          });
         }
       )
       .subscribe();

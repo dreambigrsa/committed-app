@@ -1885,7 +1885,13 @@ const createStyles = (colors: any, overlayBottomPadding: number) => StyleSheet.c
     borderRadius: 12,
     gap: 8,
   },
+  replyInputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+  },
   replyInput: {
+    flex: 1,
     backgroundColor: colors.background.primary,
     borderRadius: 8,
     padding: 10,
@@ -2550,19 +2556,39 @@ function ReelCommentsModal({
                                   <Text style={styles.commentUserName}>{reply.userName}</Text>
                                   {isReplyOwner && (
                                     <View style={styles.commentActions}>
-                                      <TouchableOpacity
-                                        onPress={() => {
-                                          setEditingComment(reply.id);
-                                          setEditCommentText(reply.content);
-                                        }}
-                                      >
-                                        <Edit2 size={12} color={colors.text.secondary} />
-                                      </TouchableOpacity>
-                                      <TouchableOpacity
-                                        onPress={() => handleDeleteComment(reply.id)}
-                                      >
-                                        <Trash2 size={12} color={colors.danger} />
-                                      </TouchableOpacity>
+                                      {editingComment === reply.id ? (
+                                        <>
+                                          <TouchableOpacity
+                                            onPress={() => {
+                                              setEditingComment(null);
+                                              setEditCommentText('');
+                                            }}
+                                          >
+                                            <Text style={styles.commentActionText}>Cancel</Text>
+                                          </TouchableOpacity>
+                                          <TouchableOpacity
+                                            onPress={() => handleSaveEdit(reply.id)}
+                                          >
+                                            <Text style={[styles.commentActionText, styles.commentActionSave]}>Save</Text>
+                                          </TouchableOpacity>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <TouchableOpacity
+                                            onPress={() => {
+                                              setEditingComment(reply.id);
+                                              setEditCommentText(reply.content);
+                                            }}
+                                          >
+                                            <Edit2 size={12} color={colors.text.secondary} />
+                                          </TouchableOpacity>
+                                          <TouchableOpacity
+                                            onPress={() => handleDeleteComment(reply.id)}
+                                          >
+                                            <Trash2 size={12} color={colors.danger} />
+                                          </TouchableOpacity>
+                                        </>
+                                      )}
                                     </View>
                                   )}
                                 </View>
@@ -2614,28 +2640,49 @@ function ReelCommentsModal({
                       {/* Reply Input */}
                       {replyingTo === comment.id && (
                         <View style={styles.replyInputContainer}>
-                          <TextInput
-                            style={styles.replyInput}
-                            placeholder={`Reply to ${comment.userName}...`}
-                            placeholderTextColor={colors.text.tertiary}
-                            value={replyText}
-                            onChangeText={setReplyText}
-                            multiline
-                          />
+                          {selectedSticker && (
+                            <View style={styles.stickerPreview}>
+                              <Image source={{ uri: selectedSticker.imageUrl }} style={styles.previewSticker} />
+                              <TouchableOpacity
+                                style={styles.removeStickerButton}
+                                onPress={() => setSelectedSticker(null)}
+                              >
+                                <X size={16} color={colors.text.white} />
+                              </TouchableOpacity>
+                            </View>
+                          )}
+                          <View style={styles.replyInputRow}>
+                            <TouchableOpacity
+                              style={styles.stickerButton}
+                              onPress={() => setShowStickerPicker(true)}
+                              activeOpacity={0.7}
+                            >
+                              <Smile size={20} color={colors.text.secondary} />
+                            </TouchableOpacity>
+                            <TextInput
+                              style={styles.replyInput}
+                              placeholder={`Reply to ${comment.userName}...`}
+                              placeholderTextColor={colors.text.tertiary}
+                              value={replyText}
+                              onChangeText={setReplyText}
+                              multiline
+                            />
+                          </View>
                           <View style={styles.replyInputActions}>
                             <TouchableOpacity
                               onPress={() => {
                                 setReplyingTo(null);
                                 setReplyText('');
+                                setSelectedSticker(null);
                               }}
                             >
                               <Text style={styles.commentActionText}>Cancel</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
                               onPress={handleSubmit}
-                              disabled={!replyText.trim()}
+                              disabled={!replyText.trim() && !selectedSticker}
                             >
-                              <Text style={[styles.commentActionText, !replyText.trim() && styles.commentActionTextDisabled]}>
+                              <Text style={[styles.commentActionText, (!replyText.trim() && !selectedSticker) && styles.commentActionTextDisabled]}>
                                 Reply
                               </Text>
                             </TouchableOpacity>
@@ -2721,6 +2768,8 @@ function ReelCommentsModal({
         onClose={() => setShowStickerPicker(false)}
         onSelectSticker={(sticker: Sticker) => {
           setSelectedSticker({ id: sticker.id, imageUrl: sticker.imageUrl });
+          setCommentText(''); // Clear text when sticker is selected
+          setReplyText(''); // Clear reply text when sticker is selected
           setShowStickerPicker(false);
         }}
       />

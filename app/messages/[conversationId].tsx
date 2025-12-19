@@ -185,6 +185,9 @@ export default function ConversationDetailScreen() {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
+  const isUserScrolling = useRef(false);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const shouldAutoScroll = useRef(true);
   const [aiUserId, setAiUserId] = useState<string | null>(null);
   const [aiFeedback, setAiFeedback] = useState<Record<string, 1 | -1>>({});
   const [aiIsThinking, setAiIsThinking] = useState(false);
@@ -995,10 +998,12 @@ export default function ConversationDetailScreen() {
     setSelectedImage(null);
     setSelectedDocument(null);
 
-    // Scroll to bottom to show new message
-    setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
-    }, 100);
+    // Scroll to bottom to show new message (only if auto-scroll is enabled)
+    if (shouldAutoScroll.current) {
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
 
     try {
       await sendMessage(
@@ -2045,21 +2050,42 @@ export default function ConversationDetailScreen() {
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.messagesList}
             onContentSizeChange={() => {
-              // Only scroll to end if not at the top and user isn't scrolling
-              flatListRef.current?.scrollToEnd({ animated: false });
-            }}
-            onLayout={() => {
-              // Only scroll on initial layout, not on every layout change
-              if (localMessages.length > 0) {
-                flatListRef.current?.scrollToEnd({ animated: false });
+              // Only auto-scroll if user is near bottom and not manually scrolling
+              if (shouldAutoScroll.current && !isUserScrolling.current) {
+                // Use a small delay to batch rapid content size changes
+                if (scrollTimeoutRef.current) {
+                  clearTimeout(scrollTimeoutRef.current);
+                }
+                scrollTimeoutRef.current = setTimeout(() => {
+                  if (shouldAutoScroll.current && !isUserScrolling.current) {
+                    flatListRef.current?.scrollToEnd({ animated: true });
+                  }
+                }, 50);
               }
             }}
-            removeClippedSubviews={false}
-            maintainVisibleContentPosition={{
-              minIndexForVisible: 0,
+            onScrollBeginDrag={() => {
+              // User started scrolling manually - disable auto-scroll
+              isUserScrolling.current = true;
+              shouldAutoScroll.current = false;
             }}
+            onScrollEndDrag={() => {
+              // Check if user scrolled to bottom - re-enable auto-scroll if so
+              setTimeout(() => {
+                isUserScrolling.current = false;
+                // Re-enable auto-scroll after a short delay
+                setTimeout(() => {
+                  shouldAutoScroll.current = true;
+                }, 500);
+              }, 100);
+            }}
+            onMomentumScrollEnd={() => {
+              // User finished scrolling - check if near bottom
+              isUserScrolling.current = false;
+            }}
+            removeClippedSubviews={false}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="interactive"
+            showsVerticalScrollIndicator={true}
             ListHeaderComponent={
               smartAds.length > 0 ? (
                 <View style={styles.adHeaderContainer}>

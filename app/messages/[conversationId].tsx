@@ -1083,6 +1083,31 @@ export default function ConversationDetailScreen() {
             setAiIsThinking(false);
 
             if (aiResponse.success) {
+              // Check if AI suggests professional help
+              if (aiResponse.suggestProfessionalHelp && !professionalSession) {
+                // Show confirmation alert before opening modal
+                const professionalType = aiResponse.suggestedProfessionalType || 'professional';
+                setTimeout(() => {
+                  Alert.alert(
+                    'Connect with a Professional?',
+                    `Based on our conversation, I think speaking with a verified ${professionalType} might be helpful. Would you like me to find an available professional to connect you with?`,
+                    [
+                      {
+                        text: 'Not Now',
+                        style: 'cancel',
+                      },
+                      {
+                        text: 'Yes, Connect Me',
+                        onPress: () => {
+                          setShowRequestHelpModal(true);
+                        },
+                      },
+                    ],
+                    { cancelable: true }
+                  );
+                }, 1000); // Small delay to let AI message appear first
+              }
+
               // Send AI response using database function or direct insert
               try {
                 const messageData: any = {

@@ -82,6 +82,8 @@ export interface AIResponse {
   documentUrl?: string; // For generated documents
   documentName?: string; // For generated documents
   contentType?: 'text' | 'image' | 'document'; // Type of response
+  suggestProfessionalHelp?: boolean; // Flag to indicate AI detected need for professional help
+  suggestedProfessionalType?: string; // Type of professional suggested
 }
 
 export interface UserLearnings {
@@ -793,30 +795,8 @@ export async function getAIResponse(
     };
   }
   try {
-    // Check if user is asking for professional help - proactively offer connection
-    const professionalHelpPatterns = [
-      /(need|want|looking for|find|connect with|speak with|talk to).*professional/i,
-      /(need|want|looking for|find|connect with|speak with|talk to).*(therapist|counselor|mentor|coach|lawyer|advisor|psychologist)/i,
-      /(business mentor|life coach|relationship therapist|legal advisor|professional help)/i,
-      /can.*you.*connect.*me.*with/i,
-      /help.*me.*find.*(professional|therapist|counselor|mentor)/i,
-    ];
-
-    const isProfessionalHelpRequest = professionalHelpPatterns.some(pattern => pattern.test(userMessage));
-    if (isProfessionalHelpRequest) {
-      // Extract the type of professional they're looking for
-      let professionalType = 'professional';
-      if (/business.*mentor|mentor/i.test(userMessage)) professionalType = 'Business Mentor';
-      else if (/therapist|counselor/i.test(userMessage)) professionalType = 'Therapist or Counselor';
-      else if (/lawyer|legal/i.test(userMessage)) professionalType = 'Legal Advisor';
-      else if (/coach/i.test(userMessage)) professionalType = 'Life Coach';
-
-      return {
-        success: true,
-        message: `I'd be happy to help you connect with a verified ${professionalType}! You can tap the "Request Live Help" button in this chat, and I'll find the best available professional to assist you. They'll join our conversation and provide personalized support. Would you like me to help you get started?`,
-        contentType: 'text',
-      };
-    }
+    // Note: Professional help detection is now handled by detectProfessionalHelpNeeded()
+    // which runs before the OpenAI call. The detection results are merged into the response.
 
     // Check for image generation requests
     const imagePatterns = [
@@ -869,6 +849,10 @@ export async function getAIResponse(
         });
     }
 
+    // Detect if professional help might be needed (even if user didn't explicitly ask)
+    // This runs before the OpenAI call to check patterns
+    const helpDetection = detectProfessionalHelpNeeded(userMessage, conversationHistory);
+
     if (shouldUseDirectOpenAI) {
       const openaiApiKey = await getOpenAIApiKeyAsync();
       if (!openaiApiKey) {
@@ -896,7 +880,13 @@ export async function getAIResponse(
         return await generateDocument(docInfo || userMessage, conversationHistory);
       }
       
-      return response;
+      // Include professional help suggestion based on detection
+      // For high/medium confidence, we'll suggest it even if AI doesn't explicitly mention it
+      return {
+        ...response,
+        suggestProfessionalHelp: helpDetection.needsHelp && (helpDetection.confidence === 'high' || helpDetection.confidence === 'medium'),
+        suggestedProfessionalType: helpDetection.professionalType || 'professional',
+      };
     }
 
     // Default path (including production builds): Call Supabase Edge Function (server-side OpenAI).
@@ -907,7 +897,14 @@ export async function getAIResponse(
       systemPrompt,
       userId,
     });
-    if (fnResponse.success) return fnResponse;
+    if (fnResponse.success) {
+      // Include professional help suggestion based on detection
+      return {
+        ...fnResponse,
+        suggestProfessionalHelp: helpDetection.needsHelp && (helpDetection.confidence === 'high' || helpDetection.confidence === 'medium'),
+        suggestedProfessionalType: helpDetection.professionalType || 'professional',
+      };
+    }
 
     // Final fallback
     return getFallbackResponse(userMessage, conversationHistory, userName, userUsername, userLearnings);
@@ -990,6 +987,8 @@ async function getOpenAIResponse(
 
     console.log('[AI Service] OpenAI API response received successfully');
     
+    // Note: Professional help detection happens in the caller (getAIResponse)
+    // This function just returns the raw AI message
     return {
       success: true,
       message: aiMessage,
@@ -1225,6 +1224,58 @@ export async function suggestProfessionalRole(
 }
 
 /**
+ * Detect if professional help might be needed based on conversation patterns
+ * Returns true if the conversation suggests the user might benefit from professional help
+ */
+function detectProfessionalHelpNeeded(
+  userMessage: string,
+  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>
+): { needsHelp: boolean; professionalType?: string; confidence: 'high' | 'medium' | 'low' } {
+  const message = userMessage.toLowerCase();
+  const recentHistory = conversationHistory.slice(-5).map(m => m.content).join(' ').toLowerCase();
+
+  // High confidence indicators (explicit requests)
+  const explicitPatterns = [
+    { pattern: /(need|want|looking for|find|connect with|speak with|talk to).*professional/i, type: 'professional' },
+    { pattern: /(need|want).*(therapist|counselor|psychologist)/i, type: 'Therapist or Counselor' },
+    { pattern: /(business mentor|career mentor|mentor).*/i, type: 'Business Mentor' },
+    { pattern: /(lawyer|legal advisor|legal help)/i, type: 'Legal Advisor' },
+    { pattern: /(life coach|coach).*/i, type: 'Life Coach' },
+  ];
+
+  for (const { pattern, type } of explicitPatterns) {
+    if (pattern.test(message) || pattern.test(recentHistory)) {
+      return { needsHelp: true, professionalType: type, confidence: 'high' };
+    }
+  }
+
+  // Medium confidence indicators (serious emotional/mental health issues)
+  const mediumConfidencePatterns = [
+    { pattern: /(depressed|suicidal|self.?harm|want to die|kill myself)/i, type: 'Mental Health Professional' },
+    { pattern: /(panic attack|anxiety attack|can't breathe|overwhelmed)/i, type: 'Mental Health Professional' },
+    { pattern: /(divorce|separation|custody|legal issue)/i, type: 'Legal Advisor' },
+    { pattern: /(trauma|abuse|violence|assault)/i, type: 'Counselor' },
+  ];
+
+  for (const { pattern, type } of mediumConfidencePatterns) {
+    if (pattern.test(message) || pattern.test(recentHistory)) {
+      return { needsHelp: true, professionalType: type, confidence: 'medium' };
+    }
+  }
+
+  // Low confidence indicators (repeated concerns, relationship issues)
+  const repeatedConcerns = conversationHistory.filter(m => m.role === 'user').length >= 3;
+  const relationshipIssues = /(relationship|partner|marriage|breakup|cheating|trust issues)/i.test(message) || 
+                            /(relationship|partner|marriage|breakup|cheating|trust issues)/i.test(recentHistory);
+  
+  if (repeatedConcerns && (relationshipIssues || /(struggling|difficult|hard|don't know|confused|lost)/i.test(message))) {
+    return { needsHelp: true, professionalType: 'Counselor', confidence: 'low' };
+  }
+
+  return { needsHelp: false, confidence: 'low' };
+}
+
+/**
  * Monitor conversation for non-agreement patterns and suggest alternative professional
  * This runs in observer mode to detect if user and professional aren't reaching agreement
  */
@@ -1383,8 +1434,18 @@ function getFallbackResponse(
     return greeting;
   })();
 
-  // Relationship advice patterns
+  // Relationship advice patterns - suggest professional help for serious issues
   if (message.includes('relationship') || message.includes('partner') || message.includes('boyfriend') || message.includes('girlfriend') || message.includes('spouse')) {
+    const isSerious = message.includes('abuse') || message.includes('violence') || message.includes('cheating') || 
+                     message.includes('divorce') || message.includes('custody');
+    if (isSerious) {
+      return {
+        success: true,
+        message: "I understand you're dealing with a serious relationship issue. While I can offer support, this might be a good time to speak with a relationship therapist or counselor who can provide specialized guidance. Would you like me to connect you with a professional?",
+        suggestProfessionalHelp: true,
+        suggestedProfessionalType: 'Relationship Therapist',
+      };
+    }
     return {
       success: true,
       message: "Relationships require open communication and mutual respect. It's important to express your feelings honestly while also listening to your partner's perspective. Remember, every relationship has challenges, but working through them together can strengthen your bond. What specific aspect would you like to discuss?",
@@ -1396,14 +1457,31 @@ function getFallbackResponse(
     return {
       success: true,
       message: "I'm sorry you're going through a difficult time. Conflicts and breakups are painful, but they can also be opportunities for growth. Take time to process your emotions, and remember that it's okay to feel hurt. Would you like to talk more about what happened?",
+      suggestProfessionalHelp: conversationHistory.length > 3, // Suggest after multiple messages about breakup
+      suggestedProfessionalType: 'Relationship Therapist',
     };
   }
 
-  // Loneliness/sadness patterns
+  // Loneliness/sadness patterns - suggest professional help for persistent issues
   if (message.includes('lonely') || message.includes('sad') || message.includes('depressed') || message.includes('down')) {
+    const isSevere = message.includes('suicidal') || message.includes('want to die') || message.includes('self harm') || 
+                    message.includes('can\'t go on') || message.includes('hopeless');
+    if (isSevere) {
+      return {
+        success: true,
+        message: "I'm really concerned about what you're going through. These feelings are serious, and I think speaking with a mental health professional could be very helpful. Would you like me to connect you with a counselor or therapist? They're trained to provide the support you need.",
+        suggestProfessionalHelp: true,
+        suggestedProfessionalType: 'Mental Health Professional',
+      };
+    }
+    // For less severe but repeated mentions, suggest after multiple messages
     return {
       success: true,
       message: "I hear you, and your feelings are valid. It's completely normal to feel this way sometimes. Remember that you're not alone, and there are people who care about you. Is there something specific that's been weighing on you?",
+      suggestProfessionalHelp: conversationHistory.length > 5 && conversationHistory.filter(m => 
+        m.role === 'user' && (m.content.toLowerCase().includes('sad') || m.content.toLowerCase().includes('depressed') || m.content.toLowerCase().includes('lonely'))
+      ).length >= 2,
+      suggestedProfessionalType: 'Counselor',
     };
   }
 

@@ -44,6 +44,7 @@ import { getSignedUrlForMedia } from '@/lib/status-queries';
 import { getOrCreateAIUser, getAIResponse } from '@/lib/ai-service';
 import RequestLiveHelpModal from '@/components/RequestLiveHelpModal';
 import SessionReviewModal from '@/components/SessionReviewModal';
+import ProfessionalHelpSuggestionModal from '@/components/ProfessionalHelpSuggestionModal';
 import { getActiveSession } from '@/lib/professional-sessions';
 import { ProfessionalSession } from '@/types';
 import { Users, Shield } from 'lucide-react-native';
@@ -1085,26 +1086,11 @@ export default function ConversationDetailScreen() {
             if (aiResponse.success) {
               // Check if AI suggests professional help
               if (aiResponse.suggestProfessionalHelp && !professionalSession) {
-                // Show confirmation alert before opening modal
+                // Show beautiful custom modal instead of basic alert
                 const professionalType = aiResponse.suggestedProfessionalType || 'professional';
                 setTimeout(() => {
-                  Alert.alert(
-                    'Connect with a Professional?',
-                    `Based on our conversation, I think speaking with a verified ${professionalType} might be helpful. Would you like me to find an available professional to connect you with?`,
-                    [
-                      {
-                        text: 'Not Now',
-                        style: 'cancel',
-                      },
-                      {
-                        text: 'Yes, Connect Me',
-                        onPress: () => {
-                          setShowRequestHelpModal(true);
-                        },
-                      },
-                    ],
-                    { cancelable: true }
-                  );
+                  setSuggestedProfessionalType(professionalType);
+                  setShowHelpSuggestionModal(true);
                 }, 1000); // Small delay to let AI message appear first
               }
 

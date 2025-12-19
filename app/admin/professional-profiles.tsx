@@ -180,8 +180,9 @@ export default function AdminProfessionalProfilesScreen() {
     );
   };
 
-  const handleToggleProfileStatus = async (profile: ProfessionalProfile) => {
-    const newStatus = profile.approvalStatus === 'approved' ? 'suspended' : 'approved';
+  const handleToggleProfileStatus = async (profile: any) => {
+    const currentStatus = profile.approval_status || profile.approvalStatus || 'pending';
+    const newStatus = currentStatus === 'approved' ? 'suspended' : 'approved';
     Alert.alert(
       newStatus === 'suspended' ? 'Suspend Professional' : 'Activate Professional',
       `Are you sure you want to ${newStatus === 'suspended' ? 'suspend' : 'activate'} this professional?`,
@@ -196,17 +197,85 @@ export default function AdminProfessionalProfilesScreen() {
                 .update({
                   approval_status: newStatus,
                   approved_by: currentUser?.id,
-                  approved_at: newStatus === 'approved' ? new Date().toISOString() : profile.approvedAt,
+                  approved_at: newStatus === 'approved' ? new Date().toISOString() : (profile.approved_at || profile.approvedAt),
+                  updated_at: new Date().toISOString(),
                 })
                 .eq('id', profile.id);
 
               if (error) throw error;
 
               Alert.alert('Success', `Professional ${newStatus === 'suspended' ? 'suspended' : 'activated'}`);
+              setShowDetailModal(false);
               loadProfiles();
             } catch (error: any) {
               console.error('Error updating profile:', error);
               Alert.alert('Error', error.message || 'Failed to update profile');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDeleteProfile = async (profile: any) => {
+    Alert.alert(
+      'Delete Professional Profile',
+      `Are you sure you want to permanently delete this professional profile? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('professional_profiles')
+                .delete()
+                .eq('id', profile.id);
+
+              if (error) throw error;
+
+              Alert.alert('Success', 'Professional profile deleted');
+              setShowDetailModal(false);
+              loadProfiles();
+            } catch (error: any) {
+              console.error('Error deleting profile:', error);
+              Alert.alert('Error', error.message || 'Failed to delete profile');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleToggleServiceStatus = async (profile: any) => {
+    const currentStatus = profile.is_active !== undefined ? profile.is_active : (profile.isActive !== undefined ? profile.isActive : true);
+    const newStatus = !currentStatus;
+    Alert.alert(
+      newStatus ? 'Resume Service' : 'Pause Service',
+      `Are you sure you want to ${newStatus ? 'resume' : 'pause'} this professional's service?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm',
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('professional_profiles')
+                .update({
+                  is_active: newStatus,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', profile.id);
+
+              if (error) throw error;
+
+              Alert.alert('Success', `Service ${newStatus ? 'resumed' : 'paused'}`);
+              setShowDetailModal(false);
+              loadProfiles();
+            } catch (error: any) {
+              console.error('Error updating service status:', error);
+              Alert.alert('Error', error.message || 'Failed to update service status');
             }
           },
         },
@@ -339,7 +408,8 @@ export default function AdminProfessionalProfilesScreen() {
                 </View>
               ) : (
                 profiles.map((profile: any) => {
-                  const StatusIcon = getStatusIcon(profile.approvalStatus);
+                  const status = profile.approval_status || profile.approvalStatus || 'pending';
+                  const StatusIcon = getStatusIcon(status);
                   return (
                     <TouchableOpacity
                       key={profile.id}
@@ -375,10 +445,10 @@ export default function AdminProfessionalProfilesScreen() {
                             </View>
                           </View>
                         </View>
-                        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(profile.approvalStatus) + '20' }]}>
-                          <StatusIcon size={16} color={getStatusColor(profile.approvalStatus)} />
-                          <Text style={[styles.statusText, { color: getStatusColor(profile.approvalStatus) }]}>
-                            {profile.approvalStatus.toUpperCase()}
+                        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(status) + '20' }]}>
+                          <StatusIcon size={16} color={getStatusColor(status)} />
+                          <Text style={[styles.statusText, { color: getStatusColor(status) }]}>
+                            {status.toUpperCase()}
                           </Text>
                         </View>
                       </View>
@@ -429,13 +499,23 @@ export default function AdminProfessionalProfilesScreen() {
                       <Text style={styles.detailValue}>{selectedItem.role?.name || 'N/A'}</Text>
                     </View>
                     <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Status:</Text>
-                      <View style={[styles.statusBadgeInline, { backgroundColor: getStatusColor(selectedItem.status || selectedItem.approvalStatus) + '20' }]}>
-                        <Text style={[styles.statusTextInline, { color: getStatusColor(selectedItem.status || selectedItem.approvalStatus) }]}>
-                          {(selectedItem.status || selectedItem.approvalStatus || 'pending').toUpperCase()}
+                      <Text style={styles.detailLabel}>Approval Status:</Text>
+                      <View style={[styles.statusBadgeInline, { backgroundColor: getStatusColor(selectedItem.status || selectedItem.approval_status || selectedItem.approvalStatus || 'pending') + '20' }]}>
+                        <Text style={[styles.statusTextInline, { color: getStatusColor(selectedItem.status || selectedItem.approval_status || selectedItem.approvalStatus || 'pending') }]}>
+                          {(selectedItem.status || selectedItem.approval_status || selectedItem.approvalStatus || 'pending').toUpperCase()}
                         </Text>
                       </View>
                     </View>
+                    {tab === 'profiles' && (
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Service Status:</Text>
+                        <View style={[styles.statusBadgeInline, { backgroundColor: ((selectedItem.is_active !== undefined ? selectedItem.is_active : selectedItem.isActive) ? themeColors.success : themeColors.danger) + '20' }]}>
+                          <Text style={[styles.statusTextInline, { color: (selectedItem.is_active !== undefined ? selectedItem.is_active : selectedItem.isActive) ? themeColors.success : themeColors.danger }]}>
+                            {(selectedItem.is_active !== undefined ? selectedItem.is_active : selectedItem.isActive) ? 'ACTIVE' : 'PAUSED'}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
                   </View>
                 </View>
 
@@ -506,27 +586,63 @@ export default function AdminProfessionalProfilesScreen() {
 
                 {/* Profile Information for approved profiles */}
                 {tab === 'profiles' && (
-                  <View style={styles.detailSection}>
-                    <Text style={styles.modalSectionTitle}>Profile Information</Text>
-                    <View style={styles.detailCard}>
-                      {selectedItem.ratingAverage !== undefined && (
+                  <>
+                    <View style={styles.detailSection}>
+                      <Text style={styles.modalSectionTitle}>Profile Information</Text>
+                      <View style={styles.detailCard}>
+                        {selectedItem.ratingAverage !== undefined && (
+                          <View style={styles.detailRow}>
+                            <Text style={styles.detailLabel}>Rating:</Text>
+                            <Text style={styles.detailValue}>
+                              ⭐ {((selectedItem.rating_average ?? selectedItem.ratingAverage) || 0).toFixed(1)} ({(selectedItem.rating_count ?? selectedItem.ratingCount) || 0} ratings)
+                            </Text>
+                          </View>
+                        )}
                         <View style={styles.detailRow}>
-                          <Text style={styles.detailLabel}>Rating:</Text>
+                          <Text style={styles.detailLabel}>Approved At:</Text>
                           <Text style={styles.detailValue}>
-                            ⭐ {((selectedItem.rating_average ?? selectedItem.ratingAverage) || 0).toFixed(1)} ({(selectedItem.rating_count ?? selectedItem.ratingCount) || 0} ratings)
+                            {selectedItem.approved_at || selectedItem.approvedAt 
+                              ? new Date(selectedItem.approved_at || selectedItem.approvedAt).toLocaleString()
+                              : 'N/A'}
                           </Text>
                         </View>
-                      )}
-                      <View style={styles.detailRow}>
-                        <Text style={styles.detailLabel}>Approved At:</Text>
-                        <Text style={styles.detailValue}>
-                          {selectedItem.approved_at || selectedItem.approvedAt 
-                            ? new Date(selectedItem.approved_at || selectedItem.approvedAt).toLocaleString()
-                            : 'N/A'}
-                        </Text>
                       </View>
                     </View>
-                  </View>
+
+                    {/* Profile Management Actions */}
+                    <View style={styles.detailSection}>
+                      <Text style={styles.modalSectionTitle}>Profile Management</Text>
+                      <View style={styles.detailCard}>
+                        <TouchableOpacity
+                          style={[styles.managementButton, styles.toggleStatusButton]}
+                          onPress={() => handleToggleProfileStatus(selectedItem)}
+                        >
+                          <Text style={styles.managementButtonText}>
+                            {(selectedItem.approval_status || selectedItem.approvalStatus) === 'approved' ? 'Suspend Professional' : 'Activate Professional'}
+                          </Text>
+                        </TouchableOpacity>
+                        
+                        <TouchableOpacity
+                          style={[styles.managementButton, styles.toggleServiceButton]}
+                          onPress={() => handleToggleServiceStatus(selectedItem)}
+                        >
+                          <Text style={styles.managementButtonText}>
+                            {(selectedItem.is_active !== undefined ? selectedItem.is_active : selectedItem.isActive) ? 'Pause Service' : 'Resume Service'}
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[styles.managementButton, styles.deleteButton]}
+                          onPress={() => handleDeleteProfile(selectedItem)}
+                        >
+                          <XCircle size={20} color={colors.text.white} />
+                          <Text style={[styles.managementButtonText, { color: colors.text.white }]}>
+                            Delete Profile
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </>
                 )}
               </>
             )}
@@ -801,6 +917,29 @@ const createStyles = (colors: any) => StyleSheet.create({
     backgroundColor: colors.success,
   },
   modalButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text.white,
+  },
+  managementButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginBottom: 12,
+    gap: 8,
+  },
+  toggleStatusButton: {
+    backgroundColor: colors.accent,
+  },
+  toggleServiceButton: {
+    backgroundColor: colors.primary,
+  },
+  deleteButton: {
+    backgroundColor: colors.danger,
+  },
+  managementButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.text.white,

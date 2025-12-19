@@ -43,6 +43,7 @@ import {
   Settings,
   X,
   FileText,
+  Briefcase,
 } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useApp } from '@/contexts/AppContext';
@@ -1188,6 +1189,19 @@ export default function SettingsScreen() {
                 </View>
                 <View style={styles.settingRight}>
                   <Text style={styles.settingValue}>{blockedUsers.length} blocked</Text>
+                  <ChevronRight size={20} color={colors.text.tertiary} />
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.settingItem}
+                onPress={() => router.push('/settings/become-professional' as any)}
+              >
+                <View style={styles.settingLeft}>
+                  <Briefcase size={20} color={colors.text.secondary} />
+                  <Text style={styles.settingLabel}>Become a Professional</Text>
+                </View>
+                <View style={styles.settingRight}>
                   <ChevronRight size={20} color={colors.text.tertiary} />
                 </View>
               </TouchableOpacity>

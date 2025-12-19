@@ -390,3 +390,206 @@ export interface Sticker {
   createdAt: string;
   updatedAt: string;
 }
+
+// ============================================
+// PROFESSIONAL SYSTEM TYPES
+// ============================================
+
+export type ProfessionalApprovalStatus = 'pending' | 'approved' | 'rejected' | 'suspended';
+export type ProfessionalOnlineStatus = 'online' | 'busy' | 'offline' | 'away';
+export type ProfessionalSessionStatus = 'pending_acceptance' | 'active' | 'ended' | 'declined' | 'cancelled';
+export type ProfessionalSessionType = 'live_chat' | 'escalated' | 'scheduled';
+export type ReviewModerationStatus = 'pending' | 'approved' | 'rejected' | 'flagged';
+export type ApplicationStatus = 'pending' | 'under_review' | 'approved' | 'rejected' | 'withdrawn';
+export type EscalationTriggerType = 'timeout' | 'user_request' | 'ai_detection' | 'manual';
+export type EscalationStrategy = 'sequential' | 'broadcast' | 'round_robin';
+
+export interface ProfessionalRole {
+  id: string;
+  name: string;
+  category: string;
+  description?: string;
+  requiresCredentials: boolean;
+  requiresVerification: boolean;
+  eligibleForLiveChat: boolean;
+  approvalRequired: boolean;
+  disclaimerText?: string;
+  aiMatchingRules: Record<string, any>;
+  isActive: boolean;
+  displayOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProfessionalProfile {
+  id: string;
+  userId: string;
+  roleId: string;
+  fullName: string;
+  bio?: string;
+  credentials: string[];
+  credentialDocuments: Array<{
+    type: string;
+    url: string;
+    verified: boolean;
+  }>;
+  location?: string;
+  locationCoordinates?: { lat: number; lng: number };
+  onlineAvailability: boolean;
+  inPersonAvailability: boolean;
+  serviceAreas: string[];
+  pricingInfo?: {
+    currency: string;
+    rate: number;
+    unit: string;
+  };
+  languages: string[];
+  ratingAverage: number;
+  ratingCount: number;
+  reviewCount: number;
+  approvalStatus: ProfessionalApprovalStatus;
+  rejectionReason?: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  publicProfileUrl?: string;
+  maxConcurrentSessions: number;
+  quietHoursStart?: string;
+  quietHoursEnd?: string;
+  quietHoursTimezone: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  // Joined data
+  role?: ProfessionalRole;
+  status?: ProfessionalStatus;
+}
+
+export interface ProfessionalStatus {
+  id: string;
+  professionalId: string;
+  status: ProfessionalOnlineStatus;
+  currentSessionCount: number;
+  lastSeenAt: string;
+  statusOverride: boolean;
+  statusOverrideBy?: string;
+  statusOverrideUntil?: string;
+  updatedAt: string;
+}
+
+export interface ProfessionalSession {
+  id: string;
+  conversationId: string;
+  userId: string;
+  professionalId: string;
+  roleId: string;
+  sessionType: ProfessionalSessionType;
+  status: ProfessionalSessionStatus;
+  aiSummary?: string;
+  userConsentGiven: boolean;
+  consentGivenAt?: string;
+  professionalJoinedAt?: string;
+  professionalEndedAt?: string;
+  escalationLevel: number;
+  escalationReason?: string;
+  aiObserverMode: boolean;
+  endedBy?: 'user' | 'professional' | 'system' | 'admin';
+  endedReason?: string;
+  createdAt: string;
+  updatedAt: string;
+  // Joined data
+  professional?: ProfessionalProfile;
+  user?: User;
+}
+
+export interface EscalationRule {
+  id: string;
+  name: string;
+  description?: string;
+  roleId?: string;
+  triggerType: EscalationTriggerType;
+  timeoutSeconds?: number;
+  maxEscalationAttempts: number;
+  escalationStrategy: EscalationStrategy;
+  fallbackRules: Record<string, any>;
+  requireUserConfirmation: boolean;
+  isActive: boolean;
+  priority: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EscalationEvent {
+  id: string;
+  sessionId: string;
+  ruleId?: string;
+  fromProfessionalId?: string;
+  toProfessionalId?: string;
+  escalationLevel: number;
+  reason?: string;
+  userNotified: boolean;
+  userConfirmed?: boolean;
+  result?: 'accepted' | 'declined' | 'timeout' | 'cancelled';
+  createdAt: string;
+}
+
+export interface ProfessionalReview {
+  id: string;
+  sessionId: string;
+  professionalId: string;
+  userId: string;
+  rating: number;
+  reviewText?: string;
+  isAnonymous: boolean;
+  moderationStatus: ReviewModerationStatus;
+  moderatedBy?: string;
+  moderatedAt?: string;
+  moderationReason?: string;
+  reportedCount: number;
+  createdAt: string;
+  updatedAt: string;
+  // Joined data
+  user?: User;
+  professional?: ProfessionalProfile;
+}
+
+export interface ProfessionalSystemSetting {
+  id: string;
+  settingKey: string;
+  settingValue: Record<string, any>;
+  description?: string;
+  category: 'general' | 'ai' | 'escalation' | 'safety' | 'ui';
+  isPublic: boolean;
+  updatedAt: string;
+}
+
+export interface UserOnboardingData {
+  id: string;
+  userId: string;
+  hasCompletedOnboarding: boolean;
+  onboardingVersion?: string;
+  aiExplanationViewed: boolean;
+  consentGiven: boolean;
+  consentGivenAt?: string;
+  locationProvided?: string;
+  locationCoordinates?: { lat: number; lng: number };
+  completedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProfessionalApplication {
+  id: string;
+  userId: string;
+  roleId: string;
+  applicationData: Record<string, any>;
+  status: ApplicationStatus;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  reviewNotes?: string;
+  rejectionReason?: string;
+  createdAt: string;
+  updatedAt: string;
+  // Joined data
+  role?: ProfessionalRole;
+  user?: User;
+}

@@ -191,7 +191,8 @@ function calculateMatchScore(
   }
 
   // Rating bonus (0-5 scale, normalized to 0-30 points)
-  score += (profile.rating_average || 0) * 6;
+  const rating = profile.rating_average ? (typeof profile.rating_average === 'number' ? profile.rating_average : parseFloat(profile.rating_average) || 0) : 0;
+  score += rating * 6;
 
   // Availability bonus (online availability)
   if (profile.online_availability) {
@@ -232,7 +233,8 @@ function getMatchReasons(
     reasons.push('Currently online');
   }
 
-  if (profile.rating_average && profile.rating_average >= 4.5) {
+  const rating = profile.rating_average ? (typeof profile.rating_average === 'number' ? profile.rating_average : parseFloat(profile.rating_average) || 0) : 0;
+  if (rating >= 4.5) {
     reasons.push('Highly rated');
   }
 
@@ -310,7 +312,7 @@ function mapProfile(profile: any): ProfessionalProfile {
     serviceAreas: profile.service_areas || [],
     pricingInfo: profile.pricing_info,
     languages: profile.languages || ['en'],
-    ratingAverage: parseFloat(profile.rating_average) || 0,
+    ratingAverage: profile.rating_average ? (typeof profile.rating_average === 'number' ? profile.rating_average : parseFloat(profile.rating_average) || 0) : 0,
     ratingCount: profile.rating_count || 0,
     reviewCount: profile.review_count || 0,
     approvalStatus: profile.approval_status,

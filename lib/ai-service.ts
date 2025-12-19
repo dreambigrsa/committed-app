@@ -896,10 +896,22 @@ export async function getAIResponse(
           professionalType: helpDetection.professionalType,
         });
       }
-      // Only suggest professional help for high/medium confidence (not low)
+      // Only suggest professional help for HIGH confidence explicit requests
+      // Medium confidence should also work, but we're being conservative
+      // Low confidence is disabled - require explicit requests or serious issues
+      const shouldSuggest = helpDetection.needsHelp && 
+                           (helpDetection.confidence === 'high' || helpDetection.confidence === 'medium');
+      
+      if (shouldSuggest) {
+        console.log('[AI Service] Professional help suggested (direct OpenAI):', {
+          confidence: helpDetection.confidence,
+          professionalType: helpDetection.professionalType,
+        });
+      }
+      
       return {
         ...response,
-        suggestProfessionalHelp: helpDetection.needsHelp && (helpDetection.confidence === 'high' || helpDetection.confidence === 'medium'),
+        suggestProfessionalHelp: shouldSuggest,
         suggestedProfessionalType: helpDetection.professionalType || 'professional',
       };
     }
@@ -921,11 +933,21 @@ export async function getAIResponse(
           professionalType: helpDetection.professionalType,
         });
       }
-      // Only suggest professional help for high/medium confidence (not low)
-      // Low confidence requires substantial conversation context and should be more conservative
+      // Only suggest professional help for HIGH or MEDIUM confidence
+      // Low confidence is disabled - we require explicit requests or serious issues
+      const shouldSuggest = helpDetection.needsHelp && 
+                           (helpDetection.confidence === 'high' || helpDetection.confidence === 'medium');
+      
+      if (shouldSuggest) {
+        console.log('[AI Service] Professional help suggested (Supabase Function):', {
+          confidence: helpDetection.confidence,
+          professionalType: helpDetection.professionalType,
+        });
+      }
+      
       return {
         ...fnResponse,
-        suggestProfessionalHelp: helpDetection.needsHelp && (helpDetection.confidence === 'high' || helpDetection.confidence === 'medium'),
+        suggestProfessionalHelp: shouldSuggest,
         suggestedProfessionalType: helpDetection.professionalType || 'professional',
       };
     }
@@ -1281,44 +1303,59 @@ function detectProfessionalHelpNeeded(
   const recentConversation = conversationHistory.slice(-8);
   const recentHistory = recentConversation.map(m => m.content).join(' ').toLowerCase();
   
-  // Filter out thinking indicators and empty messages
+  // High confidence indicators (explicit, clear requests for professional help)
+  // Check FIRST - explicit requests should work even with few messages
+  // Only trigger on very explicit requests - user is clearly asking for professional help
+  const explicitPatterns = [
+    { pattern: /(i need|i want|can i|please).*(talk to|speak with|connect with|get help from|see|meet).*(a |an )?(professional|therapist|counselor|psychologist|mentor|coach|lawyer|legal advisor)/i, type: 'professional' },
+    { pattern: /(need|want).*(a |an )?(therapist|counselor|psychologist|mental health professional)/i, type: 'Therapist or Counselor' },
+    { pattern: /(need|want|looking for).*(a |an )?(business mentor|career mentor)/i, type: 'Business Mentor' },
+    { pattern: /(need|want|looking for).*(a |an )?(lawyer|legal advisor|legal help)/i, type: 'Legal Advisor' },
+    { pattern: /(need|want|looking for).*(a |an )?(life coach)/i, type: 'Life Coach' },
+  ];
+
+  // Only check the CURRENT message for explicit requests - NOT history
+  // This prevents triggering on casual mentions in old messages
+  // Also require message to be substantial (more than just keywords)
+  for (const { pattern, type } of explicitPatterns) {
+    if (pattern.test(message) && message.length > 15) {
+      // User explicitly requested professional help in current message
+      return { needsHelp: true, professionalType: type, confidence: 'high' };
+    }
+  }
+  
+  // Filter out thinking indicators and empty messages for medium/low confidence checks
   const validMessages = recentConversation.filter(m => 
     m.content && 
     m.content.trim().length > 0 && 
     !m.content.toLowerCase().includes('thinking')
   );
-  
-  // If we don't have enough valid messages, don't suggest help
-  if (validMessages.length < 5) {
-    return { needsHelp: false, confidence: 'low' };
-  }
-
-  // High confidence indicators (explicit requests)
-  const explicitPatterns = [
-    { pattern: /(need|want|looking for|find|connect with|speak with|talk to).*professional/i, type: 'professional' },
-    { pattern: /(need|want).*(therapist|counselor|psychologist)/i, type: 'Therapist or Counselor' },
-    { pattern: /(business mentor|career mentor|mentor).*/i, type: 'Business Mentor' },
-    { pattern: /(lawyer|legal advisor|legal help)/i, type: 'Legal Advisor' },
-    { pattern: /(life coach|coach).*/i, type: 'Life Coach' },
-  ];
-
-  for (const { pattern, type } of explicitPatterns) {
-    if (pattern.test(message) || pattern.test(recentHistory)) {
-      return { needsHelp: true, professionalType: type, confidence: 'high' };
-    }
-  }
 
   // Medium confidence indicators (serious emotional/mental health issues)
-  const mediumConfidencePatterns = [
-    { pattern: /(depressed|suicidal|self.?harm|want to die|kill myself)/i, type: 'Mental Health Professional' },
-    { pattern: /(panic attack|anxiety attack|can't breathe|overwhelmed)/i, type: 'Mental Health Professional' },
-    { pattern: /(divorce|separation|custody|legal issue)/i, type: 'Legal Advisor' },
-    { pattern: /(trauma|abuse|violence|assault)/i, type: 'Counselor' },
+  // Only trigger if these serious issues are mentioned AND there's context suggesting need for help
+  const seriousIssuePatterns = [
+    { pattern: /(depressed|suicidal|self.?harm|want to die|kill myself|thinking about suicide)/i, type: 'Mental Health Professional' },
+    { pattern: /(panic attack|anxiety attack|can't breathe|feeling overwhelmed|having a breakdown)/i, type: 'Mental Health Professional' },
+    { pattern: /(trauma|abuse|violence|assault|domestic violence)/i, type: 'Counselor' },
   ];
-
-  for (const { pattern, type } of mediumConfidencePatterns) {
-    if (pattern.test(message) || pattern.test(recentHistory)) {
-      return { needsHelp: true, professionalType: type, confidence: 'medium' };
+  
+  // Check current message for serious issues - require substantial context
+  for (const { pattern, type } of seriousIssuePatterns) {
+    if (pattern.test(message) && message.length > 20) {
+      // Serious issues mentioned - check if user is expressing need for help
+      const helpIndicators = /(help|support|can't cope|don't know what to do|struggling|need)/i;
+      if (helpIndicators.test(message) || recentHistory.length > 100) {
+        return { needsHelp: true, professionalType: type, confidence: 'medium' };
+      }
+    }
+  }
+  
+  // Legal issues - only if explicitly mentioned as needing help
+  const legalPatterns = /(divorce|separation|custody|legal issue|need a lawyer|need legal advice)/i;
+  if (legalPatterns.test(message) && message.length > 20) {
+    const needsLegalHelp = /(need|want|looking for|help).*(lawyer|legal|advice)/i;
+    if (needsLegalHelp.test(message)) {
+      return { needsHelp: true, professionalType: 'Legal Advisor', confidence: 'medium' };
     }
   }
 

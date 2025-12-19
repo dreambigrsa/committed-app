@@ -25,6 +25,7 @@ import {
   UserCheck,
   ChevronRight,
   MessageSquare,
+  Calendar,
 } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -356,6 +357,16 @@ export default function ProfileScreen() {
                 <View style={styles.menuItemLeft}>
                   <MessageSquare size={20} color={colors.primary} />
                   <Text style={[styles.menuItemText, { color: colors.primary }]}>Session Requests</Text>
+                </View>
+                <ChevronRight size={20} color={colors.text.tertiary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => router.push('/professional/bookings' as any)}
+              >
+                <View style={styles.menuItemLeft}>
+                  <Calendar size={20} color={colors.primary} />
+                  <Text style={[styles.menuItemText, { color: colors.primary }]}>My Bookings</Text>
                 </View>
                 <ChevronRight size={20} color={colors.text.tertiary} />
               </TouchableOpacity>

@@ -54,6 +54,12 @@ export default function ProfessionalAvailabilityScreen() {
   // Availability toggles
   const [onlineAvailability, setOnlineAvailability] = useState(true);
   const [inPersonAvailability, setInPersonAvailability] = useState(false);
+  
+  // Pricing settings
+  const [pricingEnabled, setPricingEnabled] = useState(false);
+  const [pricingCurrency, setPricingCurrency] = useState('USD');
+  const [pricingRate, setPricingRate] = useState('');
+  const [pricingUnit, setPricingUnit] = useState('session'); // session, hour, minute
 
   useEffect(() => {
     loadData();
@@ -94,6 +100,19 @@ export default function ProfessionalAvailabilityScreen() {
       setQuietHoursTimezone(profileData.quiet_hours_timezone || 'UTC');
       setOnlineAvailability(profileData.online_availability ?? true);
       setInPersonAvailability(profileData.in_person_availability ?? false);
+
+      // Load pricing info
+      if (profileData.pricing_info && typeof profileData.pricing_info === 'object') {
+        setPricingEnabled(true);
+        setPricingCurrency(profileData.pricing_info.currency || 'USD');
+        setPricingRate(profileData.pricing_info.rate?.toString() || '');
+        setPricingUnit(profileData.pricing_info.unit || 'session');
+      } else {
+        setPricingEnabled(false);
+        setPricingCurrency('USD');
+        setPricingRate('');
+        setPricingUnit('session');
+      }
 
       // Load professional status
       const { data: statusData, error: statusError } = await supabase
@@ -137,6 +156,15 @@ export default function ProfessionalAvailabilityScreen() {
     try {
       setSaving(true);
 
+      // Prepare pricing info
+      const pricingInfo = pricingEnabled && pricingRate 
+        ? {
+            currency: pricingCurrency,
+            rate: parseFloat(pricingRate),
+            unit: pricingUnit,
+          }
+        : null;
+
       // Update profile
       const { error: profileError } = await supabase
         .from('professional_profiles')
@@ -147,6 +175,7 @@ export default function ProfessionalAvailabilityScreen() {
           quiet_hours_timezone: quietHoursEnabled ? quietHoursTimezone : 'UTC',
           online_availability: onlineAvailability,
           in_person_availability: inPersonAvailability,
+          pricing_info: pricingInfo,
           updated_at: new Date().toISOString(),
         })
         .eq('id', profile.id);
@@ -402,6 +431,79 @@ export default function ProfessionalAvailabilityScreen() {
             </View>
           )}
         </View>
+
+        {/* Pricing Settings */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Pricing</Text>
+          
+          <View style={styles.settingRow}>
+            <View style={styles.settingLeft}>
+              <Text style={styles.settingLabel}>Set Pricing</Text>
+              <Text style={styles.settingDescription}>
+                Charge fees for your professional services
+              </Text>
+            </View>
+            <Switch
+              value={pricingEnabled}
+              onValueChange={setPricingEnabled}
+              trackColor={{ false: themeColors.border.light, true: themeColors.primary }}
+              thumbColor={themeColors.text.white}
+            />
+          </View>
+
+          {pricingEnabled && (
+            <View style={styles.pricingSettings}>
+              <View style={styles.pricingRow}>
+                <View style={styles.pricingInputGroup}>
+                  <Text style={styles.inputLabel}>Currency</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={pricingCurrency}
+                    onChangeText={setPricingCurrency}
+                    placeholder="USD"
+                    placeholderTextColor={themeColors.text.tertiary}
+                  />
+                </View>
+                <View style={styles.pricingInputGroup}>
+                  <Text style={styles.inputLabel}>Rate</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={pricingRate}
+                    onChangeText={setPricingRate}
+                    placeholder="0.00"
+                    keyboardType="decimal-pad"
+                    placeholderTextColor={themeColors.text.tertiary}
+                  />
+                </View>
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Pricing Unit</Text>
+                <View style={styles.pricingUnitRow}>
+                  {(['session', 'hour', 'minute'] as const).map((unit) => (
+                    <TouchableOpacity
+                      key={unit}
+                      style={[
+                        styles.pricingUnitOption,
+                        pricingUnit === unit && styles.pricingUnitOptionActive,
+                      ]}
+                      onPress={() => setPricingUnit(unit)}
+                    >
+                      <Text style={[
+                        styles.pricingUnitText,
+                        pricingUnit === unit && styles.pricingUnitTextActive,
+                      ]}>
+                        {unit.charAt(0).toUpperCase() + unit.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <Text style={styles.pricingExample}>
+                  Example: {pricingRate || '0'} {pricingCurrency} per {pricingUnit}
+                </Text>
+              </View>
+            </View>
+          )}
+        </View>
       </ScrollView>
 
       {/* Save Button */}
@@ -633,6 +735,53 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontSize: 16,
     color: colors.text.primary,
   },
+  pricingSettings: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.light,
+  },
+  pricingRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  pricingInputGroup: {
+    flex: 1,
+  },
+  pricingUnitRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  pricingUnitOption: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: colors.border.light,
+    backgroundColor: colors.background.secondary,
+    alignItems: 'center',
+  },
+  pricingUnitOptionActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary + '10',
+  },
+  pricingUnitText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text.primary,
+  },
+  pricingUnitTextActive: {
+    color: colors.primary,
+  },
+  pricingExample: {
+    fontSize: 13,
+    color: colors.text.secondary,
+    marginTop: 8,
+    fontStyle: 'italic',
+  },
   footer: {
     padding: 20,
     backgroundColor: colors.background.primary,
@@ -655,6 +804,21 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: colors.text.white,
+  },
+  sessionRequestsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary + '10',
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 12,
+    gap: 8,
+  },
+  sessionRequestsButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.primary,
   },
 });
 

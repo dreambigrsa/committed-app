@@ -461,6 +461,23 @@ function mapSession(session: any): ProfessionalSession {
     endedReason: session.ended_reason,
     createdAt: session.created_at,
     updatedAt: session.updated_at,
+    // Booking fields
+    scheduledDate: session.scheduled_date,
+    scheduledDurationMinutes: session.scheduled_duration_minutes,
+    locationType: session.location_type,
+    locationAddress: session.location_address,
+    locationNotes: session.location_notes,
+    bookingFeeAmount: session.booking_fee_amount ? parseFloat(session.booking_fee_amount) : undefined,
+    bookingFeeCurrency: session.booking_fee_currency,
+    paymentStatus: session.payment_status,
+    rescheduledFromSessionId: session.rescheduled_from_session_id,
+    rescheduleReason: session.reschedule_reason,
+    rescheduleRequestedBy: session.reschedule_requested_by,
+    rescheduleRequestedAt: session.reschedule_requested_at,
+    cancellationReason: session.cancellation_reason,
+    cancellationRequestedBy: session.cancellation_requested_by,
+    cancellationRequestedAt: session.cancellation_requested_at,
+    bookingNotes: session.booking_notes,
   };
 
   // Map joined user data if present

@@ -397,8 +397,8 @@ export interface Sticker {
 
 export type ProfessionalApprovalStatus = 'pending' | 'approved' | 'rejected' | 'suspended';
 export type ProfessionalOnlineStatus = 'online' | 'busy' | 'offline' | 'away';
-export type ProfessionalSessionStatus = 'pending_acceptance' | 'active' | 'ended' | 'declined' | 'cancelled';
-export type ProfessionalSessionType = 'live_chat' | 'escalated' | 'scheduled';
+export type ProfessionalSessionStatus = 'pending_acceptance' | 'active' | 'ended' | 'declined' | 'cancelled' | 'scheduled' | 'confirmed' | 'completed' | 'no_show';
+export type ProfessionalSessionType = 'live_chat' | 'escalated' | 'scheduled' | 'offline_booking';
 export type ReviewModerationStatus = 'pending' | 'approved' | 'rejected' | 'flagged';
 export type ApplicationStatus = 'pending' | 'under_review' | 'approved' | 'rejected' | 'withdrawn';
 export type EscalationTriggerType = 'timeout' | 'user_request' | 'ai_detection' | 'manual';
@@ -496,6 +496,23 @@ export interface ProfessionalSession {
   endedReason?: string;
   createdAt: string;
   updatedAt: string;
+  // Booking fields
+  scheduledDate?: string;
+  scheduledDurationMinutes?: number;
+  locationType?: 'online' | 'in_person' | 'phone' | 'video';
+  locationAddress?: string;
+  locationNotes?: string;
+  bookingFeeAmount?: number;
+  bookingFeeCurrency?: string;
+  paymentStatus?: 'pending' | 'paid' | 'refunded' | 'cancelled';
+  rescheduledFromSessionId?: string;
+  rescheduleReason?: string;
+  rescheduleRequestedBy?: 'user' | 'professional';
+  rescheduleRequestedAt?: string;
+  cancellationReason?: string;
+  cancellationRequestedBy?: 'user' | 'professional';
+  cancellationRequestedAt?: string;
+  bookingNotes?: string;
   // Joined data
   professional?: ProfessionalProfile;
   user?: User;

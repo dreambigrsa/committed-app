@@ -56,6 +56,7 @@ export default function FeedScreen() {
   const [postStatuses, setPostStatuses] = useState<Record<string, any>>({});
   const recordedImpressions = useRef<Set<string>>(new Set());
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
+  const failedAdImages = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -1115,12 +1116,21 @@ export default function FeedScreen() {
         <View style={styles.adBadge}>
           <Text style={styles.adBadgeText}>Sponsored</Text>
         </View>
-        <Image 
-          source={{ uri: ad.imageUrl }} 
-          style={styles.bannerAdImage} 
-          contentFit="cover"
-          onError={() => console.error('Failed to load banner ad image:', ad.id)}
-        />
+        {!failedAdImages.current.has(ad.id) ? (
+          <Image 
+            source={{ uri: ad.imageUrl }} 
+            style={styles.bannerAdImage} 
+            contentFit="cover"
+            onError={() => {
+              failedAdImages.current.add(ad.id);
+              console.warn('Failed to load banner ad image:', ad.id);
+            }}
+          />
+        ) : (
+          <View style={[styles.bannerAdImage, { backgroundColor: colors.background.secondary, justifyContent: 'center', alignItems: 'center' }]}>
+            <ImageIcon size={32} color={colors.text.tertiary} />
+          </View>
+        )}
         <View style={styles.bannerAdContent}>
           <Text style={styles.bannerAdTitle}>{ad.title}</Text>
           {ad.description && (
@@ -1155,12 +1165,21 @@ export default function FeedScreen() {
         <View style={styles.adBadge}>
           <Text style={styles.adBadgeText}>Sponsored</Text>
         </View>
-        <Image 
-          source={{ uri: ad.imageUrl }} 
-          style={styles.adImage} 
-          contentFit="cover"
-          onError={() => console.error('Failed to load card ad image:', ad.id)}
-        />
+        {!failedAdImages.current.has(ad.id) ? (
+          <Image 
+            source={{ uri: ad.imageUrl }} 
+            style={styles.adImage} 
+            contentFit="cover"
+            onError={() => {
+              failedAdImages.current.add(ad.id);
+              console.warn('Failed to load card ad image:', ad.id);
+            }}
+          />
+        ) : (
+          <View style={[styles.adImage, { backgroundColor: colors.background.secondary, justifyContent: 'center', alignItems: 'center' }]}>
+            <ImageIcon size={32} color={colors.text.tertiary} />
+          </View>
+        )}
         <View style={styles.adContent}>
           <Text style={styles.adTitle}>{ad.title}</Text>
           <Text style={styles.adDescription} numberOfLines={2}>

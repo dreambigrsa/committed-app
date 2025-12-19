@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
-import { Heart, MessageCircle, Share2, Volume2, VolumeX, Plus, Film, MoreVertical, Edit2, Trash2, X, UserPlus, Flag, Smile } from 'lucide-react-native';
+import { Heart, MessageCircle, Share2, Volume2, VolumeX, Plus, Film, MoreVertical, Edit2, Trash2, X, UserPlus, Flag, Smile, Image as ImageIcon } from 'lucide-react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/contexts/AppContext';
@@ -64,6 +64,7 @@ export default function ReelsScreen() {
   const bannerCardAdSlideAnim = useRef(new Animated.Value(200)).current; // Start off-screen
   const bannerCardSkipButtonOpacity = useRef(new Animated.Value(0)).current;
   const recordedImpressions = useRef<Set<string>>(new Set());
+  const failedAdImages = useRef<Set<string>>(new Set());
   const skipCountdownInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const bannerCardSkipCountdownInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const bannerCardAutoDismissTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -710,12 +711,21 @@ export default function ReelsScreen() {
           <View style={styles.adBadge}>
             <Text style={styles.adBadgeText}>Sponsored</Text>
           </View>
-          <Image 
-            source={{ uri: ad.imageUrl }} 
-            style={styles.bannerAdImage} 
-            contentFit="cover"
-            onError={() => console.error('Failed to load banner ad image:', ad.id)}
-          />
+          {!failedAdImages.current.has(ad.id) ? (
+            <Image 
+              source={{ uri: ad.imageUrl }} 
+              style={styles.bannerAdImage} 
+              contentFit="cover"
+              onError={() => {
+                failedAdImages.current.add(ad.id);
+                console.warn('Failed to load banner ad image:', ad.id);
+              }}
+            />
+          ) : (
+            <View style={[styles.bannerAdImage, { backgroundColor: colors.background.secondary, justifyContent: 'center', alignItems: 'center' }]}>
+              <ImageIcon size={32} color={colors.text.tertiary} />
+            </View>
+          )}
           <View style={styles.bannerAdContent}>
             <Text style={styles.bannerAdTitle}>{ad.title}</Text>
             {ad.linkUrl && (
@@ -746,12 +756,21 @@ export default function ReelsScreen() {
           <View style={styles.adBadge}>
             <Text style={styles.adBadgeText}>Sponsored</Text>
           </View>
-          <Image 
-            source={{ uri: ad.imageUrl }} 
-            style={styles.adImage} 
-            contentFit="cover"
-            onError={() => console.error('Failed to load card ad image:', ad.id)}
-          />
+          {!failedAdImages.current.has(ad.id) ? (
+            <Image 
+              source={{ uri: ad.imageUrl }} 
+              style={styles.adImage} 
+              contentFit="cover"
+              onError={() => {
+                failedAdImages.current.add(ad.id);
+                console.warn('Failed to load card ad image:', ad.id);
+              }}
+            />
+          ) : (
+            <View style={[styles.adImage, { backgroundColor: colors.background.secondary, justifyContent: 'center', alignItems: 'center' }]}>
+              <ImageIcon size={32} color={colors.text.tertiary} />
+            </View>
+          )}
           <View style={styles.adContent}>
             <Text style={styles.adTitle}>{ad.title}</Text>
             <Text style={styles.adDescription} numberOfLines={2}>
@@ -824,12 +843,21 @@ export default function ReelsScreen() {
             {isBanner ? (
               // Banner Ad Layout
               <>
-                <Image 
-                  source={{ uri: ad.imageUrl }} 
-                  style={styles.bannerCardAdImage} 
-                  contentFit="cover"
-                  onError={() => console.error('Failed to load banner ad image:', ad.id)}
-                />
+                {!failedAdImages.current.has(ad.id) ? (
+                  <Image 
+                    source={{ uri: ad.imageUrl }} 
+                    style={styles.bannerCardAdImage} 
+                    contentFit="cover"
+                    onError={() => {
+                      failedAdImages.current.add(ad.id);
+                      console.warn('Failed to load banner ad image:', ad.id);
+                    }}
+                  />
+                ) : (
+                  <View style={[styles.bannerCardAdImage, { backgroundColor: colors.background.secondary, justifyContent: 'center', alignItems: 'center' }]}>
+                    <ImageIcon size={32} color={colors.text.tertiary} />
+                  </View>
+                )}
                 <View style={styles.bannerCardAdTextContainer}>
                   <Text style={styles.bannerCardAdTitle} numberOfLines={1}>{ad.title}</Text>
                   {ad.linkUrl && (
@@ -843,12 +871,21 @@ export default function ReelsScreen() {
             ) : (
               // Card Ad Layout
               <>
-                <Image 
-                  source={{ uri: ad.imageUrl }} 
-                  style={styles.bannerCardAdCardImage} 
-                  contentFit="cover"
-                  onError={() => console.error('Failed to load card ad image:', ad.id)}
-                />
+                {!failedAdImages.current.has(ad.id) ? (
+                  <Image 
+                    source={{ uri: ad.imageUrl }} 
+                    style={styles.bannerCardAdCardImage} 
+                    contentFit="cover"
+                    onError={() => {
+                      failedAdImages.current.add(ad.id);
+                      console.warn('Failed to load card ad image:', ad.id);
+                    }}
+                  />
+                ) : (
+                  <View style={[styles.bannerCardAdCardImage, { backgroundColor: colors.background.secondary, justifyContent: 'center', alignItems: 'center' }]}>
+                    <ImageIcon size={32} color={colors.text.tertiary} />
+                  </View>
+                )}
                 <View style={styles.bannerCardAdCardTextContainer}>
                   <Text style={styles.bannerCardAdTitle} numberOfLines={1}>{ad.title}</Text>
                   <Text style={styles.bannerCardAdDescription} numberOfLines={2}>

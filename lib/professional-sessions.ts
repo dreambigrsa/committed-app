@@ -31,7 +31,6 @@ export async function createProfessionalSession(
       hasAiSummary: !!params.aiSummary,
       userConsentGiven: params.userConsentGiven,
     });
-
     const { data, error } = await supabase
       .from('professional_sessions')
       .insert({

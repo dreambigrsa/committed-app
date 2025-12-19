@@ -90,15 +90,34 @@ export async function findMatchingProfessionals(
       };
 
       // Skip offline professionals if online only is strictly required
-      if (criteria.requiresOnlineOnly && status.status !== 'online') {
+      if (criteria.requiresOnlineOnly && status.status !== 'online' && status.status !== 'busy') {
         continue;
       }
 
-      // Skip busy professionals at capacity (only if online)
+      // Check quiet hours
+      if (profile.quiet_hours_start && profile.quiet_hours_end) {
+        const { isInQuietHours } = await import('./professional-availability');
+        const inQuietHours = isInQuietHours(
+          profile.quiet_hours_start,
+          profile.quiet_hours_end,
+          profile.quiet_hours_timezone || 'UTC'
+        );
+        
+        // Skip professionals in quiet hours if online only is required
+        if (inQuietHours && criteria.requiresOnlineOnly) {
+          continue;
+        }
+      }
+
+      // Skip professionals at capacity
       if (
-        status.status === 'online' &&
         status.current_session_count >= (profile.max_concurrent_sessions || 3)
       ) {
+        continue;
+      }
+
+      // Skip if online availability is disabled
+      if (!profile.online_availability && criteria.requiresOnlineOnly) {
         continue;
       }
 
@@ -230,31 +249,17 @@ export async function getBestMatchForRole(
 /**
  * Check if a professional can accept a new session
  */
+/**
+ * Check if a professional can accept a new session
+ * Uses the enhanced availability check from professional-availability.ts
+ */
 export async function canProfessionalAcceptSession(
   professionalId: string
 ): Promise<boolean> {
-  try {
-    const { data: profile } = await supabase
-      .from('professional_profiles')
-      .select('max_concurrent_sessions')
-      .eq('id', professionalId)
-      .single();
-
-    const { data: status } = await supabase
-      .from('professional_status')
-      .select('status, current_session_count')
-      .eq('professional_id', professionalId)
-      .single();
-
-    if (!profile || !status) return false;
-    if (status.status !== 'online' && status.status !== 'busy') return false;
-
-    const maxSessions = profile.max_concurrent_sessions || 3;
-    return status.current_session_count < maxSessions;
-  } catch (error) {
-    console.error('Error checking professional availability:', error);
-    return false;
-  }
+  // Use the enhanced availability check from professional-availability.ts
+  const { canProfessionalAcceptSession: checkAvailability } = await import('./professional-availability');
+  const result = await checkAvailability(professionalId);
+  return result.canAccept;
 }
 
 /**
@@ -332,4 +337,5 @@ function mapStatus(status: any): ProfessionalStatus {
     updatedAt: status.updated_at,
   };
 }
+
 

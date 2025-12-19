@@ -228,7 +228,8 @@ export default function ProfessionalBookingsScreen() {
     );
   };
 
-  const handleMessage = (booking: ProfessionalSession) => {
+  const handleMessage = async (booking: ProfessionalSession) => {
+    // Navigate to conversation for booking-related messaging
     router.push(`/messages/${booking.conversationId}`);
   };
 

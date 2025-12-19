@@ -30,6 +30,9 @@ export async function findMatchingProfessionals(
   criteria: MatchingCriteria,
   limit: number = 5
 ): Promise<ProfessionalMatch[]> {
+  // Import quiet hours check function once at the start
+  const { isInQuietHours } = await import('./professional-availability');
+  
   try {
     let query = supabase
       .from('professional_profiles')
@@ -96,7 +99,6 @@ export async function findMatchingProfessionals(
 
       // Check quiet hours
       if (profile.quiet_hours_start && profile.quiet_hours_end) {
-        const { isInQuietHours } = await import('./professional-availability');
         const inQuietHours = isInQuietHours(
           profile.quiet_hours_start,
           profile.quiet_hours_end,

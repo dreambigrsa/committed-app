@@ -44,6 +44,10 @@ const lightColors = {
     ended: '#5F6368',
   },
   
+  // Semantic color aliases for convenience
+  success: '#34A853', // Same as secondary/verified
+  warning: '#FBBC04', // Same as accent/pending
+  
   badge: {
     verified: '#E6F4EA',
     verifiedText: '#137333',
@@ -85,6 +89,10 @@ const darkColors = {
     ended: '#9AA0A6',
   },
   
+  // Semantic color aliases for convenience
+  success: '#34A853', // Same as secondary/verified
+  warning: '#FBBC04', // Same as accent/pending
+  
   badge: {
     verified: '#1E3A2E',
     verifiedText: '#81C995',
@@ -108,11 +116,15 @@ export const [ThemeContext, useTheme] = createContextHook(() => {
     const baseColors = isDark ? darkColors : lightColors;
     
     // Apply visual theme modifications
-    if (visualTheme === 'default') {
-      return { ...baseColors };
-    }
-    
     const themed = { ...baseColors };
+    
+    // Ensure success and warning are always set from base colors
+    themed.success = themed.success || themed.secondary;
+    themed.warning = themed.warning || themed.accent;
+    
+    if (visualTheme === 'default') {
+      return themed;
+    }
     
     if (visualTheme === 'colorful') {
       // More vibrant, colorful theme
@@ -120,12 +132,20 @@ export const [ThemeContext, useTheme] = createContextHook(() => {
       themed.secondary = '#00BCD4'; // Cyan
       themed.accent = '#FFC107'; // Amber
       themed.danger = '#F44336'; // Red
+      themed.success = '#00BCD4'; // Same as secondary
+      themed.warning = '#FFC107'; // Same as accent
     } else if (visualTheme === 'minimal') {
       // Muted, minimal theme
       themed.primary = '#6C757D'; // Gray
       themed.secondary = '#495057'; // Dark Gray
       themed.accent = '#868E96'; // Light Gray
       themed.danger = '#DC3545'; // Red (unchanged)
+      themed.success = '#495057'; // Same as secondary
+      themed.warning = '#868E96'; // Same as accent
+    } else {
+      // Default theme - ensure success/warning are set
+      themed.success = themed.secondary;
+      themed.warning = themed.accent;
     }
     
     return themed;

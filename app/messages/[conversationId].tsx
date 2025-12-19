@@ -2303,6 +2303,19 @@ export default function ConversationDetailScreen() {
         }}
       />
 
+      {/* Professional Help Suggestion Modal */}
+      {isAIConversation && currentUser && (
+        <ProfessionalHelpSuggestionModal
+          visible={showHelpSuggestionModal}
+          onClose={() => setShowHelpSuggestionModal(false)}
+          onConfirm={() => {
+            setShowHelpSuggestionModal(false);
+            setShowRequestHelpModal(true);
+          }}
+          professionalType={suggestedProfessionalType}
+        />
+      )}
+
       {/* Request Live Help Modal */}
       {isAIConversation && currentUser && (
         <RequestLiveHelpModal

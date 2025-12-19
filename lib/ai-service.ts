@@ -74,6 +74,22 @@ function normalizeOpenAIKey(candidate: any): string | null {
   return v;
 }
 
+/**
+ * Create an AbortSignal that times out after the specified duration
+ * Polyfill for AbortSignal.timeout() which isn't available in React Native
+ */
+function createTimeoutAbortSignal(timeoutMs: number): AbortSignal {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+  
+  // Store timeout ID on the signal so it can be cleared if needed
+  (controller.signal as any)._timeoutId = timeoutId;
+  
+  return controller.signal;
+}
+
 export interface AIResponse {
   success: boolean;
   message?: string;

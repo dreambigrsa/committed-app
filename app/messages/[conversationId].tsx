@@ -43,6 +43,7 @@ import { UserStatus } from '@/types';
 import { getSignedUrlForMedia } from '@/lib/status-queries';
 import { getOrCreateAIUser, getAIResponse } from '@/lib/ai-service';
 import RequestLiveHelpModal from '@/components/RequestLiveHelpModal';
+import SessionReviewModal from '@/components/SessionReviewModal';
 import { getActiveSession } from '@/lib/professional-sessions';
 import { ProfessionalSession } from '@/types';
 import { Users, Shield } from 'lucide-react-native';
@@ -187,6 +188,8 @@ export default function ConversationDetailScreen() {
   const [aiIsThinking, setAiIsThinking] = useState(false);
   const [showRequestHelpModal, setShowRequestHelpModal] = useState(false);
   const [professionalSession, setProfessionalSession] = useState<ProfessionalSession | null>(null);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [hasReview, setHasReview] = useState(false);
   const conversation = getConversation(conversationId);
   const recordedImpressions = useRef<Set<string>>(new Set());
   
@@ -243,10 +246,30 @@ export default function ConversationDetailScreen() {
   }, [conversationId]);
   
   const loadActiveSession = async () => {
-    if (!conversationId) return;
+    if (!conversationId || !currentUser) return;
     try {
       const session = await getActiveSession(conversationId);
       setProfessionalSession(session);
+      
+      // Check if session has ended and user hasn't reviewed yet
+      if (session && session.status === 'ended' && session.professionalId && !hasReview) {
+        // Check if review already exists
+        const { data: existingReview } = await supabase
+          .from('professional_reviews')
+          .select('id')
+          .eq('session_id', session.id)
+          .eq('user_id', currentUser.id)
+          .maybeSingle();
+        
+        if (!existingReview && session.professionalJoinedAt) {
+          // Show review modal after a short delay
+          setTimeout(() => {
+            setShowReviewModal(true);
+          }, 2000);
+        } else if (existingReview) {
+          setHasReview(true);
+        }
+      }
     } catch (error) {
       console.error('Error loading active session:', error);
     }
@@ -2221,6 +2244,23 @@ export default function ConversationDetailScreen() {
             }))}
           onSessionCreated={() => {
             loadActiveSession();
+          }}
+        />
+      )}
+
+      {/* Session Review Modal */}
+      {professionalSession && currentUser && (
+        <SessionReviewModal
+          visible={showReviewModal}
+          onClose={() => {
+            setShowReviewModal(false);
+            setHasReview(true); // Mark as reviewed to prevent showing again
+          }}
+          sessionId={professionalSession.id}
+          professionalId={professionalSession.professionalId}
+          userId={currentUser.id}
+          onReviewSubmitted={() => {
+            setHasReview(true);
           }}
         />
       )}

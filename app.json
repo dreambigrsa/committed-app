@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "app.committed.committedapp",
+      "bundleIdentifier": "app.committed",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Allow $(PRODUCT_NAME) to access your photos",
         "NSCameraUsageDescription": "Allow $(PRODUCT_NAME) to access your camera",
@@ -32,7 +32,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "app.committed.committedapp",
+      "package": "app.committed.committed",
       "versionCode": 1,
       "softwareKeyboardLayoutMode": "resize",
       "permissions": [

@@ -787,7 +787,7 @@ export default function AdminSettingsScreen() {
 
         {shouldShowSection('committed ai', ['system prompt', 'rollout', 'suggestion', 'ai']) && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Committed AI</Text>
+          <Text style={styles.sectionTitle}>Committed</Text>
 
           <View style={styles.settingItemColumn}>
             <View style={styles.settingInfo}>

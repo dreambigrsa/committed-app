@@ -42,6 +42,10 @@ import StatusIndicator from '@/components/StatusIndicator';
 import { UserStatus } from '@/types';
 import { getSignedUrlForMedia } from '@/lib/status-queries';
 import { getOrCreateAIUser, getAIResponse } from '@/lib/ai-service';
+import RequestLiveHelpModal from '@/components/RequestLiveHelpModal';
+import { getActiveSession } from '@/lib/professional-sessions';
+import { ProfessionalSession } from '@/types';
+import { Users, Shield } from 'lucide-react-native';
 
 /**
  * Status Preview Attachment Component
@@ -181,8 +185,13 @@ export default function ConversationDetailScreen() {
   const [aiUserId, setAiUserId] = useState<string | null>(null);
   const [aiFeedback, setAiFeedback] = useState<Record<string, 1 | -1>>({});
   const [aiIsThinking, setAiIsThinking] = useState(false);
+  const [showRequestHelpModal, setShowRequestHelpModal] = useState(false);
+  const [professionalSession, setProfessionalSession] = useState<ProfessionalSession | null>(null);
   const conversation = getConversation(conversationId);
   const recordedImpressions = useRef<Set<string>>(new Set());
+  
+  // Check if this is an AI conversation
+  const isAIConversation = conversation?.participants?.some((p: string) => p === aiUserId);
   
   // Animation for attachment buttons
   const attachmentButtonsOpacity = useRef(new Animated.Value(1)).current;
@@ -203,7 +212,45 @@ export default function ConversationDetailScreen() {
         // ignore
       }
     })();
-  }, []);
+    
+    // Load active professional session
+    loadActiveSession();
+  }, [conversationId]);
+  
+  // Subscribe to session updates
+  useEffect(() => {
+    if (!conversationId) return;
+    
+    const channel = supabase
+      .channel(`professional-session-${conversationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'professional_sessions',
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        () => {
+          loadActiveSession();
+        }
+      )
+      .subscribe();
+    
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [conversationId]);
+  
+  const loadActiveSession = async () => {
+    if (!conversationId) return;
+    try {
+      const session = await getActiveSession(conversationId);
+      setProfessionalSession(session);
+    } catch (error) {
+      console.error('Error loading active session:', error);
+    }
+  };
 
   const submitAiFeedback = async (messageId: string, rating: 1 | -1) => {
     if (!currentUser || !conversationId) return;
@@ -2048,6 +2095,26 @@ export default function ConversationDetailScreen() {
               </TouchableOpacity>
             )}
 
+            {/* Request Live Help Button - Show only in AI conversations without active session */}
+            {isAIConversation && !professionalSession && (
+              <TouchableOpacity
+                style={styles.requestHelpButton}
+                onPress={() => setShowRequestHelpModal(true)}
+                activeOpacity={0.7}
+              >
+                <Users size={18} color={colors.text.white} />
+                <Text style={styles.requestHelpButtonText}>Request Live Help</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Professional Session Status - Show when session is active */}
+            {professionalSession && professionalSession.status === 'active' && (
+              <View style={styles.sessionStatusBadge}>
+                <Shield size={16} color={colors.secondary} />
+                <Text style={styles.sessionStatusText}>Professional joined</Text>
+              </View>
+            )}
+
             {/* Attachment Buttons - Animated */}
             <Animated.View
               pointerEvents={(!isKeyboardVisible || showAttachments) ? 'auto' : 'none'}
@@ -2138,6 +2205,25 @@ export default function ConversationDetailScreen() {
           setShowStickerPicker(false);
         }}
       />
+
+      {/* Request Live Help Modal */}
+      {isAIConversation && currentUser && (
+        <RequestLiveHelpModal
+          visible={showRequestHelpModal}
+          onClose={() => setShowRequestHelpModal(false)}
+          conversationId={conversationId}
+          userId={currentUser.id}
+          conversationHistory={localMessages
+            .filter((m) => m.messageType === 'text')
+            .map((m) => ({
+              role: m.senderId === currentUser.id ? 'user' : 'assistant',
+              content: m.content || '',
+            }))}
+          onSessionCreated={() => {
+            loadActiveSession();
+          }}
+        />
+      )}
     </>
   );
 }
@@ -2410,6 +2496,37 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  requestHelpButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.secondary,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    marginRight: 8,
+  },
+  requestHelpButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text.white,
+  },
+  sessionStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.secondary + '20',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 8,
+  },
+  sessionStatusText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.secondary,
   },
   sendButtonDisabled: {
     backgroundColor: colors.background.secondary,

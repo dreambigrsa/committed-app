@@ -2,224 +2,188 @@
 
 ## Overview
 
-This guide explains how to set up the initial professional roles for the Committed app's Professional Join & Escalation System.
+This guide explains how to set up the initial professional roles for the Committed app's professional system.
 
-## Initial Professional Roles
+## Initial Roles Created
 
-The system includes 9 initial professional roles covering Mental Health, Personal Development, Business, and Legal categories. All roles are:
+The system comes with 9 pre-configured professional roles:
 
-- ✅ **Admin-managed**: Can be edited, enabled/disabled, and extended via Admin Panel
-- ✅ **Live Chat Eligible**: Can join real-time conversations with users
-- ✅ **AI Referral Eligible**: Can be matched by AI based on user needs
-- ✅ **Review Enabled**: Support ratings and reviews from users
-- ✅ **Configurable**: Admins can modify requirements, disclaimers, and settings
+### Mental Health & Support
+1. **Counselor** - Emotional support, guidance, and coping strategies
+2. **Relationship Therapist** - Relationship conflict resolution and communication
+3. **Psychologist** - Psychological assessment and therapy
+4. **Mental Health Professional** - General mental health support
+
+### Personal Development
+5. **Life Coach** - Personal growth, goal-setting, and life direction
+
+### Business & Career
+6. **Business Mentor** - Business growth, strategy, and professional development
+
+### Mentorship
+7. **General Mentor** - Guidance based on experience and expertise
+
+### Legal
+8. **Legal Advisor** - General legal guidance and information
+9. **Lawyer / Legal Consultant** - Professional legal consultation
 
 ## Setup Instructions
 
-### Step 1: Run Database Schema (if not already done)
+### Option 1: SQL Migration (Recommended)
 
-1. Open Supabase Dashboard
-2. Go to SQL Editor
-3. Run `migrations/professional-system-schema.sql`
-4. Verify all tables were created successfully
+1. **Run the migration in Supabase SQL Editor:**
+   - Open your Supabase project
+   - Navigate to SQL Editor
+   - Execute: `migrations/seed-initial-professional-roles.sql`
 
-### Step 2: Seed Initial Professional Roles
+2. **Verify roles were created:**
+   ```sql
+   SELECT name, category, is_active, display_order 
+   FROM professional_roles 
+   ORDER BY display_order;
+   ```
 
-1. In Supabase SQL Editor, create a new query
-2. Copy and paste the entire contents of `migrations/seed-professional-roles.sql`
-3. Click "Run" or press Ctrl/Cmd + Enter
-4. You should see a success message and a query result showing 9 roles
+### Option 2: Admin Panel
 
-### Step 3: Verify Roles Were Created
+1. **Access Admin Dashboard:**
+   - Log in as Admin or Super Admin
+   - Navigate to: Admin Dashboard → Professional System → Professional Roles
 
-Run this query to verify:
+2. **Create roles manually:**
+   - Click "Create Role" button
+   - Fill in role details:
+     - Name
+     - Category
+     - Description
+     - Credential requirements
+     - Disclaimer text
+   - Save the role
+
+## Role Configuration
+
+Each role supports the following settings (all editable by admins):
+
+### Basic Information
+- **Name**: Unique role identifier
+- **Category**: Grouping for organization
+- **Description**: What this professional does
+
+### Requirements
+- **Requires Credentials**: Whether professionals must provide credentials
+- **Requires Verification**: Whether credentials must be verified by admin
+- **Approval Required**: Whether admin must approve professionals
+
+### Features
+- **Eligible for Live Chat**: Can join live conversations with users
+- **AI Referral Eligible**: Can be matched by AI system
+
+### Safety & Compliance
+- **Disclaimer Text**: Role-specific disclaimer shown to users
+- **AI Matching Rules**: Keywords and rules for AI matching (JSON)
+
+### Status
+- **Active**: Whether role is visible and available
+- **Display Order**: Order in which roles appear
+
+## Admin Management
+
+All roles can be:
+- ✅ **Edited** - Change any field
+- ✅ **Enabled/Disabled** - Toggle visibility
+- ✅ **Reordered** - Change display order
+- ✅ **Deleted** - Remove (if no active professionals)
+
+## AI Integration
+
+The AI system uses `ai_matching_rules` JSON field to match users to appropriate professionals:
+
+```json
+{
+  "keywords": ["counseling", "emotional support", "coping"],
+  "priority": 1
+}
+```
+
+- **keywords**: Terms that trigger this role match
+- **priority**: Higher priority = matched first (1 = highest)
+
+## Adding New Roles
+
+Admins can add new roles at any time:
+
+1. Go to Admin → Professional Roles
+2. Click "Create Role"
+3. Configure all settings
+4. Save
+
+**No code changes required!** The system is fully dynamic.
+
+## Role Categories
+
+Current categories:
+- Mental Health & Support
+- Mental Health & Relationships
+- Mental Health
+- Personal Development
+- Business & Career
+- Mentorship
+- Legal
+
+Admins can use any category name when creating roles.
+
+## Verification
+
+After running the migration, verify:
 
 ```sql
+-- Check all roles are active
+SELECT COUNT(*) as active_roles 
+FROM professional_roles 
+WHERE is_active = true;
+-- Should return 9
+
+-- Check roles are eligible for live chat
+SELECT COUNT(*) as live_chat_eligible 
+FROM professional_roles 
+WHERE eligible_for_live_chat = true;
+-- Should return 9
+
+-- View all roles with details
 SELECT 
   name,
   category,
-  is_active,
-  eligible_for_live_chat,
   requires_credentials,
-  display_order
+  eligible_for_live_chat,
+  is_active
 FROM professional_roles
 ORDER BY display_order;
 ```
 
-Expected output: 9 rows with all roles active and properly configured.
-
-## Role Details
-
-### 1. Counselor
-- **Category**: Mental Health & Support
-- **Credentials Required**: Yes
-- **Description**: Provides emotional support, guidance, and coping strategies
-- **Disclaimer**: "This professional provides counseling support but does not replace medical or psychiatric treatment."
-
-### 2. Relationship Therapist
-- **Category**: Mental Health & Relationships
-- **Credentials Required**: Yes
-- **Description**: Helps individuals or couples resolve relationship conflicts and improve communication
-- **Disclaimer**: "Relationship therapy is not a substitute for emergency or psychiatric care."
-
-### 3. Psychologist
-- **Category**: Mental Health
-- **Credentials Required**: Yes
-- **Description**: Provides psychological assessment and therapy within professional scope
-- **Disclaimer**: "This service does not include diagnosis or prescription of medication."
-
-### 4. Mental Health Professional
-- **Category**: Mental Health
-- **Credentials Required**: Yes
-- **Description**: Provides general mental health support and guidance
-- **Disclaimer**: "For emergencies, contact local emergency services."
-
-### 5. Life Coach
-- **Category**: Personal Development
-- **Credentials Required**: Optional (No)
-- **Description**: Supports personal growth, goal-setting, and life direction
-- **Disclaimer**: "Life coaching is not therapy or medical treatment."
-
-### 6. Business Mentor
-- **Category**: Business & Career
-- **Credentials Required**: Optional (No)
-- **Description**: Advises on business growth, strategy, and professional development
-- **Disclaimer**: "Business advice is for guidance only and not legally binding."
-
-### 7. General Mentor
-- **Category**: Mentorship
-- **Credentials Required**: Optional (No)
-- **Description**: Provides guidance based on experience and expertise
-- **Disclaimer**: "Mentorship is advisory and does not replace professional services."
-
-### 8. Legal Advisor
-- **Category**: Legal
-- **Credentials Required**: Yes
-- **Description**: Provides general legal guidance and information
-- **Disclaimer**: "Legal advice provided is general information and not a substitute for licensed legal representation."
-
-### 9. Lawyer / Legal Consultant
-- **Category**: Legal
-- **Credentials Required**: Yes
-- **Description**: Provides professional legal consultation within licensed jurisdictions
-- **Disclaimer**: "This does not establish an attorney-client relationship."
-
-## Managing Roles (Admin Panel)
-
-After seeding the initial roles, Admins can:
-
-1. **View All Roles**: Admin Dashboard → Professional System → Professional Roles
-2. **Edit Role Details**: Click "Edit" on any role to modify:
-   - Name and category
-   - Description
-   - Disclaimer text
-   - Credential requirements
-   - Live chat eligibility
-   - Approval requirements
-   - Display order
-3. **Enable/Disable Roles**: Toggle the "Active" status
-4. **Create New Roles**: Click the "+" button to add custom roles
-5. **Delete Roles**: Remove roles that are no longer needed
-
-## Integration Points
-
-Once roles are created, they integrate with:
-
-### Professional Onboarding
-- Users can apply to become professionals via Settings → Become a Professional
-- They select from available active roles
-- Credentials are required if `requires_credentials = true`
-- Applications are reviewed by Admins
-
-### AI Referral System
-- AI can match users to professionals based on role eligibility
-- Only roles with `eligible_for_live_chat = true` are considered
-- Only `is_active = true` roles are available for matching
-- AI uses `ai_matching_rules` (JSONB) for advanced matching logic
-
-### Live Chat System
-- Professionals with approved profiles can join live sessions
-- Roles must have `eligible_for_live_chat = true`
-- Role-specific disclaimers are shown to users before escalation
-
-### Review System
-- Users can rate and review professionals after sessions
-- Reviews are moderated by Admins
-- Rating averages are calculated automatically
-
-## Default Settings
-
-All initial roles are configured with:
-- `is_active = true` (enabled by default)
-- `eligible_for_live_chat = true` (can join live sessions)
-- `approval_required = true` (admin must approve professionals)
-- `requires_verification = true` (if credentials are required)
-- `display_order` set sequentially (1-9)
-
-## Customization
-
-### Adding Custom Roles
-
-Use the Admin Panel to add new roles:
-1. Navigate to Admin → Professional Roles
-2. Click the "+" button
-3. Fill in role details
-4. Configure requirements
-5. Save
-
-### Modifying Existing Roles
-
-1. Navigate to Admin → Professional Roles
-2. Click "Edit" on the role
-3. Modify any fields
-4. Save changes
-
-### AI Matching Rules
-
-The `ai_matching_rules` JSONB field allows admins to configure advanced matching logic:
-
-```json
-{
-  "keywords": ["anxiety", "stress", "depression"],
-  "priority": 1,
-  "location_required": false,
-  "min_rating": 4.0
-}
-```
-
-Currently set to `{}` for all initial roles, but can be extended via Admin Panel.
-
 ## Troubleshooting
 
-### Roles Not Showing Up
+### Roles not appearing
+- Check `is_active = true`
+- Verify RLS policies allow viewing
+- Check user has admin permissions
 
-1. Check if `is_active = true` in the database
-2. Verify the seed script ran successfully
-3. Check Admin Panel permissions (must be admin/super_admin)
+### Can't create professionals
+- Ensure role `approval_required = true` (admin must approve)
+- Check role `is_active = true`
+- Verify role exists in database
 
-### Role Not Available in Onboarding
-
-1. Verify `is_active = true`
-2. Check `eligible_for_live_chat = true`
-3. Ensure role exists in database
-
-### Professional Application Not Processing
-
-1. Verify `approval_required` setting
-2. Check Admin has proper permissions
-3. Review application in Admin → Professional Profiles
+### AI not matching roles
+- Check `ai_matching_rules` JSON is valid
+- Verify role `is_active = true`
+- Check `eligible_for_live_chat = true`
 
 ## Next Steps
 
-After setting up roles:
-
-1. ✅ Test professional onboarding flow
-2. ✅ Review role settings in Admin Panel
-3. ✅ Customize disclaimers if needed
-4. ✅ Configure AI matching rules (if needed)
-5. ✅ Begin accepting professional applications
+After roles are created:
+1. ✅ Professionals can apply via Settings → Become a Professional
+2. ✅ Admins can review applications in Admin → Professional Profiles
+3. ✅ AI can match users to professionals
+4. ✅ Live chat system can connect users with professionals
 
 ---
 
-**Note**: All roles are designed to be admin-managed. No code changes are required to add, edit, or remove roles after initial setup.
-
+**Status**: All 9 initial roles configured and ready for use!

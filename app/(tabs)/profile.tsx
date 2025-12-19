@@ -24,6 +24,7 @@ import {
   Briefcase,
   UserCheck,
   ChevronRight,
+  MessageSquare,
 } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -347,18 +348,30 @@ export default function ProfileScreen() {
           )}
 
           {isProfessional ? (
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => router.push('/settings/professional-availability' as any)}
-            >
-              <View style={styles.menuItemLeft}>
-                <UserCheck size={20} color={colors.primary} />
-                <Text style={[styles.menuItemText, { color: colors.primary }]}>Professional Availability</Text>
-              </View>
-              <View style={styles.professionalBadge}>
-                <Text style={styles.professionalBadgeText}>Active</Text>
-              </View>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => router.push('/professional/session-requests' as any)}
+              >
+                <View style={styles.menuItemLeft}>
+                  <MessageSquare size={20} color={colors.primary} />
+                  <Text style={[styles.menuItemText, { color: colors.primary }]}>Session Requests</Text>
+                </View>
+                <ChevronRight size={20} color={colors.text.tertiary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => router.push('/settings/professional-availability' as any)}
+              >
+                <View style={styles.menuItemLeft}>
+                  <UserCheck size={20} color={colors.primary} />
+                  <Text style={[styles.menuItemText, { color: colors.primary }]}>Professional Availability</Text>
+                </View>
+                <View style={styles.professionalBadge}>
+                  <Text style={styles.professionalBadgeText}>Active</Text>
+                </View>
+              </TouchableOpacity>
+            </>
           ) : (
             <TouchableOpacity
               style={styles.menuItem}

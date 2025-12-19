@@ -295,7 +295,49 @@ export async function declineProfessionalSession(
 }
 
 /**
- * End a professional session
+ * Cancel a professional session (for pending_acceptance status)
+ */
+export async function cancelProfessionalSession(
+  sessionId: string,
+  userId: string
+): Promise<boolean> {
+  try {
+    const { data: session } = await supabase
+      .from('professional_sessions')
+      .select('user_id, status')
+      .eq('id', sessionId)
+      .single();
+
+    if (!session || session.user_id !== userId) {
+      throw new Error('Unauthorized');
+    }
+
+    if (session.status !== 'pending_acceptance') {
+      throw new Error('Can only cancel pending sessions');
+    }
+
+    // Update session to cancelled
+    const { error } = await supabase
+      .from('professional_sessions')
+      .update({
+        status: 'cancelled',
+        ended_by: 'user',
+        ended_reason: 'Cancelled by user',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', sessionId);
+
+    if (error) throw error;
+
+    return true;
+  } catch (error: any) {
+    console.error('Error cancelling session:', error);
+    return false;
+  }
+}
+
+/**
+ * End a professional session (for active sessions)
  */
 export async function endProfessionalSession(
   sessionId: string,

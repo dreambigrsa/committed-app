@@ -45,6 +45,7 @@ import { getOrCreateAIUser, getAIResponse } from '@/lib/ai-service';
 import RequestLiveHelpModal from '@/components/RequestLiveHelpModal';
 import SessionReviewModal from '@/components/SessionReviewModal';
 import ProfessionalHelpSuggestionModal from '@/components/ProfessionalHelpSuggestionModal';
+import SessionManagementModal from '@/components/SessionManagementModal';
 import { getActiveSession } from '@/lib/professional-sessions';
 import { ProfessionalSession } from '@/types';
 import { Users, Shield } from 'lucide-react-native';
@@ -197,6 +198,7 @@ export default function ConversationDetailScreen() {
   const [suggestedProfessionalType, setSuggestedProfessionalType] = useState<string>('professional');
   const [professionalSession, setProfessionalSession] = useState<ProfessionalSession | null>(null);
   const [showReviewModal, setShowReviewModal] = useState(false);
+  const [showSessionManagementModal, setShowSessionManagementModal] = useState(false);
   const [hasReview, setHasReview] = useState(false);
   const conversation = getConversation(conversationId);
   const recordedImpressions = useRef<Set<string>>(new Set());
@@ -2057,12 +2059,18 @@ export default function ConversationDetailScreen() {
                   <Text style={styles.headerRequestHelpButtonText}>Live Help</Text>
                 </TouchableOpacity>
               )}
-              {/* Professional Session Badge - Show when session is active */}
-              {professionalSession && professionalSession.status === 'active' && (
-                <View style={styles.headerSessionBadge}>
+              {/* Professional Session Badge/Management - Show when session exists */}
+              {professionalSession && (professionalSession.status === 'active' || professionalSession.status === 'pending_acceptance') && (
+                <TouchableOpacity
+                  style={styles.headerSessionBadge}
+                  onPress={() => setShowSessionManagementModal(true)}
+                  activeOpacity={0.7}
+                >
                   <Shield size={16} color={colors.secondary} />
-                  <Text style={styles.headerSessionBadgeText}>Professional</Text>
-                </View>
+                  <Text style={styles.headerSessionBadgeText}>
+                    {professionalSession.status === 'active' ? 'Professional' : 'Pending'}
+                  </Text>
+                </TouchableOpacity>
               )}
               {/* Settings Button */}
               <TouchableOpacity
@@ -2364,19 +2372,38 @@ export default function ConversationDetailScreen() {
 
       {/* Session Review Modal */}
       {professionalSession && currentUser && (
-        <SessionReviewModal
-          visible={showReviewModal}
-          onClose={() => {
-            setShowReviewModal(false);
-            setHasReview(true); // Mark as reviewed to prevent showing again
-          }}
-          sessionId={professionalSession.id}
-          professionalId={professionalSession.professionalId}
-          userId={currentUser.id}
-          onReviewSubmitted={() => {
-            setHasReview(true);
-          }}
-        />
+        <>
+          <SessionReviewModal
+            visible={showReviewModal}
+            onClose={() => {
+              setShowReviewModal(false);
+              setHasReview(true); // Mark as reviewed to prevent showing again
+            }}
+            sessionId={professionalSession.id}
+            professionalId={professionalSession.professionalId}
+            userId={currentUser.id}
+            onReviewSubmitted={() => {
+              setHasReview(true);
+            }}
+          />
+          <SessionManagementModal
+            visible={showSessionManagementModal}
+            onClose={() => setShowSessionManagementModal(false)}
+            session={professionalSession}
+            userId={currentUser.id}
+            onSessionCancelled={() => {
+              setProfessionalSession(null);
+              setShowSessionManagementModal(false);
+            }}
+            onSessionEnded={() => {
+              // Reload session to get updated status
+              getActiveSession(conversationId).then(session => {
+                setProfessionalSession(session);
+                setShowSessionManagementModal(false);
+              });
+            }}
+          />
+        </>
       )}
     </>
   );

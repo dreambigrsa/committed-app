@@ -140,7 +140,7 @@ export default function AdminProfessionalRolesScreen() {
     }
   };
 
-  const handleDelete = (role: ProfessionalRole) => {
+  const handleDelete = (role: ProfessionalRole | any) => {
     Alert.alert(
       'Delete Role',
       `Are you sure you want to delete "${role.name}"? This action cannot be undone.`,
@@ -223,13 +223,13 @@ export default function AdminProfessionalRolesScreen() {
               <Text style={styles.emptyText}>No professional roles yet</Text>
               <Text style={styles.emptySubtext}>Create your first role to get started</Text>
               <TouchableOpacity style={styles.createButton} onPress={handleCreate}>
-                <Plus size={20} color={colors.white} />
+                <Plus size={20} color={colors.text.white} />
                 <Text style={styles.createButtonText}>Create Role</Text>
               </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.rolesList}>
-              {roles.map((role) => (
+              {roles.map((role: ProfessionalRole | any) => (
                 <View key={role.id} style={styles.roleCard}>
                   <View style={styles.roleHeader}>
                     <View style={styles.roleInfo}>
@@ -365,7 +365,7 @@ export default function AdminProfessionalRolesScreen() {
               <TextInput
                 style={styles.input}
                 value={displayOrder.toString()}
-                onChangeText={(text) => setDisplayOrder(parseInt(text) || 0)}
+                onChangeText={(text: string) => setDisplayOrder(parseInt(text) || 0)}
                 keyboardType="numeric"
                 placeholderTextColor={themeColors.text.tertiary}
               />
@@ -450,7 +450,7 @@ export default function AdminProfessionalRolesScreen() {
               style={[styles.footerButton, styles.saveButton]}
               onPress={handleSave}
             >
-              <Save size={20} color={colors.white} />
+                  <Save size={20} color={colors.text.white} />
               <Text style={styles.saveButtonText}>Save</Text>
             </TouchableOpacity>
           </View>

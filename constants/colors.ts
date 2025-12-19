@@ -35,6 +35,10 @@ const lightColors = {
     ended: '#5F6368',
   },
   
+  // Semantic color aliases for convenience
+  success: '#34A853', // Same as secondary/verified
+  warning: '#FBBC04', // Same as accent/pending
+  
   badge: {
     verified: '#E6F4EA',
     verifiedText: '#137333',
@@ -76,6 +80,10 @@ const darkColors = {
     ended: '#9AA0A6',
   },
   
+  // Semantic color aliases for convenience
+  success: '#34A853', // Same as secondary/verified
+  warning: '#FBBC04', // Same as accent/pending
+  
   badge: {
     verified: '#1E3A2E',
     verifiedText: '#81C995',
@@ -115,6 +123,8 @@ const colors: typeof lightColors = {
     pending: lightColors.status.pending,
     ended: lightColors.status.ended,
   },
+  success: lightColors.secondary,
+  warning: lightColors.accent,
   badge: {
     verified: lightColors.badge.verified,
     verifiedText: lightColors.badge.verifiedText,
@@ -180,6 +190,9 @@ export function updateGlobalColors(isDark: boolean, visualTheme: VisualTheme = '
   colors.status.verified = sourceColors.status.verified;
   colors.status.pending = sourceColors.status.pending;
   colors.status.ended = sourceColors.status.ended;
+  
+  colors.success = sourceColors.secondary;
+  colors.warning = sourceColors.accent;
   
   colors.badge.verified = sourceColors.badge.verified;
   colors.badge.verifiedText = sourceColors.badge.verifiedText;

@@ -69,7 +69,7 @@ export default function BecomeProfessionalScreen() {
       
       if (profileData) {
         setExistingProfile(profileData);
-        setSelectedRole(rolesData?.find(r => r.id === profileData.role_id) || null);
+        setSelectedRole(rolesData?.find((r: ProfessionalRole) => r.id === profileData.role_id) || null);
         setBio(profileData.bio || '');
         setLocation(profileData.location || '');
         setCredentials(profileData.credentials || []);
@@ -107,7 +107,7 @@ export default function BecomeProfessionalScreen() {
   };
 
   const handleRemoveCredential = (index: number) => {
-    setCredentials(credentials.filter((_, i) => i !== index));
+      setCredentials(credentials.filter((_: string, i: number) => i !== index));
   };
 
   const handleUploadDocument = async () => {
@@ -217,9 +217,9 @@ export default function BecomeProfessionalScreen() {
     if (existingProfile) {
       switch (existingProfile.approvalStatus) {
         case 'approved':
-          return { text: 'Approved', icon: CheckCircle, color: colors.success };
+          return { text: 'Approved', icon: CheckCircle, color: colors.secondary };
         case 'pending':
-          return { text: 'Pending Review', icon: Clock, color: colors.warning };
+          return { text: 'Pending Review', icon: Clock, color: colors.accent };
         case 'rejected':
           return { text: 'Rejected', icon: XCircle, color: colors.danger };
         case 'suspended':
@@ -231,9 +231,9 @@ export default function BecomeProfessionalScreen() {
     if (existingApplication) {
       switch (existingApplication.status) {
         case 'pending':
-          return { text: 'Application Pending', icon: Clock, color: colors.warning };
+          return { text: 'Application Pending', icon: Clock, color: colors.accent };
         case 'approved':
-          return { text: 'Application Approved', icon: CheckCircle, color: colors.success };
+          return { text: 'Application Approved', icon: CheckCircle, color: colors.secondary };
         case 'rejected':
           return { text: 'Application Rejected', icon: XCircle, color: colors.danger };
         default:
@@ -289,7 +289,7 @@ export default function BecomeProfessionalScreen() {
           </Text>
           
           <View style={styles.rolesList}>
-            {roles.map((role) => (
+            {roles.map((role: ProfessionalRole) => (
               <TouchableOpacity
                 key={role.id}
                 style={[
@@ -359,7 +359,7 @@ export default function BecomeProfessionalScreen() {
                 </Text>
 
                 <View style={styles.credentialsList}>
-                  {credentials.map((cred, index) => (
+                  {credentials.map((cred: string, index: number) => (
                     <View key={index} style={styles.credentialItem}>
                       <Text style={styles.credentialText}>{cred}</Text>
                       <TouchableOpacity onPress={() => handleRemoveCredential(index)}>
@@ -396,7 +396,7 @@ export default function BecomeProfessionalScreen() {
 
                 {credentialDocuments.length > 0 && (
                   <View style={styles.documentsList}>
-                    {credentialDocuments.map((doc, index) => (
+                    {credentialDocuments.map((doc: { type: string; url: string; verified: boolean }, index: number) => (
                       <View key={index} style={styles.documentItem}>
                         <Text style={styles.documentText}>{doc.type.toUpperCase()} Document</Text>
                         <Text style={styles.documentUrl} numberOfLines={1}>{doc.url}</Text>
@@ -420,10 +420,10 @@ export default function BecomeProfessionalScreen() {
               disabled={submitting}
             >
               {submitting ? (
-                <ActivityIndicator color={colors.white} />
+                <ActivityIndicator color={colors.text.white} />
               ) : (
                 <>
-                  <Save size={20} color={colors.white} />
+                  <Save size={20} color={colors.text.white} />
                   <Text style={styles.submitButtonText}>
                     {existingProfile ? 'Update Application' : 'Submit Application'}
                   </Text>

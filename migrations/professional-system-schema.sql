@@ -217,8 +217,7 @@ CREATE TABLE IF NOT EXISTS professional_applications (
   review_notes TEXT,
   rejection_reason TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(user_id, role_id, status) WHERE status = 'pending' -- Only one pending application per user/role
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- ============================================
@@ -273,6 +272,10 @@ CREATE INDEX IF NOT EXISTS idx_user_onboarding_data_user_id ON user_onboarding_d
 CREATE INDEX IF NOT EXISTS idx_professional_applications_user_id ON professional_applications(user_id);
 CREATE INDEX IF NOT EXISTS idx_professional_applications_role_id ON professional_applications(role_id);
 CREATE INDEX IF NOT EXISTS idx_professional_applications_status ON professional_applications(status);
+-- Partial unique index: Only one pending application per user/role
+CREATE UNIQUE INDEX IF NOT EXISTS idx_professional_applications_unique_pending 
+  ON professional_applications(user_id, role_id) 
+  WHERE status = 'pending';
 CREATE INDEX IF NOT EXISTS idx_professional_session_analytics_session_id ON professional_session_analytics(session_id);
 CREATE INDEX IF NOT EXISTS idx_professional_session_analytics_professional_id ON professional_session_analytics(professional_id);
 CREATE INDEX IF NOT EXISTS idx_professional_system_logs_user_id ON professional_system_logs(user_id);

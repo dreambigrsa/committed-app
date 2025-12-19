@@ -85,10 +85,11 @@ export default function AdminProfessionalProfilesScreen() {
     }
   };
 
-  const handleApproveApplication = async (application: ProfessionalApplication) => {
+  const handleApproveApplication = async (application: any) => {
+    const app = application as any; // Database returns snake_case
     Alert.alert(
       'Approve Application',
-      `Approve ${application.user?.full_name || 'this professional'} for ${application.role?.name || 'this role'}?`,
+      `Approve ${app.user?.full_name || app.user?.fullName || 'this professional'} for ${app.role?.name || 'this role'}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -99,13 +100,13 @@ export default function AdminProfessionalProfilesScreen() {
               const { data: profileData, error: profileError } = await supabase
                 .from('professional_profiles')
                 .insert([{
-                  user_id: application.user_id,
-                  role_id: application.role_id,
-                  full_name: application.user?.full_name || 'Professional',
-                  bio: application.application_data?.bio || null,
-                  credentials: application.application_data?.credentials || [],
-                  credential_documents: application.application_data?.credential_documents || [],
-                  location: application.application_data?.location || null,
+                  user_id: app.user_id || app.userId,
+                  role_id: app.role_id || app.roleId,
+                  full_name: app.user?.full_name || app.user?.fullName || 'Professional',
+                  bio: app.application_data?.bio || app.applicationData?.bio || null,
+                  credentials: app.application_data?.credentials || app.applicationData?.credentials || [],
+                  credential_documents: app.application_data?.credential_documents || app.applicationData?.credentialDocuments || [],
+                  location: app.application_data?.location || app.applicationData?.location || null,
                   approval_status: 'approved',
                   approved_by: currentUser?.id,
                   approved_at: new Date().toISOString(),
@@ -142,7 +143,7 @@ export default function AdminProfessionalProfilesScreen() {
     );
   };
 
-  const handleRejectApplication = async (application: ProfessionalApplication) => {
+  const handleRejectApplication = async (application: any) => {
     Alert.prompt(
       'Reject Application',
       'Please provide a reason for rejection:',
@@ -150,7 +151,7 @@ export default function AdminProfessionalProfilesScreen() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Reject',
-          onPress: async (reason) => {
+          onPress: async (reason: string | undefined) => {
             try {
               const { error } = await supabase
                 .from('professional_applications')
@@ -215,8 +216,8 @@ export default function AdminProfessionalProfilesScreen() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'approved': return colors.success;
-      case 'pending': return colors.warning;
+      case 'approved': return colors.secondary; // success color
+      case 'pending': return colors.accent; // warning color
       case 'rejected': return colors.danger;
       case 'suspended': return colors.danger;
       default: return themeColors.text.secondary;
@@ -254,7 +255,7 @@ export default function AdminProfessionalProfilesScreen() {
           onPress={() => setTab('applications')}
         >
           <Text style={[styles.tabText, tab === 'applications' && styles.activeTabText]}>
-            Applications ({applications.filter(a => a.status === 'pending' || a.status === 'under_review').length})
+            Applications ({applications.filter((a: any) => a.status === 'pending' || a.status === 'under_review').length})
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -281,7 +282,7 @@ export default function AdminProfessionalProfilesScreen() {
                   <Text style={styles.emptyText}>No applications</Text>
                 </View>
               ) : (
-                applications.map((app) => {
+                applications.map((app: any) => {
                   const StatusIcon = getStatusIcon(app.status);
                   return (
                     <TouchableOpacity
@@ -337,7 +338,7 @@ export default function AdminProfessionalProfilesScreen() {
                   <Text style={styles.emptyText}>No professional profiles</Text>
                 </View>
               ) : (
-                profiles.map((profile) => {
+                profiles.map((profile: any) => {
                   const StatusIcon = getStatusIcon(profile.approvalStatus);
                   return (
                     <TouchableOpacity
@@ -429,14 +430,14 @@ export default function AdminProfessionalProfilesScreen() {
                         style={[styles.modalButton, styles.rejectButton]}
                         onPress={() => handleRejectApplication(selectedItem)}
                       >
-                        <XCircle size={20} color={colors.white} />
+                        <XCircle size={20} color={colors.text.white} />
                         <Text style={styles.modalButtonText}>Reject</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={[styles.modalButton, styles.approveButton]}
                         onPress={() => handleApproveApplication(selectedItem)}
                       >
-                        <CheckCircle size={20} color={colors.white} />
+                        <CheckCircle size={20} color={colors.text.white} />
                         <Text style={styles.modalButtonText}>Approve</Text>
                       </TouchableOpacity>
                     </View>

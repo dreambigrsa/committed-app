@@ -192,33 +192,32 @@ export default function AdminProfessionalReviewsScreen() {
     <SafeAreaView style={styles.container}>
       <Stack.Screen options={{ title: 'Professional Reviews' }} />
       
-      {/* Filters */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.filtersContainer}
-        contentContainerStyle={styles.filtersContent}
-      >
-        {filters.map((filterOption) => (
-          <TouchableOpacity
-            key={filterOption.value}
-            style={[
-              styles.filterButton,
-              filter === filterOption.value && styles.filterButtonActive,
-            ]}
-            onPress={() => setFilter(filterOption.value)}
-          >
-            <Text
+      {/* Filters - Segmented Control */}
+      <View style={styles.filtersContainer}>
+        <View style={styles.segmentedControl}>
+          {filters.map((filterOption, index) => (
+            <TouchableOpacity
+              key={filterOption.value}
               style={[
-                styles.filterButtonText,
-                filter === filterOption.value && styles.filterButtonTextActive,
+                styles.segmentedButton,
+                filter === filterOption.value && styles.segmentedButtonActive,
+                index === 0 && styles.segmentedButtonFirst,
+                index === filters.length - 1 && styles.segmentedButtonLast,
               ]}
+              onPress={() => setFilter(filterOption.value)}
             >
-              {filterOption.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+              <Text
+                style={[
+                  styles.segmentedButtonText,
+                  filter === filterOption.value && styles.segmentedButtonTextActive,
+                ]}
+              >
+                {filterOption.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
 
       {loading ? (
         <View style={styles.loadingContainer}>

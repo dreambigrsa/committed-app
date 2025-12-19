@@ -152,33 +152,32 @@ export default function AdminProfessionalSessionsScreen() {
     <SafeAreaView style={styles.container}>
       <Stack.Screen options={{ title: 'Professional Sessions' }} />
       
-      {/* Status Filters */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.filtersContainer}
-        contentContainerStyle={styles.filtersContent}
-      >
-        {statusFilters.map((filter) => (
-          <TouchableOpacity
-            key={filter.value}
-            style={[
-              styles.filterButton,
-              filterStatus === filter.value && styles.filterButtonActive,
-            ]}
-            onPress={() => setFilterStatus(filter.value)}
-          >
-            <Text
+      {/* Status Filters - Segmented Control */}
+      <View style={styles.filtersContainer}>
+        <View style={styles.segmentedControl}>
+          {statusFilters.map((filter, index) => (
+            <TouchableOpacity
+              key={filter.value}
               style={[
-                styles.filterButtonText,
-                filterStatus === filter.value && styles.filterButtonTextActive,
+                styles.segmentedButton,
+                filterStatus === filter.value && styles.segmentedButtonActive,
+                index === 0 && styles.segmentedButtonFirst,
+                index === statusFilters.length - 1 && styles.segmentedButtonLast,
               ]}
+              onPress={() => setFilterStatus(filter.value)}
             >
-              {filter.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+              <Text
+                style={[
+                  styles.segmentedButtonText,
+                  filterStatus === filter.value && styles.segmentedButtonTextActive,
+                ]}
+              >
+                {filter.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
 
       {loading ? (
         <View style={styles.loadingContainer}>

@@ -53,37 +53,33 @@ $$;
 -- Schedule every 5 minutes
 -- Format: minute hour day-of-month month day-of-week
 -- '*/5 * * * *' means: every 5 minutes, every hour, every day
--- Note: If the job already exists, you'll need to unschedule it first:
+-- Note: If the job already exists, unschedule it first:
 --   SELECT cron.unschedule('check_session_timeouts');
--- Then run this again.
-DO $$
-BEGIN
-  -- Check if job already exists
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'check_session_timeouts') THEN
-    -- Unschedule existing job
-    PERFORM cron.unschedule('check_session_timeouts');
-  END IF;
-  
-  -- Schedule the job
-  PERFORM cron.schedule(
-    'check_session_timeouts',
-    '*/5 * * * *',
-    $$select public.run_session_timeout_check();$$
-  );
-END $$;
+-- Then run the SELECT statement below again.
+
+-- First, unschedule if it exists (no error if it doesn't exist)
+SELECT cron.unschedule('check_session_timeouts') WHERE EXISTS (
+  SELECT 1 FROM cron.job WHERE jobname = 'check_session_timeouts'
+);
+
+-- Schedule the job
+SELECT cron.schedule(
+  'check_session_timeouts',
+  '*/5 * * * *',
+  'SELECT public.run_session_timeout_check();'
+);
 
 -- Alternative: If you want to run it every minute (more aggressive):
--- DO $$
--- BEGIN
---   IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'check_session_timeouts') THEN
---     PERFORM cron.unschedule('check_session_timeouts');
---   END IF;
---   PERFORM cron.schedule(
---     'check_session_timeouts',
---     '* * * * *',
---     $$select public.run_session_timeout_check();$$
---   );
--- END $$;
+-- First unschedule the existing job:
+-- SELECT cron.unschedule('check_session_timeouts') WHERE EXISTS (
+--   SELECT 1 FROM cron.job WHERE jobname = 'check_session_timeouts'
+-- );
+-- Then schedule with every minute:
+-- SELECT cron.schedule(
+--   'check_session_timeouts',
+--   '* * * * *',
+--   'SELECT public.run_session_timeout_check();'
+-- );
 
 comment on function public.run_session_timeout_check() is 
   'Triggers the check-session-timeouts Edge Function to check for timed-out professional sessions. Called by pg_cron every 5 minutes.';

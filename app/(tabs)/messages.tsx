@@ -147,7 +147,7 @@ export default function MessagesScreen() {
       // Get or create AI user
       const aiUser = await getOrCreateAIUser();
       if (!aiUser) {
-        Alert.alert('Error', 'Unable to connect to Committed AI. Please run create-ai-user.sql in Supabase SQL Editor first.');
+        Alert.alert('Error', 'Unable to connect to Committed. Please run create-ai-user.sql in Supabase SQL Editor first.');
         setIsSendingAI(false);
         return;
       }
@@ -155,7 +155,7 @@ export default function MessagesScreen() {
       // Create or get conversation with AI
       const conversation = await createOrGetConversation(aiUser.id);
       if (!conversation) {
-        Alert.alert('Error', 'Could not create conversation with Committed AI.');
+        Alert.alert('Error', 'Could not create conversation with Committed.');
         setIsSendingAI(false);
         return;
       }
@@ -278,7 +278,7 @@ export default function MessagesScreen() {
       }
     } catch (error: any) {
       console.error('Error handling AI submit:', error);
-      Alert.alert('Error', 'Failed to send message to Committed AI. Please try again.');
+      Alert.alert('Error', 'Failed to send message to Committed. Please try again.');
     } finally {
       setIsSendingAI(false);
     }
@@ -344,7 +344,7 @@ export default function MessagesScreen() {
         </View>
       </View>
 
-      {/* Committed AI Search Bar */}
+      {/* Committed Search Bar */}
       <View style={styles.searchBarContainer}>
         <View style={styles.searchBar}>
           <View style={styles.committedAIIcon}>
@@ -352,7 +352,7 @@ export default function MessagesScreen() {
           </View>
           <TextInput
             style={styles.searchInput}
-            placeholder="Ask Committed AI or Search"
+            placeholder="Ask Committed or Search"
             placeholderTextColor={colors.text.tertiary}
             value={aiQuery}
             onChangeText={setAiQuery}
@@ -377,7 +377,7 @@ export default function MessagesScreen() {
         {isSendingAI && (
           <View style={styles.aiStatusRow}>
             <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={styles.aiStatusText}>Committed AI is thinking…</Text>
+            <Text style={styles.aiStatusText}>Committed is thinking…</Text>
           </View>
         )}
       </View>

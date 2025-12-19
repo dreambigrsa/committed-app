@@ -181,7 +181,7 @@ INSERT INTO professional_system_settings (setting_key, setting_value, descriptio
   ('ai_behavior', '{"mode": "moderator", "observe_when_professional_joins": true, "provide_context_summary": true}', 'AI behavior configuration', 'ai'),
   ('escalation_default_timeout', '{"seconds": 300}', 'Default timeout for escalations (5 minutes)', 'escalation'),
   ('crisis_rules', '{"enabled": true, "regions": {}, "immediate_escalation": true}', 'Crisis handling rules per region', 'safety'),
-  ('user_onboarding_consent_required', '{"enabled": true, "text": "I understand that Committed AI provides support but may connect me with human professionals when appropriate. I consent to this service."}', 'User consent text for onboarding', 'general'),
+  ('user_onboarding_consent_required', '{"enabled": true, "text": "I understand that Committed provides support but may connect me with human professionals when appropriate. I consent to this service."}', 'User consent text for onboarding', 'general'),
   ('professional_onboarding_agreement', '{"required": true, "text": "I agree to provide professional services according to platform guidelines and maintain confidentiality."}', 'Professional onboarding agreement', 'general')
 ON CONFLICT (setting_key) DO NOTHING;
 

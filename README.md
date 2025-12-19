@@ -307,4 +307,4 @@ For mobile apps, you'll configure your app's deep linking scheme in `app.json`.
 
 Committed is a cross-platform app built with React Native + Expo.
 
-Your Rork app is production-ready and can be published to both the App Store and Google Play Store. You can also export your app to run on the web, making it truly cross-platform.
+Your Committed app is production-ready and can be published to both the App Store and Google Play Store. You can also export your app to run on the web, making it truly cross-platform.

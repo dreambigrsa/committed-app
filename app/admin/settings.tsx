@@ -607,7 +607,7 @@ export default function AdminSettingsScreen() {
             <View style={styles.settingInfo}>
               <Text style={styles.settingLabel}>OpenAI API Key</Text>
               <Text style={styles.settingDescription}>
-                Used by Committed AI in messages (chat, image generation, documents). Stored in Supabase and only visible to Super Admins.
+                Used by Committed in messages (chat, image generation, documents). Stored in Supabase and only visible to Super Admins.
               </Text>
             </View>
 
@@ -793,7 +793,7 @@ export default function AdminSettingsScreen() {
             <View style={styles.settingInfo}>
               <Text style={styles.settingLabel}>System Prompt</Text>
               <Text style={styles.settingDescription}>
-                This controls how Committed AI talks, helps users, and troubleshoots the app. New versions can roll out gradually.
+                This controls how Committed talks, helps users, and troubleshoots the app. New versions can roll out gradually.
               </Text>
             </View>
 

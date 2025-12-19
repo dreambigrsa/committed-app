@@ -1042,7 +1042,7 @@ export default function ConversationDetailScreen() {
                 conversationId,
                 senderId: aiUser.id,
                 receiverId: currentUser.id,
-                content: 'Committed AI is thinking…',
+                content: 'Committed is thinking…',
                 messageType: 'text',
                 read: true,
                 deletedForSender: false,
@@ -1360,7 +1360,7 @@ export default function ConversationDetailScreen() {
   const getLastSeenText = (lastActiveAt: string, statusType?: string, userId?: string) => {
     // Check if this is the AI user - always show as online
     const other = getOtherParticipant();
-    if (other && other.name === 'Committed AI') {
+    if (other && other.name === 'Committed') {
       return 'Online';
     }
 

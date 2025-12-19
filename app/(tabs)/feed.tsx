@@ -548,8 +548,8 @@ export default function FeedScreen() {
       overflow: 'hidden',
     },
     previewSticker: {
-      width: 100,
-      height: 100,
+      width: 60,
+      height: 60,
     },
     removeStickerButton: {
       position: 'absolute',

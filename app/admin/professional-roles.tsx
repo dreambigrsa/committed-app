@@ -144,7 +144,10 @@ export default function AdminProfessionalRolesScreen() {
       if (editingRole) {
         const { error } = await supabase
           .from('professional_roles')
-          .update(roleData)
+          .update({
+            ...roleData,
+            updated_at: new Date().toISOString(),
+          })
           .eq('id', editingRole.id);
         
         if (error) throw error;
@@ -152,7 +155,12 @@ export default function AdminProfessionalRolesScreen() {
       } else {
         const { error } = await supabase
           .from('professional_roles')
-          .insert([{ ...roleData, created_by: currentUser?.id }]);
+          .insert([{ 
+            ...roleData, 
+            created_by: currentUser?.id,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }]);
         
         if (error) throw error;
         Alert.alert('Success', 'Role created successfully');
@@ -162,7 +170,24 @@ export default function AdminProfessionalRolesScreen() {
       loadRoles();
     } catch (error: any) {
       console.error('Error saving role:', error);
-      Alert.alert('Error', error.message || 'Failed to save role');
+      
+      // Extract error message properly
+      let errorMessage = 'Failed to save role';
+      if (error?.message) {
+        errorMessage = error.message;
+      } else if (error?.error_description) {
+        errorMessage = error.error_description;
+      } else if (error?.hint) {
+        errorMessage = error.hint;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error?.details) {
+        errorMessage = error.details;
+      } else if (error?.code) {
+        errorMessage = `Error ${error.code}: ${error.message || 'Unknown error'}`;
+      }
+      
+      Alert.alert('Error Saving Role', errorMessage);
     }
   };
 

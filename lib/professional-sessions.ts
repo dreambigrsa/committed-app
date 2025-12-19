@@ -372,9 +372,17 @@ export async function endProfessionalSession(
   reason?: string
 ): Promise<boolean> {
   try {
+    // Get session with professional and role info for rating prompt
     const { data: session } = await supabase
       .from('professional_sessions')
-      .select('professional_id, status')
+      .select(`
+        professional_id,
+        status,
+        conversation_id,
+        user_id,
+        professional:professional_profiles(full_name),
+        role:professional_roles(name)
+      `)
       .eq('id', sessionId)
       .single();
 
@@ -401,6 +409,16 @@ export async function endProfessionalSession(
       await supabase.rpc('decrement_professional_session_count', {
         prof_id: session.professional_id,
       });
+    }
+
+    // Send AI rating prompt message (only for user-ended sessions, not system/admin)
+    if (endedBy === 'user' && session.conversation_id && session.user_id && session.professional) {
+      const professionalName = (session.professional as any)?.full_name || 'the professional';
+      await sendRatingPromptMessage(
+        session.conversation_id,
+        session.user_id,
+        professionalName
+      );
     }
 
     return true;
@@ -573,6 +591,46 @@ async function sendProfessionalIntroductionMessage(
     }
   } catch (error: any) {
     console.error('Error sending professional introduction message:', error);
+    // Don't throw - this is a nice-to-have feature
+  }
+}
+
+/**
+ * Send AI rating prompt message when session ends
+ */
+async function sendRatingPromptMessage(
+  conversationId: string,
+  userId: string,
+  professionalName: string
+): Promise<void> {
+  try {
+    const aiUser = await getOrCreateAIUser();
+    if (!aiUser) {
+      console.error('AI user not found - cannot send rating prompt message');
+      return;
+    }
+
+    const promptMessage = `Your session with ${professionalName} has ended. We'd love to hear about your experience! Please take a moment to rate your session and share any feedback you have.`;
+
+    try {
+      await supabase.rpc('send_ai_message', {
+        p_conversation_id: conversationId,
+        p_receiver_id: userId,
+        p_content: promptMessage,
+        p_message_type: 'text',
+        p_media_url: null,
+        p_document_url: null,
+        p_document_name: null,
+        p_sticker_id: null,
+        p_status_id: null,
+        p_status_preview_url: null,
+      });
+    } catch (msgError) {
+      console.error('Error sending rating prompt message:', msgError);
+      // Don't throw - message sending failure shouldn't break session ending
+    }
+  } catch (error: any) {
+    console.error('Error sending rating prompt message:', error);
     // Don't throw - this is a nice-to-have feature
   }
 }

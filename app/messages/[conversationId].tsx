@@ -2207,6 +2207,31 @@ export default function ConversationDetailScreen() {
                   </Text>
                 </TouchableOpacity>
               )}
+              {/* Review Button - Show when session ended and user hasn't reviewed */}
+              {professionalSession && professionalSession.status === 'ended' && !hasReview && (
+                <TouchableOpacity
+                  style={styles.headerReviewButton}
+                  onPress={() => {
+                    // Check if review exists
+                    supabase
+                      .from('professional_reviews')
+                      .select('id')
+                      .eq('session_id', professionalSession.id)
+                      .eq('user_id', currentUser.id)
+                      .maybeSingle()
+                      .then(({ data: existingReview }) => {
+                        if (!existingReview) {
+                          setShowReviewModal(true);
+                        } else {
+                          setHasReview(true);
+                        }
+                      });
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.headerReviewButtonText}>⭐ Rate Session</Text>
+                </TouchableOpacity>
+              )}
               {/* Settings Button */}
               <TouchableOpacity
                 onPress={() => setShowBackgroundModal(true)}
@@ -2941,6 +2966,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: colors.secondary,
+  },
+  headerReviewButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accent + '15',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: colors.accent + '40',
+  },
+  headerReviewButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.accent,
   },
   sessionStatusBadge: {
     flexDirection: 'row',

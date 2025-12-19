@@ -99,6 +99,15 @@ export default function SessionReviewModal({
     }
   };
 
+  const handleRateLater = () => {
+    if (!submitting) {
+      resetForm();
+      onClose();
+      // Mark as "rate later" so user can review later
+      // The modal won't auto-show again, but user can manually open it
+    }
+  };
+
   return (
     <Modal
       visible={visible}
@@ -198,11 +207,11 @@ export default function SessionReviewModal({
 
           <View style={styles.footer}>
             <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={handleClose}
+              style={styles.rateLaterButton}
+              onPress={handleRateLater}
               disabled={submitting}
             >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
+              <Text style={styles.rateLaterButtonText}>Rate Later</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[
@@ -334,14 +343,14 @@ const createStyles = (colors: any) =>
       borderTopWidth: 1,
       borderTopColor: colors.border.light,
     },
-    cancelButton: {
+    rateLaterButton: {
       flex: 1,
       padding: 16,
       borderRadius: 12,
       backgroundColor: colors.background.secondary,
       alignItems: 'center',
     },
-    cancelButtonText: {
+    rateLaterButtonText: {
       fontSize: 16,
       fontWeight: '600',
       color: colors.text.secondary,

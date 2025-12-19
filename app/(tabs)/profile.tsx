@@ -372,6 +372,16 @@ export default function ProfileScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.menuItem}
+                onPress={() => router.push('/professional/reviews' as any)}
+              >
+                <View style={styles.menuItemLeft}>
+                  <Star size={20} color={colors.primary} />
+                  <Text style={[styles.menuItemText, { color: colors.primary }]}>My Reviews</Text>
+                </View>
+                <ChevronRight size={20} color={colors.text.tertiary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.menuItem}
                 onPress={() => router.push('/settings/professional-availability' as any)}
               >
                 <View style={styles.menuItemLeft}>

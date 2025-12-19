@@ -1068,7 +1068,7 @@ async function getOpenAIResponseViaSupabaseFunction(params: {
         userId: params.userId,
       },
       // Add timeout to prevent hanging (optimized for speed)
-      signal: AbortSignal.timeout(10000), // 10 second timeout for faster failure
+      signal: createTimeoutAbortSignal(10000), // 10 second timeout for faster failure
     });
     if (error) throw error;
     if (!data?.success) throw new Error(data?.error || 'AI function failed');

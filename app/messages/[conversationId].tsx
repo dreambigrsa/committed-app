@@ -193,6 +193,8 @@ export default function ConversationDetailScreen() {
   const [aiFeedback, setAiFeedback] = useState<Record<string, 1 | -1>>({});
   const [aiIsThinking, setAiIsThinking] = useState(false);
   const [showRequestHelpModal, setShowRequestHelpModal] = useState(false);
+  const [showHelpSuggestionModal, setShowHelpSuggestionModal] = useState(false);
+  const [suggestedProfessionalType, setSuggestedProfessionalType] = useState<string>('professional');
   const [professionalSession, setProfessionalSession] = useState<ProfessionalSession | null>(null);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [hasReview, setHasReview] = useState(false);

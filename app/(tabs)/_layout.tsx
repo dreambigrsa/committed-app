@@ -31,55 +31,76 @@ export default function TabLayout() {
           fontWeight: '600' as const,
           marginTop: 4,
         },
+        tabBarItemStyle: {
+          paddingTop: 4,
+        },
+        tabBarLabelPosition: 'below-icon',
+        tabBarIconStyle: {
+          marginTop: 4,
+        },
       }}
     >
       <Tabs.Screen
         name="home"
         options={{
           title: "Home",
-          tabBarIcon: ({ color }) => <Home size={24} color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <Home size={focused ? 26 : 24} color={color} strokeWidth={focused ? 2.5 : 2} />
+          ),
         }}
       />
       <Tabs.Screen
         name="feed"
         options={{
           title: "Feed",
-          tabBarIcon: ({ color }) => <Heart size={24} color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <Heart size={focused ? 26 : 24} color={color} strokeWidth={focused ? 2.5 : 2} />
+          ),
         }}
       />
       <Tabs.Screen
         name="reels"
         options={{
           title: "Reels",
-          tabBarIcon: ({ color }) => <Film size={24} color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <Film size={focused ? 26 : 24} color={color} strokeWidth={focused ? 2.5 : 2} />
+          ),
         }}
       />
       <Tabs.Screen
         name="search"
         options={{
           title: "Search",
-          tabBarIcon: ({ color }) => <Search size={24} color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <Search size={focused ? 26 : 24} color={color} strokeWidth={focused ? 2.5 : 2} />
+          ),
         }}
       />
       <Tabs.Screen
         name="notifications"
         options={{
-          title: "Notifications",
-          tabBarIcon: ({ color }) => <NotificationBadgeIcon color={color} />,
+          title: "Notify",
+          tabBarIcon: ({ color, focused }) => (
+            <NotificationBadgeIcon color={color} size={focused ? 26 : 24} />
+          ),
         }}
       />
       <Tabs.Screen
         name="messages"
         options={{
           title: "Messages",
-          tabBarIcon: ({ color }) => <MessageSquare size={24} color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <MessageSquare size={focused ? 26 : 24} color={color} strokeWidth={focused ? 2.5 : 2} />
+          ),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: "Profile",
-          tabBarIcon: ({ color }) => <User size={24} color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <User size={focused ? 26 : 24} color={color} strokeWidth={focused ? 2.5 : 2} />
+          ),
         }}
       />
     </Tabs>

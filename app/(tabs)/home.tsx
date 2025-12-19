@@ -24,6 +24,8 @@ export default function HomeScreen() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const heartPulseAnim = useRef(new Animated.Value(1)).current;
+  const heartFadeAnim = useRef(new Animated.Value(0)).current;
 
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -45,8 +47,32 @@ export default function HomeScreen() {
         tension: 40,
         useNativeDriver: true,
       }),
+      Animated.timing(heartFadeAnim, {
+        toValue: 1,
+        duration: 800,
+        delay: 200,
+        useNativeDriver: true,
+      }),
     ]).start();
-  }, [fadeAnim, slideAnim, scaleAnim]);
+
+    // Subtle pulse animation for heart icon when no relationship
+    if (!relationship) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(heartPulseAnim, {
+            toValue: 1.08,
+            duration: 1500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(heartPulseAnim, {
+            toValue: 1,
+            duration: 1500,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    }
+  }, [fadeAnim, slideAnim, scaleAnim, heartPulseAnim, heartFadeAnim, relationship]);
 
   if (isLoading) {
     return (
@@ -83,6 +109,8 @@ export default function HomeScreen() {
     return Object.values(currentUser.verifications).filter(Boolean).length;
   };
 
+  const allVerificationsComplete = getVerificationCount() === 3;
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background.secondary }]}>
       <ScrollView
@@ -98,9 +126,17 @@ export default function HomeScreen() {
             },
           ]}
         >
-          <View>
-            <Text style={styles.greeting}>Welcome back,</Text>
-            <Text style={styles.name}>{currentUser.fullName.split(' ')[0]} 👋</Text>
+          <View style={styles.headerContent}>
+            <View>
+              <Text style={styles.greeting}>Welcome back,</Text>
+              <Text style={styles.name}>{currentUser.fullName.split(' ')[0]} 👋</Text>
+            </View>
+            {allVerificationsComplete && (
+              <View style={styles.trustBadge}>
+                <Shield size={14} color={colors.secondary} />
+                <Text style={styles.trustBadgeText}>Verified Account</Text>
+              </View>
+            )}
           </View>
           <TouchableOpacity 
             style={styles.avatarContainer}
@@ -225,17 +261,28 @@ export default function HomeScreen() {
             </>
           ) : (
             <View style={styles.noRelationship}>
-              <Heart size={48} color={colors.text.tertiary} strokeWidth={1.5} />
-              <Text style={styles.noRelationshipTitle}>No Active Relationship</Text>
+              <Animated.View
+                style={[
+                  styles.heartContainer,
+                  {
+                    opacity: heartFadeAnim,
+                    transform: [{ scale: heartPulseAnim }],
+                  },
+                ]}
+              >
+                <Heart size={64} color={colors.danger} fill={colors.danger} strokeWidth={2} />
+              </Animated.View>
+              <Text style={styles.noRelationshipTitle}>Ready to build something special?</Text>
               <Text style={styles.noRelationshipText}>
-                Register your relationship to verify your status and build trust
+                Registering your relationship creates a foundation of trust and transparency. It's a meaningful step that shows your commitment and helps build stronger connections.
               </Text>
               <TouchableOpacity
                 style={styles.registerButton}
                 onPress={() => router.push('/relationship/register')}
+                activeOpacity={0.9}
               >
                 <Plus size={20} color={colors.text.white} />
-                <Text style={styles.registerButtonText}>Register Relationship</Text>
+                <Text style={styles.registerButtonText}>Get Started</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -262,9 +309,26 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.verificationProgress}>
-            {getVerificationCount()} of 3 verified
-          </Text>
+          {allVerificationsComplete ? (
+            <View style={styles.verificationCompleteContainer}>
+              <View style={styles.verificationCompleteBadge}>
+                <CheckCircle2 size={18} color={colors.secondary} />
+                <Text style={styles.verificationCompleteText}>All verifications completed</Text>
+              </View>
+              <View style={styles.progressBarContainer}>
+                <View style={styles.progressBarFull} />
+              </View>
+            </View>
+          ) : (
+            <View style={styles.verificationProgressContainer}>
+              <Text style={styles.verificationProgress}>
+                {getVerificationCount()} of 3 verified
+              </Text>
+              <View style={styles.progressBarContainer}>
+                <View style={[styles.progressBar, { width: `${(getVerificationCount() / 3) * 100}%` }]} />
+              </View>
+            </View>
+          )}
 
           <View style={styles.verificationList}>
             <View style={styles.verificationItem}>
@@ -437,9 +501,29 @@ const createStyles = (colors: any) => StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingHorizontal: 20,
     marginBottom: 24,
+  },
+  headerContent: {
+    flex: 1,
+    gap: 12,
+  },
+  trustBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: colors.secondary + '15',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginTop: 4,
+  },
+  trustBadgeText: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    color: colors.secondary,
   },
   greeting: {
     fontSize: 16,
@@ -540,10 +624,50 @@ const createStyles = (colors: any) => StyleSheet.create({
     color: colors.primary,
     fontWeight: '600' as const,
   },
+  verificationProgressContainer: {
+    marginBottom: 20,
+  },
   verificationProgress: {
     fontSize: 14,
     color: colors.text.secondary,
+    marginBottom: 12,
+    fontWeight: '500' as const,
+  },
+  verificationCompleteContainer: {
     marginBottom: 20,
+  },
+  verificationCompleteBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.secondary + '15',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    marginBottom: 12,
+    alignSelf: 'flex-start',
+  },
+  verificationCompleteText: {
+    fontSize: 14,
+    fontWeight: '700' as const,
+    color: colors.secondary,
+  },
+  progressBarContainer: {
+    height: 6,
+    backgroundColor: colors.background.secondary,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: '100%',
+    backgroundColor: colors.primary,
+    borderRadius: 3,
+  },
+  progressBarFull: {
+    height: '100%',
+    width: '100%',
+    backgroundColor: colors.secondary,
+    borderRadius: 3,
   },
   relationshipStatus: {
     gap: 0,
@@ -623,41 +747,52 @@ const createStyles = (colors: any) => StyleSheet.create({
   },
   noRelationship: {
     alignItems: 'center',
-    paddingVertical: 20,
+    paddingVertical: 24,
+  },
+  heartContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: colors.danger + '12',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
   },
   noRelationshipTitle: {
-    fontSize: 18,
-    fontWeight: '700' as const,
+    fontSize: 22,
+    fontWeight: '800' as const,
     color: colors.text.primary,
-    marginTop: 16,
-    marginBottom: 8,
+    marginBottom: 12,
+    textAlign: 'center',
+    paddingHorizontal: 20,
   },
   noRelationshipText: {
-    fontSize: 14,
+    fontSize: 15,
     color: colors.text.secondary,
     textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 24,
-    paddingHorizontal: 20,
+    lineHeight: 24,
+    marginBottom: 32,
+    paddingHorizontal: 24,
   },
   registerButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     backgroundColor: colors.primary,
-    paddingHorizontal: 28,
-    paddingVertical: 14,
-    borderRadius: 14,
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 16,
     shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 6,
   },
   registerButtonText: {
     fontSize: 16,
     fontWeight: '700' as const,
     color: colors.text.white,
+    letterSpacing: 0.3,
   },
   verificationList: {
     gap: 16,

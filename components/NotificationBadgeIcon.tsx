@@ -5,9 +5,10 @@ import { useApp } from '@/contexts/AppContext';
 
 interface NotificationBadgeIconProps {
   color: string;
+  size?: number;
 }
 
-export default function NotificationBadgeIcon({ color }: NotificationBadgeIconProps) {
+export default function NotificationBadgeIcon({ color, size = 24 }: NotificationBadgeIconProps) {
   const { getUnreadNotificationsCount, cheatingAlerts } = useApp();
   
   const unreadCount = getUnreadNotificationsCount();
@@ -16,7 +17,7 @@ export default function NotificationBadgeIcon({ color }: NotificationBadgeIconPr
 
   return (
     <View style={styles.container}>
-      <Bell size={24} color={color} />
+      <Bell size={size} color={color} />
       {totalUnread > 0 && (
         <View style={styles.badge}>
           <Text style={styles.badgeText}>

@@ -44,11 +44,11 @@ export default function OnboardingScreen() {
       ),
     },
     {
-      title: 'How Committed Works',
+      title: 'How Committed AI Works',
       icon: Sparkles,
       content: (
         <View style={styles.stepContent}>
-          <Text style={styles.sectionTitle}>What Committed Can Do:</Text>
+          <Text style={styles.sectionTitle}>What Committed AI Can Do:</Text>
           <View style={styles.featureList}>
             <View style={styles.featureItem}>
               <CheckCircle2 size={20} color={themeColors.primary} />
@@ -68,7 +68,7 @@ export default function OnboardingScreen() {
             </View>
           </View>
 
-          <Text style={styles.sectionTitle}>What Committed Cannot Do:</Text>
+          <Text style={styles.sectionTitle}>What Committed AI Cannot Do:</Text>
           <View style={styles.featureList}>
             <View style={styles.featureItem}>
               <X size={20} color={themeColors.danger} />
@@ -92,7 +92,7 @@ export default function OnboardingScreen() {
       content: (
         <View style={styles.stepContent}>
           <Text style={styles.explanationText}>
-            <Text style={styles.boldText}>Committed</Text> provides 24/7 support and guidance. When you need deeper help, our AI can connect you with verified human professionals including:
+            <Text style={styles.boldText}>Committed AI</Text> provides 24/7 support and guidance. When you need deeper help, our AI can connect you with verified human professionals including:
           </Text>
           
           <View style={styles.professionalTypes}>
@@ -148,7 +148,7 @@ export default function OnboardingScreen() {
       content: (
         <View style={styles.stepContent}>
           <Text style={styles.consentText}>
-            I understand that Committed provides support but may connect me with human professionals when appropriate. I consent to this service.
+            I understand that Committed AI provides support but may connect me with human professionals when appropriate. I consent to this service.
           </Text>
           
           <TouchableOpacity

@@ -1,5 +1,5 @@
 /**
- * AI Service for Committed
+ * AI Service for Committed AI
  * Handles AI responses using OpenAI API or fallback responses
  */
 
@@ -15,7 +15,7 @@ try {
 }
 
 const COMMITTED_AI_EMAIL = 'ai@committed.app';
-const COMMITTED_AI_NAME = 'Committed';
+const COMMITTED_AI_NAME = 'Committed AI';
 const OPENAI_SETTINGS_KEY = 'openai_api_key';
 
 // High-signal product knowledge injected into the AI system prompt so the assistant
@@ -29,7 +29,7 @@ MAIN NAVIGATION (TABS)
 - Home: overview of your relationship and status.
 - Feed: posts from users (like/comment).
 - Reels: short vertical videos.
-- Messages: conversations and Committed chat.
+- Messages: conversations and Committed AI chat.
 - Search: find users and check relationship status.
 - Notifications: alerts, requests, system notices.
 - Profile/Settings: your profile and account settings.
@@ -57,7 +57,7 @@ COMMON TROUBLESHOOTING
 
 ADMIN CAPABILITIES
 - Super Admin can access Admin dashboard and settings.
-- Admin Settings includes OpenAI key management (save/test) for Committed.
+- Admin Settings includes OpenAI key management (save/test) for Committed AI.
 - Admins can manage professional roles, approve/reject professional applications, and configure the professional system.
 `;
 
@@ -101,7 +101,7 @@ export interface UserLearnings {
 }
 
 /**
- * Get or create the Committed user
+ * Get or create the Committed AI user
  */
 export async function getOrCreateAIUser(): Promise<{ id: string } | null> {
   try {
@@ -676,7 +676,7 @@ function buildPersonalizedSystemPrompt(
   learnings?: UserLearnings | null
 ): string {
   const userDisplayName = userName || userUsername || 'the user';
-  let prompt = `You are Committed, the in-app assistant for the Committed mobile application.
+  let prompt = `You are Committed AI, the in-app assistant for the Committed mobile application.
 Your job is to (1) answer normal questions, and (2) provide Committed app-specific help: guidance, troubleshooting, and step-by-step instructions.
 
 APP KNOWLEDGE (SOURCE OF TRUTH):
@@ -686,7 +686,7 @@ You are having a natural conversation with ${userDisplayName}${userName && userU
 
 CRITICAL INSTRUCTIONS:
 - Answer questions directly and accurately - address exactly what ${userDisplayName} is asking
-- If ${userDisplayName} asks about you (e.g., "tell me about yourself", "who are you", "what are you", "talk about you"), you MUST explain who you are: You are Committed, an intelligent AI assistant created to help people with relationships, life advice, business questions, and friendly conversation. Be specific and conversational about your capabilities.
+- If ${userDisplayName} asks about you (e.g., "tell me about yourself", "who are you", "what are you", "talk about you"), you MUST explain who you are: You are Committed AI, an intelligent AI assistant created to help people with relationships, life advice, business questions, and friendly conversation. Be specific and conversational about your capabilities.
 - If the user asks anything about the Committed app ("how do I…", "where is…", "it’s not working", "I can’t…"), prioritize app guidance:
   - Ask 1-2 clarifying questions if needed (iOS/Android, which screen, what they tapped, error message).
   - Give short step-by-step instructions using the app’s tabs/screens.
@@ -739,7 +739,7 @@ IMPORTANT CONTEXT:
 
   prompt += `\n\nYOUR CORE PRINCIPLES:
 - Answer questions directly and accurately - address exactly what the user is asking
-- If asked about yourself (e.g., "tell me about yourself", "who are you", "what are you"), explain that you're Committed, an AI assistant designed to help with relationships, life advice, business questions, or just conversation. Be specific and conversational.
+- If asked about yourself (e.g., "tell me about yourself", "who are you", "what are you"), explain that you're Committed AI, an AI assistant designed to help with relationships, life advice, business questions, or just conversation. Be specific and conversational.
 - Think through problems carefully before responding - provide thoughtful, knowledgeable answers
 - Stay on topic - don't go off on tangents or change the subject
 - Never give the same generic response twice - every answer must be specific to what was asked
@@ -790,7 +790,7 @@ export async function getAIResponse(
   if (isNewConversation || conversationHistory.length === 0) {
     return {
       success: true,
-      message: `Hello ${userDisplayName}! I'm Committed. How can I help you today?`,
+      message: `Hello ${userDisplayName}! I'm Committed AI. How can I help you today?`,
       contentType: 'text',
     };
   }
@@ -1414,7 +1414,7 @@ function getFallbackResponse(
   if (isAboutAI) {
     return {
       success: true,
-      message: `I'm Committed, an intelligent AI assistant designed to be your companion, advisor, and friend. I can help you with relationship advice, life guidance, business questions, or just be someone to talk to. I learn from our conversations to better understand you and provide more personalized help. I'm always here when you need someone to talk to or when you need advice. What would you like to know more about me, or how can I help you today?`,
+      message: `I'm Committed AI, an intelligent AI assistant designed to be your companion, advisor, and friend. I can help you with relationship advice, life guidance, business questions, or just be someone to talk to. I learn from our conversations to better understand you and provide more personalized help. I'm always here when you need someone to talk to or when you need advice. What would you like to know more about me, or how can I help you today?`,
     };
   }
 
@@ -1438,7 +1438,7 @@ function getFallbackResponse(
 
   // Build personalized greeting with learnings
   const personalizedGreeting = (() => {
-    let greeting = `Hello ${userDisplayName}! I'm Committed. How can I help you today?`;
+    let greeting = `Hello ${userDisplayName}! I'm Committed AI. How can I help you today?`;
     if (learnings?.interests && learnings.interests.length > 0) {
       greeting += ` I remember you're interested in ${learnings.interests.slice(0, 2).join(' and ')}.`;
     }

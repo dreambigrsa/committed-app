@@ -160,8 +160,8 @@ export default function RequestLiveHelpModal({
           },
           5
         );
-      } catch (onlineError) {
-        console.warn('Error finding online professionals:', onlineError);
+      } catch (onlineError: any) {
+        console.warn('Error finding online professionals:', onlineError?.message || onlineError);
         // Continue to try offline professionals
       }
 
@@ -177,11 +177,11 @@ export default function RequestLiveHelpModal({
             },
             5
           );
-        } catch (offlineError) {
-          console.error('Error finding offline professionals:', offlineError);
-          // Set empty array, will show "no professionals" message
-          professionalMatches = [];
-        }
+      } catch (offlineError: any) {
+        console.error('Error finding offline professionals:', offlineError?.message || offlineError);
+        // Set empty array, will show "no professionals" message
+        professionalMatches = [];
+      }
       }
 
       setMatches(professionalMatches);

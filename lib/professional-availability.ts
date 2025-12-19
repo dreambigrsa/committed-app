@@ -44,8 +44,8 @@ export function isInQuietHours(
       // Quiet hours within the same day
       return currentMinutes >= startMinutes && currentMinutes < endMinutes;
     }
-  } catch (error) {
-    console.error('Error checking quiet hours:', error);
+  } catch (error: any) {
+    console.error('Error checking quiet hours:', error?.message || error);
     return false;
   }
 }
@@ -111,7 +111,7 @@ export async function enforceQuietHoursForAllProfessionals(): Promise<void> {
       // Professionals will need to manually set their status back to online
     }
   } catch (error: any) {
-    console.error('Error enforcing quiet hours:', error);
+    console.error('Error enforcing quiet hours:', error?.message || error);
   }
 }
 
@@ -128,7 +128,7 @@ export async function canProfessionalAcceptSession(
       .from('professional_profiles')
       .select(`
         *,
-        professional_status!inner(*)
+        professional_status(*)
       `)
       .eq('id', professionalId)
       .eq('is_active', true)
@@ -138,7 +138,14 @@ export async function canProfessionalAcceptSession(
       return { canAccept: false, reason: 'Professional not found or inactive' };
     }
 
-    const status = profile.professional_status;
+    // Handle array response from Supabase join
+    const statusArray = Array.isArray(profile.professional_status) 
+      ? profile.professional_status 
+      : profile.professional_status
+        ? [profile.professional_status]
+        : [];
+    
+    const status = statusArray[0];
     if (!status) {
       return { canAccept: false, reason: 'Professional status not found' };
     }
@@ -187,7 +194,7 @@ export async function canProfessionalAcceptSession(
     // All checks passed
     return { canAccept: true };
   } catch (error: any) {
-    console.error('Error checking professional availability:', error);
+    console.error('Error checking professional availability:', error?.message || error);
     return { canAccept: false, reason: 'Error checking availability' };
   }
 }

@@ -31,7 +31,15 @@ export async function findMatchingProfessionals(
   limit: number = 5
 ): Promise<ProfessionalMatch[]> {
   // Import quiet hours check function once at the start
-  const { isInQuietHours } = await import('./professional-availability');
+  let isInQuietHours: any;
+  try {
+    const availabilityModule = await import('./professional-availability');
+    isInQuietHours = availabilityModule.isInQuietHours;
+  } catch (importError: any) {
+    console.error('Error importing professional-availability module:', importError?.message || importError);
+    // Fallback: return empty array if module can't be imported
+    return [];
+  }
   
   try {
     let query = supabase
@@ -156,8 +164,8 @@ export async function findMatchingProfessionals(
             matchScore,
             matchReasons: getMatchReasons(profile, status, criteria),
           });
-        } catch (mapError) {
-          console.error(`Error mapping professional ${profile.id}:`, mapError);
+        } catch (mapError: any) {
+          console.error(`Error mapping professional ${profile.id}:`, mapError?.message || mapError);
           // Skip this professional if mapping fails
         }
       }
@@ -168,7 +176,7 @@ export async function findMatchingProfessionals(
       .sort((a, b) => b.matchScore - a.matchScore)
       .slice(0, limit);
   } catch (error: any) {
-    console.error('Error finding matching professionals:', error);
+    console.error('Error finding matching professionals:', error?.message || error);
     return [];
   }
 }

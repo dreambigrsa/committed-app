@@ -24,6 +24,7 @@ interface SessionManagementModalProps {
   onClose: () => void;
   session: ProfessionalSession | null;
   userId: string;
+  isProfessional?: boolean; // Whether the current user is the professional
   onSessionCancelled?: () => void;
   onSessionEnded?: () => void;
 }
@@ -35,6 +36,7 @@ export default function SessionManagementModal({
   onClose,
   session,
   userId,
+  isProfessional = false,
   onSessionCancelled,
   onSessionEnded,
 }: SessionManagementModalProps) {
@@ -106,9 +108,11 @@ export default function SessionManagementModal({
 
   if (!session) return null;
 
-  const canCancel = session.status === 'pending_acceptance';
+  // Different permissions based on whether user is professional or regular user
+  const canCancel = !isProfessional && session.status === 'pending_acceptance';
   const canEnd = session.status === 'active';
-  const canRequestAddress = session.status === 'active' || session.status === 'pending_acceptance';
+  const canRequestAddress = !isProfessional && (session.status === 'active' || session.status === 'pending_acceptance');
+  const canRequestReschedule = !isProfessional && session.status === 'pending_acceptance';
 
   const getStatusInfo = () => {
     switch (session.status) {
@@ -187,9 +191,15 @@ export default function SessionManagementModal({
   };
 
   const handleEndSession = async () => {
+    const endedBy = isProfessional ? 'professional' : 'user';
+    const alertTitle = 'End Session';
+    const alertMessage = isProfessional
+      ? 'Are you sure you want to end this session? The user will be notified.'
+      : 'Are you sure you want to end this session? You\'ll be able to leave a review after ending.';
+
     Alert.alert(
-      'End Session',
-      'Are you sure you want to end this session? You\'ll be able to leave a review after ending.',
+      alertTitle,
+      alertMessage,
       [
         { text: 'Keep Session', style: 'cancel' },
         {
@@ -198,9 +208,13 @@ export default function SessionManagementModal({
           onPress: async () => {
             try {
               setLoading(true);
-              const success = await endProfessionalSession(session.id, 'user', 'Ended by user');
+              const reason = isProfessional ? 'Ended by professional' : 'Ended by user';
+              const success = await endProfessionalSession(session.id, endedBy, reason);
               if (success) {
-                Alert.alert('Session Ended', 'This session has been ended. You can leave a review if you wish.');
+                const endMessage = isProfessional
+                  ? 'Session ended. The user has been notified.'
+                  : 'This session has been ended. You can leave a review if you wish.';
+                Alert.alert('Session Ended', endMessage);
                 onSessionEnded?.();
                 handleClose();
               } else {
@@ -434,40 +448,42 @@ export default function SessionManagementModal({
                 )}
               </View>
 
-              {/* Secondary Actions */}
-              <View style={styles.secondaryActionsContainer}>
-                {canCancel && (
-                  <TouchableOpacity
-                    style={[styles.secondaryActionButton, showRescheduleInput && styles.secondaryActionButtonActive]}
-                    onPress={() => {
-                      setShowAddressRequest(false);
-                      setAddressRequest('');
-                      setShowRescheduleInput(!showRescheduleInput);
-                    }}
-                    disabled={loading}
-                    activeOpacity={0.7}
-                  >
-                    <Calendar size={20} color={themeColors.primary} />
-                    <Text style={styles.secondaryActionText}>Request Reschedule</Text>
-                  </TouchableOpacity>
-                )}
+              {/* Secondary Actions - Only show for regular users */}
+              {!isProfessional && (
+                <View style={styles.secondaryActionsContainer}>
+                  {canRequestReschedule && (
+                    <TouchableOpacity
+                      style={[styles.secondaryActionButton, showRescheduleInput && styles.secondaryActionButtonActive]}
+                      onPress={() => {
+                        setShowAddressRequest(false);
+                        setAddressRequest('');
+                        setShowRescheduleInput(!showRescheduleInput);
+                      }}
+                      disabled={loading}
+                      activeOpacity={0.7}
+                    >
+                      <Calendar size={20} color={themeColors.primary} />
+                      <Text style={styles.secondaryActionText}>Request Reschedule</Text>
+                    </TouchableOpacity>
+                  )}
 
-                {canRequestAddress && (
-                  <TouchableOpacity
-                    style={[styles.secondaryActionButton, showAddressRequest && styles.secondaryActionButtonActive]}
-                    onPress={() => {
-                      setShowRescheduleInput(false);
-                      setRescheduleNote('');
-                      setShowAddressRequest(!showAddressRequest);
-                    }}
-                    disabled={loading}
-                    activeOpacity={0.7}
-                  >
-                    <MapPin size={20} color={themeColors.primary} />
-                    <Text style={styles.secondaryActionText}>Request Address</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+                  {canRequestAddress && (
+                    <TouchableOpacity
+                      style={[styles.secondaryActionButton, showAddressRequest && styles.secondaryActionButtonActive]}
+                      onPress={() => {
+                        setShowRescheduleInput(false);
+                        setRescheduleNote('');
+                        setShowAddressRequest(!showAddressRequest);
+                      }}
+                      disabled={loading}
+                      activeOpacity={0.7}
+                    >
+                      <MapPin size={20} color={themeColors.primary} />
+                      <Text style={styles.secondaryActionText}>Request Address</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
 
               {/* Reschedule Input */}
               {showRescheduleInput && (

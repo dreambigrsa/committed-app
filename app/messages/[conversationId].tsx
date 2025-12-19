@@ -1628,6 +1628,15 @@ export default function ConversationDetailScreen() {
       return null;
     }
 
+    // Check if sender is a professional (not AI, not user)
+    const isProfessional = professionalSession && 
+      professionalSession.status === 'active' && 
+      !isMe && 
+      item.senderId !== aiUserId &&
+      item.senderId === (professionalSession.professional?.userId || '');
+    
+    const isAI = !isMe && item.senderId === aiUserId;
+
     return (
       <>
         {messageWarning && (
@@ -1681,7 +1690,34 @@ export default function ConversationDetailScreen() {
           onLongPress={() => handleDeleteMessage(item.id, isMe)}
           activeOpacity={0.9}
         >
-          <View style={[styles.messageBubble, isMe ? styles.myMessage : styles.theirMessage]}>
+          {/* Professional/AI Name and Role Header */}
+          {!isMe && (isProfessional || isAI) && (
+            <View style={styles.messageSenderHeader}>
+              <Text style={styles.messageSenderName}>
+                {isProfessional 
+                  ? (professionalSession.professional?.fullName || 'Professional')
+                  : 'Committed AI'
+                }
+              </Text>
+              {isProfessional && professionalSession.professional?.role && (
+                <View style={styles.messageSenderRoleBadge}>
+                  <Shield size={12} color={colors.secondary} />
+                  <Text style={styles.messageSenderRole}>
+                    {professionalSession.professional.role.name}
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+          
+          <View style={[
+            styles.messageBubble, 
+            isMe 
+              ? styles.myMessage 
+              : isProfessional 
+                ? styles.professionalMessage 
+                : styles.theirMessage
+          ]}>
           {item.messageType === 'image' && item.mediaUrl ? (
             <TouchableOpacity
               onPress={() => setViewingImage(item.mediaUrl)}
@@ -1705,7 +1741,14 @@ export default function ConversationDetailScreen() {
               }}
             >
               <FileText size={24} color={isMe ? colors.text.white : colors.primary} />
-              <Text style={[styles.documentName, isMe ? styles.myMessageText : styles.theirMessageText]}>
+              <Text style={[
+                styles.documentName, 
+                isMe 
+                  ? styles.myMessageText 
+                  : isProfessional 
+                    ? styles.professionalMessageText 
+                    : styles.theirMessageText
+              ]}>
                 {item.documentName || 'Document'}
               </Text>
             </TouchableOpacity>
@@ -1737,7 +1780,14 @@ export default function ConversationDetailScreen() {
           ) : null}
 
           {item.content && typeof item.content === 'string' && item.content.trim() && item.messageType !== 'sticker' ? (
-            <Text style={[styles.messageText, isMe ? styles.myMessageText : styles.theirMessageText]}>
+            <Text style={[
+              styles.messageText, 
+              isMe 
+                ? styles.myMessageText 
+                : isProfessional 
+                  ? styles.professionalMessageText 
+                  : styles.theirMessageText
+            ]}>
               {item.content}
             </Text>
           ) : null}
@@ -2172,11 +2222,38 @@ export default function ConversationDetailScreen() {
             keyboardDismissMode="interactive"
             showsVerticalScrollIndicator={true}
             ListHeaderComponent={
-              smartAds.length > 0 ? (
-                <View style={styles.adHeaderContainer}>
-                  {smartAds.slice(0, 1).map(ad => renderAd(ad))}
-                </View>
-              ) : null
+              <>
+                {/* Professional Joined System Message */}
+                {professionalSession && professionalSession.status === 'active' && professionalSession.professional && (
+                  <TouchableOpacity
+                    style={styles.professionalJoinedBanner}
+                    onPress={() => setShowSessionManagementModal(true)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.professionalJoinedContent}>
+                      <Shield size={18} color={colors.secondary} />
+                      <View style={styles.professionalJoinedTextContainer}>
+                        <Text style={styles.professionalJoinedTitle}>
+                          {professionalSession.professional.fullName}
+                          {professionalSession.professional.role && (
+                            <Text style={styles.professionalJoinedRole}>
+                              {' '}• {professionalSession.professional.role.name}
+                            </Text>
+                          )}
+                        </Text>
+                        <Text style={styles.professionalJoinedSubtitle}>
+                          Verified professional has joined the conversation
+                        </Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                )}
+                {smartAds.length > 0 && (
+                  <View style={styles.adHeaderContainer}>
+                    {smartAds.slice(0, 1).map(ad => renderAd(ad))}
+                  </View>
+                )}
+              </>
             }
           />
 
@@ -2275,14 +2352,6 @@ export default function ConversationDetailScreen() {
               </TouchableOpacity>
             )}
 
-
-            {/* Professional Session Status - Show when session is active */}
-            {professionalSession && professionalSession.status === 'active' && (
-              <View style={styles.sessionStatusBadge}>
-                <Shield size={16} color={colors.secondary} />
-                <Text style={styles.sessionStatusText}>Professional joined</Text>
-              </View>
-            )}
 
             {/* Attachment Buttons - Animated */}
             <Animated.View
@@ -2428,6 +2497,9 @@ export default function ConversationDetailScreen() {
             onClose={() => setShowSessionManagementModal(false)}
             session={professionalSession}
             userId={currentUser.id}
+            isProfessional={
+              professionalSession?.professional?.userId === currentUser.id
+            }
             onSessionCancelled={() => {
               setProfessionalSession(null);
               setShowSessionManagementModal(false);
@@ -2536,6 +2608,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.primary,
     borderBottomLeftRadius: 4,
   },
+  professionalMessage: {
+    backgroundColor: colors.secondary + '15',
+    borderBottomLeftRadius: 4,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.secondary,
+  },
   messageImage: {
     width: 250,
     height: 200,
@@ -2567,6 +2645,68 @@ const styles = StyleSheet.create({
   },
   theirMessageText: {
     color: colors.text.primary,
+  },
+  professionalMessageText: {
+    color: colors.text.primary,
+  },
+  messageSenderHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+    paddingHorizontal: 4,
+  },
+  messageSenderName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text.secondary,
+  },
+  messageSenderRoleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.secondary + '20',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  messageSenderRole: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: colors.secondary,
+  },
+  professionalJoinedBanner: {
+    backgroundColor: colors.secondary + '15',
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.secondary + '30',
+    padding: 16,
+  },
+  professionalJoinedContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  professionalJoinedTextContainer: {
+    flex: 1,
+  },
+  professionalJoinedTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text.primary,
+    marginBottom: 4,
+  },
+  professionalJoinedRole: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.secondary,
+  },
+  professionalJoinedSubtitle: {
+    fontSize: 12,
+    color: colors.text.secondary,
   },
   deletedMessageText: {
     fontSize: 13,

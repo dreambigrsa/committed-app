@@ -82,7 +82,15 @@ export async function getActiveSession(
   try {
     const { data, error } = await supabase
       .from('professional_sessions')
-      .select('*')
+      .select(`
+        *,
+        professional:professional_profiles(
+          id,
+          user_id,
+          full_name,
+          role:professional_roles(id, name, category)
+        )
+      `)
       .eq('conversation_id', conversationId)
       .in('status', ['pending_acceptance', 'active'])
       .order('created_at', { ascending: false })
@@ -90,7 +98,26 @@ export async function getActiveSession(
       .maybeSingle();
 
     if (error) throw error;
-    return data ? mapSession(data) : null;
+    if (!data) return null;
+    
+    const session = mapSession(data);
+    
+    // Map professional profile data if available
+    if (data.professional) {
+      session.professional = {
+        id: data.professional.id,
+        userId: data.professional.user_id,
+        roleId: data.role_id, // From the session
+        fullName: data.professional.full_name,
+        role: data.professional.role ? {
+          id: data.professional.role.id,
+          name: data.professional.role.name,
+          category: data.professional.role.category,
+        } : undefined,
+      } as any;
+    }
+    
+    return session;
   } catch (error: any) {
     console.error('Error getting active session:', error);
     return null;
@@ -445,15 +472,30 @@ function mapSession(session: any): ProfessionalSession {
     } as any; // Partial User type
   }
 
-  // Map joined role data if present
-  if (session.role) {
-    mapped.role = {
-      id: session.role.id,
-      name: session.role.name,
-      category: session.role.category,
-      description: session.role.description,
-      requiresCredentials: session.role.requires_credentials ?? true,
-      requiresVerification: session.role.requires_verification ?? true,
+    // Map professional profile data if present
+    if (session.professional) {
+      mapped.professional = {
+        id: session.professional.id,
+        userId: session.professional.user_id,
+        roleId: session.professional.role_id,
+        fullName: session.professional.full_name,
+        role: session.professional.role ? {
+          id: session.professional.role.id,
+          name: session.professional.role.name,
+          category: session.professional.role.category,
+        } : undefined,
+      } as any;
+    }
+    
+    // Map joined role data if present
+    if (session.role) {
+      mapped.role = {
+        id: session.role.id,
+        name: session.role.name,
+        category: session.role.category,
+        description: session.role.description,
+        requiresCredentials: session.role.requires_credentials ?? true,
+        requiresVerification: session.role.requires_verification ?? true,
       eligibleForLiveChat: session.role.eligible_for_live_chat ?? true,
       approvalRequired: session.role.approval_required ?? true,
       disclaimerText: session.role.disclaimer_text,

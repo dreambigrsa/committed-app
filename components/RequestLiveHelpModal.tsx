@@ -135,42 +135,60 @@ export default function RequestLiveHelpModal({
     setLoading(true);
     try {
       // Get user location if available
-      const { data: onboardingData } = await supabase
-        .from('user_onboarding_data')
-        .select('location_provided')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      const location = onboardingData?.location_provided || undefined;
+      let location: string | undefined;
+      try {
+        const { data: onboardingData } = await supabase
+          .from('user_onboarding_data')
+          .select('location_provided')
+          .eq('user_id', userId)
+          .maybeSingle();
+        location = onboardingData?.location_provided || undefined;
+      } catch (locationError) {
+        console.warn('Could not load user location:', locationError);
+        // Continue without location
+      }
 
       // First try to find online professionals
-      let professionalMatches = await findMatchingProfessionals(
-        {
-          roleId,
-          location,
-          requiresOnlineOnly: true,
-          minRating: 0,
-        },
-        5
-      );
-
-      // If no online professionals found, also include offline ones (they might still accept)
-      if (professionalMatches.length === 0) {
+      let professionalMatches: any[] = [];
+      try {
         professionalMatches = await findMatchingProfessionals(
           {
             roleId,
             location,
-            requiresOnlineOnly: false,
+            requiresOnlineOnly: true,
             minRating: 0,
           },
           5
         );
+      } catch (onlineError) {
+        console.warn('Error finding online professionals:', onlineError);
+        // Continue to try offline professionals
+      }
+
+      // If no online professionals found, also include offline ones (they might still accept)
+      if (professionalMatches.length === 0) {
+        try {
+          professionalMatches = await findMatchingProfessionals(
+            {
+              roleId,
+              location,
+              requiresOnlineOnly: false,
+              minRating: 0,
+            },
+            5
+          );
+        } catch (offlineError) {
+          console.error('Error finding offline professionals:', offlineError);
+          // Set empty array, will show "no professionals" message
+          professionalMatches = [];
+        }
       }
 
       setMatches(professionalMatches);
     } catch (error: any) {
-      console.error('Error loading matches:', error);
-      Alert.alert('Error', 'Failed to find available professionals');
+      console.error('[RequestLiveHelpModal] Error loading matches:', error);
+      setMatches([]);
+      // Don't show alert, just show empty state
     } finally {
       setLoading(false);
     }
@@ -252,7 +270,11 @@ export default function RequestLiveHelpModal({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          <ScrollView 
+            style={styles.content} 
+            showsVerticalScrollIndicator={false}
+            nestedScrollEnabled={true}
+          >
             {/* AI Summary */}
             {summarizing ? (
               <View style={styles.summaryContainer}>
@@ -269,7 +291,12 @@ export default function RequestLiveHelpModal({
             {/* Role Selection */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Select Professional Type</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.rolesList}>
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false} 
+                style={styles.rolesList}
+                nestedScrollEnabled={true}
+              >
                 {roles.map((role) => (
                   <TouchableOpacity
                     key={role.id}

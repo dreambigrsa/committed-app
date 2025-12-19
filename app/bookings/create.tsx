@@ -369,6 +369,7 @@ export default function CreateBookingScreen() {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        nestedScrollEnabled={true}
       >
         {/* Role Selection */}
         <View style={styles.section}>

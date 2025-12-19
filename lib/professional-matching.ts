@@ -84,8 +84,19 @@ export async function findMatchingProfessionals(
     const matches: ProfessionalMatch[] = [];
 
     for (const profile of profiles) {
+      // Check if status is in the profile join result
+      let statusData = statusMap.get(profile.id);
+      
+      // If status is in profile join result, use that instead
+      if (!statusData && profile.status) {
+        const statusFromJoin = Array.isArray(profile.status) ? profile.status[0] : profile.status;
+        if (statusFromJoin) {
+          statusData = statusFromJoin;
+        }
+      }
+      
       // Default to offline status if not found (status should exist due to trigger, but handle gracefully)
-      const status = statusMap.get(profile.id) || {
+      const status = statusData || {
         professional_id: profile.id,
         status: 'offline',
         current_session_count: 0,
@@ -123,16 +134,32 @@ export async function findMatchingProfessionals(
         continue;
       }
 
+      // Ensure role exists
+      if (!profile.role) {
+        console.warn(`Professional ${profile.id} has no role data, skipping`);
+        continue;
+      }
+
       // Calculate match score
       const matchScore = calculateMatchScore(profile, status, criteria);
-      if (matchScore > 0) {
-        matches.push({
-          profile: mapProfile(profile),
-          role: mapRole(profile.role),
-          status: mapStatus(status),
-          matchScore,
-          matchReasons: getMatchReasons(profile, status, criteria),
-        });
+      // Include professionals even with low scores, as long as they're approved and active
+      if (matchScore >= 0) {
+        try {
+          const mappedRole = mapRole(profile.role);
+          const mappedStatus = mapStatus(status);
+          const mappedProfile = mapProfile(profile);
+          
+          matches.push({
+            profile: mappedProfile,
+            role: mappedRole,
+            status: mappedStatus,
+            matchScore,
+            matchReasons: getMatchReasons(profile, status, criteria),
+          });
+        } catch (mapError) {
+          console.error(`Error mapping professional ${profile.id}:`, mapError);
+          // Skip this professional if mapping fails
+        }
       }
     }
 
@@ -305,21 +332,32 @@ function mapProfile(profile: any): ProfessionalProfile {
  * Map database role to TypeScript type
  */
 function mapRole(role: any): ProfessionalRole {
+  if (!role) {
+    throw new Error('Role data is required');
+  }
+  
+  // Handle array case (from join)
+  const roleData = Array.isArray(role) ? role[0] : role;
+  
+  if (!roleData) {
+    throw new Error('Invalid role data');
+  }
+  
   return {
-    id: role.id,
-    name: role.name,
-    category: role.category,
-    description: role.description,
-    requiresCredentials: role.requires_credentials,
-    requiresVerification: role.requires_verification,
-    eligibleForLiveChat: role.eligible_for_live_chat,
-    approvalRequired: role.approval_required,
-    disclaimerText: role.disclaimer_text,
-    aiMatchingRules: role.ai_matching_rules || {},
-    isActive: role.is_active,
-    displayOrder: role.display_order,
-    createdAt: role.created_at,
-    updatedAt: role.updated_at,
+    id: roleData.id,
+    name: roleData.name || 'Unknown',
+    category: roleData.category || 'general',
+    description: roleData.description || '',
+    requiresCredentials: roleData.requires_credentials || false,
+    requiresVerification: roleData.requires_verification || false,
+    eligibleForLiveChat: roleData.eligible_for_live_chat ?? true,
+    approvalRequired: roleData.approval_required || false,
+    disclaimerText: roleData.disclaimer_text || null,
+    aiMatchingRules: roleData.ai_matching_rules || {},
+    isActive: roleData.is_active ?? true,
+    displayOrder: roleData.display_order || 0,
+    createdAt: roleData.created_at || new Date().toISOString(),
+    updatedAt: roleData.updated_at || new Date().toISOString(),
   };
 }
 
@@ -327,16 +365,34 @@ function mapRole(role: any): ProfessionalRole {
  * Map database status to TypeScript type
  */
 function mapStatus(status: any): ProfessionalStatus {
+  if (!status) {
+    // Return default status if not provided
+    return {
+      id: '',
+      professionalId: '',
+      status: 'offline',
+      currentSessionCount: 0,
+      lastSeenAt: new Date().toISOString(),
+      statusOverride: false,
+      statusOverrideBy: undefined,
+      statusOverrideUntil: undefined,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+  
+  // Handle array case (from join)
+  const statusData = Array.isArray(status) ? status[0] : status;
+  
   return {
-    id: status.id,
-    professionalId: status.professional_id,
-    status: status.status as any,
-    currentSessionCount: status.current_session_count || 0,
-    lastSeenAt: status.last_seen_at,
-    statusOverride: status.status_override || false,
-    statusOverrideBy: status.status_override_by,
-    statusOverrideUntil: status.status_override_until,
-    updatedAt: status.updated_at,
+    id: statusData.id || '',
+    professionalId: statusData.professional_id || '',
+    status: (statusData.status || 'offline') as any,
+    currentSessionCount: statusData.current_session_count || 0,
+    lastSeenAt: statusData.last_seen_at || new Date().toISOString(),
+    statusOverride: statusData.status_override || false,
+    statusOverrideBy: statusData.status_override_by || undefined,
+    statusOverrideUntil: statusData.status_override_until || undefined,
+    updatedAt: statusData.updated_at || new Date().toISOString(),
   };
 }
 

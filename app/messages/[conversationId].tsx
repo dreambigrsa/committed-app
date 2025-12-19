@@ -2000,12 +2000,33 @@ export default function ConversationDetailScreen() {
             </View>
           ),
           headerRight: () => (
-            <TouchableOpacity
-              onPress={() => setShowBackgroundModal(true)}
-              style={styles.headerRight}
-            >
-              <Settings size={24} color={colors.text.primary} />
-            </TouchableOpacity>
+            <View style={styles.headerRightContainer}>
+              {/* Request Live Help Button - Show only in AI conversations without active session */}
+              {isAIConversation && !professionalSession && (
+                <TouchableOpacity
+                  style={styles.headerRequestHelpButton}
+                  onPress={() => setShowRequestHelpModal(true)}
+                  activeOpacity={0.7}
+                >
+                  <Users size={18} color={colors.secondary} />
+                  <Text style={styles.headerRequestHelpButtonText}>Live Help</Text>
+                </TouchableOpacity>
+              )}
+              {/* Professional Session Badge - Show when session is active */}
+              {professionalSession && professionalSession.status === 'active' && (
+                <View style={styles.headerSessionBadge}>
+                  <Shield size={16} color={colors.secondary} />
+                  <Text style={styles.headerSessionBadgeText}>Professional</Text>
+                </View>
+              )}
+              {/* Settings Button */}
+              <TouchableOpacity
+                onPress={() => setShowBackgroundModal(true)}
+                style={styles.headerRight}
+              >
+                <Settings size={24} color={colors.text.primary} />
+              </TouchableOpacity>
+            </View>
           ),
         }}
       />
@@ -2143,17 +2164,6 @@ export default function ConversationDetailScreen() {
               </TouchableOpacity>
             )}
 
-            {/* Request Live Help Button - Show only in AI conversations without active session */}
-            {isAIConversation && !professionalSession && (
-              <TouchableOpacity
-                style={styles.requestHelpButton}
-                onPress={() => setShowRequestHelpModal(true)}
-                activeOpacity={0.7}
-              >
-                <Users size={18} color={colors.text.white} />
-                <Text style={styles.requestHelpButtonText}>Request Live Help</Text>
-              </TouchableOpacity>
-            )}
 
             {/* Professional Session Status - Show when session is active */}
             {professionalSession && professionalSession.status === 'active' && (
@@ -2311,6 +2321,11 @@ const styles = StyleSheet.create({
   },
   headerProfileButton: {
     padding: 2,
+  },
+  headerRightContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   headerRight: {
     padding: 4,
@@ -2562,25 +2577,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  requestHelpButton: {
+  headerRequestHelpButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: colors.secondary,
+    backgroundColor: colors.secondary + '15',
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderRadius: 16,
     marginRight: 8,
-    flex: 1,
-    minWidth: 140,
+    borderWidth: 1,
+    borderColor: colors.secondary + '40',
   },
-  requestHelpButtonText: {
+  headerRequestHelpButtonText: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.text.white,
-    flex: 1,
-    textAlign: 'center',
+    color: colors.secondary,
+  },
+  headerSessionBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: colors.secondary + '15',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 8,
+  },
+  headerSessionBadgeText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.secondary,
   },
   sessionStatusBadge: {
     flexDirection: 'row',

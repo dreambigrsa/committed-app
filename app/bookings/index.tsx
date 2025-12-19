@@ -277,7 +277,21 @@ export default function BookingsScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Stack.Screen options={{ title: 'My Bookings' }} />
+      <Stack.Screen 
+        options={{ 
+          title: 'My Bookings',
+          headerRight: () => (
+            <TouchableOpacity
+              onPress={() => router.push('/bookings/create' as any)}
+              style={{ marginRight: 16 }}
+            >
+              <Text style={{ color: themeColors.primary, fontSize: 16, fontWeight: '600' }}>
+                + Book
+              </Text>
+            </TouchableOpacity>
+          ),
+        }} 
+      />
 
       {/* Filter Tabs */}
       <View style={styles.filterContainer}>
@@ -308,6 +322,14 @@ export default function BookingsScreen() {
               ? "You don't have any past bookings"
               : "You don't have any bookings yet"}
           </Text>
+          {filter !== 'past' && (
+            <TouchableOpacity
+              style={styles.createButton}
+              onPress={() => router.push('/bookings/create' as any)}
+            >
+              <Text style={styles.createButtonText}>Create Your First Booking</Text>
+            </TouchableOpacity>
+          )}
         </View>
       ) : (
         <FlatList
@@ -517,6 +539,19 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontSize: 16,
     color: colors.text.secondary,
     textAlign: 'center',
+    marginBottom: 24,
+  },
+  createButton: {
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    marginTop: 8,
+  },
+  createButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
   },
 });
 

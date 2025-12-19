@@ -17,6 +17,7 @@ import { supabase } from '@/lib/supabase';
 import { ProfessionalSession } from '@/types';
 
 type SessionStatus = 'all' | 'pending_acceptance' | 'active' | 'ended' | 'declined';
+type SessionType = 'all' | 'live_chat' | 'offline_booking' | 'scheduled' | 'escalated';
 
 export default function AdminProfessionalSessionsScreen() {
   const { colors: themeColors } = useTheme();
@@ -26,6 +27,7 @@ export default function AdminProfessionalSessionsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [sessions, setSessions] = useState<ProfessionalSession[]>([]);
   const [filterStatus, setFilterStatus] = useState<SessionStatus>('all');
+  const [filterType, setFilterType] = useState<SessionType>('all');
 
   useEffect(() => {
     loadSessions();
@@ -49,7 +51,7 @@ export default function AdminProfessionalSessionsScreen() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [filterStatus]);
+  }, [filterStatus, filterType]);
 
   const loadSessions = async () => {
     try {
@@ -68,6 +70,10 @@ export default function AdminProfessionalSessionsScreen() {
 
       if (filterStatus !== 'all') {
         query = query.eq('status', filterStatus);
+      }
+
+      if (filterType !== 'all') {
+        query = query.eq('session_type', filterType);
       }
 
       const { data, error } = await query;
@@ -148,10 +154,45 @@ export default function AdminProfessionalSessionsScreen() {
     { label: 'Declined', value: 'declined' },
   ];
 
+  const typeFilters: { label: string; value: SessionType }[] = [
+    { label: 'All Types', value: 'all' },
+    { label: 'Live Chat', value: 'live_chat' },
+    { label: 'Bookings', value: 'offline_booking' },
+    { label: 'Scheduled', value: 'scheduled' },
+    { label: 'Escalated', value: 'escalated' },
+  ];
+
   return (
     <SafeAreaView style={styles.container}>
       <Stack.Screen options={{ title: 'Professional Sessions' }} />
       
+      {/* Type Filters */}
+      <View style={styles.filtersContainer}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScrollContent}>
+          {typeFilters.map((filter, index) => (
+            <TouchableOpacity
+              key={filter.value}
+              style={[
+                styles.segmentedButton,
+                filterType === filter.value && styles.segmentedButtonActive,
+                index === 0 && styles.segmentedButtonFirst,
+                index === typeFilters.length - 1 && styles.segmentedButtonLast,
+              ]}
+              onPress={() => setFilterType(filter.value)}
+            >
+              <Text
+                style={[
+                  styles.segmentedButtonText,
+                  filterType === filter.value && styles.segmentedButtonTextActive,
+                ]}
+              >
+                {filter.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
       {/* Status Filters - Segmented Control */}
       <View style={styles.filtersContainer}>
         <View style={styles.segmentedControl}>
@@ -327,6 +368,9 @@ const createStyles = (colors: any) =>
       backgroundColor: colors.background.primary,
       borderBottomWidth: 1,
       borderBottomColor: colors.border.light,
+    },
+    filterScrollContent: {
+      paddingRight: 16,
     },
     segmentedControl: {
       flexDirection: 'row',

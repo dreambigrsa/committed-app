@@ -10,10 +10,10 @@ import { getNotificationPreferences } from '@/lib/notification-preferences';
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
-    // Play sound while foregrounded if the user has sounds enabled.
-    // (Background sound behavior is controlled by OS + Android channel + payload)
     shouldPlaySound: getNotificationPreferences().soundEnabled,
     shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 

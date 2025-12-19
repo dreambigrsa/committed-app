@@ -384,16 +384,28 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             </>
           ) : (
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => router.push('/settings/become-professional' as any)}
-            >
-              <View style={styles.menuItemLeft}>
-                <Briefcase size={20} color={colors.primary} />
-                <Text style={[styles.menuItemText, { color: colors.primary, fontWeight: '700' }]}>Become a Professional</Text>
-              </View>
-              <ChevronRight size={20} color={colors.text.tertiary} />
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => router.push('/bookings' as any)}
+              >
+                <View style={styles.menuItemLeft}>
+                  <Calendar size={20} color={colors.primary} />
+                  <Text style={[styles.menuItemText, { color: colors.primary }]}>My Bookings</Text>
+                </View>
+                <ChevronRight size={20} color={colors.text.tertiary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => router.push('/settings/become-professional' as any)}
+              >
+                <View style={styles.menuItemLeft}>
+                  <Briefcase size={20} color={colors.primary} />
+                  <Text style={[styles.menuItemText, { color: colors.primary, fontWeight: '700' }]}>Become a Professional</Text>
+                </View>
+                <ChevronRight size={20} color={colors.text.tertiary} />
+              </TouchableOpacity>
+            </>
           )}
 
           <TouchableOpacity

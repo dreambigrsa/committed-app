@@ -1,6 +1,10 @@
 {
+  "compilerOptions": {
+    "lib": ["deno.window", "deno.unstable"],
+    "strict": true
+  },
   "imports": {
-    "supabase": "jsr:@supabase/supabase-js@2"
+    "supabase": "https://esm.sh/@supabase/supabase-js@2"
   }
 }
 

@@ -64,7 +64,7 @@ export async function enforceQuietHoursForAllProfessionals(): Promise<void> {
         quiet_hours_start,
         quiet_hours_end,
         quiet_hours_timezone,
-        professional_status!inner(id, status, status_override)
+        professional_status(id, status, status_override)
       `)
       .not('quiet_hours_start', 'is', null)
       .not('quiet_hours_end', 'is', null)
@@ -77,9 +77,16 @@ export async function enforceQuietHoursForAllProfessionals(): Promise<void> {
     }
 
     for (const profile of profiles) {
-      const status = profile.professional_status;
+      // Handle array response from Supabase join
+      const statusArray = Array.isArray(profile.professional_status) 
+        ? profile.professional_status 
+        : profile.professional_status
+          ? [profile.professional_status]
+          : [];
+      
+      const status = statusArray[0];
       if (!status || status.status_override) {
-        // Skip if status is overridden by admin
+        // Skip if status is overridden by admin or doesn't exist
         continue;
       }
 

@@ -1,8 +1,9 @@
-/**
- * Enforce Quiet Hours for Professionals
- * Edge function to automatically set professional status to "busy" during quiet hours
- * Should be called periodically via cron job (e.g., every 15 minutes)
- */
+// @ts-nocheck
+// Supabase Edge Function: Enforce Quiet Hours for Professionals
+// Edge function to automatically set professional status to "busy" during quiet hours
+// Should be called periodically via cron job (e.g., every 15 minutes)
+// Deploy: supabase functions deploy enforce-quiet-hours
+// Note: This file runs in Deno runtime, not Node.js. TypeScript errors are expected when checked with Node.js types.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';

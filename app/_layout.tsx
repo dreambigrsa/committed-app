@@ -38,6 +38,7 @@ function RootLayoutNav() {
         <Stack.Screen name="settings/sessions" options={{ headerShown: true, title: "Active Sessions" }} />
         <Stack.Screen name="settings/blocked-users" options={{ headerShown: true, title: "Blocked Users" }} />
         <Stack.Screen name="settings/become-professional" options={{ headerShown: true, title: "Become a Professional" }} />
+        <Stack.Screen name="settings/professional-availability" options={{ headerShown: true, title: "Professional Availability" }} />
         <Stack.Screen name="+not-found" />
       </Stack>
       <NotificationToast />

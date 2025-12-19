@@ -44,6 +44,7 @@ import {
   X,
   FileText,
   Briefcase,
+  Radio,
 } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useApp } from '@/contexts/AppContext';
@@ -101,6 +102,7 @@ export default function SettingsScreen() {
     allowSearchByPhone: true,
   });
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const [isProfessional, setIsProfessional] = useState(false);
   const [sessions, setSessions] = useState<any[]>([]);
   const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
   
@@ -141,8 +143,25 @@ export default function SettingsScreen() {
       loadVisualTheme(currentUser.id);
       loadLanguagePreference(currentUser.id);
       loadLegalDocuments();
+      checkProfessionalStatus();
     }
   }, [currentUser, loadThemePreference, loadVisualTheme, loadLanguagePreference]);
+
+  const checkProfessionalStatus = async () => {
+    if (!currentUser) return;
+    try {
+      const { data } = await supabase
+        .from('professional_profiles')
+        .select('id')
+        .eq('user_id', currentUser.id)
+        .eq('approval_status', 'approved')
+        .maybeSingle();
+      
+      setIsProfessional(!!data);
+    } catch (error) {
+      console.error('Failed to check professional status:', error);
+    }
+  };
 
   const loadLegalDocuments = async () => {
     if (!currentUser) return;
@@ -1193,18 +1212,33 @@ export default function SettingsScreen() {
                 </View>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.settingItem}
-                onPress={() => router.push('/settings/become-professional' as any)}
-              >
-                <View style={styles.settingLeft}>
-                  <Briefcase size={20} color={colors.text.secondary} />
-                  <Text style={styles.settingLabel}>Become a Professional</Text>
-                </View>
-                <View style={styles.settingRight}>
-                  <ChevronRight size={20} color={colors.text.tertiary} />
-                </View>
-              </TouchableOpacity>
+              {isProfessional ? (
+                <TouchableOpacity
+                  style={styles.settingItem}
+                  onPress={() => router.push('/settings/professional-availability' as any)}
+                >
+                  <View style={styles.settingLeft}>
+                    <Radio size={20} color={colors.text.secondary} />
+                    <Text style={styles.settingLabel}>Professional Availability</Text>
+                  </View>
+                  <View style={styles.settingRight}>
+                    <ChevronRight size={20} color={colors.text.tertiary} />
+                  </View>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={styles.settingItem}
+                  onPress={() => router.push('/settings/become-professional' as any)}
+                >
+                  <View style={styles.settingLeft}>
+                    <Briefcase size={20} color={colors.text.secondary} />
+                    <Text style={styles.settingLabel}>Become a Professional</Text>
+                  </View>
+                  <View style={styles.settingRight}>
+                    <ChevronRight size={20} color={colors.text.tertiary} />
+                  </View>
+                </TouchableOpacity>
+              )}
 
               <TouchableOpacity
                 style={styles.settingItem}

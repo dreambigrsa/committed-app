@@ -1039,41 +1039,52 @@ export default function ConversationDetailScreen() {
           try {
             setAiIsThinking(true);
             const typingId = `ai_typing_${Date.now()}`;
-            setLocalMessages(prev => [
-              ...prev,
-              {
-                id: typingId,
-                conversationId,
-                senderId: aiUser.id,
-                receiverId: currentUser.id,
-                content: 'Committed AI is thinking…',
-                messageType: 'text',
-                read: true,
-                deletedForSender: false,
-                deletedForReceiver: false,
-                createdAt: new Date().toISOString(),
-              },
-            ]);
             
-            // Scroll to bottom immediately to show typing indicator
-            setTimeout(() => {
-              flatListRef.current?.scrollToEnd({ animated: true });
-            }, 100);
+            // Add typing indicator immediately
+            setLocalMessages(prev => {
+              const updated = [
+                ...prev,
+                {
+                  id: typingId,
+                  conversationId,
+                  senderId: aiUser.id,
+                  receiverId: currentUser.id,
+                  content: 'Committed AI is thinking…',
+                  messageType: 'text',
+                  read: true,
+                  deletedForSender: false,
+                  deletedForReceiver: false,
+                  createdAt: new Date().toISOString(),
+                },
+              ];
+              // Force scroll immediately after state update
+              requestAnimationFrame(() => {
+                setTimeout(() => {
+                  flatListRef.current?.scrollToEnd({ animated: true });
+                }, 50);
+              });
+              return updated;
+            });
 
-            // Get conversation history for context
-            const existingMessages = localMessages || [];
-            const conversationHistory = existingMessages
-              .slice(-10) // Last 10 messages for context (reduced for speed)
-              .map((msg: any) => ({
+            // Get conversation history for context - use current state including optimistic message
+            // Filter to only include messages from this conversation and exclude typing indicators
+            const existingMessages = localMessages.filter((m: any) => 
+              m.conversationId === conversationId && 
+              !m.id.toString().startsWith('ai_typing_')
+            ) || [];
+            
+            // Build conversation history from existing messages, including the message we just sent
+            const conversationHistory = [
+              ...existingMessages.map((msg: any) => ({
                 role: msg.senderId === currentUser.id ? 'user' as const : 'assistant' as const,
                 content: msg.content || '',
-              }));
-
-            // Add the current message to history
-            conversationHistory.push({
-              role: 'user' as const,
-              content: messageContent,
-            });
+              })),
+              // Add the current message to history
+              {
+                role: 'user' as const,
+                content: messageContent,
+              },
+            ].slice(-11); // Get last 11 (10 + current message)
 
             const isNewConversation = existingMessages.length === 0;
 

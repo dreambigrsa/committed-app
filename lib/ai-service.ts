@@ -1274,8 +1274,24 @@ function detectProfessionalHelpNeeded(
   userMessage: string,
   conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>
 ): { needsHelp: boolean; professionalType?: string; confidence: 'high' | 'medium' | 'low' } {
-  const message = userMessage.toLowerCase();
-  const recentHistory = conversationHistory.slice(-5).map(m => m.content).join(' ').toLowerCase();
+  const message = userMessage.toLowerCase().trim();
+  
+  // Only use recent conversation history (last 8 messages) - ignore old messages
+  // This prevents triggering on old conversation data
+  const recentConversation = conversationHistory.slice(-8);
+  const recentHistory = recentConversation.map(m => m.content).join(' ').toLowerCase();
+  
+  // Filter out thinking indicators and empty messages
+  const validMessages = recentConversation.filter(m => 
+    m.content && 
+    m.content.trim().length > 0 && 
+    !m.content.toLowerCase().includes('thinking')
+  );
+  
+  // If we don't have enough valid messages, don't suggest help
+  if (validMessages.length < 5) {
+    return { needsHelp: false, confidence: 'low' };
+  }
 
   // High confidence indicators (explicit requests)
   const explicitPatterns = [
@@ -1307,13 +1323,13 @@ function detectProfessionalHelpNeeded(
   }
 
   // Low confidence indicators - ONLY trigger after substantial meaningful conversation
-  // Require at least 8 user messages with meaningful content (not just greetings)
-  const userMessages = conversationHistory.filter(m => m.role === 'user');
-  const userMessageCount = userMessages.length;
+  // Use the validMessages we already filtered (only recent, non-empty, non-thinking messages)
+  const recentUserMessages = validMessages.filter((m: any) => m.role === 'user');
+  const userMessageCount = recentUserMessages.length;
   
   // Check if conversation has meaningful content (not just greetings)
   const greetingPatterns = /^(hi|hello|hey|good morning|good afternoon|good evening|thanks|thank you|bye|goodbye)[\s!.,]*$/i;
-  const meaningfulMessages = userMessages.filter(msg => {
+  const meaningfulMessages = recentUserMessages.filter((msg: any) => {
     const content = msg.content.trim();
     return content.length > 10 && !greetingPatterns.test(content);
   }).length;

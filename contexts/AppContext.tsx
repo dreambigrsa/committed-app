@@ -463,9 +463,23 @@ export const [AppContext, useApp] = createContextHook(() => {
           setMessages(messagesByConversation);
         }
 
+        // Deduplicate conversations: keep only the most recent one for each set of participants
+        const conversationMap = new Map<string, any>();
+        conversationsData.forEach((conv: any) => {
+          const participants = conv.participant_ids || [];
+          const key = [...participants].sort().join(',');
+          
+          const existing = conversationMap.get(key);
+          if (!existing || new Date(conv.last_message_at || conv.created_at).getTime() > 
+                          new Date(existing.last_message_at || existing.created_at).getTime()) {
+            conversationMap.set(key, conv);
+          }
+        });
+        const deduplicatedConversations = Array.from(conversationMap.values());
+
         // Now format conversations with accurate last message from non-deleted messages
         const formattedConversations: Conversation[] = await Promise.all(
-          conversationsData.map(async (conv: any) => {
+          deduplicatedConversations.map(async (conv: any) => {
             const participantIds = conv.participant_ids;
             const { data: participantsData } = await supabase
               .from('users')
@@ -2266,38 +2280,113 @@ export const [AppContext, useApp] = createContextHook(() => {
     if (!currentUser) return false;
     
     try {
-      // Update local state immediately for better UX
-      setConversations(prev => prev.filter(c => c.id !== conversationId));
-      setMessages(prev => {
-        const updated = { ...prev };
-        delete updated[conversationId];
-        return updated;
+      // First, get the conversation to find its participants
+      const { data: conversationData } = await supabase
+        .from('conversations')
+        .select('participant_ids')
+        .eq('id', conversationId)
+        .single();
+
+      if (!conversationData) {
+        console.error('Conversation not found');
+        // Still try to delete by ID
+        const { error } = await supabase
+          .from('conversations')
+          .delete()
+          .eq('id', conversationId);
+        if (error) {
+          console.error('Error deleting conversation:', error);
+          return false;
+        }
+        // Update local state
+        setConversations(prev => prev.filter(c => c.id !== conversationId));
+        setMessages(prev => {
+          const updated = { ...prev };
+          delete updated[conversationId];
+          return updated;
+        });
+        return true;
+      }
+
+      const participantIds = conversationData.participant_ids || [];
+      const participantIdsSorted = [...participantIds].sort();
+      
+      // Find ALL conversations with the same participants (to handle duplicates)
+      // Query all conversations for current user, then filter for exact participant matches
+      const { data: allUserConversations, error: queryError } = await supabase
+        .from('conversations')
+        .select('id, participant_ids')
+        .contains('participant_ids', [currentUser.id]);
+
+      if (queryError) {
+        console.error('Error querying matching conversations:', queryError);
+      }
+
+      // Filter to get exact matches (order-independent) - same participants
+      const exactMatches = allUserConversations?.filter((conv: any) => {
+        const convParticipants = conv.participant_ids || [];
+        if (convParticipants.length !== participantIds.length) return false;
+        const convSorted = [...convParticipants].sort();
+        return convSorted.every((id, i) => id === participantIdsSorted[i]);
+      }) || [];
+
+      const conversationIdsToDelete = exactMatches.map((c: any) => c.id);
+      
+      // Update local state immediately for better UX - remove ALL conversations with these participants
+      setConversations(prev => {
+        return prev.filter(c => {
+          const cParticipants = c.participants || [];
+          if (cParticipants.length !== participantIds.length) return true;
+          const cSorted = [...cParticipants].sort();
+          return !cSorted.every((id, i) => id === participantIdsSorted[i]);
+        });
       });
 
-      // Delete all messages in the conversation
-      const { error: messagesError } = await supabase
-        .from('messages')
-        .delete()
-        .eq('conversation_id', conversationId);
+      // Delete messages for all matching conversations
+      if (conversationIdsToDelete.length > 0) {
+        const { error: messagesError } = await supabase
+          .from('messages')
+          .delete()
+          .in('conversation_id', conversationIdsToDelete);
 
-      if (messagesError) {
-        console.error('Error deleting messages:', messagesError);
-        // Continue with conversation deletion even if messages deletion fails
+        if (messagesError) {
+          console.error('Error deleting messages:', messagesError);
+          // Continue with conversation deletion even if messages deletion fails
+        }
       }
 
-      // Delete the conversation from database
-      const { error: conversationError } = await supabase
-        .from('conversations')
-        .delete()
-        .eq('id', conversationId);
+      // Delete ALL conversations with the same participants (to handle duplicates)
+      if (conversationIdsToDelete.length > 0) {
+        const { error: conversationError } = await supabase
+          .from('conversations')
+          .delete()
+          .in('id', conversationIdsToDelete);
 
-      if (conversationError) {
-        console.error('Error deleting conversation:', conversationError);
-        // Revert local state if deletion failed
-        // Note: We'll reload conversations on next loadUserData, but for now we've removed it locally
-        // The realtime DELETE handler should handle the sync
-        return false;
+        if (conversationError) {
+          console.error('Error deleting conversations:', conversationError);
+          return false;
+        }
+      } else {
+        // Fallback: delete just this conversation
+        const { error: conversationError } = await supabase
+          .from('conversations')
+          .delete()
+          .eq('id', conversationId);
+
+        if (conversationError) {
+          console.error('Error deleting conversation:', conversationError);
+          return false;
+        }
       }
+
+      // Also remove messages from local state for all deleted conversations
+      setMessages(prev => {
+        const updated = { ...prev };
+        conversationIdsToDelete.forEach(convId => {
+          delete updated[convId];
+        });
+        return updated;
+      });
 
       return true;
     } catch (error) {

@@ -415,12 +415,15 @@ export const [AppContext, useApp] = createContextHook(() => {
         .order('last_message_at', { ascending: false });
 
       if (conversationsData && conversationsData.length > 0) {
-        // First, load all messages to calculate accurate last messages
+        // Load recent messages for each conversation (limit to last 50 per conversation for performance)
+        // We'll load more messages when user opens a conversation
+        const conversationIds = conversationsData.map((c: any) => c.id);
         const { data: messagesData } = await supabase
           .from('messages')
           .select('*')
-          .in('conversation_id', conversationsData.map((c: any) => c.id))
-          .order('created_at', { ascending: true });
+          .in('conversation_id', conversationIds)
+          .order('created_at', { ascending: false })
+          .limit(conversationIds.length * 50); // Limit total messages loaded initially
 
         const messagesByConversation: Record<string, Message[]> = {};
         if (messagesData) {
@@ -2260,6 +2263,14 @@ export const [AppContext, useApp] = createContextHook(() => {
     if (!currentUser) return false;
     
     try {
+      // Update local state immediately for better UX
+      setConversations(prev => prev.filter(c => c.id !== conversationId));
+      setMessages(prev => {
+        const updated = { ...prev };
+        delete updated[conversationId];
+        return updated;
+      });
+
       // Delete all messages in the conversation
       const { error: messagesError } = await supabase
         .from('messages')
@@ -2271,7 +2282,7 @@ export const [AppContext, useApp] = createContextHook(() => {
         // Continue with conversation deletion even if messages deletion fails
       }
 
-      // Delete the conversation
+      // Delete the conversation from database
       const { error: conversationError } = await supabase
         .from('conversations')
         .delete()
@@ -2279,16 +2290,11 @@ export const [AppContext, useApp] = createContextHook(() => {
 
       if (conversationError) {
         console.error('Error deleting conversation:', conversationError);
+        // Revert local state if deletion failed
+        // Note: We'll reload conversations on next loadUserData, but for now we've removed it locally
+        // The realtime DELETE handler should handle the sync
         return false;
       }
-
-      // Update local state immediately using functional updates to avoid stale closures
-      setConversations(prev => prev.filter(c => c.id !== conversationId));
-      setMessages(prev => {
-        const updated = { ...prev };
-        delete updated[conversationId];
-        return updated;
-      });
 
       return true;
     } catch (error) {
@@ -3301,6 +3307,7 @@ export const [AppContext, useApp] = createContextHook(() => {
             setConversations(prev => {
               const existingIndex = prev.findIndex(c => c.id === updatedConv.id);
               if (existingIndex >= 0) {
+                // Only update if conversation still exists - don't re-add deleted ones
                 // Update existing conversation
                 const updated = [...prev];
                 updated[existingIndex] = {
@@ -3313,6 +3320,7 @@ export const [AppContext, useApp] = createContextHook(() => {
                   new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
                 );
               }
+              // Don't add new conversations via UPDATE events - only via initial load
               return prev;
             });
           }

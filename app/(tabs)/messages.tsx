@@ -87,17 +87,38 @@ export default function MessagesScreen() {
 
     const loadStatuses = async () => {
       if (!isMounted) return;
-      const statuses: Record<string, UserStatus> = {};
-      for (const conversation of conversations) {
-        if (!isMounted) return;
-        const other = getOtherParticipant(conversation);
-        if (other.id) {
-          const status = await getUserStatus(other.id);
-          if (status && isMounted) {
-            statuses[other.id] = status;
-          }
+      
+      // Get unique participant IDs
+      const participantIds = conversations
+        .map(conv => {
+          const other = getOtherParticipant(conv);
+          return other.id;
+        })
+        .filter((id): id is string => !!id);
+      
+      // Load all statuses in parallel for better performance
+      const statusPromises = participantIds.map(async (id) => {
+        if (!isMounted) return null;
+        try {
+          const status = await getUserStatus(id);
+          return status ? { id, status } : null;
+        } catch (error) {
+          console.warn(`Error loading status for user ${id}:`, error);
+          return null;
         }
-      }
+      });
+      
+      const statusResults = await Promise.all(statusPromises);
+      
+      if (!isMounted) return;
+      
+      const statuses: Record<string, UserStatus> = {};
+      statusResults.forEach(result => {
+        if (result) {
+          statuses[result.id] = result.status;
+        }
+      });
+      
       if (isMounted) {
         setParticipantStatuses(statuses);
       }

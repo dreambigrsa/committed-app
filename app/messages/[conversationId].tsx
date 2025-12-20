@@ -642,7 +642,7 @@ export default function ConversationDetailScreen() {
     };
   }, [conversationId, conversation, getUserStatus]);
 
-  const loadMessages = async (limit: number = 100) => {
+  const loadMessages = async (limit: number = 20) => {
     try {
       // Load most recent messages first (for better performance)
       // Load in reverse order, then reverse the array for display

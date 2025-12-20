@@ -26,6 +26,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
 import { ProfessionalProfile, ProfessionalStatus } from '@/types';
+import { getEffectiveProfessionalStatus, EffectiveProfessionalStatus } from '@/lib/professional-availability';
 import colors from '@/constants/colors';
 
 type StatusType = 'online' | 'busy' | 'offline' | 'away';
@@ -43,6 +44,7 @@ export default function ProfessionalAvailabilityScreen() {
   
   // Status settings
   const [currentStatus, setCurrentStatus] = useState<StatusType>('offline');
+  const [effectiveStatus, setEffectiveStatus] = useState<EffectiveProfessionalStatus | null>(null);
   const [maxConcurrentSessions, setMaxConcurrentSessions] = useState(3);
   
   // Quiet hours settings
@@ -138,6 +140,21 @@ export default function ProfessionalAvailabilityScreen() {
         };
         setStatus(mappedStatus);
         setCurrentStatus(statusData.status as StatusType);
+        
+        // Calculate effective status
+        const profileUserId = (profileData as any).user_id || profile?.userId;
+        if (profileUserId) {
+          try {
+            const effective = await getEffectiveProfessionalStatus(
+              profileUserId,
+              statusData.status as StatusType,
+              statusData.status_override || false
+            );
+            setEffectiveStatus(effective);
+          } catch (error) {
+            console.error('Error calculating effective status:', error);
+          }
+        }
       } else {
         // Create default status if it doesn't exist
         const { data: newStatusData, error: createError } = await supabase
@@ -163,6 +180,21 @@ export default function ProfessionalAvailabilityScreen() {
           };
           setStatus(mappedStatus);
           setCurrentStatus('offline');
+          
+          // Calculate effective status for default
+          const profileUserId = (profileData as any).user_id;
+          if (profileUserId) {
+            try {
+              const effective = await getEffectiveProfessionalStatus(
+                profileUserId,
+                'offline',
+                false
+              );
+              setEffectiveStatus(effective);
+            } catch (error) {
+              console.error('Error calculating effective status:', error);
+            }
+          }
         }
       }
     } catch (error: any) {
@@ -288,9 +320,9 @@ export default function ProfessionalAvailabilityScreen() {
       <Stack.Screen options={{ title: 'Professional Availability' }} />
       
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Current Status */}
+        {/* Status Preference */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Current Status</Text>
+          <Text style={styles.sectionTitle}>Status Preference</Text>
           
           {isAdminOverride && (
             <View style={styles.overrideWarning}>
@@ -304,6 +336,26 @@ export default function ProfessionalAvailabilityScreen() {
             </View>
           )}
 
+          {/* Show actual calculated status */}
+          {effectiveStatus && !isAdminOverride && (
+            <View style={styles.effectiveStatusInfo}>
+              <Text style={styles.effectiveStatusLabel}>
+                Actual Status: <Text style={styles.effectiveStatusValue}>{getStatusLabel(effectiveStatus.status)}</Text>
+                {effectiveStatus.isAutomatic && (
+                  <Text style={styles.effectiveStatusNote}> (Automatic)</Text>
+                )}
+                {!effectiveStatus.isAutomatic && effectiveStatus.source === 'manual_override' && (
+                  <Text style={styles.effectiveStatusNote}> (Manual Override)</Text>
+                )}
+              </Text>
+              <Text style={styles.effectiveStatusDescription}>
+                {currentStatus === 'online' && 'Uses automatic status based on app activity'}
+                {currentStatus === 'away' && 'Uses automatic status, defaults to away when inactive'}
+                {(currentStatus === 'busy' || currentStatus === 'offline') && 'Always shows this status (manual override)'}
+              </Text>
+            </View>
+          )}
+
           <View style={styles.statusGrid}>
             {(['online', 'busy', 'away', 'offline'] as StatusType[]).map((statusType) => (
               <TouchableOpacity
@@ -313,16 +365,45 @@ export default function ProfessionalAvailabilityScreen() {
                   currentStatus === statusType && styles.statusOptionActive,
                   isAdminOverride && styles.statusOptionDisabled,
                 ]}
-                onPress={() => !isAdminOverride && setCurrentStatus(statusType)}
+                onPress={async () => {
+                  if (!isAdminOverride && profile) {
+                    const profileUserId = (profile as any).user_id || profile.userId;
+                    setCurrentStatus(statusType);
+                    // Recalculate effective status
+                    if (profileUserId) {
+                      try {
+                        const effective = await getEffectiveProfessionalStatus(
+                          profileUserId,
+                          statusType,
+                          false
+                        );
+                        setEffectiveStatus(effective);
+                      } catch (error) {
+                        console.error('Error calculating effective status:', error);
+                      }
+                    }
+                  }
+                }}
                 disabled={isAdminOverride}
               >
                 <View style={[styles.statusIndicator, { backgroundColor: getStatusColor(statusType) }]} />
-                <Text style={[
-                  styles.statusLabel,
-                  currentStatus === statusType && styles.statusLabelActive,
-                ]}>
-                  {getStatusLabel(statusType)}
-                </Text>
+                <View style={styles.statusOptionContent}>
+                  <Text style={[
+                    styles.statusLabel,
+                    currentStatus === statusType && styles.statusLabelActive,
+                  ]}>
+                    {getStatusLabel(statusType)}
+                  </Text>
+                  {statusType === 'online' && (
+                    <Text style={styles.statusOptionHint}>Automatic</Text>
+                  )}
+                  {(statusType === 'busy' || statusType === 'offline') && (
+                    <Text style={styles.statusOptionHint}>Override</Text>
+                  )}
+                  {statusType === 'away' && (
+                    <Text style={styles.statusOptionHint}>Auto (default away)</Text>
+                  )}
+                </View>
                 {currentStatus === statusType && (
                   <CheckCircle2 size={16} color={themeColors.primary} style={styles.checkIcon} />
                 )}
@@ -656,6 +737,42 @@ const createStyles = (colors: any) => StyleSheet.create({
   },
   checkIcon: {
     marginLeft: 'auto',
+  },
+  effectiveStatusInfo: {
+    backgroundColor: colors.background.secondary,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+  },
+  effectiveStatusLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text.primary,
+    marginBottom: 4,
+  },
+  effectiveStatusValue: {
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  effectiveStatusNote: {
+    fontSize: 12,
+    color: colors.text.secondary,
+    fontStyle: 'italic',
+  },
+  effectiveStatusDescription: {
+    fontSize: 12,
+    color: colors.text.secondary,
+    marginTop: 4,
+  },
+  statusOptionContent: {
+    flex: 1,
+    gap: 2,
+  },
+  statusOptionHint: {
+    fontSize: 11,
+    color: colors.text.tertiary,
   },
   sessionInfo: {
     flexDirection: 'row',

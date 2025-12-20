@@ -1,9 +1,17 @@
 /**
  * Professional Availability Service
  * Handles automatic quiet hours enforcement and availability checks
+ * Implements hybrid status system: combines user_status (automatic) with professional_status (preference)
  */
 
 import { supabase } from './supabase';
+import { UserStatusType } from '@/types';
+
+export interface EffectiveProfessionalStatus {
+  status: 'online' | 'busy' | 'away' | 'offline';
+  isAutomatic: boolean; // true if using automatic calculation, false if manual override
+  source: 'automatic' | 'manual_override' | 'admin_override';
+}
 
 /**
  * Check if a professional is currently in quiet hours
@@ -123,11 +131,12 @@ export async function canProfessionalAcceptSession(
   professionalId: string
 ): Promise<{ canAccept: boolean; reason?: string }> {
   try {
-    // Get professional profile and status
+    // Get professional profile and status (include user_id for effective status calculation)
     const { data: profile, error: profileError } = await supabase
       .from('professional_profiles')
       .select(`
         *,
+        user_id,
         professional_status(*)
       `)
       .eq('id', professionalId)
@@ -150,10 +159,26 @@ export async function canProfessionalAcceptSession(
       return { canAccept: false, reason: 'Professional status not found' };
     }
 
+    // Get effective status (hybrid approach: combines automatic user_status with manual preference)
+    let effectiveStatus: 'online' | 'busy' | 'away' | 'offline' = status.status;
+    try {
+      if (profile.user_id) {
+        const effective = await getEffectiveProfessionalStatus(
+          profile.user_id,
+          status.status as 'online' | 'busy' | 'away' | 'offline',
+          status.status_override || false
+        );
+        effectiveStatus = effective.status;
+      }
+    } catch (error) {
+      // Fallback to preference if calculation fails
+      console.warn(`Error calculating effective status:`, error);
+    }
+
     // Check if status is overridden (admin control)
     if (status.status_override) {
-      // Admin has overridden status, check if it's online/busy
-      if (status.status === 'online' || status.status === 'busy') {
+      // Admin has overridden status, check if it's online/busy (use effective status)
+      if (effectiveStatus === 'online' || effectiveStatus === 'busy') {
         // Check session limits
         if (status.current_session_count >= profile.max_concurrent_sessions) {
           return { canAccept: false, reason: 'Maximum concurrent sessions reached' };
@@ -163,8 +188,8 @@ export async function canProfessionalAcceptSession(
       return { canAccept: false, reason: 'Professional is not available (admin override)' };
     }
 
-    // Check if professional is offline
-    if (status.status === 'offline') {
+    // Check if professional is offline (using effective status)
+    if (effectiveStatus === 'offline') {
       return { canAccept: false, reason: 'Professional is offline' };
     }
 
@@ -196,6 +221,110 @@ export async function canProfessionalAcceptSession(
   } catch (error: any) {
     console.error('Error checking professional availability:', error?.message || error);
     return { canAccept: false, reason: 'Error checking availability' };
+  }
+}
+
+/**
+ * Calculate effective professional status using hybrid approach
+ * Combines automatic user_status tracking with manual professional_status preference
+ * 
+ * Rules:
+ * - "busy" or "offline" preference → Always use that status (override)
+ * - "away" preference → Use automatic, but default to away when inactive
+ * - "online" preference → Use automatic calculation from user_status
+ */
+export async function getEffectiveProfessionalStatus(
+  professionalUserId: string,
+  professionalStatusPreference: 'online' | 'busy' | 'away' | 'offline',
+  isAdminOverride: boolean = false
+): Promise<EffectiveProfessionalStatus> {
+  // If admin override, respect the preference
+  if (isAdminOverride) {
+    return {
+      status: professionalStatusPreference,
+      isAutomatic: false,
+      source: 'admin_override',
+    };
+  }
+
+  // If preference is "busy" or "offline", always use that (manual override)
+  if (professionalStatusPreference === 'busy' || professionalStatusPreference === 'offline') {
+    return {
+      status: professionalStatusPreference,
+      isAutomatic: false,
+      source: 'manual_override',
+    };
+  }
+
+  // For "online" or "away" preference, get automatic status from user_status
+  try {
+    const { data: userStatusData, error } = await supabase
+      .from('user_status')
+      .select('status_type, last_active_at')
+      .eq('user_id', professionalUserId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('Error loading user status for professional:', error);
+      // Fallback to preference if can't load user status
+      return {
+        status: professionalStatusPreference,
+        isAutomatic: false,
+        source: 'manual_override',
+      };
+    }
+
+    if (!userStatusData) {
+      // No user_status entry yet, use preference
+      return {
+        status: professionalStatusPreference,
+        isAutomatic: false,
+        source: 'manual_override',
+      };
+    }
+
+    // Calculate status based on last_active_at (same logic as regular users)
+    const now = new Date();
+    const lastActive = new Date(userStatusData.last_active_at);
+    const diffMs = now.getTime() - lastActive.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+
+    let calculatedStatus: 'online' | 'away' | 'offline';
+    
+    // If status_type is manually set to 'busy', preserve it
+    if (userStatusData.status_type === 'busy') {
+      calculatedStatus = 'online'; // Default to online if busy (they're active)
+    } else if (diffMins <= 5) {
+      calculatedStatus = 'online';
+    } else if (diffMins <= 15) {
+      calculatedStatus = 'away';
+    } else {
+      calculatedStatus = 'offline';
+    }
+
+    // If preference is "away", use calculated but default to away when offline
+    if (professionalStatusPreference === 'away') {
+      return {
+        status: calculatedStatus === 'offline' ? 'away' : calculatedStatus,
+        isAutomatic: true,
+        source: 'automatic',
+      };
+    }
+
+    // If preference is "online", use calculated status
+    return {
+      status: calculatedStatus,
+      isAutomatic: true,
+      source: 'automatic',
+    };
+  } catch (error: any) {
+    console.error('Error calculating effective professional status:', error?.message || error);
+    // Fallback to preference on error
+    return {
+      status: professionalStatusPreference,
+      isAutomatic: false,
+      source: 'manual_override',
+    };
   }
 }
 

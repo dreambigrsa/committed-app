@@ -5,7 +5,7 @@
 
 import { supabase } from './supabase';
 import { ProfessionalProfile, ProfessionalRole, ProfessionalStatus } from '@/types';
-import { isInQuietHours, canProfessionalAcceptSession as checkAvailability } from './professional-availability';
+import { isInQuietHours, canProfessionalAcceptSession as checkAvailability, getEffectiveProfessionalStatus } from './professional-availability';
 
 export interface MatchingCriteria {
   roleId?: string;
@@ -94,15 +94,30 @@ export async function findMatchingProfessionals(
       }
       
       // Default to offline status if not found (status should exist due to trigger, but handle gracefully)
-      const status = statusData || {
+      const statusDataFinal = statusData || {
         professional_id: profile.id,
         status: 'offline',
         current_session_count: 0,
         last_seen_at: new Date().toISOString(),
+        status_override: false,
       };
 
-      // Skip offline professionals if online only is strictly required
-      if (criteria.requiresOnlineOnly && status.status !== 'online' && status.status !== 'busy') {
+      // Get effective status (hybrid approach: combines automatic user_status with manual preference)
+      let effectiveStatus: 'online' | 'busy' | 'away' | 'offline' = statusDataFinal.status;
+      try {
+        const effective = await getEffectiveProfessionalStatus(
+          profile.user_id, // Professional's user_id (not professional_id)
+          statusDataFinal.status as 'online' | 'busy' | 'away' | 'offline',
+          statusDataFinal.status_override || false
+        );
+        effectiveStatus = effective.status;
+      } catch (error) {
+        // Fallback to preference if calculation fails
+        console.warn(`Error calculating effective status for professional ${profile.id}:`, error);
+      }
+
+      // Skip offline professionals if online only is strictly required (use effective status)
+      if (criteria.requiresOnlineOnly && effectiveStatus !== 'online' && effectiveStatus !== 'busy') {
         continue;
       }
 
@@ -122,7 +137,7 @@ export async function findMatchingProfessionals(
 
       // Skip professionals at capacity
       if (
-        status.current_session_count >= (profile.max_concurrent_sessions || 3)
+        statusDataFinal.current_session_count >= (profile.max_concurrent_sessions || 3)
       ) {
         continue;
       }
@@ -138,13 +153,24 @@ export async function findMatchingProfessionals(
         continue;
       }
 
+      // Update status object with effective status for scoring
+      const statusForScoring = {
+        ...statusDataFinal,
+        status: effectiveStatus,
+      };
+
       // Calculate match score
-      const matchScore = calculateMatchScore(profile, status, criteria);
+      const matchScore = calculateMatchScore(profile, statusForScoring, criteria);
       // Include professionals even with low scores, as long as they're approved and active
       if (matchScore >= 0) {
         try {
           const mappedRole = mapRole(profile.role);
-          const mappedStatus = mapStatus(status);
+          // Use effective status in the mapped status object
+          const statusWithEffective = {
+            ...statusDataFinal,
+            status: effectiveStatus,
+          };
+          const mappedStatus = mapStatus(statusWithEffective);
           const mappedProfile = mapProfile(profile);
           
           matches.push({
@@ -152,7 +178,7 @@ export async function findMatchingProfessionals(
             role: mappedRole,
             status: mappedStatus,
             matchScore,
-            matchReasons: getMatchReasons(profile, status, criteria),
+            matchReasons: getMatchReasons(profile, statusForScoring, criteria),
           });
         } catch (mapError: any) {
           console.error(`Error mapping professional ${profile.id}:`, mapError?.message || mapError);

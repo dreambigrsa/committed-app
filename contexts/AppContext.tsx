@@ -415,19 +415,22 @@ export const [AppContext, useApp] = createContextHook(() => {
         .order('last_message_at', { ascending: false });
 
       if (conversationsData && conversationsData.length > 0) {
-        // Load recent messages for each conversation (limit to last 50 per conversation for performance)
-        // We'll load more messages when user opens a conversation
+        // Load messages to calculate accurate last messages
+        // Limit to recent messages for performance (last 100 messages per conversation max)
         const conversationIds = conversationsData.map((c: any) => c.id);
         const { data: messagesData } = await supabase
           .from('messages')
           .select('*')
           .in('conversation_id', conversationIds)
           .order('created_at', { ascending: false })
-          .limit(conversationIds.length * 50); // Limit total messages loaded initially
+          .limit(conversationIds.length * 100); // Limit initial load for performance
+        
+        // Reverse to get chronological order after limiting
+        const sortedMessages = messagesData ? [...messagesData].reverse() : [];
 
         const messagesByConversation: Record<string, Message[]> = {};
-        if (messagesData) {
-          messagesData.forEach((m: any) => {
+        if (sortedMessages && sortedMessages.length > 0) {
+          sortedMessages.forEach((m: any) => {
             // Filter out messages deleted for current user
             const isSender = m.sender_id === userId;
             const isReceiver = m.receiver_id === userId;

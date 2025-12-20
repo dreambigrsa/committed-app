@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -404,69 +404,69 @@ export default function ConversationDetailScreen() {
             // Only add if not deleted for current user
             if (!deletedForMe) {
               setLocalMessages((prev) => {
-                // Check if message already exists (from optimistic update or duplicate)
-                const exists = prev.some(m => m.id === newMessage.id);
-                if (exists) {
-                  // Update existing message (replace optimistic with real)
-                  return prev.map(m => 
-                    m.id === newMessage.id 
-                      ? {
-                          id: newMessage.id,
-                          conversationId: newMessage.conversation_id,
-                          senderId: newMessage.sender_id,
-                          receiverId: newMessage.receiver_id,
-                          content: newMessage.content,
-                          mediaUrl: newMessage.media_url,
-                          documentUrl: newMessage.document_url,
-                          documentName: newMessage.document_name,
-                          stickerId: newMessage.sticker_id,
-                          messageType: newMessage.message_type || 'text',
-                          deletedForSender: newMessage.deleted_for_sender || false,
-                          deletedForReceiver: newMessage.deleted_for_receiver || false,
-                          read: newMessage.read,
-                          createdAt: newMessage.created_at,
-                        }
-                      : m
-                  );
+                // Fast path: Check if message already exists (common case for optimistic updates)
+                const existingIndex = prev.findIndex(m => m.id === newMessage.id);
+                if (existingIndex >= 0) {
+                  // Update existing message in place (more efficient than map)
+                  const updated = [...prev];
+                  updated[existingIndex] = {
+                    id: newMessage.id,
+                    conversationId: newMessage.conversation_id,
+                    senderId: newMessage.sender_id,
+                    receiverId: newMessage.receiver_id,
+                    content: newMessage.content,
+                    mediaUrl: newMessage.media_url,
+                    documentUrl: newMessage.document_url,
+                    documentName: newMessage.document_name,
+                    stickerId: newMessage.sticker_id,
+                    messageType: newMessage.message_type || 'text',
+                    deletedForSender: newMessage.deleted_for_sender || false,
+                    deletedForReceiver: newMessage.deleted_for_receiver || false,
+                    read: newMessage.read,
+                    createdAt: newMessage.created_at,
+                    statusId: newMessage.status_id,
+                    statusPreviewUrl: newMessage.status_preview_url,
+                  };
+                  return updated;
                 }
+                
                 // Check if there's an optimistic message to replace
-                // Match by: temp ID, same sender, same content, and recent time
-                const optimisticMatch = prev.find(m => {
-                  const isTemp = m.id.toString().startsWith('temp_');
+                const optimisticIndex = prev.findIndex(m => {
+                  const isTemp = String(m.id).startsWith('temp_');
                   const sameSender = m.senderId === newMessage.sender_id;
                   const sameContent = m.content === newMessage.content || 
                                      (m.messageType === 'image' && newMessage.message_type === 'image') ||
                                      (m.messageType === 'document' && newMessage.message_type === 'document' && m.documentName === newMessage.document_name);
-                  const recentTime = Math.abs(new Date(m.createdAt).getTime() - new Date(newMessage.created_at).getTime()) < 10000; // 10 seconds
+                  const recentTime = Math.abs(new Date(m.createdAt).getTime() - new Date(newMessage.created_at).getTime()) < 10000;
                   
                   return isTemp && sameSender && sameContent && recentTime;
                 });
                 
-                if (optimisticMatch) {
+                if (optimisticIndex >= 0) {
                   // Replace optimistic message with real one
-                  return prev.map(m => 
-                    m.id === optimisticMatch.id 
-                      ? {
-                          id: newMessage.id,
-                          conversationId: newMessage.conversation_id,
-                          senderId: newMessage.sender_id,
-                          receiverId: newMessage.receiver_id,
-                          content: newMessage.content,
-                          mediaUrl: newMessage.media_url,
-                          documentUrl: newMessage.document_url,
-                          documentName: newMessage.document_name,
-                          stickerId: newMessage.sticker_id,
-                          messageType: newMessage.message_type || 'text',
-                          deletedForSender: newMessage.deleted_for_sender || false,
-                          deletedForReceiver: newMessage.deleted_for_receiver || false,
-                          read: newMessage.read,
-                          createdAt: newMessage.created_at,
-                        }
-                      : m
-                  );
+                  const updated = [...prev];
+                  updated[optimisticIndex] = {
+                    id: newMessage.id,
+                    conversationId: newMessage.conversation_id,
+                    senderId: newMessage.sender_id,
+                    receiverId: newMessage.receiver_id,
+                    content: newMessage.content,
+                    mediaUrl: newMessage.media_url,
+                    documentUrl: newMessage.document_url,
+                    documentName: newMessage.document_name,
+                    stickerId: newMessage.sticker_id,
+                    messageType: newMessage.message_type || 'text',
+                    deletedForSender: newMessage.deleted_for_sender || false,
+                    deletedForReceiver: newMessage.deleted_for_receiver || false,
+                    read: newMessage.read,
+                    createdAt: newMessage.created_at,
+                    statusId: newMessage.status_id,
+                    statusPreviewUrl: newMessage.status_preview_url,
+                  };
+                  return updated;
                 }
                 
-                // Add new message
+                // Add new message at the end
                 return [...prev, {
                   id: newMessage.id,
                   conversationId: newMessage.conversation_id,
@@ -482,6 +482,8 @@ export default function ConversationDetailScreen() {
                   deletedForReceiver: newMessage.deleted_for_receiver || false,
                   read: newMessage.read,
                   createdAt: newMessage.created_at,
+                  statusId: newMessage.status_id,
+                  statusPreviewUrl: newMessage.status_preview_url,
                 }];
               });
             } else {
@@ -640,18 +642,24 @@ export default function ConversationDetailScreen() {
     };
   }, [conversationId, conversation, getUserStatus]);
 
-  const loadMessages = async () => {
+  const loadMessages = async (limit: number = 100) => {
     try {
+      // Load most recent messages first (for better performance)
+      // Load in reverse order, then reverse the array for display
       const { data, error } = await supabase
         .from('messages')
         .select('*')
         .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: false })
+        .limit(limit);
 
       if (error) throw error;
 
       if (data) {
-        const filteredMessages = data
+        // Reverse to get chronological order
+        const reversedData = [...data].reverse();
+        
+        const filteredMessages = reversedData
           .filter((m: any) => {
             const isSender = m.sender_id === currentUser!.id;
             const isReceiver = m.receiver_id === currentUser!.id;
@@ -1663,7 +1671,7 @@ export default function ConversationDetailScreen() {
     }
   };
 
-  const renderMessage = ({ item }: { item: any }) => {
+  const renderMessage = useCallback(({ item }: { item: any }) => {
     if (!item || !item.id) return null;
 
     // Render AI typing indicator without warnings/actions
@@ -1910,7 +1918,7 @@ export default function ConversationDetailScreen() {
       </TouchableOpacity>
       </>
     );
-  };
+  }, [currentUser, aiUserId, professionalSession, warnings, colors, styles, handleDeleteMessage, setReportingMessage, setViewingImage, submitAiFeedback, aiFeedback]);
 
   const renderImageViewer = () => {
     return (
@@ -2274,7 +2282,7 @@ export default function ConversationDetailScreen() {
             ref={flatListRef}
             data={localMessages}
             renderItem={renderMessage}
-            keyExtractor={(item) => item.id}
+            keyExtractor={useMemo(() => (item: any) => String(item.id), [])}
             contentContainerStyle={styles.messagesList}
             onContentSizeChange={() => {
               // Only auto-scroll if user is near bottom and not manually scrolling
@@ -2309,10 +2317,17 @@ export default function ConversationDetailScreen() {
               // User finished scrolling - check if near bottom
               isUserScrolling.current = false;
             }}
-            removeClippedSubviews={false}
+            removeClippedSubviews={true}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="interactive"
             showsVerticalScrollIndicator={true}
+            initialNumToRender={15}
+            maxToRenderPerBatch={5}
+            windowSize={5}
+            updateCellsBatchingPeriod={100}
+            maintainVisibleContentPosition={{
+              minIndexForVisible: 0,
+            }}
             ListHeaderComponent={
               <>
                 {/* Professional Joined System Message */}

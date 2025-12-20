@@ -233,11 +233,34 @@ export default function AuthScreen() {
         }
 
         await login(formData.email, formData.password);
-        // Wait a moment for user data and onboarding status to load
-        // then redirect to index which will check onboarding status
-        setTimeout(() => {
-          router.replace('/');
-        }, 200);
+        
+        // Wait for user data to load, then redirect directly to appropriate page
+        // Don't go through landing page to avoid flash
+        setTimeout(async () => {
+          try {
+            // Check onboarding status directly
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user?.id) {
+              const { data: onboardingData } = await supabase
+                .from('user_onboarding_data')
+                .select('has_completed_onboarding')
+                .eq('user_id', session.user.id)
+                .single();
+              
+              if (onboardingData?.has_completed_onboarding === false) {
+                router.replace('/onboarding');
+              } else {
+                router.replace('/(tabs)/home');
+              }
+            } else {
+              // Fallback to index if we can't get user
+              router.replace('/');
+            }
+          } catch (error) {
+            // If error, fallback to index
+            router.replace('/');
+          }
+        }, 300);
       }
     } catch (error: any) {
       console.error('Auth error:', error);

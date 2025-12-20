@@ -21,7 +21,7 @@ import colors from '@/constants/colors';
 
 export default function VerifyEmailScreen() {
   const router = useRouter();
-  const { currentUser } = useApp();
+  const { currentUser, hasCompletedOnboarding } = useApp();
   const { colors: themeColors } = useTheme();
   const [isChecking, setIsChecking] = useState(true);
   const [isVerified, setIsVerified] = useState(false);
@@ -66,23 +66,35 @@ export default function VerifyEmailScreen() {
         setIsVerified(emailConfirmed);
         
         if (emailConfirmed) {
-          // Email is verified, reload user data and redirect
-          if (showMessage) {
-            alert('✅ Email verified! Redirecting to home...');
-          }
-          
-          // Reload user data to get updated verification status
-          if (currentUser) {
-            // Give a moment for the user to see the success message
-            setTimeout(() => {
-              router.replace('/'); // Redirect to index which will check onboarding
-            }, showMessage ? 1500 : 500);
-          } else {
-            // If no currentUser yet, wait a bit for it to load
-            setTimeout(() => {
-              router.replace('/'); // Redirect to index which will check onboarding
-            }, 2000);
-          }
+          // Email is verified, reload user data and redirect directly
+          // The AppContext will handle loading user data via onAuthStateChange
+          // Wait a moment for data to load, then redirect directly based on onboarding status
+          setTimeout(() => {
+            // Check onboarding status from context or directly
+            if (hasCompletedOnboarding === false) {
+              router.replace('/onboarding');
+            } else if (hasCompletedOnboarding === true) {
+              router.replace('/(tabs)/home');
+            } else {
+              // If onboarding status not loaded yet, check directly
+              supabase
+                .from('user_onboarding_data')
+                .select('has_completed_onboarding')
+                .eq('user_id', currentSession.user.id)
+                .maybeSingle()
+                .then(({ data: onboardingData }) => {
+                  if (onboardingData?.has_completed_onboarding === false) {
+                    router.replace('/onboarding');
+                  } else {
+                    router.replace('/(tabs)/home');
+                  }
+                })
+                .catch(() => {
+                  // Default to home if error
+                  router.replace('/(tabs)/home');
+                });
+            }
+          }, 800);
         } else {
           // Email not verified yet
           if (showMessage) {

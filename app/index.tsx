@@ -35,15 +35,14 @@ export default function LandingScreen() {
   const slideAnim = useRef(new Animated.Value(50)).current;
 
   useEffect(() => {
-    if (currentUser && !isLoading) {
-      // Only redirect when onboarding status has been loaded (not null)
-      // hasCompletedOnboarding will be null initially, then set to true/false after loading
-      if (hasCompletedOnboarding === null) {
-        // Still loading onboarding status, don't redirect yet
-        return;
+    if (currentUser) {
+      // If user is authenticated but data is still loading, show loading screen
+      // Don't show landing page content
+      if (isLoading || hasCompletedOnboarding === null) {
+        return; // LoadingScreen will be shown
       }
       
-      // Check if user needs to complete onboarding
+      // Once data is loaded, redirect immediately
       if (hasCompletedOnboarding === false) {
         router.replace('/onboarding');
       } else if (hasCompletedOnboarding === true) {

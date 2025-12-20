@@ -32,30 +32,42 @@ function getExpoProjectId(): string | undefined {
 
 export async function configureAndroidNotificationChannel(options?: { soundEnabled?: boolean }) {
   if (Platform.OS !== 'android') return;
-  const soundEnabled = options?.soundEnabled ?? getNotificationPreferences().soundEnabled;
+  
+  try {
+    const soundEnabled = options?.soundEnabled ?? getNotificationPreferences().soundEnabled;
 
-  // Android notification sound is tied to the channel and can't be changed after creation.
-  // So we keep separate channels and select between them in the push payload.
-  await Notifications.setNotificationChannelAsync('default', {
-    name: 'default',
-    importance: Notifications.AndroidImportance.MAX,
-    sound: 'default',
-  });
+    // Android notification sound is tied to the channel and can't be changed after creation.
+    // So we keep separate channels and select between them in the push payload.
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'default',
+      importance: Notifications.AndroidImportance.MAX,
+      sound: 'default',
+    }).catch((error) => {
+      console.warn('Error setting default notification channel:', error);
+    });
 
-  await Notifications.setNotificationChannelAsync('default-silent', {
-    name: 'default-silent',
-    importance: Notifications.AndroidImportance.MAX,
-    sound: undefined as any,
-  });
+    await Notifications.setNotificationChannelAsync('default-silent', {
+      name: 'default-silent',
+      importance: Notifications.AndroidImportance.MAX,
+      sound: undefined as any,
+    }).catch((error) => {
+      console.warn('Error setting silent notification channel:', error);
+    });
 
-  // Also ensure the currently-selected channel exists (no-op if already created).
-  // (The sender chooses the channelId; this is here for local notifications.)
-  const activeId = soundEnabled ? 'default' : 'default-silent';
-  await Notifications.setNotificationChannelAsync(activeId, {
-    name: activeId,
-    importance: Notifications.AndroidImportance.MAX,
-    sound: soundEnabled ? 'default' : (undefined as any),
-  });
+    // Also ensure the currently-selected channel exists (no-op if already created).
+    // (The sender chooses the channelId; this is here for local notifications.)
+    const activeId = soundEnabled ? 'default' : 'default-silent';
+    await Notifications.setNotificationChannelAsync(activeId, {
+      name: activeId,
+      importance: Notifications.AndroidImportance.MAX,
+      sound: soundEnabled ? 'default' : (undefined as any),
+    }).catch((error) => {
+      console.warn(`Error setting ${activeId} notification channel:`, error);
+    });
+  } catch (error) {
+    console.warn('Error configuring Android notification channels:', error);
+    // Don't throw - allow notifications to still work even if channel setup fails
+  }
 }
 
 /**
@@ -104,7 +116,12 @@ export async function registerForPushNotificationsAsync(userId: string): Promise
 
     // Android: notification channel is required for visible notifications.
     if (Platform.OS === 'android') {
-      await configureAndroidNotificationChannel();
+      try {
+        await configureAndroidNotificationChannel();
+      } catch (channelError) {
+        console.warn('Failed to configure notification channel, continuing anyway:', channelError);
+        // Continue registration even if channel setup fails
+      }
     }
 
     const existing = await Notifications.getPermissionsAsync();

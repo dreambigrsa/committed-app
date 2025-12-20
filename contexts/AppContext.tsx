@@ -3251,6 +3251,13 @@ export const [AppContext, useApp] = createContextHook(() => {
       )
       .subscribe((status, err) => {
         console.log('📡 Notifications subscription:', status);
+        if (err) {
+          console.warn('Notifications subscription error:', err);
+          // Don't log as error if it's just a channel error - it's usually non-fatal
+          if (err.message && !err.message.includes('CHANNEL_ERROR')) {
+            console.error('Notifications subscription error:', err);
+          }
+        }
         if (status === 'SUBSCRIBED') {
           console.log('✅ Notifications subscription: SUBSCRIBED');
           // Stop polling if real-time is working

@@ -6,6 +6,7 @@
 import { supabase } from './supabase';
 import { ProfessionalSession } from '@/types';
 import { getOrCreateAIUser } from './ai-service';
+import { findMatchingProfessionals } from './professional-matching';
 
 export interface CreateSessionParams {
   conversationId: string;
@@ -239,8 +240,6 @@ export async function declineProfessionalSession(
 
     // Attempt automatic escalation to next professional
     try {
-      const { findMatchingProfessionals } = await import('./professional-matching');
-      
       // Find alternative professionals (excluding the one who declined)
       const alternativeMatches = await findMatchingProfessionals({
         roleId: session.role_id,
@@ -309,8 +308,8 @@ export async function declineProfessionalSession(
           }
         }
       }
-    } catch (escalationError) {
-      console.error('Error attempting automatic escalation after decline:', escalationError);
+    } catch (escalationError: any) {
+      console.error('Error attempting automatic escalation after decline:', escalationError?.message || escalationError);
       // Don't fail the decline if escalation fails
     }
 

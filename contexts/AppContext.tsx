@@ -33,7 +33,7 @@ export const [AppContext, useApp] = createContextHook(() => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [, setSubscriptions] = useState<RealtimeChannel[]>([]);
   const [userStatuses, setUserStatuses] = useState<Record<string, UserStatus>>({}); // userId -> UserStatus
-  const statusUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const statusUpdateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [statusRealtimeChannels, setStatusRealtimeChannels] = useState<RealtimeChannel[]>([]);
   
   // Ban modal state
@@ -1002,7 +1002,7 @@ export const [AppContext, useApp] = createContextHook(() => {
   const resetPassword = useCallback(async (email: string) => {
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: 'committed-app://auth-callback',
+        redirectTo: 'committed://auth-callback',
       });
 
       if (error) throw error;

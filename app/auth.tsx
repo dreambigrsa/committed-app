@@ -184,6 +184,17 @@ export default function AuthScreen() {
         // Save legal acceptances after successful signup
         if (user?.id) {
           await saveLegalAcceptances(user.id);
+          // Refresh legal acceptance status to prevent showing modal again
+          try {
+            const { checkUserLegalAcceptances } = await import('@/lib/legal-enforcement');
+            const acceptanceStatus = await checkUserLegalAcceptances(user.id);
+            // Update the context if available
+            const { useApp } = await import('@/contexts/AppContext');
+            // Note: We can't directly update context here, but loadUserData will refresh it
+            // The key is that we saved the acceptances, so when loadUserData runs, it will see them
+          } catch (error) {
+            console.error('Failed to refresh legal acceptance status:', error);
+          }
         }
         
         // Check if email confirmation is required

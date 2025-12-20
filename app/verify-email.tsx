@@ -119,7 +119,7 @@ export default function VerifyEmailScreen() {
         type: 'signup',
         email: email,
         options: {
-          emailRedirectTo: 'committed-app://auth-callback',
+          emailRedirectTo: 'committed://auth-callback',
         },
       });
 

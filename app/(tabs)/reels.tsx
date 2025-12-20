@@ -17,7 +17,7 @@ import {
 import { Image } from 'expo-image';
 import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
 import { Heart, MessageCircle, Share2, Volume2, VolumeX, Plus, Film, MoreVertical, Edit2, Trash2, X, UserPlus, Flag, Smile, Image as ImageIcon } from 'lucide-react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -32,8 +32,9 @@ const { width, height } = Dimensions.get('window');
 
 export default function ReelsScreen() {
   const router = useRouter();
+  const pathname = usePathname();
   const insets = useSafeAreaInsets();
-  const { currentUser, reels, toggleReelLike, editReel, deleteReel, shareReel, adminDeleteReel, adminRejectReel, followUser, unfollowUser, isFollowing: checkIsFollowing, addReelComment, getReelComments, editReelComment, deleteReelComment, toggleReelCommentLike, reportContent, getActiveAds, getSmartAds, recordAdImpression, recordAdClick, getUserStatus, userStatuses } = useApp();
+  const { currentUser, reels, toggleReelLike, editReel, deleteReel, shareReel, adminDeleteReel, adminRejectReel, followUser, unfollowUser, isFollowing: checkIsFollowing, addReelComment, getReelComments, editReelComment, deleteReelComment, toggleReelCommentLike, reportContent, getActiveAds, getSmartAds, recordAdImpression, recordAdClick, getUserStatus, userStatuses, legalAcceptanceStatus } = useApp();
   const { colors } = useTheme();
   
   // Early return check - must be before all hooks
@@ -49,6 +50,12 @@ export default function ReelsScreen() {
   const [lastTap, setLastTap] = useState<{ time: number; reelId: string } | null>(null);
   const [showComments, setShowComments] = useState<string | null>(null);
   const [isScreenFocused, setIsScreenFocused] = useState<boolean>(true);
+  
+  // Check if modals are visible that should pause videos
+  const isOnboardingVisible = pathname === '/onboarding';
+  const hasLegalModalVisible = legalAcceptanceStatus && !legalAcceptanceStatus.hasAllRequired && 
+    (legalAcceptanceStatus.missingDocuments.length > 0 || legalAcceptanceStatus.needsReAcceptance.length > 0);
+  const shouldPauseForModals = isOnboardingVisible || hasLegalModalVisible;
   const [reportingReel, setReportingReel] = useState<{ id: string; userId: string } | null>(null);
   const [smartAds, setSmartAds] = useState<Advertisement[]>([]);
   const [activeVideoAd, setActiveVideoAd] = useState<{ reelId: string; ad: Advertisement; canSkip: boolean; skipDelay: number } | null>(null);
@@ -298,10 +305,10 @@ export default function ReelsScreen() {
     };
   }, []);
   
-  // Ensure only the current reel is playing (only if screen is focused)
+  // Ensure only the current reel is playing (only if screen is focused and no modals)
   useEffect(() => {
-    if (!isScreenFocused) {
-      // Screen is not focused, pause all videos
+    if (!isScreenFocused || shouldPauseForModals) {
+      // Screen is not focused or modals are visible, pause all videos
       Object.keys(videoRefs.current).forEach((reelId) => {
         const video = videoRefs.current[reelId];
         if (video) {
@@ -316,7 +323,7 @@ export default function ReelsScreen() {
       const video = videoRefs.current[reelId];
       if (video) {
         if (reelId === currentReelId) {
-          // This is the current reel, ensure it's playing (only if screen is focused)
+          // This is the current reel, ensure it's playing (only if screen is focused and no modals)
           video.playAsync().catch(() => {});
         } else {
           // This is not the current reel, ensure it's paused
@@ -324,7 +331,7 @@ export default function ReelsScreen() {
         }
       }
     });
-  }, [currentReelId, isScreenFocused]);
+  }, [currentReelId, isScreenFocused, shouldPauseForModals]);
 
   const formatCount = (count: number): string => {
     if (count >= 1000000) {
@@ -1041,7 +1048,7 @@ export default function ReelsScreen() {
     
     // Check if there's a video ad for this reel
     const hasVideoAd = activeVideoAd?.reelId === reel.id;
-    const shouldPlayReel = isScreenFocused && index === currentIndex && reel.id === currentReelId && !hasVideoAd;
+    const shouldPlayReel = isScreenFocused && !shouldPauseForModals && index === currentIndex && reel.id === currentReelId && !hasVideoAd;
 
     return (
       <View key={reel.id} style={styles.reelContainer}>

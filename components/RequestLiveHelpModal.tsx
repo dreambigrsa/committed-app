@@ -284,7 +284,7 @@ export default function RequestLiveHelpModal({
             ) : aiSummary ? (
               <View style={styles.summaryContainer}>
                 <Text style={styles.summaryLabel}>Summary for Professional:</Text>
-                <Text style={styles.summaryText}>{aiSummary}</Text>
+                    <Text style={styles.summaryText}>{String(aiSummary || '')}</Text>
               </View>
             ) : null}
 
@@ -312,9 +312,9 @@ export default function RequestLiveHelpModal({
                         selectedRole?.id === role.id && styles.roleNameSelected,
                       ]}
                     >
-                      {role.name}
+                      {String(role.name || '')}
                     </Text>
-                    <Text style={styles.roleCategory}>{role.category}</Text>
+                    <Text style={styles.roleCategory}>{String(role.category || '')}</Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -339,7 +339,7 @@ export default function RequestLiveHelpModal({
                 ) : (
                   <View style={styles.matchesList}>
                     {matches.slice(0, 3).map((match, index) => (
-                      <View key={match.profile.id} style={styles.matchCard}>
+                      <View key={String(match.profile.id || index)} style={styles.matchCard}>
                         <View style={styles.matchHeader}>
                           <View style={styles.matchInfo}>
                             <Text style={styles.matchName}>{String(match.profile.fullName || '')}</Text>
@@ -361,7 +361,7 @@ export default function RequestLiveHelpModal({
                         </View>
                         {(match.profile.ratingAverage && match.profile.ratingAverage > 0) && (
                           <Text style={styles.matchRating}>
-                            ⭐ {match.profile.ratingAverage.toFixed(1)} ({String(match.profile.reviewCount || 0)} reviews)
+                            ⭐ {String(match.profile.ratingAverage.toFixed(1))} ({String(match.profile.reviewCount || 0)} reviews)
                           </Text>
                         )}
                       </View>
@@ -390,7 +390,7 @@ export default function RequestLiveHelpModal({
               {selectedRole?.disclaimerText && (
                 <View style={styles.disclaimerContainer}>
                   <AlertCircle size={16} color={themeColors.accent} />
-                  <Text style={styles.disclaimerText}>{selectedRole.disclaimerText}</Text>
+                  <Text style={styles.disclaimerText}>{String(selectedRole.disclaimerText || '')}</Text>
                 </View>
               )}
             </View>

@@ -3252,10 +3252,12 @@ export const [AppContext, useApp] = createContextHook(() => {
       .subscribe((status, err) => {
         console.log('📡 Notifications subscription:', status);
         if (err) {
-          console.warn('Notifications subscription error:', err);
-          // Don't log as error if it's just a channel error - it's usually non-fatal
-          if (err.message && !err.message.includes('CHANNEL_ERROR')) {
-            console.error('Notifications subscription error:', err);
+          // Handle CHANNEL_ERROR gracefully - it's often non-fatal and just means real-time isn't available
+          const errorMessage = err?.message || String(err);
+          if (errorMessage.includes('CHANNEL_ERROR')) {
+            console.warn('Notifications subscription channel error (falling back to polling):', errorMessage);
+          } else {
+            console.warn('Notifications subscription error:', err);
           }
         }
         if (status === 'SUBSCRIBED') {
@@ -3272,7 +3274,7 @@ export const [AppContext, useApp] = createContextHook(() => {
             startNotificationPolling(userId);
           }
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.error('❌ Notifications subscription error:', status, err);
+          console.warn('⚠️ Notifications subscription error:', status, err ? (err.message || String(err)) : '');
           if (!notificationPollInterval) {
             console.log('⚠️ Starting notification polling fallback');
             startNotificationPolling(userId);

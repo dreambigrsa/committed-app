@@ -342,20 +342,20 @@ export default function RequestLiveHelpModal({
                       <View key={match.profile.id} style={styles.matchCard}>
                         <View style={styles.matchHeader}>
                           <View style={styles.matchInfo}>
-                            <Text style={styles.matchName}>{match.profile.fullName}</Text>
-                            <Text style={styles.matchRole}>{match.role.name}</Text>
+                            <Text style={styles.matchName}>{String(match.profile.fullName || '')}</Text>
+                            <Text style={styles.matchRole}>{String(match.role?.name || '')}</Text>
                           </View>
                           <View style={styles.matchBadge}>
                             <Text style={styles.matchBadgeText}>
-                              {index === 0 ? 'Best Match' : `Match ${index + 1}`}
+                              {index === 0 ? 'Best Match' : `Match ${String(index + 1)}`}
                             </Text>
                           </View>
                         </View>
                         <View style={styles.matchReasons}>
-                          {match.matchReasons.slice(0, 3).map((reason, i) => (
+                          {(match.matchReasons || []).slice(0, 3).map((reason, i) => (
                             <View key={i} style={styles.reasonTag}>
                               <CheckCircle2 size={12} color={themeColors.success} />
-                              <Text style={styles.reasonText}>{reason}</Text>
+                              <Text style={styles.reasonText}>{String(reason || '')}</Text>
                             </View>
                           ))}
                         </View>

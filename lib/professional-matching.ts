@@ -5,6 +5,7 @@
 
 import { supabase } from './supabase';
 import { ProfessionalProfile, ProfessionalRole, ProfessionalStatus } from '@/types';
+import { isInQuietHours, canProfessionalAcceptSession as checkAvailability } from './professional-availability';
 
 export interface MatchingCriteria {
   roleId?: string;
@@ -30,17 +31,6 @@ export async function findMatchingProfessionals(
   criteria: MatchingCriteria,
   limit: number = 5
 ): Promise<ProfessionalMatch[]> {
-  // Import quiet hours check function once at the start
-  let isInQuietHours: any;
-  try {
-    const availabilityModule = await import('./professional-availability');
-    isInQuietHours = availabilityModule.isInQuietHours;
-  } catch (importError: any) {
-    console.error('Error importing professional-availability module:', importError?.message || importError);
-    // Fallback: return empty array if module can't be imported
-    return [];
-  }
-  
   try {
     let query = supabase
       .from('professional_profiles')
@@ -296,7 +286,6 @@ export async function canProfessionalAcceptSession(
   professionalId: string
 ): Promise<boolean> {
   // Use the enhanced availability check from professional-availability.ts
-  const { canProfessionalAcceptSession: checkAvailability } = await import('./professional-availability');
   const result = await checkAvailability(professionalId);
   return result.canAccept;
 }

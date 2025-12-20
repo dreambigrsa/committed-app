@@ -124,7 +124,19 @@ export default function ProfessionalAvailabilityScreen() {
       if (statusError) throw statusError;
 
       if (statusData) {
-        setStatus(statusData);
+        // Map database fields to TypeScript type
+        const mappedStatus: ProfessionalStatus = {
+          id: statusData.id,
+          professionalId: statusData.professional_id,
+          status: statusData.status,
+          currentSessionCount: statusData.current_session_count || 0,
+          lastSeenAt: statusData.last_seen_at,
+          statusOverride: statusData.status_override || false,
+          statusOverrideBy: statusData.status_override_by,
+          statusOverrideUntil: statusData.status_override_until,
+          updatedAt: statusData.updated_at,
+        };
+        setStatus(mappedStatus);
         setCurrentStatus(statusData.status as StatusType);
       } else {
         // Create default status if it doesn't exist
@@ -138,7 +150,18 @@ export default function ProfessionalAvailabilityScreen() {
           .single();
 
         if (!createError && newStatusData) {
-          setStatus(newStatusData);
+          const mappedStatus: ProfessionalStatus = {
+            id: newStatusData.id,
+            professionalId: newStatusData.professional_id,
+            status: newStatusData.status,
+            currentSessionCount: newStatusData.current_session_count || 0,
+            lastSeenAt: newStatusData.last_seen_at,
+            statusOverride: newStatusData.status_override || false,
+            statusOverrideBy: newStatusData.status_override_by,
+            statusOverrideUntil: newStatusData.status_override_until,
+            updatedAt: newStatusData.updated_at,
+          };
+          setStatus(mappedStatus);
           setCurrentStatus('offline');
         }
       }

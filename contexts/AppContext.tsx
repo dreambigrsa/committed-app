@@ -914,7 +914,10 @@ export const [AppContext, useApp] = createContextHook(() => {
 
   const logout = useCallback(async () => {
     try {
-      await supabase.auth.signOut();
+      // Device-specific logout: Only clear local session, don't invalidate server-side token
+      // This allows other devices to remain logged in
+      
+      // Clear local state first
       setCurrentUser(null);
       setSession(null);
       setRelationships([]);
@@ -931,8 +934,24 @@ export const [AppContext, useApp] = createContextHook(() => {
       setCertificates([]);
       setAnniversaries([]);
       setReelComments({});
+      
+      // Clear local AsyncStorage session (device-specific)
+      // This removes the auth session from this device only
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      const storageKeys = await AsyncStorage.getAllKeys();
+      const supabaseKeys = storageKeys.filter(key => key.startsWith('sb-') || key.includes('supabase'));
+      await Promise.all(supabaseKeys.map(key => AsyncStorage.removeItem(key)));
+      
+      // Note: We're NOT calling supabase.auth.signOut() because that would
+      // invalidate the session globally and log out all devices
     } catch (error) {
       console.error('Logout error:', error);
+      // Fallback: If clearing AsyncStorage fails, use global signOut as backup
+      try {
+        await supabase.auth.signOut();
+      } catch (fallbackError) {
+        console.error('Fallback logout error:', fallbackError);
+      }
     }
   }, []);
 

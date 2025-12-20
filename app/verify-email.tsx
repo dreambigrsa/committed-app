@@ -114,7 +114,27 @@ export default function VerifyEmailScreen() {
     
     setIsResending(true);
     try {
-      // Use resend method to send confirmation email
+      // First, try to get the current session to check user status
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.user) {
+        // No session, try using signInWithOtp to resend verification
+        const { error: otpError } = await supabase.auth.signInWithOtp({
+          email: email,
+          options: {
+            emailRedirectTo: 'committed://auth-callback',
+          },
+        });
+        
+        if (otpError) {
+          throw otpError;
+        }
+        
+        alert('✅ Verification email sent!\n\nPlease check your inbox (and spam folder) for the verification link.');
+        return;
+      }
+      
+      // If user has a session but email is not confirmed, use resend
       const { data, error } = await supabase.auth.resend({
         type: 'signup',
         email: email,
@@ -125,6 +145,23 @@ export default function VerifyEmailScreen() {
 
       if (error) {
         console.error('Resend email error:', error);
+        
+        // If resend fails, try signInWithOtp as fallback
+        if (error.message?.includes('not found') || error.message?.includes('invalid')) {
+          const { error: otpError } = await supabase.auth.signInWithOtp({
+            email: email,
+            options: {
+              emailRedirectTo: 'committed://auth-callback',
+            },
+          });
+          
+          if (otpError) {
+            throw otpError;
+          }
+          
+          alert('✅ Verification email sent!\n\nPlease check your inbox (and spam folder) for the verification link.');
+          return;
+        }
         
         // Handle specific error cases
         if (error.message?.includes('rate limit') || error.message?.includes('too many')) {

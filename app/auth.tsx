@@ -119,15 +119,23 @@ export default function AuthScreen() {
         });
 
       if (acceptancesToSave.length > 0) {
-        const { error } = await supabase
+        const { error, data } = await supabase
           .from('user_legal_acceptances')
-          .insert(acceptancesToSave);
+          .insert(acceptancesToSave)
+          .select();
 
-        if (error) throw error;
+        if (error) {
+          console.error('Error saving legal acceptances:', error);
+          throw error;
+        }
+        
+        console.log(`Successfully saved ${data?.length || 0} legal acceptances for user ${userId}`);
+        return true;
       }
+      return false;
     } catch (error) {
       console.error('Failed to save legal acceptances:', error);
-      // Don't block signup if saving acceptances fails, but log it
+      throw error; // Re-throw so caller can handle it
     }
   };
 
@@ -183,17 +191,26 @@ export default function AuthScreen() {
         
         // Save legal acceptances after successful signup
         if (user?.id) {
-          await saveLegalAcceptances(user.id);
-          // Refresh legal acceptance status to prevent showing modal again
           try {
+            // Wait a moment for user record to be fully created
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Save legal acceptances
+            await saveLegalAcceptances(user.id);
+            
+            // Verify the acceptances were saved by checking immediately
             const { checkUserLegalAcceptances } = await import('@/lib/legal-enforcement');
             const acceptanceStatus = await checkUserLegalAcceptances(user.id);
-            // Update the context if available
-            const { useApp } = await import('@/contexts/AppContext');
-            // Note: We can't directly update context here, but loadUserData will refresh it
-            // The key is that we saved the acceptances, so when loadUserData runs, it will see them
+            
+            if (!acceptanceStatus.hasAllRequired) {
+              console.warn('Legal acceptances may not have been saved properly:', acceptanceStatus);
+              // Try saving again after a short delay
+              await new Promise(resolve => setTimeout(resolve, 500));
+              await saveLegalAcceptances(user.id);
+            }
           } catch (error) {
-            console.error('Failed to refresh legal acceptance status:', error);
+            console.error('Failed to save legal acceptances:', error);
+            // Don't block signup, but log the error
           }
         }
         

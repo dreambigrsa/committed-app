@@ -188,7 +188,7 @@ export default function ConversationDetailScreen() {
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
   const isUserScrolling = useRef(false);
-  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shouldAutoScroll = useRef(true);
   const [aiUserId, setAiUserId] = useState<string | null>(null);
   const [aiFeedback, setAiFeedback] = useState<Record<string, 1 | -1>>({});
@@ -1096,7 +1096,7 @@ export default function ConversationDetailScreen() {
           
           // This is a conversation with the AI, trigger AI response
           const typingId = `ai_typing_${Date.now()}`;
-          let statusUpdateInterval: NodeJS.Timeout | null = null;
+          let statusUpdateInterval: ReturnType<typeof setInterval> | null = null;
           
           try {
             setAiIsThinking(true);
@@ -1190,6 +1190,42 @@ export default function ConversationDetailScreen() {
             setLocalMessages(prev => prev.filter(m => m.id !== typingId));
             setAiIsThinking(false);
 
+            if (!aiResponse.success) {
+              // Handle failed AI response - show error message to user
+              console.error('AI response failed:', aiResponse.error);
+              try {
+                const errorMessage = aiResponse.error || "I'm sorry, I encountered an error. Please try again.";
+                const { error: insertError } = await supabase
+                  .from('messages')
+                  .insert({
+                    conversation_id: conversationId,
+                    sender_id: aiUser.id,
+                    receiver_id: currentUser.id,
+                    content: errorMessage,
+                    message_type: 'text',
+                  });
+                
+                if (insertError) {
+                  // If insert fails, try RPC function
+                  await supabase.rpc('send_ai_message', {
+                    p_conversation_id: conversationId,
+                    p_receiver_id: currentUser.id,
+                    p_content: errorMessage,
+                    p_message_type: 'text',
+                    p_media_url: null,
+                    p_document_url: null,
+                    p_document_name: null,
+                    p_sticker_id: null,
+                    p_status_id: null,
+                    p_status_preview_url: null,
+                  });
+                }
+              } catch (err) {
+                console.error('Error sending error message to user:', err);
+              }
+              return; // Exit early if response failed
+            }
+
             if (aiResponse.success) {
               // Check if AI suggests professional help
               // Log for debugging
@@ -1271,7 +1307,38 @@ export default function ConversationDetailScreen() {
             setLocalMessages(prev => prev.filter(m => m.id !== typingId));
             setAiIsThinking(false);
             console.error('Error generating AI response:', error);
-            // Don't show error to user - AI failure shouldn't block the conversation
+            
+            // Show user-friendly error message instead of silently failing
+            try {
+              const errorMessage = error?.message || 'Failed to get AI response';
+              const { error: insertError } = await supabase
+                .from('messages')
+                .insert({
+                  conversation_id: conversationId,
+                  sender_id: aiUser.id,
+                  receiver_id: currentUser.id,
+                  content: "I'm sorry, I encountered an error while processing your message. Please try again in a moment.",
+                  message_type: 'text',
+                });
+              
+              if (insertError) {
+                // If insert fails, try RPC function
+                await supabase.rpc('send_ai_message', {
+                  p_conversation_id: conversationId,
+                  p_receiver_id: currentUser.id,
+                  p_content: "I'm sorry, I encountered an error while processing your message. Please try again in a moment.",
+                  p_message_type: 'text',
+                  p_media_url: null,
+                  p_document_url: null,
+                  p_document_name: null,
+                  p_sticker_id: null,
+                  p_status_id: null,
+                  p_status_preview_url: null,
+                });
+              }
+            } catch (err) {
+              console.error('Error sending error message to user:', err);
+            }
           }
         }
       }

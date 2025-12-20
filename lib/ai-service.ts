@@ -1010,7 +1010,7 @@ async function getOpenAIResponse(
         model: 'gpt-3.5-turbo',
         messages: messages,
         temperature: 0.65, // Optimized for faster, more focused responses
-        max_tokens: 200, // Optimized for faster responses
+        max_tokens: 500, // Increased from 200 to allow complete responses
         stream: false, // Set to false for now (streaming would require more complex handling)
       }),
     });
@@ -1062,29 +1062,61 @@ async function getOpenAIResponseViaSupabaseFunction(params: {
   systemPrompt: string;
   userId?: string;
 }): Promise<AIResponse> {
-  try {
-    const { data, error } = await supabase.functions.invoke('ai-chat', {
-      body: {
-        userMessage: params.userMessage,
-        conversationHistory: params.conversationHistory.slice(-10), // Use more history for better AI detection
-        systemPrompt: params.systemPrompt,
-        userId: params.userId,
-      },
-      // Add timeout to prevent hanging (optimized for speed)
-      signal: createTimeoutAbortSignal(15000), // 15 second timeout to allow for AI detection
-    });
-    if (error) throw error;
-    if (!data?.success) throw new Error(data?.error || 'AI function failed');
-    return { 
-      success: true, 
-      message: String(data.message ?? ''),
-      suggestProfessionalHelp: data.suggestProfessionalHelp || false,
-      suggestedProfessionalType: data.suggestedProfessionalType || undefined,
-    };
-  } catch (e: any) {
-    console.error('[AI Service] ai-chat function error:', e);
-    return { success: false, error: e?.message ?? 'AI function error' };
+  const maxRetries = 2;
+  let lastError: any = null;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const { data, error } = await supabase.functions.invoke('ai-chat', {
+        body: {
+          userMessage: params.userMessage,
+          conversationHistory: params.conversationHistory.slice(-10), // Use more history for better AI detection
+          systemPrompt: params.systemPrompt,
+          userId: params.userId,
+        },
+        // Add timeout to prevent hanging (increased for better reliability)
+        signal: createTimeoutAbortSignal(30000), // 30 second timeout to allow for AI detection and response generation
+      });
+      
+      if (error) {
+        lastError = error;
+        // Retry on network errors or timeouts
+        if (attempt < maxRetries && (error.message?.includes('timeout') || error.message?.includes('network') || error.message?.includes('fetch'))) {
+          console.log(`[AI Service] Retry attempt ${attempt + 1}/${maxRetries} after error:`, error.message);
+          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1))); // Exponential backoff
+          continue;
+        }
+        throw error;
+      }
+      
+      if (!data?.success) {
+        const errorMsg = data?.error || 'AI function failed';
+        lastError = new Error(errorMsg);
+        // Don't retry on API errors (invalid key, etc.)
+        throw lastError;
+      }
+      
+      return { 
+        success: true, 
+        message: String(data.message ?? ''),
+        suggestProfessionalHelp: data.suggestProfessionalHelp || false,
+        suggestedProfessionalType: data.suggestedProfessionalType || undefined,
+      };
+    } catch (e: any) {
+      lastError = e;
+      // Only retry on network/timeout errors
+      if (attempt < maxRetries && (e?.message?.includes('timeout') || e?.message?.includes('network') || e?.message?.includes('fetch') || e?.name === 'AbortError')) {
+        console.log(`[AI Service] Retry attempt ${attempt + 1}/${maxRetries} after error:`, e?.message);
+        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1))); // Exponential backoff
+        continue;
+      }
+      // If not retryable or out of retries, break
+      break;
+    }
   }
+  
+  console.error('[AI Service] ai-chat function error after retries:', lastError);
+  return { success: false, error: lastError?.message ?? 'AI function error' };
 }
 
 /**

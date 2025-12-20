@@ -3,7 +3,10 @@
     "baseUrl": ".",
     "strict": true,
     "jsx": "react-native",
-    "lib": ["ES2020", "DOM"],
+    "lib": [
+      "ES2020",
+      "DOM"
+    ],
     "target": "ES2020",
     "module": "ESNext",
     "moduleResolution": "bundler",
@@ -30,5 +33,6 @@
     "node_modules",
     "supabase/functions/**/*",
     ".expo"
-  ]
+  ],
+  "extends": "expo/tsconfig.base"
 }

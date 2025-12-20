@@ -74,7 +74,7 @@ serve(async (req: Request) => {
           selectedPromptId = String(v.id ?? '');
           selectedModel = String(v.model ?? 'gpt-4o-mini');
           selectedTemperature = Number(v.temperature ?? 0.8);
-          selectedMaxTokens = Number(v.max_tokens ?? 600);
+          selectedMaxTokens = Number(v.max_tokens ?? 500);
         }
       }
     } catch {
@@ -114,7 +114,7 @@ serve(async (req: Request) => {
           model: selectedModel || 'gpt-4o-mini',
           messages,
           temperature: Number.isFinite(selectedTemperature) ? selectedTemperature : 0.65,
-          max_tokens: Number.isFinite(selectedMaxTokens) ? selectedMaxTokens : 200,
+          max_tokens: Number.isFinite(selectedMaxTokens) ? selectedMaxTokens : 500,
           stream: true, // Enable streaming
         }),
       });
@@ -215,7 +215,7 @@ serve(async (req: Request) => {
         model: selectedModel || 'gpt-4o-mini',
         messages,
         temperature: Number.isFinite(selectedTemperature) ? selectedTemperature : 0.65,
-        max_tokens: Number.isFinite(selectedMaxTokens) ? selectedMaxTokens : 200,
+          max_tokens: Number.isFinite(selectedMaxTokens) ? selectedMaxTokens : 500,
       }),
     });
 

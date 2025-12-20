@@ -112,10 +112,11 @@
       "router": {
         "origin": "https://committed-5mxf.onrender.com"
       },
+      "openaiApiKey": {},
       "eas": {
-        "projectId": "1ce53350-c138-459b-b181-9a1a06406108"
+        "projectId": "c7f0fc87-3f23-42cf-b69a-e794cffacbed"
       }
     },
-    "owner": "committed"
+    "owner": "dadfund"
   }
 }

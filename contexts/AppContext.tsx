@@ -939,8 +939,8 @@ export const [AppContext, useApp] = createContextHook(() => {
       // This removes the auth session from this device only
       const AsyncStorage = require('@react-native-async-storage/async-storage').default;
       const storageKeys = await AsyncStorage.getAllKeys();
-      const supabaseKeys = storageKeys.filter(key => key.startsWith('sb-') || key.includes('supabase'));
-      await Promise.all(supabaseKeys.map(key => AsyncStorage.removeItem(key)));
+      const supabaseKeys = storageKeys.filter((key: string) => key.startsWith('sb-') || key.includes('supabase'));
+      await Promise.all(supabaseKeys.map((key: string) => AsyncStorage.removeItem(key)));
       
       // Note: We're NOT calling supabase.auth.signOut() because that would
       // invalidate the session globally and log out all devices

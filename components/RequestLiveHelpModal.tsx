@@ -361,7 +361,7 @@ export default function RequestLiveHelpModal({
                         </View>
                         {(match.profile.ratingAverage && match.profile.ratingAverage > 0) && (
                           <Text style={styles.matchRating}>
-                            ⭐ {match.profile.ratingAverage.toFixed(1)} ({match.profile.reviewCount || 0} reviews)
+                            ⭐ {match.profile.ratingAverage.toFixed(1)} ({String(match.profile.reviewCount || 0)} reviews)
                           </Text>
                         )}
                       </View>

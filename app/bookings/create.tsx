@@ -438,8 +438,7 @@ export default function CreateBookingScreen() {
                         <Text style={styles.professionalRole}>{selectedRole.name}</Text>
                         {(professional.profile.ratingAverage && professional.profile.ratingAverage > 0) && (
                           <Text style={styles.rating}>
-                            ⭐ {professional.profile.ratingAverage.toFixed(1)} (
-                            {professional.profile.ratingCount || 0})
+                            ⭐ {professional.profile.ratingAverage.toFixed(1)} ({String(professional.profile.ratingCount || 0)})
                           </Text>
                         )}
                       </View>

@@ -914,8 +914,7 @@ export const [AppContext, useApp] = createContextHook(() => {
 
   const logout = useCallback(async () => {
     try {
-      // Device-specific logout: Only clear local session, don't invalidate server-side token
-      // This allows other devices to remain logged in
+      console.log('Starting logout process...');
       
       // Clear local state first
       setCurrentUser(null);
@@ -934,19 +933,61 @@ export const [AppContext, useApp] = createContextHook(() => {
       setCertificates([]);
       setAnniversaries([]);
       setReelComments({});
+      setLegalAcceptanceStatus(null);
+      setHasCompletedOnboarding(null);
       
-      // Clear local AsyncStorage session (device-specific)
-      // This removes the auth session from this device only
-      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-      const storageKeys = await AsyncStorage.getAllKeys();
-      const supabaseKeys = storageKeys.filter((key: string) => key.startsWith('sb-') || key.includes('supabase'));
-      await Promise.all(supabaseKeys.map((key: string) => AsyncStorage.removeItem(key)));
+      // Sign out from Supabase (this properly clears the session)
+      // This ensures the session is completely removed
+      try {
+        const { error: signOutError } = await supabase.auth.signOut();
+        if (signOutError) {
+          console.error('Supabase signOut error:', signOutError);
+        } else {
+          console.log('Supabase session cleared successfully');
+        }
+      } catch (signOutErr) {
+        console.error('Error during Supabase signOut:', signOutErr);
+      }
       
-      // Note: We're NOT calling supabase.auth.signOut() because that would
-      // invalidate the session globally and log out all devices
+      // Clear local AsyncStorage session (comprehensive cleanup)
+      // This removes all Supabase-related keys from this device
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const storageKeys = await AsyncStorage.getAllKeys();
+        
+        // More comprehensive key matching for Supabase
+        const supabaseKeys = storageKeys.filter((key: string) => 
+          key.startsWith('sb-') || 
+          key.includes('supabase') || 
+          key.includes('supabase.auth') ||
+          key.startsWith('@supabase')
+        );
+        
+        console.log(`Found ${supabaseKeys.length} Supabase keys to clear:`, supabaseKeys);
+        
+        await Promise.all(supabaseKeys.map((key: string) => AsyncStorage.removeItem(key)));
+        
+        // Also try to clear by the known Supabase storage key pattern
+        const supabaseUrl = supabase.auth['_storageKey'] || 'supabase.auth.token';
+        try {
+          await AsyncStorage.removeItem(supabaseUrl);
+        } catch (e) {
+          // Ignore if key doesn't exist
+        }
+        
+        console.log('AsyncStorage cleared successfully');
+      } catch (storageError) {
+        console.error('Error clearing AsyncStorage:', storageError);
+      }
+      
+      console.log('Logout completed successfully');
     } catch (error) {
       console.error('Logout error:', error);
-      // Fallback: If clearing AsyncStorage fails, use global signOut as backup
+      // Ensure we still clear state even if there's an error
+      setCurrentUser(null);
+      setSession(null);
+      
+      // Final fallback: Force sign out
       try {
         await supabase.auth.signOut();
       } catch (fallbackError) {

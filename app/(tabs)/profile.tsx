@@ -159,10 +159,38 @@ export default function ProfileScreen() {
   };
 
   const handleLogout = async () => {
-    await logout();
-    // Navigate to landing page (root index)
-    // Use push instead of replace to avoid navigation errors
-    router.push('/' as any);
+    try {
+      // Show confirmation alert
+      Alert.alert(
+        'Log Out',
+        'Are you sure you want to log out?',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Log Out',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await logout();
+                // Use replace to avoid navigation stack issues
+                // Small delay to ensure state is cleared
+                setTimeout(() => {
+                  router.replace('/' as any);
+                }, 100);
+              } catch (error) {
+                console.error('Logout failed:', error);
+                Alert.alert('Error', 'Failed to log out. Please try again.');
+              }
+            },
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('Error showing logout confirmation:', error);
+    }
   };
 
   return (

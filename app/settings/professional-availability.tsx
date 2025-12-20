@@ -357,58 +357,92 @@ export default function ProfessionalAvailabilityScreen() {
           )}
 
           <View style={styles.statusGrid}>
-            {(['online', 'busy', 'away', 'offline'] as StatusType[]).map((statusType) => (
-              <TouchableOpacity
-                key={statusType}
-                style={[
-                  styles.statusOption,
-                  currentStatus === statusType && styles.statusOptionActive,
-                  isAdminOverride && styles.statusOptionDisabled,
-                ]}
-                onPress={async () => {
-                  if (!isAdminOverride && profile) {
-                    const profileUserId = (profile as any).user_id || profile.userId;
-                    setCurrentStatus(statusType);
-                    // Recalculate effective status
-                    if (profileUserId) {
-                      try {
-                        const effective = await getEffectiveProfessionalStatus(
-                          profileUserId,
-                          statusType,
-                          false
-                        );
-                        setEffectiveStatus(effective);
-                      } catch (error) {
-                        console.error('Error calculating effective status:', error);
+            {(['online', 'busy', 'away', 'offline'] as StatusType[]).map((statusType) => {
+              const isSelected = currentStatus === statusType;
+              const statusColor = getStatusColor(statusType);
+              
+              return (
+                <TouchableOpacity
+                  key={statusType}
+                  style={[
+                    styles.statusOption,
+                    isSelected && styles.statusOptionActive,
+                    isSelected && { borderColor: statusColor, backgroundColor: statusColor + '08' },
+                    isAdminOverride && styles.statusOptionDisabled,
+                  ]}
+                  onPress={async () => {
+                    if (!isAdminOverride && profile) {
+                      const profileUserId = (profile as any).user_id || profile.userId;
+                      setCurrentStatus(statusType);
+                      // Recalculate effective status
+                      if (profileUserId) {
+                        try {
+                          const effective = await getEffectiveProfessionalStatus(
+                            profileUserId,
+                            statusType,
+                            false
+                          );
+                          setEffectiveStatus(effective);
+                        } catch (error) {
+                          console.error('Error calculating effective status:', error);
+                        }
                       }
                     }
-                  }
-                }}
-                disabled={isAdminOverride}
-              >
-                <View style={[styles.statusIndicator, { backgroundColor: getStatusColor(statusType) }]} />
-                <View style={styles.statusOptionContent}>
-                  <Text style={[
-                    styles.statusLabel,
-                    currentStatus === statusType && styles.statusLabelActive,
+                  }}
+                  disabled={isAdminOverride}
+                  activeOpacity={0.7}
+                >
+                  <View style={[
+                    styles.statusIndicatorContainer,
+                    isSelected && { backgroundColor: statusColor + '20' },
                   ]}>
-                    {getStatusLabel(statusType)}
-                  </Text>
-                  {statusType === 'online' && (
-                    <Text style={styles.statusOptionHint}>Automatic</Text>
+                    <View style={[
+                      styles.statusIndicator,
+                      { backgroundColor: statusColor },
+                      isSelected && styles.statusIndicatorActive,
+                    ]} />
+                  </View>
+                  <View style={styles.statusOptionContent}>
+                    <Text style={[
+                      styles.statusLabel,
+                      isSelected && styles.statusLabelActive,
+                      isSelected && { color: statusColor },
+                    ]}>
+                      {getStatusLabel(statusType)}
+                    </Text>
+                    {statusType === 'online' && (
+                      <Text style={[
+                        styles.statusOptionHint,
+                        isSelected && styles.statusOptionHintActive,
+                      ]}>
+                        Automatic
+                      </Text>
+                    )}
+                    {(statusType === 'busy' || statusType === 'offline') && (
+                      <Text style={[
+                        styles.statusOptionHint,
+                        isSelected && styles.statusOptionHintActive,
+                      ]}>
+                        Override
+                      </Text>
+                    )}
+                    {statusType === 'away' && (
+                      <Text style={[
+                        styles.statusOptionHint,
+                        isSelected && styles.statusOptionHintActive,
+                      ]}>
+                        Auto (default away)
+                      </Text>
+                    )}
+                  </View>
+                  {isSelected && (
+                    <View style={[styles.checkIconContainer, { backgroundColor: statusColor }]}>
+                      <CheckCircle2 size={16} color={themeColors.text.white} />
+                    </View>
                   )}
-                  {(statusType === 'busy' || statusType === 'offline') && (
-                    <Text style={styles.statusOptionHint}>Override</Text>
-                  )}
-                  {statusType === 'away' && (
-                    <Text style={styles.statusOptionHint}>Auto (default away)</Text>
-                  )}
-                </View>
-                {currentStatus === statusType && (
-                  <CheckCircle2 size={16} color={themeColors.primary} style={styles.checkIcon} />
-                )}
-              </TouchableOpacity>
-            ))}
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
           <View style={styles.sessionInfo}>
@@ -699,44 +733,75 @@ const createStyles = (colors: any) => StyleSheet.create({
   statusGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 10,
     marginBottom: 16,
   },
   statusOption: {
     flex: 1,
-    minWidth: '45%',
+    minWidth: '47%',
+    maxWidth: '47%',
     flexDirection: 'row',
     alignItems: 'center',
     padding: 12,
-    borderRadius: 8,
-    borderWidth: 2,
+    borderRadius: 10,
+    borderWidth: 1.5,
     borderColor: colors.border.light,
-    backgroundColor: colors.background.secondary,
-    gap: 8,
+    backgroundColor: colors.background.primary,
+    gap: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
   },
   statusOptionActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primary + '10',
+    borderWidth: 2,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 3,
+    elevation: 2,
   },
   statusOptionDisabled: {
     opacity: 0.5,
+  },
+  statusIndicatorContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.background.secondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
   },
   statusIndicator: {
     width: 12,
     height: 12,
     borderRadius: 6,
   },
+  statusIndicatorActive: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+  },
   statusLabel: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
     color: colors.text.primary,
+    marginBottom: 1,
   },
   statusLabelActive: {
-    color: colors.primary,
+    fontWeight: '700',
   },
-  checkIcon: {
-    marginLeft: 'auto',
+  checkIconContainer: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    flexShrink: 0,
   },
   effectiveStatusInfo: {
     backgroundColor: colors.background.secondary,
@@ -773,6 +838,12 @@ const createStyles = (colors: any) => StyleSheet.create({
   statusOptionHint: {
     fontSize: 11,
     color: colors.text.tertiary,
+    fontWeight: '400',
+    lineHeight: 14,
+  },
+  statusOptionHintActive: {
+    color: colors.text.secondary,
+    fontWeight: '500',
   },
   sessionInfo: {
     flexDirection: 'row',

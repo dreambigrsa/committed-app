@@ -353,15 +353,15 @@ export default function RequestLiveHelpModal({
                         </View>
                         <View style={styles.matchReasons}>
                           {(match.matchReasons || []).slice(0, 3).map((reason, i) => (
-                            <View key={i} style={styles.reasonTag}>
+                            <View key={String(i)} style={styles.reasonTag}>
                               <CheckCircle2 size={12} color={themeColors.success} />
                               <Text style={styles.reasonText}>{String(reason || '')}</Text>
                             </View>
                           ))}
                         </View>
-                        {(match.profile.ratingAverage && match.profile.ratingAverage > 0) && (
+                        {(match.profile.ratingAverage && typeof match.profile.ratingAverage === 'number' && match.profile.ratingAverage > 0) && (
                           <Text style={styles.matchRating}>
-                            ⭐ {String(match.profile.ratingAverage.toFixed(1))} ({String(match.profile.reviewCount || 0)} reviews)
+                            ⭐ {String(Number(match.profile.ratingAverage).toFixed(1))} ({String(match.profile.reviewCount || 0)} reviews)
                           </Text>
                         )}
                       </View>

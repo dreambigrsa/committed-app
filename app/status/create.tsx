@@ -89,6 +89,8 @@ export default function CreateStatusScreen() {
   const [textStyle, setTextStyle] = useState<FontStyle>('classic');
   const [textEffect, setTextEffect] = useState<TextEffect>('default');
   const [textAlignment, setTextAlignment] = useState<TextAlignment>('center');
+  const [videoLoading, setVideoLoading] = useState(false);
+  const [videoError, setVideoError] = useState<string | null>(null);
   
   // Split text into lines for per-line background rendering
   // Each line gets its own independent pill-shaped background
@@ -423,6 +425,9 @@ export default function CreateStatusScreen() {
                     setContentType('video');
                     setScreenMode('preview');
                     setOverlayPos({ x: 0.5, y: 0.35 });
+                    // Reset video loading/error states
+                    setVideoLoading(false);
+                    setVideoError(null);
                   }
                   // If user cancels, just return (don't proceed with original video)
                 } catch (error) {
@@ -446,6 +451,9 @@ export default function CreateStatusScreen() {
     setScreenMode('preview');
     // Reset overlay position for a new media item
     setOverlayPos({ x: 0.5, y: 0.35 });
+    // Reset video loading/error states
+    setVideoLoading(false);
+    setVideoError(null);
   };
 
   const handleTrimVideo = async () => {
@@ -1181,14 +1189,39 @@ export default function CreateStatusScreen() {
               {contentType === 'image' ? (
                 <Image source={{ uri: mediaUri }} style={styles.previewMediaFull} contentFit="contain" />
               ) : (
-                <Video
-                  source={{ uri: mediaUri }}
-                  style={styles.previewMediaFull}
-                  resizeMode={ResizeMode.CONTAIN}
-                  shouldPlay
-                  isLooping
-                  useNativeControls
-                />
+                <>
+                  {videoLoading && (
+                    <View style={styles.videoLoadingContainer}>
+                      <ActivityIndicator size="large" color="#fff" />
+                    </View>
+                  )}
+                  {videoError && (
+                    <View style={styles.videoErrorContainer}>
+                      <Text style={styles.videoErrorText}>{videoError}</Text>
+                    </View>
+                  )}
+                  <Video
+                    source={{ uri: mediaUri }}
+                    style={[styles.previewMediaFull, videoLoading && { opacity: 0 }]}
+                    resizeMode={ResizeMode.CONTAIN}
+                    shouldPlay
+                    isLooping
+                    useNativeControls
+                    onLoadStart={() => {
+                      setVideoLoading(true);
+                      setVideoError(null);
+                    }}
+                    onLoad={() => {
+                      setVideoLoading(false);
+                      setVideoError(null);
+                    }}
+                    onError={(error) => {
+                      console.error('Video load error in preview:', error);
+                      setVideoLoading(false);
+                      setVideoError('Failed to load video. Please try selecting it again.');
+                    }}
+                  />
+                </>
               )}
 
               {/* Stickers on Media */}
@@ -2410,6 +2443,34 @@ const styles = StyleSheet.create({
     position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  videoLoadingContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    zIndex: 1,
+  },
+  videoErrorContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    padding: 20,
+    zIndex: 2,
+  },
+  videoErrorText: {
+    color: '#fff',
+    fontSize: 16,
+    textAlign: 'center',
   },
   previewOverlayActions: {
     position: 'absolute',

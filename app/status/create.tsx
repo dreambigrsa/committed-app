@@ -379,27 +379,54 @@ export default function CreateStatusScreen() {
   };
 
   const handleSelectMedia = async (asset: MediaLibrary.Asset) => {
-    // For videos, check duration and offer trimming if needed
+    // For videos, check duration and automatically open trimmer if needed
     if (asset.mediaType === 'video') {
       const duration = asset.duration || 0;
       
       // Allow small margin for floating point precision (15.1 seconds)
-      // If video is longer than 15.1 seconds, show trimmer
+      // If video is longer than 15.1 seconds, automatically open trimmer
       if (duration > 15.1) {
+        // Show a brief message, then automatically open the video trimmer
+        // Note: ImagePicker doesn't support pre-selecting videos, so user will need to select it again
         Alert.alert(
-          'Video Too Long', 
-          `This video is ${Math.round(duration)} seconds long. Story videos must be 15 seconds or less. Would you like to trim it?`,
+          'Video Too Long',
+          `This video is ${Math.round(duration)} seconds. Story videos must be 15 seconds or less. Please select the same video again to trim it.`,
           [
-            { text: 'Cancel', style: 'cancel' },
-            { 
-              text: 'Trim Video', 
-              onPress: () => {
-                setVideoToTrim(asset);
-                setTrimStartTime(0);
-                setTrimEndTime(Math.min(15, duration));
-                setShowVideoTrimmer(true);
-              }
-            }
+            {
+              text: 'Cancel',
+              style: 'cancel',
+            },
+            {
+              text: 'Trim Video',
+              onPress: async () => {
+                try {
+                  const result = await ImagePicker.launchImageLibraryAsync({
+                    mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+                    allowsEditing: true,
+                    videoMaxDuration: 15,
+                    quality: 0.8,
+                    allowsMultipleSelection: false,
+                  });
+
+                  if (!result.canceled && result.assets[0]) {
+                    const trimmedAsset = result.assets[0];
+                    setSelectedMedia({
+                      ...asset,
+                      uri: trimmedAsset.uri,
+                      duration: trimmedAsset.duration || 15,
+                    } as MediaLibrary.Asset);
+                    setMediaUri(trimmedAsset.uri);
+                    setContentType('video');
+                    setScreenMode('preview');
+                    setOverlayPos({ x: 0.5, y: 0.35 });
+                  }
+                  // If user cancels, just return (don't proceed with original video)
+                } catch (error) {
+                  console.error('Error trimming video:', error);
+                  Alert.alert('Error', 'Failed to trim video. Please try again.');
+                }
+              },
+            },
           ]
         );
         return;

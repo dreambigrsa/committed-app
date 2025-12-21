@@ -46,6 +46,7 @@ export default function StatusViewerScreen() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [isMediaReady, setIsMediaReady] = useState(false);
+  const [mediaDuration, setMediaDuration] = useState<number>(5000); // Default 5 seconds
   const videoRef = useRef<Video | null>(null);
   const [backgroundImageUrl, setBackgroundImageUrl] = useState<string | null>(null);
   const [stickerUrls, setStickerUrls] = useState<Map<string, string>>(new Map());
@@ -488,6 +489,7 @@ export default function StatusViewerScreen() {
     if (statuses.length > 0 && currentIndex < statuses.length) {
       // Reset media ready state when status changes
       setIsMediaReady(false);
+      setMediaDuration(5000); // Reset to default 5 seconds
       loadMedia();
       loadBackgroundImage();
       loadStickers();
@@ -513,12 +515,14 @@ export default function StatusViewerScreen() {
     const status = statuses[currentIndex];
     if (!status) {
       setIsMediaReady(false);
+      setMediaDuration(5000);
       return;
     }
 
     // For text statuses, media is ready immediately (no media to load)
     if (status.content_type === 'text') {
       setIsMediaReady(true);
+      setMediaDuration(5000); // Default 5 seconds for text
       return;
     }
 
@@ -527,8 +531,13 @@ export default function StatusViewerScreen() {
     if (status.content_type === 'image' || status.content_type === 'video') {
       if (!mediaUrl) {
         setIsMediaReady(false);
+        setMediaDuration(5000);
       }
       // Don't set isMediaReady here - wait for onLoad callbacks
+      // For images, default to 5 seconds
+      if (status.content_type === 'image') {
+        setMediaDuration(5000);
+      }
     }
   }, [mediaUrl, currentIndex, statuses]);
 
@@ -806,7 +815,7 @@ export default function StatusViewerScreen() {
         setIsPaused(false);
         setPausedProgress(currentProgressValue);
         
-        const duration = 5000; // 5 seconds per status
+        const duration = mediaDuration || 5000; // Use mediaDuration, default to 5 seconds
         const remainingProgress = Math.max(0, Math.min(1, 1 - currentProgressValue));
         const remainingDuration = duration * remainingProgress;
         const steps = 100;
@@ -850,7 +859,8 @@ export default function StatusViewerScreen() {
     setIsPaused(false);
     setPausedProgress(0);
     progressAnim.setValue(0);
-    const duration = 5000; // 5 seconds per status
+    // Use mediaDuration (in milliseconds) - default to 5000ms if not set
+    const duration = mediaDuration || 5000;
     const steps = 100;
     const stepDuration = duration / steps;
     let currentStep = 0;
@@ -1466,13 +1476,24 @@ export default function StatusViewerScreen() {
                   useNativeControls
                   resizeMode={ResizeMode.CONTAIN}
                   shouldPlay
-                  onLoad={() => {
+                  onLoad={(status) => {
                     // Video is loaded and ready
+                    // Get duration from status (in milliseconds)
+                    if (status.isLoaded && status.durationMillis) {
+                      const durationMs = status.durationMillis;
+                      // Cap at 15 seconds (15000ms) for status videos
+                      const cappedDuration = Math.min(durationMs, 15000);
+                      setMediaDuration(cappedDuration);
+                    } else {
+                      // Default to 5 seconds if duration not available
+                      setMediaDuration(5000);
+                    }
                     setIsMediaReady(true);
                   }}
                   onError={(error) => {
                     console.error('Video load error:', error);
                     // Still mark as ready to allow progress to continue
+                    setMediaDuration(5000); // Default duration on error
                     setIsMediaReady(true);
                   }}
                 />

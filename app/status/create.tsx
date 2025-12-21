@@ -79,6 +79,13 @@ export default function CreateStatusScreen() {
   const [isPosting, setIsPosting] = useState(false);
   const [mediaAssets, setMediaAssets] = useState<MediaLibrary.Asset[]>([]);
   const [selectedGallery, setSelectedGallery] = useState<string>('Gallery');
+  const [albums, setAlbums] = useState<MediaLibrary.Album[]>([]);
+  const [showAlbumPicker, setShowAlbumPicker] = useState(false);
+  const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);
+  const [showVideoTrimmer, setShowVideoTrimmer] = useState(false);
+  const [videoToTrim, setVideoToTrim] = useState<MediaLibrary.Asset | null>(null);
+  const [trimStartTime, setTrimStartTime] = useState(0);
+  const [trimEndTime, setTrimEndTime] = useState(15);
   const [textStyle, setTextStyle] = useState<FontStyle>('classic');
   const [textEffect, setTextEffect] = useState<TextEffect>('default');
   const [textAlignment, setTextAlignment] = useState<TextAlignment>('center');
@@ -276,7 +283,26 @@ export default function CreateStatusScreen() {
   useEffect(() => {
     loadMediaAssets();
     loadLastStatus();
+    loadAlbums();
   }, []);
+
+  useEffect(() => {
+    if (selectedAlbumId) {
+      loadMediaAssets();
+    }
+  }, [selectedAlbumId]);
+
+  const loadAlbums = async () => {
+    const { status } = await MediaLibrary.requestPermissionsAsync();
+    if (status !== 'granted') return;
+
+    try {
+      const albumsData = await MediaLibrary.getAlbumsAsync();
+      setAlbums(albumsData);
+    } catch (error) {
+      console.error('Error loading albums:', error);
+    }
+  };
 
   const loadMediaAssets = async () => {
     const { status } = await MediaLibrary.requestPermissionsAsync();
@@ -285,13 +311,46 @@ export default function CreateStatusScreen() {
       return;
     }
 
-    const assets = await MediaLibrary.getAssetsAsync({
+    const options: MediaLibrary.AssetsOptions = {
       mediaType: [MediaLibrary.MediaType.photo, MediaLibrary.MediaType.video],
       sortBy: MediaLibrary.SortBy.creationTime,
       first: 100,
-    });
+    };
 
+    if (selectedAlbumId) {
+      options.album = selectedAlbumId;
+    }
+
+    const assets = await MediaLibrary.getAssetsAsync(options);
     setMediaAssets(assets.assets);
+    
+    // Load thumbnails for videos (async, don't block)
+    const videoAssets = assets.assets.filter(a => a.mediaType === 'video');
+    if (videoAssets.length > 0) {
+      const thumbnailPromises = videoAssets.map(async (asset) => {
+        try {
+          const info = await MediaLibrary.getAssetInfoAsync(asset, {
+            thumbnail: true,
+          });
+          // Use thumbnail URI if available, otherwise fall back to asset URI
+          const thumbnailUri = (info as any).localUri || (info as any).uri || asset.uri;
+          return { id: asset.id, uri: thumbnailUri };
+        } catch (error) {
+          console.error('Error loading thumbnail for asset:', asset.id, error);
+          return { id: asset.id, uri: asset.uri };
+        }
+      });
+      
+      Promise.all(thumbnailPromises).then((thumbnails) => {
+        const thumbnailMap: Record<string, string> = {};
+        thumbnails.forEach(({ id, uri }) => {
+          thumbnailMap[id] = uri;
+        });
+        setVideoThumbnails((prev) => ({ ...prev, ...thumbnailMap }));
+      }).catch((error) => {
+        console.error('Error loading video thumbnails:', error);
+      });
+    }
   };
 
   const loadLastStatus = async () => {
@@ -317,9 +376,34 @@ export default function CreateStatusScreen() {
   };
 
   const handleSelectMedia = async (asset: MediaLibrary.Asset) => {
-    if (asset.mediaType === 'video' && asset.duration && asset.duration > 15) {
-      Alert.alert('Video Too Long', 'Story videos must be 15 seconds or less.');
-      return;
+    // For videos, check duration and offer trimming if needed
+    if (asset.mediaType === 'video') {
+      const duration = asset.duration || 0;
+      
+      // Allow small margin for floating point precision (15.1 seconds)
+      // If video is longer than 15.1 seconds, show trimmer
+      if (duration > 15.1) {
+        Alert.alert(
+          'Video Too Long', 
+          `This video is ${Math.round(duration)} seconds long. Story videos must be 15 seconds or less. Would you like to trim it?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { 
+              text: 'Trim Video', 
+              onPress: () => {
+                setVideoToTrim(asset);
+                setTrimStartTime(0);
+                setTrimEndTime(Math.min(15, duration));
+                setShowVideoTrimmer(true);
+              }
+            }
+          ]
+        );
+        return;
+      }
+      
+      // If duration is 0 or undefined, try to proceed (might be metadata issue)
+      // If video is 15 seconds or less, proceed normally
     }
 
     setSelectedMedia(asset);
@@ -328,6 +412,48 @@ export default function CreateStatusScreen() {
     setScreenMode('preview');
     // Reset overlay position for a new media item
     setOverlayPos({ x: 0.5, y: 0.35 });
+  };
+
+  const handleTrimVideo = async () => {
+    if (!videoToTrim) return;
+
+    try {
+      // Use ImagePicker to trim the video in-app
+      // On iOS, this opens the native video editor within the app
+      // On Android, it may open the system video editor
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        allowsEditing: true,
+        videoMaxDuration: 15,
+        quality: 0.8,
+        // Pre-select the video we want to trim
+        allowsMultipleSelection: false,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const trimmedAsset = result.assets[0];
+        setSelectedMedia({
+          ...videoToTrim,
+          uri: trimmedAsset.uri,
+          duration: trimmedAsset.duration || 15,
+        } as MediaLibrary.Asset);
+        setMediaUri(trimmedAsset.uri);
+        setContentType('video');
+        setScreenMode('preview');
+        setOverlayPos({ x: 0.5, y: 0.35 });
+        setShowVideoTrimmer(false);
+        setVideoToTrim(null);
+      } else {
+        // User cancelled trimming
+        setShowVideoTrimmer(false);
+        setVideoToTrim(null);
+      }
+    } catch (error) {
+      console.error('Error trimming video:', error);
+      Alert.alert('Error', 'Failed to trim video. Please try again.');
+      setShowVideoTrimmer(false);
+      setVideoToTrim(null);
+    }
   };
 
   const handleTakePhoto = async () => {
@@ -559,6 +685,7 @@ export default function CreateStatusScreen() {
         <TouchableOpacity 
           style={[styles.gallerySelector, { borderBottomColor: borderColor }]}
           activeOpacity={0.7}
+          onPress={() => setShowAlbumPicker(true)}
         >
           <Text style={[styles.gallerySelectorText, { color: textColor }]}>{selectedGallery}</Text>
           <ChevronDown size={18} color={colors.text.secondary} />
@@ -579,12 +706,10 @@ export default function CreateStatusScreen() {
             >
               {item.mediaType === 'video' ? (
                 <>
-                  <Video
-                    source={{ uri: item.uri }}
-                    style={styles.gridMedia}
-                    resizeMode={ResizeMode.COVER}
-                    shouldPlay={false}
-                    useNativeControls={false}
+                  <Image 
+                    source={{ uri: videoThumbnails[item.id] || item.uri }} 
+                    style={styles.gridMedia} 
+                    contentFit="cover" 
                   />
                   <View style={styles.videoOverlay}>
                     <View style={styles.videoBadge}>
@@ -600,6 +725,136 @@ export default function CreateStatusScreen() {
             </TouchableOpacity>
           )}
         />
+
+        {/* Album Picker Modal */}
+        <Modal
+          visible={showAlbumPicker}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowAlbumPicker(false)}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowAlbumPicker(false)}
+          >
+            <View style={[styles.albumPickerContainer, { backgroundColor: cardBg }]}>
+              <View style={[styles.modalHeaderContainer, { borderBottomColor: borderColor }]}>
+                <Text style={[styles.modalTitleText, { color: textColor }]}>Select Album</Text>
+                <TouchableOpacity onPress={() => setShowAlbumPicker(false)}>
+                  <X size={24} color={textColor} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.albumList}>
+                <TouchableOpacity
+                  style={[
+                    styles.albumItem,
+                    { backgroundColor: cardBg },
+                    !selectedAlbumId && { backgroundColor: colors.primary + '20' }
+                  ]}
+                  onPress={() => {
+                    setSelectedAlbumId(null);
+                    setSelectedGallery('Gallery');
+                    setShowAlbumPicker(false);
+                    loadMediaAssets();
+                  }}
+                >
+                  <Text style={[styles.albumItemText, { color: textColor }]}>All Photos & Videos</Text>
+                  {!selectedAlbumId && <Check size={20} color={colors.primary} />}
+                </TouchableOpacity>
+                {albums.map((album) => (
+                  <TouchableOpacity
+                    key={album.id}
+                    style={[
+                      styles.albumItem,
+                      { backgroundColor: cardBg },
+                      selectedAlbumId === album.id && { backgroundColor: colors.primary + '20' }
+                    ]}
+                    onPress={() => {
+                      setSelectedAlbumId(album.id);
+                      setSelectedGallery(album.title);
+                      setShowAlbumPicker(false);
+                      loadMediaAssets();
+                    }}
+                  >
+                    <Text style={[styles.albumItemText, { color: textColor }]}>{album.title}</Text>
+                    {selectedAlbumId === album.id && <Check size={20} color={colors.primary} />}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+
+        {/* Video Trimmer Modal */}
+        <Modal
+          visible={showVideoTrimmer}
+          transparent
+          animationType="slide"
+          onRequestClose={() => {
+            setShowVideoTrimmer(false);
+            setVideoToTrim(null);
+          }}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.videoTrimmerContainer, { backgroundColor: cardBg }]}>
+              <View style={[styles.modalHeaderContainer, { borderBottomColor: borderColor }]}>
+                <Text style={[styles.modalTitleText, { color: textColor }]}>Trim Video</Text>
+                <TouchableOpacity onPress={() => {
+                  setShowVideoTrimmer(false);
+                  setVideoToTrim(null);
+                }}>
+                  <X size={24} color={textColor} />
+                </TouchableOpacity>
+              </View>
+              
+              {videoToTrim && (
+                <>
+                  <View style={styles.videoTrimmerPreview}>
+                    <Video
+                      source={{ uri: videoToTrim.uri }}
+                      style={styles.trimPreviewVideo}
+                      resizeMode={ResizeMode.CONTAIN}
+                      shouldPlay
+                      isLooping
+                      useNativeControls
+                    />
+                  </View>
+                  
+                  <View style={styles.trimInfoContainer}>
+                    <Text style={[styles.trimInfoText, { color: colors.text.secondary }]}>
+                      Original duration: {Math.round(videoToTrim.duration || 0)}s
+                    </Text>
+                    <Text style={[styles.trimInfoText, { color: textColor }]}>
+                      Story videos must be 15 seconds or less
+                    </Text>
+                    <Text style={[styles.trimInfoText, { color: colors.text.secondary, fontSize: 12, marginTop: 8 }]}>
+                      Tap "Trim Video" to select a 15-second segment
+                    </Text>
+                  </View>
+
+                  <View style={styles.trimButtonsContainer}>
+                    <TouchableOpacity
+                      style={[styles.trimButton, styles.trimButtonSecondary, { borderColor: borderColor }]}
+                      onPress={() => {
+                        setShowVideoTrimmer(false);
+                        setVideoToTrim(null);
+                      }}
+                    >
+                      <Text style={[styles.trimButtonText, { color: textColor }]}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.trimButton, styles.trimButtonPrimary, { backgroundColor: colors.primary }]}
+                      onPress={handleTrimVideo}
+                    >
+                      <Text style={styles.trimButtonTextPrimary}>Trim Video</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     );
   }
@@ -2655,5 +2910,85 @@ const styles = StyleSheet.create({
   },
   emptyStateText: {
     fontSize: 16,
+  },
+  albumPickerContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: height * 0.7,
+  },
+  albumList: {
+    maxHeight: height * 0.6,
+  },
+  albumItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  albumItemText: {
+    fontSize: 16,
+    fontWeight: '500' as const,
+  },
+  videoTrimmerContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: height * 0.8,
+  },
+  videoTrimmerPreview: {
+    width: '100%',
+    height: 300,
+    backgroundColor: '#000',
+    marginTop: 16,
+  },
+  trimPreviewVideo: {
+    width: '100%',
+    height: '100%',
+  },
+  trimInfoContainer: {
+    padding: 16,
+    gap: 8,
+  },
+  trimInfoText: {
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  trimButtonsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    padding: 16,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 16,
+  },
+  trimButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trimButtonSecondary: {
+    borderWidth: 1,
+    backgroundColor: 'transparent',
+  },
+  trimButtonPrimary: {
+    backgroundColor: '#1A73E8',
+  },
+  trimButtonText: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+  },
+  trimButtonTextPrimary: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: '#fff',
   },
 });

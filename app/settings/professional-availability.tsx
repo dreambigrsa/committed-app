@@ -457,7 +457,7 @@ export default function ProfessionalAvailabilityScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Availability Types</Text>
           
-          <View style={styles.settingRow}>
+          <View style={[styles.settingRow, styles.settingRowFirst]}>
             <View style={styles.settingLeft}>
               <Radio size={20} color={themeColors.text.secondary} />
               <Text style={styles.settingLabel}>Online Availability</Text>
@@ -473,7 +473,7 @@ export default function ProfessionalAvailabilityScreen() {
             />
           </View>
 
-          <View style={styles.settingRow}>
+          <View style={[styles.settingRow, styles.settingRowLast]}>
             <View style={styles.settingLeft}>
               <Users size={20} color={themeColors.text.secondary} />
               <Text style={styles.settingLabel}>In-Person Availability</Text>
@@ -705,10 +705,13 @@ const createStyles = (colors: any) => StyleSheet.create({
   section: {
     backgroundColor: colors.background.primary,
     padding: 20,
-    marginBottom: 12,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: colors.border.light,
+    marginBottom: 16,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
   },
   sectionTitle: {
     fontSize: 18,
@@ -742,17 +745,17 @@ const createStyles = (colors: any) => StyleSheet.create({
     maxWidth: '47%',
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
-    borderRadius: 10,
+    padding: 14,
+    borderRadius: 12,
     borderWidth: 1.5,
     borderColor: colors.border.light,
     backgroundColor: colors.background.primary,
-    gap: 10,
+    gap: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 2,
-    elevation: 1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
   },
   statusOptionActive: {
     borderWidth: 2,
@@ -805,8 +808,8 @@ const createStyles = (colors: any) => StyleSheet.create({
   },
   effectiveStatusInfo: {
     backgroundColor: colors.background.secondary,
-    padding: 12,
-    borderRadius: 8,
+    padding: 14,
+    borderRadius: 10,
     marginBottom: 16,
     borderWidth: 1,
     borderColor: colors.border.light,
@@ -849,8 +852,9 @@ const createStyles = (colors: any) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingTop: 12,
-    borderTopWidth: 1,
+    paddingTop: 16,
+    marginTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border.light,
   },
   sessionText: {
@@ -861,9 +865,16 @@ const createStyles = (colors: any) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
+    paddingVertical: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border.light,
+  },
+  settingRowFirst: {
+    paddingTop: 4,
+  },
+  settingRowLast: {
+    borderBottomWidth: 0,
+    paddingBottom: 4,
   },
   settingLeft: {
     flex: 1,

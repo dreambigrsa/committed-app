@@ -116,8 +116,9 @@ export async function findMatchingProfessionals(
         console.warn(`Error calculating effective status for professional ${profile.id}:`, error);
       }
 
-      // Skip offline professionals if online only is strictly required (use effective status)
-      if (criteria.requiresOnlineOnly && effectiveStatus !== 'online' && effectiveStatus !== 'busy') {
+      // Skip offline/away/busy professionals if online only is strictly required (use effective status)
+      // Busy professionals are not available, so filter them out
+      if (criteria.requiresOnlineOnly && effectiveStatus !== 'online') {
         continue;
       }
 
@@ -253,8 +254,13 @@ function getMatchReasons(
 ): string[] {
   const reasons: string[] = [];
 
+  // Show status-based reasons
   if (status.status === 'online') {
     reasons.push('Currently online');
+  } else if (status.status === 'busy') {
+    reasons.push('Currently busy');
+  } else if (status.status === 'away') {
+    reasons.push('Currently away');
   }
 
   const rating = profile.rating_average ? (typeof profile.rating_average === 'number' ? profile.rating_average : parseFloat(profile.rating_average) || 0) : 0;
@@ -262,9 +268,11 @@ function getMatchReasons(
     reasons.push('Highly rated');
   }
 
+  // Only show "Available now" if status is online or away (not busy or offline)
+  // and they have session capacity
   const maxSessions = profile.max_concurrent_sessions || 3;
   const currentSessions = status.current_session_count || 0;
-  if (currentSessions < maxSessions) {
+  if ((status.status === 'online' || status.status === 'away') && currentSessions < maxSessions) {
     reasons.push('Available now');
   }
 

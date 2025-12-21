@@ -146,7 +146,11 @@ export default function CreateStatusScreen() {
   const overlayPan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
       onMoveShouldSetPanResponder: (_, gestureState) => {
+        return Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2;
+      },
+      onMoveShouldSetPanResponderCapture: (_, gestureState) => {
         return Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2;
       },
       onPanResponderGrant: () => {
@@ -533,14 +537,24 @@ export default function CreateStatusScreen() {
         textPositionX: overlayEnabled ? overlayPos.x : 0.5,
         textPositionY: overlayEnabled ? overlayPos.y : 0.5,
         backgroundImageUri: contentType === 'text' ? backgroundImageUri : null,
-        stickers: selectedStickers.map((sticker) => ({
-          id: sticker.id,
-          imageUrl: sticker.imageUrl,
-          positionX: sticker.positionX ?? 0.5,
-          positionY: sticker.positionY ?? 0.5,
-          scale: sticker.scale ?? 1.0,
-          rotation: sticker.rotation ?? 0,
-        })),
+        stickers: selectedStickers.map((sticker) => {
+          console.log('📌 Preparing sticker for save:', {
+            id: sticker.id,
+            imageUrl: sticker.imageUrl,
+            positionX: sticker.positionX,
+            positionY: sticker.positionY,
+            scale: sticker.scale,
+            rotation: sticker.rotation,
+          });
+          return {
+            id: sticker.id,
+            imageUrl: sticker.imageUrl,
+            positionX: sticker.positionX ?? 0.5,
+            positionY: sticker.positionY ?? 0.5,
+            scale: sticker.scale ?? 1.0,
+            rotation: sticker.rotation ?? 0,
+          };
+        }),
       };
 
       const status = await createStatus(
@@ -1247,20 +1261,19 @@ export default function CreateStatusScreen() {
                   ]}
                   {...overlayPan.panHandlers}
                 >
-                  <TouchableOpacity
-                    activeOpacity={0.9}
-                    onPress={() => {
+                  <View
+                    onTouchEnd={(e) => {
                       // Only open editor if not dragging
                       if (!overlayDragging.current) {
                         setShowOverlayEditor(true);
                       }
+                      overlayDragging.current = false;
                     }}
-                    delayPressIn={200}
                   >
                     <Text style={[styles.overlayText, getTextStyle(), getTextEffectStyle()]}>
                       {textContent?.trim() ? textContent : 'Tap to add text'}
                     </Text>
-                  </TouchableOpacity>
+                  </View>
                 </View>
               )}
 

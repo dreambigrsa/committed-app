@@ -1439,6 +1439,34 @@ export default function StatusViewerScreen() {
                   </Text>
                 </View>
               )}
+
+              {/* Stickers for image/video statuses */}
+              {status.stickers && status.stickers.length > 0 && (
+                <View style={styles.stickersContainer} pointerEvents="none">
+                  {status.stickers.map((sticker: any) => {
+                    const stickerUrl = stickerUrls.get(sticker.id);
+                    if (!stickerUrl) return null;
+                    
+                    return (
+                      <Image
+                        key={sticker.id}
+                        source={{ uri: stickerUrl }}
+                        style={[styles.sticker, {
+                          left: `${(sticker.position_x ?? 0.5) * 100}%`,
+                          top: `${(sticker.position_y ?? 0.5) * 100}%`,
+                          transform: [
+                            { translateX: -40 },
+                            { translateY: -40 },
+                            { scale: sticker.scale || 1.0 },
+                            { rotate: `${sticker.rotation || 0}deg` },
+                          ],
+                        }]}
+                        contentFit="contain"
+                      />
+                    );
+                  })}
+                </View>
+              )}
             </View>
           ) : (
             <Text style={styles.loadingText}>Loading media...</Text>

@@ -6,6 +6,7 @@
  */
 
 import { supabase } from './supabase';
+import * as FileSystem from 'expo-file-system/legacy';
 
 // ============================================
 // TYPE DEFINITIONS
@@ -701,11 +702,31 @@ export async function createStatus(
   // We try `status-media` first, then fall back to `media` for compatibility.
   if (mediaUri && (contentType === 'image' || contentType === 'video')) {
     try {
-      const response = await fetch(mediaUri);
-      const blob = await response.blob();
       const fileExt = contentType === 'video' ? 'mp4' : 'jpg';
       const fileName = `${Date.now()}.${fileExt}`;
       const filePath = `${user.id}/${fileName}`;
+
+      // Handle local file URIs (file://, ph://, content://) vs remote URLs
+      let fileData: Uint8Array;
+      
+      if (mediaUri.startsWith('file://') || mediaUri.startsWith('ph://') || mediaUri.startsWith('content://')) {
+        // Local file - read using FileSystem
+        const base64 = await FileSystem.readAsStringAsync(mediaUri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        
+        // Convert base64 to Uint8Array
+        const binaryString = atob(base64);
+        fileData = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          fileData[i] = binaryString.charCodeAt(i);
+        }
+      } else {
+        // Remote URL - fetch and convert to Uint8Array
+        const response = await fetch(mediaUri);
+        const arrayBuffer = await response.arrayBuffer();
+        fileData = new Uint8Array(arrayBuffer);
+      }
 
       const bucketsToTry = ['status-media', 'media'];
       let uploadedBucket: string | null = null;
@@ -714,7 +735,7 @@ export async function createStatus(
       for (const bucket of bucketsToTry) {
         const { error: uploadError } = await supabase.storage
           .from(bucket)
-          .upload(filePath, blob, {
+          .upload(filePath, fileData, {
             contentType: contentType === 'video' ? 'video/mp4' : 'image/jpeg',
             upsert: false,
           });
@@ -743,10 +764,32 @@ export async function createStatus(
   // Upload background image if provided (for text statuses)
   if (customization?.backgroundImageUri && contentType === 'text') {
     try {
-      const response = await fetch(customization.backgroundImageUri);
-      const blob = await response.blob();
       const fileName = `bg-${Date.now()}.jpg`;
       const filePath = `${user.id}/${fileName}`;
+
+      // Handle local file URIs (file://, ph://, content://) vs remote URLs
+      let fileData: Uint8Array;
+      
+      if (customization.backgroundImageUri.startsWith('file://') || 
+          customization.backgroundImageUri.startsWith('ph://') || 
+          customization.backgroundImageUri.startsWith('content://')) {
+        // Local file - read using FileSystem
+        const base64 = await FileSystem.readAsStringAsync(customization.backgroundImageUri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        
+        // Convert base64 to Uint8Array
+        const binaryString = atob(base64);
+        fileData = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          fileData[i] = binaryString.charCodeAt(i);
+        }
+      } else {
+        // Remote URL - fetch and convert to Uint8Array
+        const response = await fetch(customization.backgroundImageUri);
+        const arrayBuffer = await response.arrayBuffer();
+        fileData = new Uint8Array(arrayBuffer);
+      }
 
       const bucketsToTry = ['status-media', 'media'];
       let uploadedBucket: string | null = null;
@@ -755,7 +798,7 @@ export async function createStatus(
       for (const bucket of bucketsToTry) {
         const { error: uploadError } = await supabase.storage
           .from(bucket)
-          .upload(filePath, blob, {
+          .upload(filePath, fileData, {
             contentType: 'image/jpeg',
             upsert: false,
           });

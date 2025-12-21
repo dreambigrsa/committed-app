@@ -145,13 +145,16 @@ export default function CreateStatusScreen() {
 
   const overlayPan = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => overlayDragging.current,
-      onMoveShouldSetPanResponder: () => overlayDragging.current,
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2;
+      },
       onPanResponderGrant: () => {
         overlayStartPos.current = overlayPos;
+        overlayDragging.current = true;
       },
       onPanResponderMove: (_, gesture) => {
-        if (!overlayDragging.current || !previewSize.w || !previewSize.h) return;
+        if (!previewSize.w || !previewSize.h) return;
         const nextX = Math.max(0, Math.min(1, overlayStartPos.current.x + gesture.dx / previewSize.w));
         const nextY = Math.max(0, Math.min(1, overlayStartPos.current.y + gesture.dy / previewSize.h));
         setOverlayPos({ x: nextX, y: nextY });
@@ -1149,7 +1152,7 @@ export default function CreateStatusScreen() {
 
               {/* Stickers on Media */}
               {selectedStickers.length > 0 && (
-                <View style={styles.previewStickersContainer}>
+                <View style={styles.previewStickersContainer} pointerEvents="box-none">
                   {selectedStickers.map((sticker, index) => {
                     if (!stickerPanResponders.current[index]) {
                       stickerPanResponders.current[index] = createStickerPanResponder(index);
@@ -1158,7 +1161,7 @@ export default function CreateStatusScreen() {
                     
                     return (
                       <View
-                        key={sticker.id || index}
+                        key={sticker.id || `sticker-${index}`}
                         style={[styles.previewStickerWrapper, {
                           left: `${(sticker.positionX ?? (0.5 + (index % 2) * 0.2)) * 100}%`,
                           top: `${(sticker.positionY ?? (0.3 + (index * 0.15))) * 100}%`,
@@ -1179,6 +1182,9 @@ export default function CreateStatusScreen() {
                             opacity: activeStickerIndex === index ? 0.8 : 1,
                           }]}
                           contentFit="contain"
+                          onError={(error) => {
+                            console.error('Error loading sticker image:', error, sticker.imageUrl);
+                          }}
                         />
                         {activeStickerIndex === index && (
                           <View style={styles.stickerSelectionIndicator} />
@@ -1216,10 +1222,13 @@ export default function CreateStatusScreen() {
                 >
                   <TouchableOpacity
                     activeOpacity={0.9}
-                    onPress={() => setShowOverlayEditor(true)}
-                    onLongPress={() => {
-                      overlayDragging.current = true;
+                    onPress={() => {
+                      // Only open editor if not dragging
+                      if (!overlayDragging.current) {
+                        setShowOverlayEditor(true);
+                      }
                     }}
+                    delayPressIn={200}
                   >
                     <Text style={[styles.overlayText, getTextStyle(), getTextEffectStyle()]}>
                       {textContent?.trim() ? textContent : 'Tap to add text'}
@@ -1327,10 +1336,30 @@ export default function CreateStatusScreen() {
                   <Text style={styles.overlayEditorPrimaryText}>Done</Text>
                 </TouchableOpacity>
               </View>
-              <Text style={styles.overlayEditorHint}>Tip: long‑press the text on the preview to drag it.</Text>
+              <Text style={styles.overlayEditorHint}>Tip: tap and drag the text on the preview to move it.</Text>
             </View>
           </TouchableOpacity>
         </Modal>
+
+        {/* Sticker Picker Modal for Preview Screen */}
+        <StickerPicker
+          visible={showStickerPicker}
+          onClose={() => setShowStickerPicker(false)}
+          onSelectSticker={(sticker: Sticker) => {
+            // Add sticker with default positioning
+            console.log('Adding sticker:', sticker);
+            const newSticker = {
+              id: sticker.id,
+              imageUrl: sticker.imageUrl,
+              positionX: 0.5 + (selectedStickers.length % 2) * 0.2,
+              positionY: 0.3 + (selectedStickers.length * 0.15),
+              scale: 1.0,
+              rotation: 0,
+            };
+            setSelectedStickers([...selectedStickers, newSticker]);
+            setShowStickerPicker(false);
+          }}
+        />
       </SafeAreaView>
     );
   }
@@ -1720,6 +1749,7 @@ export default function CreateStatusScreen() {
           onClose={() => setShowStickerPicker(false)}
           onSelectSticker={(sticker: Sticker) => {
             // Add sticker with default positioning
+            console.log('Adding sticker:', sticker);
             const newSticker = {
               id: sticker.id,
               imageUrl: sticker.imageUrl,
@@ -2276,6 +2306,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: '100%',
     height: '100%',
+    zIndex: 50,
   },
   previewStickerWrapper: {
     position: 'absolute',
@@ -2363,7 +2394,7 @@ const styles = StyleSheet.create({
   },
   overlayTextContainer: {
     position: 'absolute',
-    zIndex: 20,
+    zIndex: 60,
     maxWidth: '88%',
   },
   overlayText: {

@@ -289,11 +289,11 @@ export async function getEffectiveProfessionalStatus(
     const diffMs = now.getTime() - lastActive.getTime();
     const diffMins = Math.floor(diffMs / 60000);
 
-    let calculatedStatus: 'online' | 'away' | 'offline';
+    let calculatedStatus: 'online' | 'busy' | 'away' | 'offline';
     
     // If status_type is manually set to 'busy', preserve it
     if (userStatusData.status_type === 'busy') {
-      calculatedStatus = 'online'; // Default to online if busy (they're active)
+      calculatedStatus = 'busy'; // Respect manual busy status
     } else if (diffMins <= 5) {
       calculatedStatus = 'online';
     } else if (diffMins <= 15) {
@@ -306,16 +306,17 @@ export async function getEffectiveProfessionalStatus(
     if (professionalStatusPreference === 'away') {
       return {
         status: calculatedStatus === 'offline' ? 'away' : calculatedStatus,
-        isAutomatic: true,
-        source: 'automatic',
+        isAutomatic: calculatedStatus !== 'busy', // Not automatic if user manually set busy
+        source: calculatedStatus === 'busy' ? 'manual_override' : 'automatic',
       };
     }
 
     // If preference is "online", use calculated status
+    // But if calculated status is 'busy' (from user_status), respect that manual override
     return {
       status: calculatedStatus,
-      isAutomatic: true,
-      source: 'automatic',
+      isAutomatic: calculatedStatus !== 'busy', // Not automatic if user manually set busy
+      source: calculatedStatus === 'busy' ? 'manual_override' : 'automatic',
     };
   } catch (error: any) {
     console.error('Error calculating effective professional status:', error?.message || error);

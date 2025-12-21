@@ -45,6 +45,8 @@ export default function StatusViewerScreen() {
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
+  const [isMediaReady, setIsMediaReady] = useState(false);
+  const videoRef = useRef<Video | null>(null);
   const [backgroundImageUrl, setBackgroundImageUrl] = useState<string | null>(null);
   const [stickerUrls, setStickerUrls] = useState<Map<string, string>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
@@ -484,10 +486,11 @@ export default function StatusViewerScreen() {
 
   useEffect(() => {
     if (statuses.length > 0 && currentIndex < statuses.length) {
+      // Reset media ready state when status changes
+      setIsMediaReady(false);
       loadMedia();
       loadBackgroundImage();
       loadStickers();
-      startProgress();
       markAsViewed();
       // Load view count after a short delay to ensure status is set
       setTimeout(() => {
@@ -504,6 +507,41 @@ export default function StatusViewerScreen() {
       }
     };
   }, [currentIndex, statuses]);
+
+  // Handle media ready state based on content type
+  useEffect(() => {
+    const status = statuses[currentIndex];
+    if (!status) {
+      setIsMediaReady(false);
+      return;
+    }
+
+    // For text statuses, media is ready immediately (no media to load)
+    if (status.content_type === 'text') {
+      setIsMediaReady(true);
+      return;
+    }
+
+    // For image/video statuses, reset ready state when mediaUrl changes
+    // isMediaReady will be set to true by onLoad callbacks in Image/Video components
+    if (status.content_type === 'image' || status.content_type === 'video') {
+      if (!mediaUrl) {
+        setIsMediaReady(false);
+      }
+      // Don't set isMediaReady here - wait for onLoad callbacks
+    }
+  }, [mediaUrl, currentIndex, statuses]);
+
+  // Start progress when media is ready
+  useEffect(() => {
+    if (isMediaReady && statuses.length > 0 && currentIndex < statuses.length) {
+      // Small delay to ensure media is fully rendered
+      const timer = setTimeout(() => {
+        startProgress();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isMediaReady, currentIndex, statuses]);
 
   const loadUserReaction = async () => {
     const status = statuses[currentIndex];
@@ -803,8 +841,10 @@ export default function StatusViewerScreen() {
   };
 
   const startProgress = () => {
+    // Clear any existing progress interval
     if (progressInterval.current) {
       clearInterval(progressInterval.current);
+      progressInterval.current = null;
     }
 
     setIsPaused(false);
@@ -1404,14 +1444,37 @@ export default function StatusViewerScreen() {
               }}
             >
               {status.content_type === 'image' ? (
-                <Image source={{ uri: mediaUrl }} style={styles.media} contentFit="contain" />
+                <Image 
+                  source={{ uri: mediaUrl }} 
+                  style={styles.media} 
+                  contentFit="contain"
+                  onLoad={() => {
+                    // Image is loaded and ready
+                    setIsMediaReady(true);
+                  }}
+                  onError={() => {
+                    console.error('Image load error');
+                    // Still mark as ready to allow progress to continue
+                    setIsMediaReady(true);
+                  }}
+                />
               ) : (
                 <Video
+                  ref={videoRef}
                   source={{ uri: mediaUrl }}
                   style={styles.media}
                   useNativeControls
                   resizeMode={ResizeMode.CONTAIN}
                   shouldPlay
+                  onLoad={() => {
+                    // Video is loaded and ready
+                    setIsMediaReady(true);
+                  }}
+                  onError={(error) => {
+                    console.error('Video load error:', error);
+                    // Still mark as ready to allow progress to continue
+                    setIsMediaReady(true);
+                  }}
                 />
               )}
 

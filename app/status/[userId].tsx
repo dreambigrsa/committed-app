@@ -47,6 +47,7 @@ export default function StatusViewerScreen() {
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [isMediaReady, setIsMediaReady] = useState(false);
   const [mediaDuration, setMediaDuration] = useState<number>(5000); // Default 5 seconds
+  const [hasVideoDuration, setHasVideoDuration] = useState(false); // Track if we've gotten video duration
   const videoRef = useRef<Video | null>(null);
   const [backgroundImageUrl, setBackgroundImageUrl] = useState<string | null>(null);
   const [stickerUrls, setStickerUrls] = useState<Map<string, string>>(new Map());
@@ -490,6 +491,7 @@ export default function StatusViewerScreen() {
       // Reset media ready state when status changes
       setIsMediaReady(false);
       setMediaDuration(5000); // Reset to default 5 seconds
+      setHasVideoDuration(false); // Reset video duration flag
       loadMedia();
       loadBackgroundImage();
       loadStickers();
@@ -541,16 +543,42 @@ export default function StatusViewerScreen() {
     }
   }, [mediaUrl, currentIndex, statuses]);
 
-  // Start progress when media is ready
+  // Start progress when media is ready AND duration is set
   useEffect(() => {
     if (isMediaReady && statuses.length > 0 && currentIndex < statuses.length) {
-      // Small delay to ensure media is fully rendered
-      const timer = setTimeout(() => {
-        startProgress();
-      }, 100);
-      return () => clearTimeout(timer);
+      const status = statuses[currentIndex];
+      // For videos, wait until we have the actual duration (not default 5000)
+      // For images/text, duration is already set
+      if (status?.content_type === 'video') {
+        if (hasVideoDuration && mediaDuration !== 5000) {
+          // We have a valid video duration, start progress
+          const timer = setTimeout(() => {
+            startProgress();
+          }, 100);
+          return () => clearTimeout(timer);
+        }
+        // Don't start yet, wait for duration
+        return;
+      } else {
+        // For images/text, start immediately
+        const timer = setTimeout(() => {
+          startProgress();
+        }, 100);
+        return () => clearTimeout(timer);
+      }
     }
-  }, [isMediaReady, currentIndex, statuses]);
+  }, [isMediaReady, mediaDuration, hasVideoDuration, currentIndex, statuses]);
+
+  // Restart progress if duration changes for videos (in case it was set after progress started)
+  useEffect(() => {
+    const status = statuses[currentIndex];
+    if (status?.content_type === 'video' && isMediaReady && hasVideoDuration && mediaDuration !== 5000) {
+      // If progress is already running and duration changed, restart it
+      if (progressInterval.current) {
+        startProgress();
+      }
+    }
+  }, [mediaDuration, hasVideoDuration]);
 
   const loadUserReaction = async () => {
     const status = statuses[currentIndex];
@@ -1476,19 +1504,22 @@ export default function StatusViewerScreen() {
                   useNativeControls
                   resizeMode={ResizeMode.CONTAIN}
                   shouldPlay
-                  onLoad={(status) => {
-                    // Video is loaded and ready
-                    // Get duration from status (in milliseconds)
+                  onLoad={() => {
+                    // Video is loaded and ready (but duration might not be available yet)
+                    setIsMediaReady(true);
+                  }}
+                  onPlaybackStatusUpdate={(status) => {
+                    // Get duration from playback status update (most reliable way)
                     if (status.isLoaded && status.durationMillis) {
                       const durationMs = status.durationMillis;
-                      // Cap at 15 seconds (15000ms) for status videos
                       const cappedDuration = Math.min(durationMs, 15000);
-                      setMediaDuration(cappedDuration);
-                    } else {
-                      // Default to 5 seconds if duration not available
-                      setMediaDuration(5000);
+                      // Only update if we haven't set a valid duration yet
+                      if (!hasVideoDuration || mediaDuration === 5000) {
+                        console.log('Video duration from playback status:', cappedDuration, 'ms');
+                        setMediaDuration(cappedDuration);
+                        setHasVideoDuration(true);
+                      }
                     }
-                    setIsMediaReady(true);
                   }}
                   onError={(error) => {
                     console.error('Video load error:', error);

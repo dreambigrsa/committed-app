@@ -10,6 +10,8 @@ import {
   Alert,
   ActivityIndicator,
   TextInput,
+  Platform,
+  Dimensions,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { 
@@ -28,6 +30,9 @@ import { supabase } from '@/lib/supabase';
 import { ProfessionalProfile, ProfessionalStatus } from '@/types';
 import { getEffectiveProfessionalStatus, EffectiveProfessionalStatus } from '@/lib/professional-availability';
 import colors from '@/constants/colors';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const STATUS_CARD_WIDTH = (SCREEN_WIDTH - 60) / 2; // Account for padding and gap
 
 type StatusType = 'online' | 'busy' | 'offline' | 'away';
 
@@ -736,13 +741,13 @@ const createStyles = (colors: any) => StyleSheet.create({
   statusGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
     marginBottom: 16,
+    marginHorizontal: -5,
   },
   statusOption: {
-    flex: 1,
-    minWidth: '47%',
-    maxWidth: '47%',
+    width: STATUS_CARD_WIDTH,
+    marginHorizontal: 5,
+    marginBottom: 10,
     flexDirection: 'row',
     alignItems: 'center',
     padding: 14,
@@ -750,12 +755,11 @@ const createStyles = (colors: any) => StyleSheet.create({
     borderWidth: 1.5,
     borderColor: colors.border.light,
     backgroundColor: colors.background.primary,
-    gap: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 4,
-    elevation: 2,
+    ...(Platform.OS === 'android' && { elevation: 2 }),
   },
   statusOptionActive: {
     borderWidth: 2,
@@ -776,6 +780,7 @@ const createStyles = (colors: any) => StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     flexShrink: 0,
+    marginRight: 12,
   },
   statusIndicator: {
     width: 12,
@@ -788,11 +793,10 @@ const createStyles = (colors: any) => StyleSheet.create({
     borderRadius: 7,
   },
   statusLabel: {
-    flex: 1,
     fontSize: 15,
     fontWeight: '600',
     color: colors.text.primary,
-    marginBottom: 1,
+    marginBottom: 2,
   },
   statusLabelActive: {
     fontWeight: '700',
@@ -836,13 +840,13 @@ const createStyles = (colors: any) => StyleSheet.create({
   },
   statusOptionContent: {
     flex: 1,
-    gap: 2,
   },
   statusOptionHint: {
     fontSize: 11,
     color: colors.text.tertiary,
     fontWeight: '400',
     lineHeight: 14,
+    marginTop: 2,
   },
   statusOptionHintActive: {
     color: colors.text.secondary,

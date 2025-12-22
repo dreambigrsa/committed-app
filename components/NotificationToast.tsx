@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   Animated,
 } from 'react-native';
-import { Bell, X, Heart, MessageCircle, UserPlus, AlertTriangle, Sparkles, Star } from 'lucide-react-native';
+import { Bell, X, Heart, MessageCircle, UserPlus, AlertTriangle, Sparkles, Star, CreditCard, CheckCircle2 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -125,6 +125,12 @@ export default function NotificationToast() {
         return <Heart size={20} color={colors.danger} />;
       case 'dating_super_like':
         return <Star size={20} color={colors.primary} fill={colors.primary} />;
+      case 'payment_submission':
+        return <CreditCard size={20} color={colors.accent} />;
+      case 'payment_approved':
+        return <CheckCircle2 size={20} color={colors.success} />;
+      case 'payment_rejected':
+        return <X size={20} color={colors.danger} />;
       default:
         return <Bell size={20} color={colors.text.secondary} />;
     }

@@ -46,6 +46,18 @@ import {
   updateDateOptionProcedure,
   deleteDateOptionProcedure,
 } from "./routes/admin/manage-date-options";
+import {
+  getPaymentMethodsAdminProcedure,
+  createPaymentMethodProcedure,
+  updatePaymentMethodProcedure,
+  deletePaymentMethodProcedure,
+} from "./routes/admin/manage-payment-methods";
+import { getPaymentMethodsProcedure } from "./routes/dating/get-payment-methods";
+import { submitPaymentProcedure } from "./routes/dating/submit-payment";
+import {
+  getPaymentSubmissionsProcedure,
+  verifyPaymentProcedure,
+} from "./routes/admin/verify-payment";
 
 export const appRouter = createTRPCRouter({
   example: createTRPCRouter({
@@ -80,6 +92,12 @@ export const appRouter = createTRPCRouter({
     createDateOption: createDateOptionProcedure,
     updateDateOption: updateDateOptionProcedure,
     deleteDateOption: deleteDateOptionProcedure,
+    getPaymentMethods: getPaymentMethodsAdminProcedure,
+    createPaymentMethod: createPaymentMethodProcedure,
+    updatePaymentMethod: updatePaymentMethodProcedure,
+    deletePaymentMethod: deletePaymentMethodProcedure,
+    getPaymentSubmissions: getPaymentSubmissionsProcedure,
+    verifyPayment: verifyPaymentProcedure,
   }),
   fraud: createTRPCRouter({
     detectDuplicates: detectDuplicateRelationshipsProcedure,
@@ -104,6 +122,8 @@ export const appRouter = createTRPCRouter({
     getDateOptions: getDateOptionsProcedure,
     updateDateRequest: updateDateRequestProcedure,
     cancelDateRequest: cancelDateRequestProcedure,
+    getPaymentMethods: getPaymentMethodsProcedure,
+    submitPayment: submitPaymentProcedure,
   }),
 });
 

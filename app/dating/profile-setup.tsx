@@ -148,26 +148,42 @@ export default function ProfileSetupScreen() {
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
         
-        // Upload to Supabase Storage first
-        const uploadedUrl = await uploadImageToStorage(asset.uri);
-        
-        // Then save to database
-        uploadPhotoMutation.mutate(
-          {
-            photoUrl: uploadedUrl,
-            displayOrder: photos.length,
-            isPrimary: photos.length === 0,
-          },
-          {
-            onSuccess: (data) => {
-              setPhotos([...photos, { id: data.id, url: uploadedUrl, isPrimary: photos.length === 0 }]);
+        try {
+          // Upload to Supabase Storage first
+          const uploadedUrl = await uploadImageToStorage(asset.uri);
+          
+          // Then save to database
+          uploadPhotoMutation.mutate(
+            {
+              photoUrl: uploadedUrl,
+              displayOrder: photos.length,
+              isPrimary: photos.length === 0,
             },
-            onError: (error) => {
-              console.error('Upload photo error:', error);
-              Alert.alert('Error', error.message || 'Failed to save photo. Make sure the backend server is running.');
-            },
-          }
-        );
+            {
+              onSuccess: (data) => {
+                setPhotos([...photos, { id: data.id, url: uploadedUrl, isPrimary: photos.length === 0 }]);
+                Alert.alert('Success', 'Photo uploaded successfully!');
+              },
+              onError: (error: any) => {
+                console.error('Upload photo error:', error);
+                const errorMessage = error?.message || error?.data?.message || String(error);
+                
+                if (errorMessage.includes('Failed to fetch') || errorMessage.includes('Network') || errorMessage.includes('ECONNREFUSED')) {
+                  Alert.alert(
+                    'Connection Error',
+                    'Could not connect to the backend server.\n\nPlease make sure the server is running:\n\n1. Open a terminal\n2. Run: bun run start:api\n3. Wait for "listening on http://localhost:3000"\n4. Try uploading again',
+                    [{ text: 'OK' }]
+                  );
+                } else {
+                  Alert.alert('Error', errorMessage);
+                }
+              },
+            }
+          );
+        } catch (uploadError: any) {
+          console.error('Error uploading to storage:', uploadError);
+          Alert.alert('Upload Error', uploadError.message || 'Failed to upload image to storage');
+        }
       }
     } catch (error: any) {
       console.error('Error picking/uploading image:', error);

@@ -17,15 +17,29 @@ export const uploadDatingPhotoProcedure = protectedProcedure
     const userId = ctx.user.id;
     const { photoUrl, displayOrder, isPrimary } = input;
 
-    // Get user's dating profile
-    const { data: profile, error: profileError } = await supabase
+    // Get user's dating profile, or create a minimal one if it doesn't exist
+    let { data: profile, error: profileError } = await supabase
       .from('dating_profiles')
       .select('id')
       .eq('user_id', userId)
       .single();
 
+    // If profile doesn't exist, create a minimal one
     if (profileError || !profile) {
-      throw new Error('Dating profile not found. Please create a profile first.');
+      const { data: newProfile, error: createError } = await supabase
+        .from('dating_profiles')
+        .insert({
+          user_id: userId,
+          is_active: true,
+        })
+        .select('id')
+        .single();
+
+      if (createError || !newProfile) {
+        throw new Error('Failed to create dating profile. Please try again.');
+      }
+
+      profile = newProfile;
     }
 
     // If setting as primary, unset other primary photos

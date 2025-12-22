@@ -10,7 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Heart, Check, X, AlertTriangle, MessageCircle, Bell, UserPlus, CheckCircle2, Trash2, Sparkles, Star } from 'lucide-react-native';
+import { Heart, Check, X, AlertTriangle, MessageCircle, Bell, UserPlus, CheckCircle2, Trash2, Sparkles, Star, DollarSign, CreditCard } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Notification, NotificationType } from '@/types';
@@ -29,6 +29,7 @@ export default function NotificationsScreen() {
     clearAllNotifications,
     posts,
     reels,
+    currentUser,
   } = useApp();
   const { colors } = useTheme();
   const pendingRequests = getPendingRequests();
@@ -88,6 +89,12 @@ export default function NotificationsScreen() {
         return <Heart size={24} color={colors.danger} />;
       case 'dating_super_like':
         return <Star size={24} color={colors.primary} fill={colors.primary} />;
+      case 'payment_submission':
+        return <CreditCard size={24} color={colors.accent} />;
+      case 'payment_approved':
+        return <CheckCircle2 size={24} color={colors.success} />;
+      case 'payment_rejected':
+        return <X size={24} color={colors.danger} />;
       default:
         return <Bell size={24} color={colors.text.secondary} />;
     }
@@ -185,6 +192,17 @@ export default function NotificationsScreen() {
         if (data.liker_id) {
           router.push('/(tabs)/dating' as any);
         }
+        break;
+      case 'payment_submission':
+        // Navigate to admin payment verifications if admin, otherwise do nothing
+        if (currentUser?.role === 'admin' || currentUser?.role === 'super_admin') {
+          router.push('/admin/payment-verifications' as any);
+        }
+        break;
+      case 'payment_approved':
+      case 'payment_rejected':
+        // Navigate to subscription/payment screen if exists
+        // For now, just mark as read
         break;
       default:
         // For other types, just mark as read

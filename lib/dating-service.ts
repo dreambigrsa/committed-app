@@ -19,14 +19,10 @@ export async function getDatingProfile(userId?: string) {
     return null;
   }
 
+  // First try a simple query without relationships
   const { data, error } = await supabase
     .from('dating_profiles')
-    .select(`
-      *,
-      photos:dating_photos(*),
-      videos:dating_videos(*),
-      user:users!dating_profiles_user_id_fkey(id, full_name, profile_picture, verified)
-    `)
+    .select('*')
     .eq('user_id', targetUserId)
     .single();
 
@@ -37,11 +33,45 @@ export async function getDatingProfile(userId?: string) {
       return null;
     }
     console.error('getDatingProfile error:', error);
-    throw error;
+    console.error('Error details:', JSON.stringify(error, null, 2));
+    // Don't throw, return null so UI can show create screen
+    return null;
   }
+
+  if (!data) {
+    console.log('getDatingProfile: No data returned');
+    return null;
+  }
+
+  // Now fetch related data separately
+  const [photosResult, videosResult, userResult] = await Promise.all([
+    supabase
+      .from('dating_photos')
+      .select('*')
+      .eq('dating_profile_id', data.id)
+      .order('display_order', { ascending: true }),
+    supabase
+      .from('dating_videos')
+      .select('*')
+      .eq('dating_profile_id', data.id)
+      .order('display_order', { ascending: true }),
+    supabase
+      .from('users')
+      .select('id, full_name, profile_picture, verified, email_verified, phone_verified, id_verified')
+      .eq('id', targetUserId)
+      .single(),
+  ]);
+
+  // Combine all data
+  const profileWithRelations = {
+    ...data,
+    photos: photosResult.data || [],
+    videos: videosResult.data || [],
+    user: userResult.data || null,
+  };
   
-  console.log('getDatingProfile: Found profile', data?.id);
-  return data;
+  console.log('getDatingProfile: Found profile', profileWithRelations.id);
+  return profileWithRelations;
 }
 
 export async function createOrUpdateDatingProfile(profileData: {

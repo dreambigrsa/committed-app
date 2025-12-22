@@ -7,17 +7,32 @@ import { supabase } from "./supabase";
 export const trpc = createTRPCReact<AppRouter>();
 
 const getBaseUrl = () => {
-  // Try to get from environment variable
+  // Try to get from environment variable first (highest priority)
   if (process.env.EXPO_PUBLIC_COMMITTED_API_BASE_URL) {
     return process.env.EXPO_PUBLIC_COMMITTED_API_BASE_URL;
   }
 
-  // Fallback to default or localhost for development
-  // In production builds, this should be set via EAS environment variables
-  const defaultUrl = "http://localhost:3000";
-  console.warn(
-    `EXPO_PUBLIC_COMMITTED_API_BASE_URL not set, using default: ${defaultUrl}`
-  );
+  // For development, try to use the local network IP
+  // This is needed when testing on physical devices
+  // You can find your local IP by running: ipconfig (Windows) or ifconfig (Mac/Linux)
+  // Then set it in a .env file: EXPO_PUBLIC_COMMITTED_API_BASE_URL=http://YOUR_IP:3000
+  
+  // Fallback to localhost (only works in emulator/simulator)
+  const defaultUrl = __DEV__ 
+    ? "http://localhost:3000" // Works in emulator/simulator
+    : "https://committed-5mxf.onrender.com"; // Production fallback
+  
+  if (__DEV__) {
+    console.warn(
+      `⚠️ EXPO_PUBLIC_COMMITTED_API_BASE_URL not set!\n` +
+      `For physical device testing, set it to your computer's IP address:\n` +
+      `1. Find your IP: ipconfig (Windows) or ifconfig (Mac/Linux)\n` +
+      `2. Create .env file: EXPO_PUBLIC_COMMITTED_API_BASE_URL=http://YOUR_IP:3000\n` +
+      `3. Restart Expo\n` +
+      `Currently using: ${defaultUrl} (only works in emulator)`
+    );
+  }
+  
   return defaultUrl;
 };
 

@@ -179,7 +179,7 @@ export default function ProfileSetupScreen() {
                 ) {
                   Alert.alert(
                     'Connection Error',
-                    'Could not connect to the backend server.\n\nPlease make sure the server is running:\n\n1. Open a terminal\n2. Run: bun run start:api\n3. Wait for "listening on http://localhost:3000"\n4. Try uploading again',
+                    'Could not connect to the backend server.\n\nFor physical devices:\n1. Find your computer\'s IP address:\n   - Windows: ipconfig\n   - Mac/Linux: ifconfig\n2. Create a .env file with:\n   EXPO_PUBLIC_COMMITTED_API_BASE_URL=http://YOUR_IP:3000\n3. Make sure the server is running:\n   bun run start:api\n4. Restart Expo and try again\n\nFor emulator/simulator:\n1. Run: bun run start:api\n2. Wait for "listening on http://localhost:3000"',
                     [{ text: 'OK' }]
                   );
                 } else {

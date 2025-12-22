@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -39,22 +40,27 @@ export default function DatingScreen() {
   const [discovery, setDiscovery] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load user profile and discovery feed
-  useEffect(() => {
-    const loadData = async () => {
-      if (!currentUser) {
-        setIsLoading(false);
-        return;
-      }
+  const loadDatingData = async () => {
+    if (!currentUser) {
+      setIsLoading(false);
+      return;
+    }
 
-      try {
-        setIsLoading(true);
-        const profile = await DatingService.getDatingProfile().catch(() => null);
-        setUserProfile(profile);
+    try {
+      setIsLoading(true);
+      const profile = await DatingService.getDatingProfile().catch((err) => {
+        console.log('Profile check error:', err);
+        return null;
+      });
+      
+      console.log('Profile loaded:', profile ? 'Found' : 'Not found');
+      setUserProfile(profile);
 
-        if (profile) {
-          // Only load discovery if profile exists
+      if (profile && profile.id) {
+        // Only load discovery if profile exists
+        try {
           const discoveryData = await DatingService.getDatingDiscovery();
+          console.log('Discovery loaded:', discoveryData.profiles?.length || 0, 'profiles');
           // Normalize data structure for components
           const normalizedProfiles = (discoveryData.profiles || []).map((p: any) => ({
             ...p,
@@ -67,16 +73,34 @@ export default function DatingScreen() {
             id_verified: p.user?.id_verified || false,
           }));
           setDiscovery(normalizedProfiles);
+        } catch (discoveryError: any) {
+          console.error('Error loading discovery:', discoveryError);
+          setDiscovery([]);
         }
-      } catch (error: any) {
-        console.error('Error loading dating data:', error);
-      } finally {
-        setIsLoading(false);
+      } else {
+        console.log('No profile found, showing setup screen');
+        setDiscovery([]);
       }
-    };
+    } catch (error: any) {
+      console.error('Error loading dating data:', error);
+      setUserProfile(null);
+      setDiscovery([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    loadData();
+  // Load data on mount
+  useEffect(() => {
+    loadDatingData();
   }, [currentUser]);
+
+  // Reload when screen comes into focus (e.g., after creating profile)
+  useFocusEffect(
+    React.useCallback(() => {
+      loadDatingData();
+    }, [currentUser])
+  );
 
   const handleLike = async (likedUserId: string, isSuperLike: boolean = false) => {
     try {
@@ -209,6 +233,12 @@ export default function DatingScreen() {
               onPress={() => router.push('/dating/profile-setup')}
             >
               <Text style={styles.primaryButtonText}>Get Started</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.primaryButton, { marginTop: 12, backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.primary }]}
+              onPress={loadDatingData}
+            >
+              <Text style={[styles.primaryButtonText, { color: colors.primary }]}>Refresh</Text>
             </TouchableOpacity>
           </View>
         </Animated.View>

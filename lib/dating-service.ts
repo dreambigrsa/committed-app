@@ -14,7 +14,10 @@ export async function getDatingProfile(userId?: string) {
   const { data: { user } } = await supabase.auth.getUser();
   const targetUserId = userId || user?.id;
 
-  if (!targetUserId) throw new Error('User not authenticated');
+  if (!targetUserId) {
+    console.log('getDatingProfile: No user ID');
+    return null;
+  }
 
   const { data, error } = await supabase
     .from('dating_profiles')
@@ -27,7 +30,17 @@ export async function getDatingProfile(userId?: string) {
     .eq('user_id', targetUserId)
     .single();
 
-  if (error && error.code !== 'PGRST116') throw error; // PGRST116 = not found
+  if (error) {
+    if (error.code === 'PGRST116') {
+      // Not found - this is okay, return null
+      console.log('getDatingProfile: Profile not found for user', targetUserId);
+      return null;
+    }
+    console.error('getDatingProfile error:', error);
+    throw error;
+  }
+  
+  console.log('getDatingProfile: Found profile', data?.id);
   return data;
 }
 

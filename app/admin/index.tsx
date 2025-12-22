@@ -28,10 +28,12 @@ import {
   ChevronRight,
   LayoutDashboard,
   UserCheck,
+  Sparkles,
   Briefcase,
   TrendingUp,
   Clock,
   Star,
+  Calendar,
 } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -115,6 +117,24 @@ export default function AdminDashboardScreen() {
           color: '#E91E63',
           gradient: ['#E91E63', '#C2185B'],
           visible: true,
+        },
+        {
+          title: 'Dating Interests',
+          icon: Sparkles,
+          description: 'Manage dating interests',
+          route: '/admin/dating-interests',
+          color: '#9C27B0',
+          gradient: ['#9C27B0', '#7B1FA2'],
+          visible: currentUser.role === 'super_admin' || currentUser.role === 'admin',
+        },
+        {
+          title: 'Date Request Options',
+          icon: Calendar,
+          description: 'Manage date request options',
+          route: '/admin/dating-date-options',
+          color: '#E91E63',
+          gradient: ['#E91E63', '#C2185B'],
+          visible: currentUser.role === 'super_admin' || currentUser.role === 'admin',
         },
       ],
     },

@@ -31,6 +31,21 @@ import { getMatchesProcedure } from "./routes/dating/get-matches";
 import { unmatchProcedure } from "./routes/dating/unmatch";
 import { uploadDatingPhotoProcedure } from "./routes/dating/upload-photo";
 import { deleteDatingPhotoProcedure } from "./routes/dating/delete-photo";
+import { getDatingInterestsProcedure } from "./routes/dating/get-interests";
+import { getLikesReceivedProcedure } from "./routes/dating/get-likes-received";
+import { createDateRequestProcedure } from "./routes/dating/create-date-request";
+import { respondDateRequestProcedure } from "./routes/dating/respond-date-request";
+import { getDateRequestsProcedure } from "./routes/dating/get-date-requests";
+import { uploadDatingVideoProcedure } from "./routes/dating/upload-video";
+import { getDateOptionsProcedure } from "./routes/dating/get-date-options";
+import { updateDateRequestProcedure } from "./routes/dating/update-date-request";
+import { cancelDateRequestProcedure } from "./routes/dating/cancel-date-request";
+import {
+  getDateOptionsAdminProcedure,
+  createDateOptionProcedure,
+  updateDateOptionProcedure,
+  deleteDateOptionProcedure,
+} from "./routes/admin/manage-date-options";
 
 export const appRouter = createTRPCRouter({
   example: createTRPCRouter({
@@ -61,6 +76,10 @@ export const appRouter = createTRPCRouter({
     deleteRelationship: deleteRelationshipProcedure,
     getReportedContent: getReportedContentProcedure,
     reviewReport: reviewReportProcedure,
+    getDateOptions: getDateOptionsAdminProcedure,
+    createDateOption: createDateOptionProcedure,
+    updateDateOption: updateDateOptionProcedure,
+    deleteDateOption: deleteDateOptionProcedure,
   }),
   fraud: createTRPCRouter({
     detectDuplicates: detectDuplicateRelationshipsProcedure,
@@ -76,6 +95,15 @@ export const appRouter = createTRPCRouter({
     unmatch: unmatchProcedure,
     uploadPhoto: uploadDatingPhotoProcedure,
     deletePhoto: deleteDatingPhotoProcedure,
+    getInterests: getDatingInterestsProcedure,
+    getLikesReceived: getLikesReceivedProcedure,
+    createDateRequest: createDateRequestProcedure,
+    respondDateRequest: respondDateRequestProcedure,
+    getDateRequests: getDateRequestsProcedure,
+    uploadVideo: uploadDatingVideoProcedure,
+    getDateOptions: getDateOptionsProcedure,
+    updateDateRequest: updateDateRequestProcedure,
+    cancelDateRequest: cancelDateRequestProcedure,
   }),
 });
 

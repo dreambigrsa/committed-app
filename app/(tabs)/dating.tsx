@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,19 +9,18 @@ import {
   Alert,
   Dimensions,
   Animated,
-  PanResponder,
 } from 'react-native';
-import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { Heart, X, Star, MapPin, Shield, CheckCircle2, Settings, Users } from 'lucide-react-native';
+import { Heart, X, Star, Settings, Users, Sparkles, Zap, RotateCcw, Crown } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { trpc } from '@/lib/trpc';
 import { useApp } from '@/contexts/AppContext';
+import DatingSwipeCard from '@/components/DatingSwipeCard';
+import MatchCelebrationModal from '@/components/MatchCelebrationModal';
+import { DatingDiscoveryUser } from '@/types';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const CARD_WIDTH = SCREEN_WIDTH - 40;
-const CARD_HEIGHT = SCREEN_HEIGHT * 0.7;
-const SWIPE_THRESHOLD = 120;
+const MAX_VISIBLE_CARDS = 3;
 
 export default function DatingScreen() {
   const router = useRouter();
@@ -30,12 +29,14 @@ export default function DatingScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [profile, setProfile] = useState<any>(null);
-  const [position] = useState(new Animated.ValueXY());
+  const [swipedProfiles, setSwipedProfiles] = useState<Set<string>>(new Set());
+  const [showMatchModal, setShowMatchModal] = useState(false);
+  const [matchedUser, setMatchedUser] = useState<any>(null);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   // Get discovery feed
   const { data: discovery, isLoading, refetch } = trpc.dating.getDiscovery.useQuery(
-    { limit: 20 },
+    { limit: 50 },
     { enabled: !!currentUser }
   );
 
@@ -44,20 +45,43 @@ export default function DatingScreen() {
     enabled: !!currentUser,
   });
 
+  // Get subscription status (for premium features)
+  const { data: subscription } = trpc.dating.getProfile.useQuery(undefined, {
+    enabled: !!currentUser,
+    select: (data) => data, // Will check subscription later
+  });
+
   // Mutations
   const likeMutation = trpc.dating.likeUser.useMutation({
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       if (data.isMatch) {
-        Alert.alert('🎉 It\'s a Match!', 'You both liked each other!', [
-          { text: 'View Matches', onPress: () => router.push('/dating/matches') },
-          { text: 'Continue', onPress: () => handleSwipeComplete() },
-        ]);
+        // Show match celebration modal
+        const matchedProfile = discovery?.find((p: any) => {
+          const userId = p.user_id || p.userId;
+          return userId === variables.likedUserId;
+        });
+        
+        if (matchedProfile) {
+          const photos = matchedProfile.photos || [];
+          setMatchedUser({
+            name: matchedProfile.full_name || matchedProfile.fullName || 'Someone',
+            photo: photos[0]?.photo_url || photos[0]?.photoUrl || matchedProfile.profile_picture || matchedProfile.profilePicture,
+          });
+        } else {
+          setMatchedUser({
+            name: 'Someone',
+            photo: undefined,
+          });
+        }
+        setShowMatchModal(true);
+        // Don't advance card yet - let user see the match
       } else {
         handleSwipeComplete();
       }
     },
     onError: (error) => {
       Alert.alert('Error', error.message);
+      // Don't advance if error
     },
   });
 
@@ -71,107 +95,103 @@ export default function DatingScreen() {
   });
 
   useEffect(() => {
-    if (discovery && discovery.length > 0 && currentIndex < discovery.length) {
-      setProfile(discovery[currentIndex]);
-    }
-  }, [discovery, currentIndex]);
-
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderMove: (_, gesture) => {
-          position.setValue({ x: gesture.dx, y: gesture.dy });
-        },
-        onPanResponderRelease: (_, gesture) => {
-          if (gesture.dx > SWIPE_THRESHOLD) {
-            // Swipe right - Like
-            handleLike();
-          } else if (gesture.dx < -SWIPE_THRESHOLD) {
-            // Swipe left - Pass
-            handlePass();
-          } else {
-            // Return to center
-            Animated.spring(position, {
-              toValue: { x: 0, y: 0 },
-              useNativeDriver: false,
-            }).start();
-          }
-        },
-      }),
-    [currentIndex]
-  );
-
-  const handleLike = () => {
-    if (!profile) return;
-    
-    Animated.timing(position, {
-      toValue: { x: SCREEN_WIDTH, y: 0 },
-      duration: 300,
-      useNativeDriver: false,
-    }).start(() => {
-      likeMutation.mutate({
-        likedUserId: profile.user_id,
-        isSuperLike: false,
-      });
-    });
-  };
-
-  const handlePass = () => {
-    if (!profile) return;
-    
-    Animated.timing(position, {
-      toValue: { x: -SCREEN_WIDTH, y: 0 },
-      duration: 300,
-      useNativeDriver: false,
-    }).start(() => {
-      passMutation.mutate({
-        passedUserId: profile.user_id,
-      });
-    });
-  };
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 400,
+      useNativeDriver: true,
+    }).start();
+  }, []);
 
   const handleSwipeComplete = () => {
-    position.setValue({ x: 0, y: 0 });
     setCurrentIndex((prev) => prev + 1);
   };
 
-  const rotateCard = position.x.interpolate({
-    inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
-    outputRange: ['-10deg', '0deg', '10deg'],
-    extrapolate: 'clamp',
-  });
+  const handleSwipeLeft = (profile: any) => {
+    const userId = (profile as any).user_id || profile.userId;
+    if (swipedProfiles.has(userId)) return;
+    setSwipedProfiles((prev) => new Set(prev).add(userId));
+    passMutation.mutate({ passedUserId: userId });
+  };
 
-  const likeOpacity = position.x.interpolate({
-    inputRange: [0, SWIPE_THRESHOLD],
-    outputRange: [0, 1],
-    extrapolate: 'clamp',
-  });
+  const handleSwipeRight = (profile: any) => {
+    const userId = (profile as any).user_id || profile.userId;
+    if (swipedProfiles.has(userId)) return;
+    setSwipedProfiles((prev) => new Set(prev).add(userId));
+    likeMutation.mutate({
+      likedUserId: userId,
+      isSuperLike: false,
+    });
+  };
 
-  const passOpacity = position.x.interpolate({
-    inputRange: [-SWIPE_THRESHOLD, 0],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
+  const handleSuperLike = (profile: any) => {
+    const userId = (profile as any).user_id || profile.userId;
+    if (swipedProfiles.has(userId)) return;
+    setSwipedProfiles((prev) => new Set(prev).add(userId));
+    likeMutation.mutate({
+      likedUserId: userId,
+      isSuperLike: true,
+    });
+  };
+
+  const handleRewind = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex((prev) => prev - 1);
+      // Remove from swiped set
+      if (discovery && discovery[currentIndex - 1]) {
+        setSwipedProfiles((prev) => {
+          const newSet = new Set(prev);
+          const userId = (discovery[currentIndex - 1] as any).user_id || discovery[currentIndex - 1].userId;
+          newSet.delete(userId);
+          return newSet;
+        });
+      }
+    } else {
+      Alert.alert('No More to Rewind', 'You\'re at the beginning!');
+    }
+  };
+
+  const handleBoost = () => {
+    Alert.alert('Boost Profile', 'Boost your profile to be seen by more people!', [
+      { text: 'Upgrade to Premium', onPress: () => router.push('/dating/premium') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const handleViewPhotoGallery = (profile: any) => {
+    const photos = profile.photos || [];
+    if (photos.length > 0) {
+      router.push({
+        pathname: '/dating/photo-gallery',
+        params: {
+          photos: JSON.stringify(photos),
+          userName: profile.full_name || profile.fullName,
+          userAge: (profile.age || profile.age)?.toString(),
+        },
+      } as any);
+    }
+  };
 
   // Check if user needs to create profile
   if (!userProfile) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.emptyContainer}>
-          <Heart size={64} color={colors.primary} />
-          <Text style={styles.emptyTitle}>Create Your Dating Profile</Text>
-          <Text style={styles.emptyText}>
-            Set up your dating profile to start discovering people near you!
-          </Text>
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={() => router.push('/dating/profile-setup')}
-          >
-            <Text style={styles.primaryButtonText}>Create Profile</Text>
-          </TouchableOpacity>
-        </View>
+        <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
+          <View style={styles.emptyContainer}>
+            <Animated.View style={styles.iconContainer}>
+              <Heart size={80} color={colors.primary} />
+            </Animated.View>
+            <Text style={styles.emptyTitle}>Create Your Dating Profile</Text>
+            <Text style={styles.emptyText}>
+              Set up your dating profile to start discovering amazing people near you!
+            </Text>
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={() => router.push('/dating/profile-setup')}
+            >
+              <Text style={styles.primaryButtonText}>Get Started</Text>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
       </SafeAreaView>
     );
   }
@@ -181,7 +201,7 @@ export default function DatingScreen() {
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Finding matches...</Text>
+          <Text style={styles.loadingText}>Finding your matches...</Text>
         </View>
       </SafeAreaView>
     );
@@ -192,20 +212,26 @@ export default function DatingScreen() {
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Discover</Text>
-          <TouchableOpacity onPress={() => router.push('/dating/matches')}>
-            <Users size={24} color={colors.text.primary} />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity onPress={() => router.push('/dating/matches')} style={styles.headerButton}>
+              <Users size={24} color={colors.text.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/dating/profile-setup')} style={styles.headerButton}>
+              <Settings size={24} color={colors.text.primary} />
+            </TouchableOpacity>
+          </View>
         </View>
         <View style={styles.emptyContainer}>
-          <Heart size={64} color={colors.text.tertiary} />
-          <Text style={styles.emptyTitle}>No More Profiles</Text>
+          <Sparkles size={64} color={colors.text.tertiary} />
+          <Text style={styles.emptyTitle}>You're All Caught Up!</Text>
           <Text style={styles.emptyText}>
-            You've seen everyone in your area. Check back later for new people!
+            You've seen everyone in your area. Check back later for new people or adjust your preferences!
           </Text>
           <TouchableOpacity
             style={styles.secondaryButton}
             onPress={() => {
               setCurrentIndex(0);
+              setSwipedProfiles(new Set());
               refetch();
             }}
           >
@@ -216,141 +242,129 @@ export default function DatingScreen() {
     );
   }
 
-  const primaryPhoto = profile.photos?.[0]?.photo_url || profile.profile_picture;
+  // Get visible cards (stack)
+  const visibleProfiles = discovery.slice(currentIndex, currentIndex + MAX_VISIBLE_CARDS);
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Discover</Text>
-        <View style={styles.headerActions}>
-          <TouchableOpacity onPress={() => router.push('/dating/matches')} style={styles.headerButton}>
-            <Users size={24} color={colors.text.primary} />
+      <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <TouchableOpacity onPress={() => router.push('/dating/matches')} style={styles.headerIconButton}>
+              <Users size={26} color={colors.text.primary} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.headerCenter}>
+            <Text style={styles.headerTitle}>Discover</Text>
+          </View>
+          <View style={styles.headerRight}>
+            <View style={styles.headerRightActions}>
+              <TouchableOpacity 
+                onPress={() => router.push('/dating/likes-received')} 
+                style={styles.headerIconButton}
+              >
+                <Heart size={24} color={colors.danger} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => router.push('/dating/profile-setup')} style={styles.headerIconButton}>
+                <Settings size={26} color={colors.text.primary} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
+        {/* Card Stack */}
+        <View style={styles.cardStackContainer}>
+          {visibleProfiles.map((profile: any, index: number) => {
+            const isTop = index === 0;
+            const userId = profile.user_id || profile.userId;
+            return (
+              <DatingSwipeCard
+                key={userId}
+                profile={profile}
+                onSwipeLeft={() => handleSwipeLeft(profile)}
+                onSwipeRight={() => handleSwipeRight(profile)}
+                onSuperLike={() => handleSuperLike(profile)}
+                onTap={() => handleViewPhotoGallery(profile)}
+                index={index}
+                isTop={isTop}
+              />
+            );
+          })}
+        </View>
+
+        {/* Action Buttons */}
+        <View style={styles.actionsContainer}>
+          {/* Rewind (Premium) */}
+          <TouchableOpacity
+            style={[styles.actionButton, styles.rewindButton]}
+            onPress={handleRewind}
+            disabled={currentIndex === 0 || likeMutation.isPending || passMutation.isPending}
+          >
+            <RotateCcw size={24} color={colors.text.secondary} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.push('/dating/profile-setup')} style={styles.headerButton}>
-            <Settings size={24} color={colors.text.primary} />
+
+          {/* Pass */}
+          <TouchableOpacity
+            style={[styles.actionButton, styles.passButton]}
+            onPress={() => visibleProfiles[0] && handleSwipeLeft(visibleProfiles[0])}
+            disabled={likeMutation.isPending || passMutation.isPending}
+          >
+            <X size={32} color={colors.danger} strokeWidth={3} />
+          </TouchableOpacity>
+
+          {/* Super Like */}
+          <TouchableOpacity
+            style={[styles.actionButton, styles.superLikeButton]}
+            onPress={() => visibleProfiles[0] && handleSuperLike(visibleProfiles[0])}
+            disabled={likeMutation.isPending || passMutation.isPending}
+          >
+            <Star size={28} color={colors.primary} fill={colors.primary} />
+          </TouchableOpacity>
+
+          {/* Like */}
+          <TouchableOpacity
+            style={[styles.actionButton, styles.likeButton]}
+            onPress={() => visibleProfiles[0] && handleSwipeRight(visibleProfiles[0])}
+            disabled={likeMutation.isPending || passMutation.isPending}
+          >
+            <Heart size={32} color={colors.success} fill={colors.success} />
+          </TouchableOpacity>
+
+          {/* Boost (Premium) */}
+          <TouchableOpacity
+            style={[styles.actionButton, styles.boostButton]}
+            onPress={handleBoost}
+          >
+            <Zap size={24} color={colors.accent} fill={colors.accent} />
           </TouchableOpacity>
         </View>
-      </View>
 
-      <View style={styles.cardContainer}>
-        <Animated.View
-          style={[
-            styles.card,
-            {
-              transform: [
-                { translateX: position.x },
-                { translateY: position.y },
-                { rotate: rotateCard },
-              ],
-            },
-          ]}
-          {...panResponder.panHandlers}
-        >
-          {/* Photo */}
-          <View style={styles.photoContainer}>
-            <Image
-              source={{ uri: primaryPhoto }}
-              style={styles.photo}
-              contentFit="cover"
-            />
-            <View style={styles.photoOverlay}>
-              <View style={styles.verificationBadges}>
-                {profile.phone_verified && (
-                  <View style={styles.badge}>
-                    <CheckCircle2 size={16} color={colors.success} />
-                  </View>
-                )}
-                {profile.email_verified && (
-                  <View style={styles.badge}>
-                    <CheckCircle2 size={16} color={colors.success} />
-                  </View>
-                )}
-                {profile.id_verified && (
-                  <View style={styles.badge}>
-                    <Shield size={16} color={colors.primary} />
-                  </View>
-                )}
-              </View>
-            </View>
-          </View>
-
-          {/* Info */}
-          <View style={styles.infoContainer}>
-            <View style={styles.nameRow}>
-              <Text style={styles.name}>{profile.full_name}</Text>
-              {profile.age && <Text style={styles.age}>{profile.age}</Text>}
-            </View>
-            
-            {profile.location_city && (
-              <View style={styles.locationRow}>
-                <MapPin size={14} color={colors.text.secondary} />
-                <Text style={styles.location}>
-                  {profile.location_city}
-                  {profile.distance_km && ` • ${Math.round(profile.distance_km)} km away`}
-                </Text>
-              </View>
-            )}
-
-            {profile.bio && (
-              <Text style={styles.bio} numberOfLines={3}>
-                {profile.bio}
-              </Text>
-            )}
-
-            {profile.interests && profile.interests.length > 0 && (
-              <View style={styles.interestsContainer}>
-                {profile.interests.slice(0, 5).map((interest: string, idx: number) => (
-                  <View key={idx} style={styles.interestTag}>
-                    <Text style={styles.interestText}>{interest}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
-          </View>
-        </Animated.View>
-
-        {/* Overlay indicators */}
-        <Animated.View style={[styles.likeOverlay, { opacity: likeOpacity }]}>
-          <Heart size={80} color={colors.success} fill={colors.success} />
-        </Animated.View>
-        <Animated.View style={[styles.passOverlay, { opacity: passOpacity }]}>
-          <X size={80} color={colors.error} />
-        </Animated.View>
-      </View>
-
-      {/* Action buttons */}
-      <View style={styles.actionsContainer}>
+        {/* Premium Badge */}
         <TouchableOpacity
-          style={[styles.actionButton, styles.passButton]}
-          onPress={handlePass}
-          disabled={likeMutation.isPending || passMutation.isPending}
+          style={styles.premiumBadge}
+          onPress={() => router.push('/dating/premium')}
         >
-          <X size={28} color={colors.error} />
+          <Crown size={16} color={colors.accent} fill={colors.accent} />
+          <Text style={styles.premiumText}>Go Premium</Text>
         </TouchableOpacity>
+      </Animated.View>
 
-        <TouchableOpacity
-          style={[styles.actionButton, styles.superLikeButton]}
-          onPress={() => {
-            if (profile) {
-              likeMutation.mutate({
-                likedUserId: profile.user_id,
-                isSuperLike: true,
-              });
-            }
-          }}
-          disabled={likeMutation.isPending || passMutation.isPending}
-        >
-          <Star size={24} color={colors.primary} fill={colors.primary} />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.actionButton, styles.likeButton]}
-          onPress={handleLike}
-          disabled={likeMutation.isPending || passMutation.isPending}
-        >
-          <Heart size={28} color={colors.success} fill={colors.success} />
-        </TouchableOpacity>
-      </View>
+      {/* Match Celebration Modal */}
+      <MatchCelebrationModal
+        visible={showMatchModal}
+        matchedUserName={matchedUser?.name || 'Someone'}
+        matchedUserPhoto={matchedUser?.photo}
+        currentUserPhoto={currentUser?.profilePicture}
+        onClose={() => {
+          setShowMatchModal(false);
+          handleSwipeComplete();
+        }}
+        onSendMessage={() => {
+          setShowMatchModal(false);
+          router.push('/dating/matches');
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -361,6 +375,9 @@ const createStyles = (colors: any) =>
       flex: 1,
       backgroundColor: colors.background.primary,
     },
+    content: {
+      flex: 1,
+    },
     header: {
       flexDirection: 'row',
       justifyContent: 'space-between',
@@ -369,11 +386,36 @@ const createStyles = (colors: any) =>
       paddingVertical: 16,
       borderBottomWidth: 1,
       borderBottomColor: colors.border.light,
+      backgroundColor: colors.background.primary,
+    },
+    headerLeft: {
+      width: 50,
+    },
+    headerCenter: {
+      flex: 1,
+      alignItems: 'center',
+    },
+    headerRight: {
+      width: 100,
+      alignItems: 'flex-end',
+    },
+    headerRightActions: {
+      flexDirection: 'row',
+      gap: 8,
     },
     headerTitle: {
-      fontSize: 28,
+      fontSize: 32,
       fontWeight: 'bold',
       color: colors.text.primary,
+      letterSpacing: -0.5,
+    },
+    headerIconButton: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: colors.background.secondary,
+      justifyContent: 'center',
+      alignItems: 'center',
     },
     headerActions: {
       flexDirection: 'row',
@@ -382,144 +424,11 @@ const createStyles = (colors: any) =>
     headerButton: {
       padding: 4,
     },
-    cardContainer: {
+    cardStackContainer: {
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
-      paddingHorizontal: 20,
-    },
-    card: {
-      width: CARD_WIDTH,
-      height: CARD_HEIGHT,
-      backgroundColor: colors.background.secondary,
-      borderRadius: 20,
-      overflow: 'hidden',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 8,
-      elevation: 8,
-    },
-    photoContainer: {
-      width: '100%',
-      height: '70%',
-      position: 'relative',
-    },
-    photo: {
-      width: '100%',
-      height: '100%',
-    },
-    photoOverlay: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      padding: 16,
-    },
-    verificationBadges: {
-      flexDirection: 'row',
-      gap: 8,
-    },
-    badge: {
-      backgroundColor: colors.background.primary,
-      borderRadius: 12,
-      padding: 4,
-    },
-    infoContainer: {
-      flex: 1,
-      padding: 20,
-    },
-    nameRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      marginBottom: 8,
-    },
-    name: {
-      fontSize: 24,
-      fontWeight: 'bold',
-      color: colors.text.primary,
-    },
-    age: {
-      fontSize: 24,
-      color: colors.text.secondary,
-    },
-    locationRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-      marginBottom: 12,
-    },
-    location: {
-      fontSize: 14,
-      color: colors.text.secondary,
-    },
-    bio: {
-      fontSize: 16,
-      color: colors.text.primary,
-      lineHeight: 22,
-      marginBottom: 12,
-    },
-    interestsContainer: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 8,
-    },
-    interestTag: {
-      backgroundColor: colors.primary + '20',
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 16,
-    },
-    interestText: {
-      fontSize: 12,
-      color: colors.primary,
-      fontWeight: '600',
-    },
-    likeOverlay: {
-      position: 'absolute',
-      top: '40%',
-      right: 40,
-      transform: [{ rotate: '15deg' }],
-    },
-    passOverlay: {
-      position: 'absolute',
-      top: '40%',
-      left: 40,
-      transform: [{ rotate: '-15deg' }],
-    },
-    actionsContainer: {
-      flexDirection: 'row',
-      justifyContent: 'center',
-      alignItems: 'center',
-      gap: 20,
-      paddingVertical: 24,
-      paddingBottom: 40,
-    },
-    actionButton: {
-      width: 60,
-      height: 60,
-      borderRadius: 30,
-      justifyContent: 'center',
-      alignItems: 'center',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.2,
-      shadowRadius: 4,
-      elevation: 4,
-    },
-    passButton: {
-      backgroundColor: colors.background.secondary,
-      borderWidth: 2,
-      borderColor: colors.error,
-    },
-    superLikeButton: {
-      backgroundColor: colors.background.secondary,
-      borderWidth: 2,
-      borderColor: colors.primary,
-    },
-    likeButton: {
-      backgroundColor: colors.success,
+      paddingHorizontal: 16,
     },
     loadingContainer: {
       flex: 1,
@@ -530,19 +439,24 @@ const createStyles = (colors: any) =>
     loadingText: {
       fontSize: 16,
       color: colors.text.secondary,
+      fontWeight: '500',
     },
     emptyContainer: {
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
       paddingHorizontal: 40,
-      gap: 16,
+      gap: 20,
+    },
+    iconContainer: {
+      marginBottom: 8,
     },
     emptyTitle: {
-      fontSize: 24,
+      fontSize: 28,
       fontWeight: 'bold',
       color: colors.text.primary,
       textAlign: 'center',
+      marginBottom: 8,
     },
     emptyText: {
       fontSize: 16,
@@ -552,21 +466,27 @@ const createStyles = (colors: any) =>
     },
     primaryButton: {
       backgroundColor: colors.primary,
-      paddingHorizontal: 32,
+      paddingHorizontal: 40,
       paddingVertical: 16,
-      borderRadius: 12,
+      borderRadius: 16,
       marginTop: 8,
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 6,
     },
     primaryButtonText: {
       color: '#fff',
-      fontSize: 16,
-      fontWeight: '600',
+      fontSize: 18,
+      fontWeight: '700',
+      letterSpacing: 0.5,
     },
     secondaryButton: {
       backgroundColor: colors.background.secondary,
       paddingHorizontal: 32,
-      paddingVertical: 16,
-      borderRadius: 12,
+      paddingVertical: 14,
+      borderRadius: 14,
       marginTop: 8,
       borderWidth: 1,
       borderColor: colors.border.light,
@@ -576,5 +496,73 @@ const createStyles = (colors: any) =>
       fontSize: 16,
       fontWeight: '600',
     },
+    actionsContainer: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: 12,
+      paddingVertical: 24,
+      paddingBottom: 32,
+      paddingHorizontal: 20,
+    },
+    actionButton: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      justifyContent: 'center',
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.2,
+      shadowRadius: 8,
+      elevation: 6,
+    },
+    rewindButton: {
+      backgroundColor: colors.background.secondary,
+      borderWidth: 2,
+      borderColor: colors.border.medium,
+    },
+    passButton: {
+      backgroundColor: '#fff',
+      borderWidth: 3,
+      borderColor: colors.danger,
+      width: 64,
+      height: 64,
+      borderRadius: 32,
+    },
+    superLikeButton: {
+      backgroundColor: '#fff',
+      borderWidth: 3,
+      borderColor: colors.primary,
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+    },
+    likeButton: {
+      backgroundColor: colors.success,
+      width: 64,
+      height: 64,
+      borderRadius: 32,
+    },
+    boostButton: {
+      backgroundColor: colors.background.secondary,
+      borderWidth: 2,
+      borderColor: colors.accent,
+    },
+    premiumBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      paddingVertical: 8,
+      paddingHorizontal: 16,
+      backgroundColor: colors.background.secondary,
+      borderTopWidth: 1,
+      borderTopColor: colors.border.light,
+    },
+    premiumText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.accent,
+    },
   });
-

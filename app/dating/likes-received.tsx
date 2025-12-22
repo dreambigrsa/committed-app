@@ -8,29 +8,20 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Animated,
-  Dimensions,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { MessageSquare, Sparkles, Heart, ArrowLeft, Calendar } from 'lucide-react-native';
+import { Stack, useRouter } from 'expo-router';
+import { Heart, Sparkles, Crown, ArrowLeft } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { trpc } from '@/lib/trpc';
 import { Image as ExpoImage } from 'expo-image';
-import { Stack } from 'expo-router';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-export default function MatchesScreen() {
+export default function LikesReceivedScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  const { data: matches, isLoading, refetch } = trpc.dating.getMatches.useQuery();
-  const unmatchMutation = trpc.dating.unmatch.useMutation({
-    onSuccess: () => {
-      refetch();
-    },
-  });
+  const { data: likes, isLoading, refetch } = trpc.dating.getLikesReceived.useQuery();
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -40,45 +31,29 @@ export default function MatchesScreen() {
     }).start();
   }, []);
 
-  const formatTimeAgo = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return new Date(dateString).toLocaleDateString();
-  };
-
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
-        <Stack.Screen options={{ title: 'Matches', headerShown: true }} />
+        <Stack.Screen options={{ title: 'Likes', headerShown: true }} />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading matches...</Text>
+          <Text style={styles.loadingText}>Loading likes...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  if (!matches || matches.length === 0) {
+  if (!likes || likes.length === 0) {
     return (
       <SafeAreaView style={styles.container}>
-        <Stack.Screen options={{ title: 'Matches', headerShown: true }} />
+        <Stack.Screen options={{ title: 'Likes', headerShown: true }} />
         <Animated.View style={[styles.emptyContainer, { opacity: fadeAnim }]}>
           <View style={styles.emptyIconContainer}>
-            <Sparkles size={80} color={colors.primary} />
+            <Heart size={80} color={colors.text.tertiary} />
           </View>
-          <Text style={styles.emptyTitle}>No Matches Yet</Text>
+          <Text style={styles.emptyTitle}>No Likes Yet</Text>
           <Text style={styles.emptyText}>
-            Start swiping to find your perfect match!{'\n'}
-            When you both like each other, you'll see them here.
+            Keep swiping! When someone likes you, they'll appear here.
           </Text>
           <TouchableOpacity
             style={styles.primaryButton}
@@ -91,14 +66,14 @@ export default function MatchesScreen() {
     );
   }
 
-  const renderMatch = ({ item, index }: { item: any; index: number }) => {
-    const matchedUser = item.matchedUser;
-    const photo = item.primaryPhoto || matchedUser?.profile_picture;
+  const renderLike = ({ item, index }: { item: any; index: number }) => {
+    const liker = item.liker;
+    const photo = item.primaryPhoto || liker?.profile_picture;
 
     return (
       <Animated.View
         style={[
-          styles.matchCard,
+          styles.likeCard,
           {
             opacity: fadeAnim,
             transform: [
@@ -113,72 +88,53 @@ export default function MatchesScreen() {
         ]}
       >
         <TouchableOpacity
-          style={styles.matchContent}
+          style={styles.likeContent}
           onPress={() => {
-            router.push(`/messages/${item.id}` as any);
+            // Navigate to their profile or like them back
+            router.push('/(tabs)/dating' as any);
           }}
           activeOpacity={0.9}
         >
-          <View style={styles.matchPhotoContainer}>
+          <View style={styles.likePhotoContainer}>
             <ExpoImage
               source={{ uri: photo }}
-              style={styles.matchPhoto}
+              style={styles.likePhoto}
               contentFit="cover"
             />
-            <View style={styles.matchBadge}>
-              <Sparkles size={16} color={colors.primary} fill={colors.primary} />
+            <View style={styles.likeBadge}>
+              <Heart size={16} color={colors.danger} fill={colors.danger} />
             </View>
           </View>
           
-          <View style={styles.matchInfo}>
-            <View style={styles.matchHeader}>
-              <Text style={styles.matchName}>{matchedUser?.full_name}</Text>
-              <View style={styles.matchSparkle}>
-                <Sparkles size={20} color={colors.primary} fill={colors.primary} />
-              </View>
+          <View style={styles.likeInfo}>
+            <View style={styles.likeHeader}>
+              <Text style={styles.likeName}>{liker?.full_name}</Text>
+              {item.is_super_like && (
+                <View style={styles.superLikeBadge}>
+                  <Sparkles size={16} color={colors.primary} fill={colors.primary} />
+                </View>
+              )}
             </View>
-            <Text style={styles.matchDate}>
-              Matched {formatTimeAgo(item.matched_at)}
+            <Text style={styles.likeDate}>
+              {new Date(item.created_at).toLocaleDateString()}
             </Text>
-            {matchedUser?.phone_verified && (
+            {liker?.phone_verified && (
               <View style={styles.verifiedBadge}>
                 <Text style={styles.verifiedText}>✓ Verified</Text>
               </View>
             )}
           </View>
 
-          <View style={styles.matchActions}>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={(e) => {
-                e.stopPropagation();
-                router.push({
-                  pathname: '/dating/create-date-request',
-                  params: { matchId: item.id },
-                } as any);
-              }}
-            >
-              <Calendar size={20} color={colors.accent} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={(e) => {
-                e.stopPropagation();
-                router.push('/dating/date-requests' as any);
-              }}
-            >
-              <Calendar size={20} color={colors.primary} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={(e) => {
-                e.stopPropagation();
-                router.push(`/messages/${item.id}` as any);
-              }}
-            >
-              <MessageSquare size={20} color={colors.primary} fill={colors.primary} />
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={styles.likeBackButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              // Like them back
+              router.push('/(tabs)/dating' as any);
+            }}
+          >
+            <Heart size={24} color={colors.success} fill={colors.success} />
+          </TouchableOpacity>
         </TouchableOpacity>
       </Animated.View>
     );
@@ -188,7 +144,7 @@ export default function MatchesScreen() {
     <SafeAreaView style={styles.container}>
       <Stack.Screen 
         options={{ 
-          title: 'Matches',
+          title: 'Likes',
           headerShown: true,
           headerStyle: {
             backgroundColor: colors.background.primary,
@@ -198,13 +154,17 @@ export default function MatchesScreen() {
       />
       <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
         <View style={styles.headerSection}>
-          <Text style={styles.headerTitle}>Your Matches</Text>
-          <Text style={styles.headerSubtitle}>{matches.length} {matches.length === 1 ? 'match' : 'matches'}</Text>
+          <View style={styles.premiumBanner}>
+            <Crown size={20} color={colors.accent} fill={colors.accent} />
+            <Text style={styles.premiumText}>Premium Feature</Text>
+          </View>
+          <Text style={styles.headerTitle}>People Who Liked You</Text>
+          <Text style={styles.headerSubtitle}>{likes.length} {likes.length === 1 ? 'like' : 'likes'}</Text>
         </View>
         
         <FlatList
-          data={matches}
-          renderItem={renderMatch}
+          data={likes}
+          renderItem={renderLike}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
@@ -228,6 +188,23 @@ const createStyles = (colors: any) =>
       paddingVertical: 20,
       borderBottomWidth: 1,
       borderBottomColor: colors.border.light,
+    },
+    premiumBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      alignSelf: 'flex-start',
+      backgroundColor: colors.accent + '15',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 16,
+      marginBottom: 12,
+    },
+    premiumText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.accent,
+      letterSpacing: 0.5,
     },
     headerTitle: {
       fontSize: 32,
@@ -297,7 +274,7 @@ const createStyles = (colors: any) =>
       padding: 20,
       paddingTop: 16,
     },
-    matchCard: {
+    likeCard: {
       marginBottom: 16,
       backgroundColor: colors.background.secondary,
       borderRadius: 20,
@@ -308,12 +285,12 @@ const createStyles = (colors: any) =>
       shadowRadius: 12,
       elevation: 4,
     },
-    matchContent: {
+    likeContent: {
       flexDirection: 'row',
       alignItems: 'center',
       padding: 16,
     },
-    matchPhotoContainer: {
+    likePhotoContainer: {
       width: 80,
       height: 80,
       borderRadius: 40,
@@ -321,13 +298,13 @@ const createStyles = (colors: any) =>
       marginRight: 16,
       position: 'relative',
       borderWidth: 3,
-      borderColor: colors.primary + '30',
+      borderColor: colors.danger + '30',
     },
-    matchPhoto: {
+    likePhoto: {
       width: '100%',
       height: '100%',
     },
-    matchBadge: {
+    likeBadge: {
       position: 'absolute',
       top: -2,
       right: -2,
@@ -340,24 +317,24 @@ const createStyles = (colors: any) =>
       shadowRadius: 4,
       elevation: 4,
     },
-    matchInfo: {
+    likeInfo: {
       flex: 1,
     },
-    matchHeader: {
+    likeHeader: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
       marginBottom: 6,
     },
-    matchName: {
+    likeName: {
       fontSize: 20,
       fontWeight: 'bold',
       color: colors.text.primary,
     },
-    matchSparkle: {
+    superLikeBadge: {
       opacity: 0.7,
     },
-    matchDate: {
+    likeDate: {
       fontSize: 14,
       color: colors.text.secondary,
       marginBottom: 8,
@@ -374,18 +351,13 @@ const createStyles = (colors: any) =>
       fontWeight: '600',
       color: colors.badge.verifiedText,
     },
-    matchActions: {
-      flexDirection: 'row',
-      gap: 8,
-    },
-    actionButton: {
-      width: 48,
-      height: 48,
-      borderRadius: 24,
-      backgroundColor: colors.background.secondary,
+    likeBackButton: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      backgroundColor: colors.success + '15',
       justifyContent: 'center',
       alignItems: 'center',
-      borderWidth: 1,
-      borderColor: colors.border.light,
     },
   });
+

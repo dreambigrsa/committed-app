@@ -13,20 +13,20 @@ import {
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Plus, X, MapPin } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useApp } from '@/contexts/AppContext';
 import { trpc } from '@/lib/trpc';
 import * as ImagePicker from 'expo-image-picker';
 import { Image as ExpoImage } from 'expo-image';
 import * as Location from 'expo-location';
+import * as FileSystem from 'expo-file-system/legacy';
+import { supabase } from '@/lib/supabase';
 
 const RELATIONSHIP_GOALS = ['Long-term', 'Short-term', 'Friendship', 'Marriage', 'Casual'];
-const INTERESTS = [
-  'Travel', 'Music', 'Sports', 'Reading', 'Cooking', 'Movies', 'Gaming',
-  'Fitness', 'Art', 'Photography', 'Dancing', 'Hiking', 'Yoga', 'Food',
-];
 
 export default function ProfileSetupScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const { currentUser } = useApp();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const { data: existingProfile, isLoading: loadingProfile } = trpc.dating.getProfile.useQuery();
@@ -42,17 +42,21 @@ export default function ProfileSetupScreen() {
 
   const uploadPhotoMutation = trpc.dating.uploadPhoto.useMutation();
   const deletePhotoMutation = trpc.dating.deletePhoto.useMutation();
+  const uploadVideoMutation = trpc.dating.uploadVideo.useMutation();
+  const { data: interestsData } = trpc.dating.getInterests.useQuery();
 
   const [bio, setBio] = useState('');
   const [age, setAge] = useState('');
   const [locationCity, setLocationCity] = useState('');
   const [relationshipGoals, setRelationshipGoals] = useState<string[]>([]);
   const [interests, setInterests] = useState<string[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [lookingFor, setLookingFor] = useState<'men' | 'women' | 'everyone'>('everyone');
   const [ageRangeMin, setAgeRangeMin] = useState('18');
   const [ageRangeMax, setAgeRangeMax] = useState('99');
   const [maxDistanceKm, setMaxDistanceKm] = useState('50');
   const [photos, setPhotos] = useState<Array<{ id?: string; url: string; isPrimary: boolean }>>([]);
+  const [videos, setVideos] = useState<Array<{ id?: string; url: string; thumbnailUrl?: string; duration?: number; isPrimary: boolean }>>([]);
   const [isActive, setIsActive] = useState(true);
 
   useEffect(() => {
@@ -80,38 +84,192 @@ export default function ProfileSetupScreen() {
     }
   }, [existingProfile]);
 
-  const handlePickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Please grant camera roll permissions');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 5],
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      // In production, upload to Supabase Storage first
-      // For now, using the URI directly
-      const newPhoto = { url: asset.uri, isPrimary: photos.length === 0 };
+  const uploadImageToStorage = async (uri: string): Promise<string> => {
+    try {
+      const fileName = `dating/${currentUser?.id}/${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
       
-      uploadPhotoMutation.mutate(
-        {
-          photoUrl: asset.uri,
-          displayOrder: photos.length,
-          isPrimary: photos.length === 0,
-        },
-        {
-          onSuccess: (data) => {
-            setPhotos([...photos, { id: data.id, url: asset.uri, isPrimary: photos.length === 0 }]);
-          },
+      // Check if it's a local file URI
+      let fileData: Uint8Array;
+      
+      if (uri.startsWith('file://') || uri.startsWith('ph://') || uri.startsWith('content://')) {
+        // Read local file using FileSystem
+        const base64 = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        
+        // Convert base64 to Uint8Array
+        const binaryString = atob(base64);
+        fileData = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          fileData[i] = binaryString.charCodeAt(i);
         }
-      );
+      } else {
+        // Remote URL - fetch and convert to Uint8Array
+        const response = await fetch(uri);
+        const arrayBuffer = await response.arrayBuffer();
+        fileData = new Uint8Array(arrayBuffer);
+      }
+
+      const { data, error } = await supabase.storage
+        .from('media')
+        .upload(fileName, fileData, {
+          contentType: 'image/jpeg',
+          upsert: false,
+        });
+
+      if (error) throw error;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('media')
+        .getPublicUrl(data.path);
+
+      return publicUrl;
+    } catch (error: any) {
+      console.error('Failed to upload image:', error);
+      throw new Error(`Failed to upload image: ${error.message || 'Unknown error'}`);
+    }
+  };
+
+  const handlePickImage = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please grant camera roll permissions');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 5],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        
+        // Upload to Supabase Storage first
+        const uploadedUrl = await uploadImageToStorage(asset.uri);
+        
+        // Then save to database
+        uploadPhotoMutation.mutate(
+          {
+            photoUrl: uploadedUrl,
+            displayOrder: photos.length,
+            isPrimary: photos.length === 0,
+          },
+          {
+            onSuccess: (data) => {
+              setPhotos([...photos, { id: data.id, url: uploadedUrl, isPrimary: photos.length === 0 }]);
+            },
+            onError: (error) => {
+              console.error('Upload photo error:', error);
+              Alert.alert('Error', error.message || 'Failed to save photo. Make sure the backend server is running.');
+            },
+          }
+        );
+      }
+    } catch (error: any) {
+      console.error('Error picking/uploading image:', error);
+      Alert.alert('Error', error.message || 'Failed to upload photo. Please try again.');
+    }
+  };
+
+  const uploadVideoToStorage = async (uri: string): Promise<string> => {
+    try {
+      const fileName = `dating/videos/${currentUser?.id}/${Date.now()}_${Math.random().toString(36).substring(7)}.mp4`;
+      
+      let fileData: Uint8Array;
+      
+      if (uri.startsWith('file://') || uri.startsWith('ph://') || uri.startsWith('content://')) {
+        const base64 = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        
+        const binaryString = atob(base64);
+        fileData = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          fileData[i] = binaryString.charCodeAt(i);
+        }
+      } else {
+        const response = await fetch(uri);
+        const arrayBuffer = await response.arrayBuffer();
+        fileData = new Uint8Array(arrayBuffer);
+      }
+
+      const { data, error } = await supabase.storage
+        .from('media')
+        .upload(fileName, fileData, {
+          contentType: 'video/mp4',
+          upsert: false,
+        });
+
+      if (error) throw error;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('media')
+        .getPublicUrl(data.path);
+
+      return publicUrl;
+    } catch (error: any) {
+      console.error('Failed to upload video:', error);
+      throw new Error(`Failed to upload video: ${error.message || 'Unknown error'}`);
+    }
+  };
+
+  const handlePickVideo = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please grant camera roll permissions');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        allowsEditing: true,
+        quality: 0.8,
+        videoMaxDuration: 30, // 30 seconds max
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        
+        // Upload video to Supabase Storage
+        const uploadedUrl = await uploadVideoToStorage(asset.uri);
+        
+        // Generate thumbnail (simplified - in production, use a video processing library)
+        const thumbnailUrl = uploadedUrl; // Placeholder - should generate actual thumbnail
+        
+        // Upload video metadata
+        uploadVideoMutation.mutate(
+          {
+            videoUrl: uploadedUrl,
+            thumbnailUrl,
+            durationSeconds: asset.duration ? Math.floor(asset.duration / 1000) : undefined,
+            displayOrder: videos.length,
+            isPrimary: videos.length === 0,
+          },
+          {
+            onSuccess: (data) => {
+              setVideos([...videos, {
+                id: data.id,
+                url: uploadedUrl,
+                thumbnailUrl,
+                duration: asset.duration ? Math.floor(asset.duration / 1000) : undefined,
+                isPrimary: videos.length === 0,
+              }]);
+            },
+            onError: (error) => {
+              console.error('Upload video error:', error);
+              Alert.alert('Error', error.message || 'Failed to save video.');
+            },
+          }
+        );
+      }
+    } catch (error: any) {
+      console.error('Error picking/uploading video:', error);
+      Alert.alert('Error', error.message || 'Failed to upload video. Please try again.');
     }
   };
 
@@ -126,10 +284,10 @@ export default function ProfileSetupScreen() {
     const [lat, lng] = [location.coords.latitude, location.coords.longitude];
 
     // Reverse geocode to get city name
-    const geocode = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
-    if (geocode.length > 0) {
-      const city = geocode[0].city || geocode[0].subAdministrativeArea || '';
-      setLocationCity(city);
+      const geocode = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
+      if (geocode.length > 0) {
+        const city = geocode[0].city || geocode[0].region || geocode[0].name || '';
+        setLocationCity(city);
 
       createOrUpdateMutation.mutate({
         locationCity: city,
@@ -298,23 +456,60 @@ export default function ProfileSetupScreen() {
         {/* Interests */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Interests</Text>
-          <View style={styles.tagsContainer}>
-            {INTERESTS.map((interest) => (
+          
+          {/* Category Filter */}
+          {interestsData && interestsData.categories.length > 0 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.categoryScroll}
+              contentContainerStyle={styles.categoryContainer}
+            >
               <TouchableOpacity
-                key={interest}
+                style={[styles.categoryChip, selectedCategory === 'all' && styles.categoryChipActive]}
+                onPress={() => setSelectedCategory('all')}
+              >
+                <Text style={[styles.categoryText, selectedCategory === 'all' && styles.categoryTextActive]}>
+                  All
+                </Text>
+              </TouchableOpacity>
+              {interestsData.categories.map((cat) => (
+                <TouchableOpacity
+                  key={cat}
+                  style={[styles.categoryChip, selectedCategory === cat && styles.categoryChipActive]}
+                  onPress={() => setSelectedCategory(cat)}
+                >
+                  <Text style={[styles.categoryText, selectedCategory === cat && styles.categoryTextActive]}>
+                    {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+
+          <View style={styles.tagsContainer}>
+            {interestsData && (selectedCategory === 'all' 
+              ? interestsData.all 
+              : interestsData.grouped[selectedCategory] || []
+            ).map((interest: any) => (
+              <TouchableOpacity
+                key={interest.id}
                 style={[
                   styles.tag,
-                  interests.includes(interest) && styles.tagSelected,
+                  interests.includes(interest.name) && styles.tagSelected,
                 ]}
-                onPress={() => toggleInterest(interest)}
+                onPress={() => toggleInterest(interest.name)}
               >
+                {interest.icon_emoji && (
+                  <Text style={styles.tagIcon}>{interest.icon_emoji}</Text>
+                )}
                 <Text
                   style={[
                     styles.tagText,
-                    interests.includes(interest) && styles.tagTextSelected,
+                    interests.includes(interest.name) && styles.tagTextSelected,
                   ]}
                 >
-                  {interest}
+                  {interest.name}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -527,6 +722,38 @@ const createStyles = (colors: any) =>
       color: colors.text.primary,
     },
     tagTextSelected: {
+      color: '#fff',
+    },
+    tagIcon: {
+      fontSize: 16,
+      marginRight: 4,
+    },
+    categoryScroll: {
+      marginBottom: 12,
+    },
+    categoryContainer: {
+      paddingVertical: 8,
+      gap: 8,
+    },
+    categoryChip: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 20,
+      backgroundColor: colors.background.secondary,
+      borderWidth: 1,
+      borderColor: colors.border.light,
+      marginRight: 8,
+    },
+    categoryChipActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    categoryText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.text.primary,
+    },
+    categoryTextActive: {
       color: '#fff',
     },
     preferenceRow: {

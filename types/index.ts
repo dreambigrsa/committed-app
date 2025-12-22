@@ -73,7 +73,7 @@ export interface SearchResult {
   };
 }
 
-export type NotificationType = 'relationship_request' | 'cheating_alert' | 'relationship_verified' | 'relationship_ended' | 'relationship_end_request' | 'post_like' | 'post_comment' | 'message' | 'follow' | 'anniversary_reminder' | 'verification_attempt' | 'status_reaction';
+export type NotificationType = 'relationship_request' | 'cheating_alert' | 'relationship_verified' | 'relationship_ended' | 'relationship_end_request' | 'post_like' | 'post_comment' | 'message' | 'follow' | 'anniversary_reminder' | 'verification_attempt' | 'status_reaction' | 'dating_match' | 'dating_like' | 'dating_super_like';
 
 export interface Notification {
   id: string;
@@ -610,4 +610,89 @@ export interface ProfessionalApplication {
   // Joined data
   role?: ProfessionalRole;
   user?: User;
+}
+
+// ============================================
+// DATING SYSTEM TYPES
+// ============================================
+
+export interface DatingProfile {
+  id: string;
+  userId: string;
+  bio?: string;
+  age?: number;
+  dateOfBirth?: string;
+  locationCity?: string;
+  locationCountry?: string;
+  locationLatitude?: number;
+  locationLongitude?: number;
+  locationUpdatedAt?: string;
+  relationshipGoals: string[];
+  interests: string[];
+  lookingFor: 'men' | 'women' | 'everyone';
+  ageRangeMin: number;
+  ageRangeMax: number;
+  maxDistanceKm: number;
+  isActive: boolean;
+  showMe: boolean;
+  lastActiveAt: string;
+  createdAt: string;
+  updatedAt: string;
+  // Joined data
+  photos?: DatingPhoto[];
+  user?: User;
+}
+
+export interface DatingPhoto {
+  id: string;
+  datingProfileId: string;
+  photoUrl: string;
+  displayOrder: number;
+  isPrimary: boolean;
+  createdAt: string;
+}
+
+export interface DatingLike {
+  id: string;
+  likerId: string;
+  likedId: string;
+  isSuperLike: boolean;
+  createdAt: string;
+}
+
+export interface DatingMatch {
+  id: string;
+  user1Id: string;
+  user2Id: string;
+  matchedAt: string;
+  lastMessageAt?: string;
+  isUnmatched: boolean;
+  unmatchedAt?: string;
+  unmatchedBy?: string;
+  // Joined data
+  matchedUser?: User;
+  matchedUserProfile?: DatingProfile;
+}
+
+export interface DatingPass {
+  id: string;
+  passerId: string;
+  passedId: string;
+  createdAt: string;
+}
+
+export interface DatingDiscoveryUser {
+  userId: string;
+  fullName: string;
+  profilePicture?: string;
+  bio?: string;
+  age?: number;
+  locationCity?: string;
+  distanceKm?: number;
+  photos: DatingPhoto[];
+  phoneVerified: boolean;
+  emailVerified: boolean;
+  idVerified: boolean;
+  relationshipGoals: string[];
+  interests: string[];
 }

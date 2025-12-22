@@ -10,7 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Heart, Check, X, AlertTriangle, MessageCircle, Bell, UserPlus, CheckCircle2, Trash2 } from 'lucide-react-native';
+import { Heart, Check, X, AlertTriangle, MessageCircle, Bell, UserPlus, CheckCircle2, Trash2, Sparkles, Star } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Notification, NotificationType } from '@/types';
@@ -82,6 +82,12 @@ export default function NotificationsScreen() {
         return <MessageCircle size={24} color={colors.primary} />;
       case 'follow':
         return <UserPlus size={24} color={colors.secondary} />;
+      case 'dating_match':
+        return <Sparkles size={24} color={colors.primary} fill={colors.primary} />;
+      case 'dating_like':
+        return <Heart size={24} color={colors.danger} />;
+      case 'dating_super_like':
+        return <Star size={24} color={colors.primary} fill={colors.primary} />;
       default:
         return <Bell size={24} color={colors.text.secondary} />;
     }
@@ -168,6 +174,17 @@ export default function NotificationsScreen() {
         break;
       case 'relationship_request':
         setActiveTab('requests');
+        break;
+      case 'dating_match':
+        if (data.match_id) {
+          router.push('/dating/matches' as any);
+        }
+        break;
+      case 'dating_like':
+      case 'dating_super_like':
+        if (data.liker_id) {
+          router.push('/(tabs)/dating' as any);
+        }
         break;
       default:
         // For other types, just mark as read

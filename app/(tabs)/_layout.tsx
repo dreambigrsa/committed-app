@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import { Home, Search, User, MessageSquare, Film, Heart } from "lucide-react-native";
+import { Home, Search, User, MessageSquare, Film, Heart, Sparkles } from "lucide-react-native";
 import React from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -64,6 +64,15 @@ export default function TabLayout() {
           title: "Reels",
           tabBarIcon: ({ color, focused }) => (
             <Film size={focused ? 26 : 24} color={color} strokeWidth={focused ? 2.5 : 2} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="dating"
+        options={{
+          title: "Dating",
+          tabBarIcon: ({ color, focused }) => (
+            <Sparkles size={focused ? 26 : 24} color={color} strokeWidth={focused ? 2.5 : 2} />
           ),
         }}
       />

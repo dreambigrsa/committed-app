@@ -22,6 +22,15 @@ import {
   detectDuplicateRelationshipsProcedure,
   checkCheatingPatternProcedure,
 } from "./routes/fraud/detect-duplicates";
+import { getDiscoveryProcedure } from "./routes/dating/get-discovery";
+import { getDatingProfileProcedure } from "./routes/dating/get-profile";
+import { createOrUpdateDatingProfileProcedure } from "./routes/dating/create-or-update-profile";
+import { likeUserProcedure } from "./routes/dating/like-user";
+import { passUserProcedure } from "./routes/dating/pass-user";
+import { getMatchesProcedure } from "./routes/dating/get-matches";
+import { unmatchProcedure } from "./routes/dating/unmatch";
+import { uploadDatingPhotoProcedure } from "./routes/dating/upload-photo";
+import { deleteDatingPhotoProcedure } from "./routes/dating/delete-photo";
 
 export const appRouter = createTRPCRouter({
   example: createTRPCRouter({
@@ -56,6 +65,17 @@ export const appRouter = createTRPCRouter({
   fraud: createTRPCRouter({
     detectDuplicates: detectDuplicateRelationshipsProcedure,
     checkCheatingPattern: checkCheatingPatternProcedure,
+  }),
+  dating: createTRPCRouter({
+    getDiscovery: getDiscoveryProcedure,
+    getProfile: getDatingProfileProcedure,
+    createOrUpdateProfile: createOrUpdateDatingProfileProcedure,
+    likeUser: likeUserProcedure,
+    passUser: passUserProcedure,
+    getMatches: getMatchesProcedure,
+    unmatch: unmatchProcedure,
+    uploadPhoto: uploadDatingPhotoProcedure,
+    deletePhoto: deleteDatingPhotoProcedure,
   }),
 });
 

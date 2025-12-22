@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   Animated,
 } from 'react-native';
-import { Bell, X, Heart, MessageCircle, UserPlus, AlertTriangle } from 'lucide-react-native';
+import { Bell, X, Heart, MessageCircle, UserPlus, AlertTriangle, Sparkles, Star } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -119,6 +119,12 @@ export default function NotificationToast() {
         return <MessageCircle size={20} color={colors.primary} />;
       case 'follow':
         return <UserPlus size={20} color={colors.secondary} />;
+      case 'dating_match':
+        return <Sparkles size={20} color={colors.primary} fill={colors.primary} />;
+      case 'dating_like':
+        return <Heart size={20} color={colors.danger} />;
+      case 'dating_super_like':
+        return <Star size={20} color={colors.primary} fill={colors.primary} />;
       default:
         return <Bell size={20} color={colors.text.secondary} />;
     }

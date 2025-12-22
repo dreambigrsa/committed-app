@@ -167,15 +167,23 @@ export default function ProfileSetupScreen() {
               onError: (error: any) => {
                 console.error('Upload photo error:', error);
                 const errorMessage = error?.message || error?.data?.message || String(error);
+                const errorString = String(error).toLowerCase();
                 
-                if (errorMessage.includes('Failed to fetch') || errorMessage.includes('Network') || errorMessage.includes('ECONNREFUSED')) {
+                if (
+                  errorMessage.includes('Failed to fetch') || 
+                  errorMessage.includes('Network') || 
+                  errorMessage.includes('ECONNREFUSED') ||
+                  errorMessage.includes('network request failed') ||
+                  errorString.includes('failed to fetch') ||
+                  errorString.includes('network')
+                ) {
                   Alert.alert(
                     'Connection Error',
                     'Could not connect to the backend server.\n\nPlease make sure the server is running:\n\n1. Open a terminal\n2. Run: bun run start:api\n3. Wait for "listening on http://localhost:3000"\n4. Try uploading again',
                     [{ text: 'OK' }]
                   );
                 } else {
-                  Alert.alert('Error', errorMessage);
+                  Alert.alert('Error', errorMessage || 'Failed to save photo. Please try again.');
                 }
               },
             }

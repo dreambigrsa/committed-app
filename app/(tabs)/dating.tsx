@@ -35,38 +35,65 @@ export default function DatingScreen() {
   const [matchedUser, setMatchedUser] = useState<any>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  // Get discovery feed
-  const { data: discovery, isLoading, refetch } = trpc.dating.getDiscovery.useQuery(
-    { limit: 50 },
-    { enabled: !!currentUser }
-  );
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [discovery, setDiscovery] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Get user's dating profile
-  const { data: userProfile } = trpc.dating.getProfile.useQuery(undefined, {
-    enabled: !!currentUser,
-  });
+  // Load user profile and discovery feed
+  useEffect(() => {
+    const loadData = async () => {
+      if (!currentUser) {
+        setIsLoading(false);
+        return;
+      }
 
-  // Get subscription status (for premium features)
-  const { data: subscription } = trpc.dating.getProfile.useQuery(undefined, {
-    enabled: !!currentUser,
-    select: (data) => data, // Will check subscription later
-  });
+      try {
+        setIsLoading(true);
+        const profile = await DatingService.getDatingProfile().catch(() => null);
+        setUserProfile(profile);
 
-  // Mutations
-  const likeMutation = trpc.dating.likeUser.useMutation({
-    onSuccess: (data, variables) => {
-      if (data.isMatch) {
+        if (profile) {
+          // Only load discovery if profile exists
+          const discoveryData = await DatingService.getDatingDiscovery();
+          // Normalize data structure for components
+          const normalizedProfiles = (discoveryData.profiles || []).map((p: any) => ({
+            ...p,
+            full_name: p.user?.full_name || p.full_name,
+            profile_picture: p.user?.profile_picture || p.profile_picture,
+            user_id: p.user?.id || p.user_id,
+            verified: p.user?.verified || false,
+            email_verified: p.user?.email_verified || false,
+            phone_verified: p.user?.phone_verified || false,
+            id_verified: p.user?.id_verified || false,
+          }));
+          setDiscovery(normalizedProfiles);
+        }
+      } catch (error: any) {
+        console.error('Error loading dating data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
+  }, [currentUser]);
+
+  const handleLike = async (likedUserId: string, isSuperLike: boolean = false) => {
+    try {
+      const result = await DatingService.likeUser(likedUserId, isSuperLike);
+      
+      if (result.isMatch) {
         // Show match celebration modal
         const matchedProfile = discovery?.find((p: any) => {
-          const userId = p.user_id || p.userId;
-          return userId === variables.likedUserId;
+          const userId = p.user_id || p.user?.id;
+          return userId === likedUserId;
         });
         
         if (matchedProfile) {
           const photos = matchedProfile.photos || [];
           setMatchedUser({
-            name: matchedProfile.full_name || matchedProfile.fullName || 'Someone',
-            photo: photos[0]?.photo_url || photos[0]?.photoUrl || matchedProfile.profile_picture || matchedProfile.profilePicture,
+            name: matchedProfile.user?.full_name || matchedProfile.full_name || 'Someone',
+            photo: photos[0]?.photo_url || matchedProfile.user?.profile_picture,
           });
         } else {
           setMatchedUser({
@@ -79,21 +106,19 @@ export default function DatingScreen() {
       } else {
         handleSwipeComplete();
       }
-    },
-    onError: (error) => {
-      Alert.alert('Error', error.message);
-      // Don't advance if error
-    },
-  });
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to like user');
+    }
+  };
 
-  const passMutation = trpc.dating.passUser.useMutation({
-    onSuccess: () => {
+  const handlePass = async (passedUserId: string) => {
+    try {
+      await DatingService.passUser(passedUserId);
       handleSwipeComplete();
-    },
-    onError: (error) => {
-      Alert.alert('Error', error.message);
-    },
-  });
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to pass user');
+    }
+  };
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -108,30 +133,24 @@ export default function DatingScreen() {
   };
 
   const handleSwipeLeft = (profile: any) => {
-    const userId = (profile as any).user_id || profile.userId;
+    const userId = (profile as any).user_id || profile.user?.id || profile.userId;
     if (swipedProfiles.has(userId)) return;
     setSwipedProfiles((prev) => new Set(prev).add(userId));
-    passMutation.mutate({ passedUserId: userId });
+    handlePass(userId);
   };
 
   const handleSwipeRight = (profile: any) => {
-    const userId = (profile as any).user_id || profile.userId;
+    const userId = (profile as any).user_id || profile.user?.id || profile.userId;
     if (swipedProfiles.has(userId)) return;
     setSwipedProfiles((prev) => new Set(prev).add(userId));
-    likeMutation.mutate({
-      likedUserId: userId,
-      isSuperLike: false,
-    });
+    handleLike(userId, false);
   };
 
   const handleSuperLike = (profile: any) => {
-    const userId = (profile as any).user_id || profile.userId;
+    const userId = (profile as any).user_id || profile.user?.id || profile.userId;
     if (swipedProfiles.has(userId)) return;
     setSwipedProfiles((prev) => new Set(prev).add(userId));
-    likeMutation.mutate({
-      likedUserId: userId,
-      isSuperLike: true,
-    });
+    handleLike(userId, true);
   };
 
   const handleRewind = () => {
@@ -233,7 +252,19 @@ export default function DatingScreen() {
             onPress={() => {
               setCurrentIndex(0);
               setSwipedProfiles(new Set());
-              refetch();
+              DatingService.getDatingDiscovery().then(data => {
+                const normalizedProfiles = (data.profiles || []).map((p: any) => ({
+                  ...p,
+                  full_name: p.user?.full_name || p.full_name,
+                  profile_picture: p.user?.profile_picture || p.profile_picture,
+                  user_id: p.user?.id || p.user_id,
+                  verified: p.user?.verified || false,
+                  email_verified: p.user?.email_verified || false,
+                  phone_verified: p.user?.phone_verified || false,
+                  id_verified: p.user?.id_verified || false,
+                }));
+                setDiscovery(normalizedProfiles);
+              }).catch(console.error);
             }}
           >
             <Text style={styles.secondaryButtonText}>Refresh</Text>
@@ -300,7 +331,7 @@ export default function DatingScreen() {
           <TouchableOpacity
             style={[styles.actionButton, styles.rewindButton]}
             onPress={handleRewind}
-            disabled={currentIndex === 0 || likeMutation.isPending || passMutation.isPending}
+            disabled={currentIndex === 0}
           >
             <RotateCcw size={24} color={colors.text.secondary} />
           </TouchableOpacity>
@@ -309,7 +340,7 @@ export default function DatingScreen() {
           <TouchableOpacity
             style={[styles.actionButton, styles.passButton]}
             onPress={() => visibleProfiles[0] && handleSwipeLeft(visibleProfiles[0])}
-            disabled={likeMutation.isPending || passMutation.isPending}
+            disabled={false}
           >
             <X size={32} color={colors.danger} strokeWidth={3} />
           </TouchableOpacity>
@@ -318,7 +349,7 @@ export default function DatingScreen() {
           <TouchableOpacity
             style={[styles.actionButton, styles.superLikeButton]}
             onPress={() => visibleProfiles[0] && handleSuperLike(visibleProfiles[0])}
-            disabled={likeMutation.isPending || passMutation.isPending}
+            disabled={false}
           >
             <Star size={28} color={colors.primary} fill={colors.primary} />
           </TouchableOpacity>
@@ -327,7 +358,7 @@ export default function DatingScreen() {
           <TouchableOpacity
             style={[styles.actionButton, styles.likeButton]}
             onPress={() => visibleProfiles[0] && handleSwipeRight(visibleProfiles[0])}
-            disabled={likeMutation.isPending || passMutation.isPending}
+            disabled={false}
           >
             <Heart size={32} color={colors.success} fill={colors.success} />
           </TouchableOpacity>

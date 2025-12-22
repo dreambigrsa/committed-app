@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import { Heart, X, Star, Settings, Users, Sparkles, Zap, RotateCcw, Crown } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { trpc } from '@/lib/trpc';
+import * as DatingService from '@/lib/dating-service';
 import { useApp } from '@/contexts/AppContext';
 import DatingSwipeCard from '@/components/DatingSwipeCard';
 import MatchCelebrationModal from '@/components/MatchCelebrationModal';

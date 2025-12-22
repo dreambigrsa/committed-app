@@ -15,6 +15,7 @@ import { ArrowLeft, Plus, X, MapPin } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
 import { trpc } from '@/lib/trpc';
+import * as DatingService from '@/lib/dating-service';
 import * as ImagePicker from 'expo-image-picker';
 import { Image as ExpoImage } from 'expo-image';
 import * as Location from 'expo-location';
@@ -29,21 +30,35 @@ export default function ProfileSetupScreen() {
   const { currentUser } = useApp();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  const { data: existingProfile, isLoading: loadingProfile } = trpc.dating.getProfile.useQuery();
-  const createOrUpdateMutation = trpc.dating.createOrUpdateProfile.useMutation({
-    onSuccess: () => {
-      Alert.alert('Success', 'Profile updated successfully!');
-      router.back();
-    },
-    onError: (error) => {
-      Alert.alert('Error', error.message);
-    },
-  });
+  const [existingProfile, setExistingProfile] = useState<any>(null);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [interestsData, setInterestsData] = useState<{
+    all: any[];
+    grouped: Record<string, any[]>;
+    categories: string[];
+  } | null>(null);
 
-  const uploadPhotoMutation = trpc.dating.uploadPhoto.useMutation();
+  // Load profile and interests on mount
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoadingProfile(true);
+        const [profile, interests] = await Promise.all([
+          DatingService.getDatingProfile().catch(() => null),
+          DatingService.getDatingInterests(),
+        ]);
+        setExistingProfile(profile);
+        setInterestsData(interests);
+      } catch (error: any) {
+        console.error('Error loading data:', error);
+      } finally {
+        setLoadingProfile(false);
+      }
+    };
+    loadData();
+  }, []);
+
   const deletePhotoMutation = trpc.dating.deletePhoto.useMutation();
-  const uploadVideoMutation = trpc.dating.uploadVideo.useMutation();
-  const { data: interestsData } = trpc.dating.getInterests.useQuery();
 
   const [bio, setBio] = useState('');
   const [age, setAge] = useState('');
@@ -152,45 +167,63 @@ export default function ProfileSetupScreen() {
           // Upload to Supabase Storage first
           const uploadedUrl = await uploadImageToStorage(asset.uri);
           
-          // Then save to database
-          uploadPhotoMutation.mutate(
-            {
-              photoUrl: uploadedUrl,
-              displayOrder: photos.length,
-              isPrimary: photos.length === 0,
-            },
-            {
-              onSuccess: (data) => {
-                setPhotos([...photos, { id: data.id, url: uploadedUrl, isPrimary: photos.length === 0 }]);
-                Alert.alert('Success', 'Photo uploaded successfully!');
-              },
-              onError: (error: any) => {
-                console.error('Upload photo error:', error);
-                const errorMessage = error?.message || error?.data?.message || String(error);
-                const errorString = String(error).toLowerCase();
-                
-                if (
-                  errorMessage.includes('Failed to fetch') || 
-                  errorMessage.includes('Network') || 
-                  errorMessage.includes('ECONNREFUSED') ||
-                  errorMessage.includes('network request failed') ||
-                  errorString.includes('failed to fetch') ||
-                  errorString.includes('network')
-                ) {
-                  Alert.alert(
-                    'Connection Error',
-                    'Could not connect to the backend server.\n\nFor physical devices:\n1. Find your computer\'s IP address:\n   - Windows: ipconfig\n   - Mac/Linux: ifconfig\n2. Create a .env file with:\n   EXPO_PUBLIC_COMMITTED_API_BASE_URL=http://YOUR_IP:3000\n3. Make sure the server is running:\n   bun run start:api\n4. Restart Expo and try again\n\nFor emulator/simulator:\n1. Run: bun run start:api\n2. Wait for "listening on http://localhost:3000"',
-                    [{ text: 'OK' }]
-                  );
-                } else {
-                  Alert.alert('Error', errorMessage || 'Failed to save photo. Please try again.');
-                }
-              },
+          // Get or create dating profile
+          let { data: profile, error: profileError } = await supabase
+            .from('dating_profiles')
+            .select('id')
+            .eq('user_id', currentUser?.id)
+            .single();
+
+          // If profile doesn't exist, create a minimal one
+          if (profileError || !profile) {
+            const { data: newProfile, error: createError } = await supabase
+              .from('dating_profiles')
+              .insert({
+                user_id: currentUser?.id,
+                is_active: true,
+              })
+              .select('id')
+              .single();
+
+            if (createError || !newProfile) {
+              throw new Error('Failed to create dating profile. Please try again.');
             }
-          );
+
+            profile = newProfile;
+          }
+
+          const isPrimary = photos.length === 0;
+
+          // If setting as primary, unset other primary photos
+          if (isPrimary) {
+            await supabase
+              .from('dating_photos')
+              .update({ is_primary: false })
+              .eq('dating_profile_id', profile.id);
+          }
+
+          // Insert photo directly into database using Supabase
+          const { data: photo, error: photoError } = await supabase
+            .from('dating_photos')
+            .insert({
+              dating_profile_id: profile.id,
+              photo_url: uploadedUrl,
+              display_order: photos.length,
+              is_primary: isPrimary,
+            })
+            .select('id')
+            .single();
+
+          if (photoError) {
+            throw photoError;
+          }
+
+          // Update local state
+          setPhotos([...photos, { id: photo.id, url: uploadedUrl, isPrimary }]);
+          Alert.alert('Success', 'Photo uploaded successfully!');
         } catch (uploadError: any) {
-          console.error('Error uploading to storage:', uploadError);
-          Alert.alert('Upload Error', uploadError.message || 'Failed to upload image to storage');
+          console.error('Error uploading photo:', uploadError);
+          Alert.alert('Upload Error', uploadError.message || 'Failed to upload photo. Please try again.');
         }
       }
     } catch (error: any) {
@@ -259,37 +292,80 @@ export default function ProfileSetupScreen() {
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
         
-        // Upload video to Supabase Storage
-        const uploadedUrl = await uploadVideoToStorage(asset.uri);
-        
-        // Generate thumbnail (simplified - in production, use a video processing library)
-        const thumbnailUrl = uploadedUrl; // Placeholder - should generate actual thumbnail
-        
-        // Upload video metadata
-        uploadVideoMutation.mutate(
-          {
-            videoUrl: uploadedUrl,
-            thumbnailUrl,
-            durationSeconds: asset.duration ? Math.floor(asset.duration / 1000) : undefined,
-            displayOrder: videos.length,
-            isPrimary: videos.length === 0,
-          },
-          {
-            onSuccess: (data) => {
-              setVideos([...videos, {
-                id: data.id,
-                url: uploadedUrl,
-                thumbnailUrl,
-                duration: asset.duration ? Math.floor(asset.duration / 1000) : undefined,
-                isPrimary: videos.length === 0,
-              }]);
-            },
-            onError: (error) => {
-              console.error('Upload video error:', error);
-              Alert.alert('Error', error.message || 'Failed to save video.');
-            },
+        try {
+          // Upload video to Supabase Storage
+          const uploadedUrl = await uploadVideoToStorage(asset.uri);
+          
+          // Generate thumbnail (simplified - in production, use a video processing library)
+          const thumbnailUrl = uploadedUrl; // Placeholder - should generate actual thumbnail
+          
+          // Get or create dating profile
+          let { data: profile, error: profileError } = await supabase
+            .from('dating_profiles')
+            .select('id')
+            .eq('user_id', currentUser?.id)
+            .single();
+
+          // If profile doesn't exist, create a minimal one
+          if (profileError || !profile) {
+            const { data: newProfile, error: createError } = await supabase
+              .from('dating_profiles')
+              .insert({
+                user_id: currentUser?.id,
+                is_active: true,
+              })
+              .select('id')
+              .single();
+
+            if (createError || !newProfile) {
+              throw new Error('Failed to create dating profile. Please try again.');
+            }
+
+            profile = newProfile;
           }
-        );
+
+          const isPrimary = videos.length === 0;
+          const durationSeconds = asset.duration ? Math.floor(asset.duration / 1000) : undefined;
+
+          // If setting as primary, unset other primary videos
+          if (isPrimary) {
+            await supabase
+              .from('dating_videos')
+              .update({ is_primary: false })
+              .eq('dating_profile_id', profile.id);
+          }
+
+          // Insert video directly into database using Supabase
+          const { data: video, error: videoError } = await supabase
+            .from('dating_videos')
+            .insert({
+              dating_profile_id: profile.id,
+              video_url: uploadedUrl,
+              thumbnail_url: thumbnailUrl,
+              duration_seconds: durationSeconds,
+              display_order: videos.length,
+              is_primary: isPrimary,
+            })
+            .select('id')
+            .single();
+
+          if (videoError) {
+            throw videoError;
+          }
+
+          // Update local state
+          setVideos([...videos, {
+            id: video.id,
+            url: uploadedUrl,
+            thumbnailUrl,
+            duration: durationSeconds,
+            isPrimary,
+          }]);
+          Alert.alert('Success', 'Video uploaded successfully!');
+        } catch (uploadError: any) {
+          console.error('Error uploading video:', uploadError);
+          Alert.alert('Upload Error', uploadError.message || 'Failed to upload video. Please try again.');
+        }
       }
     } catch (error: any) {
       console.error('Error picking/uploading video:', error);
@@ -313,26 +389,37 @@ export default function ProfileSetupScreen() {
         const city = geocode[0].city || geocode[0].region || geocode[0].name || '';
         setLocationCity(city);
 
-      createOrUpdateMutation.mutate({
-        locationCity: city,
-        locationLatitude: lat,
-        locationLongitude: lng,
-      });
+        await DatingService.createOrUpdateDatingProfile({
+          location_city: city,
+          location_latitude: lat,
+          location_longitude: lng,
+        });
     }
   };
 
-  const handleSave = () => {
-    createOrUpdateMutation.mutate({
-      bio,
-      age: age ? parseInt(age) : undefined,
-      relationshipGoals,
-      interests,
-      lookingFor,
-      ageRangeMin: ageRangeMin ? parseInt(ageRangeMin) : undefined,
-      ageRangeMax: ageRangeMax ? parseInt(ageRangeMax) : undefined,
-      maxDistanceKm: maxDistanceKm ? parseInt(maxDistanceKm) : undefined,
-      isActive,
-    });
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSave = async () => {
+    try {
+      setIsSaving(true);
+      await DatingService.createOrUpdateDatingProfile({
+        bio,
+        age: age ? parseInt(age) : undefined,
+        relationship_goals: relationshipGoals,
+        interests,
+        looking_for: lookingFor,
+        age_range_min: ageRangeMin ? parseInt(ageRangeMin) : undefined,
+        age_range_max: ageRangeMax ? parseInt(ageRangeMax) : undefined,
+        max_distance_km: maxDistanceKm ? parseInt(maxDistanceKm) : undefined,
+        is_active: isActive,
+      });
+      Alert.alert('Success', 'Profile updated successfully!');
+      router.back();
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to update profile');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const toggleGoal = (goal: string) => {
@@ -497,7 +584,7 @@ export default function ProfileSetupScreen() {
                   All
                 </Text>
               </TouchableOpacity>
-              {interestsData.categories.map((cat) => (
+              {interestsData.categories.map((cat: string) => (
                 <TouchableOpacity
                   key={cat}
                   style={[styles.categoryChip, selectedCategory === cat && styles.categoryChipActive]}
@@ -591,11 +678,11 @@ export default function ProfileSetupScreen() {
         </View>
 
         <TouchableOpacity
-          style={[styles.saveButton, createOrUpdateMutation.isPending && styles.saveButtonDisabled]}
+          style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
           onPress={handleSave}
-          disabled={createOrUpdateMutation.isPending}
+          disabled={isSaving}
         >
-          {createOrUpdateMutation.isPending ? (
+          {isSaving ? (
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={styles.saveButtonText}>Save Profile</Text>

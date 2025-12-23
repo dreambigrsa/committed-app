@@ -245,33 +245,43 @@ serve(async (req: Request) => {
             // Include user_id in profileData
             profileData.user_id = userId;
             
-            console.log(`Updating dating profile data for ${userData.email}:`, JSON.stringify(profileData, null, 2));
+            console.log(`Creating/updating dating profile for ${userData.email} with data:`, JSON.stringify(profileData, null, 2));
             
-            // Always use upsert to ensure all fields are updated (will insert if not exists, update if exists)
+            // First, try to delete existing profile to ensure clean slate (if it exists)
+            await adminClient
+              .from('dating_profiles')
+              .delete()
+              .eq('user_id', userId)
+              .then(({ error: deleteError }) => {
+                if (deleteError && deleteError.code !== 'PGRST116') { // PGRST116 = no rows deleted (not an error)
+                  console.warn(`Warning: Error deleting existing profile (may not exist): ${deleteError.message}`);
+                }
+              });
+            
+            // Insert fresh profile with ALL fields - this ensures no null values remain
             const { error, data } = await adminClient
               .from('dating_profiles')
-              .upsert(profileData, {
-                onConflict: 'user_id',
-              })
+              .insert(profileData)
               .select();
-            
-            const profileError = error;
-            const profileDataResult = data;
 
-            if (profileError) {
-              console.error(`ERROR: Failed to create/update dating profile for ${userData.email}:`, profileError);
-              console.error(`Error details:`, JSON.stringify(profileError, null, 2));
-              // Continue anyway - user is created successfully
+            if (error) {
+              console.error(`ERROR: Failed to insert dating profile for ${userData.email}:`, error);
+              console.error(`Error code: ${error.code}, Error message: ${error.message}`);
+              console.error(`Full error:`, JSON.stringify(error, null, 2));
+              throw new Error(`Failed to create dating profile: ${error.message || JSON.stringify(error)}`);
             } else {
-              console.log(`Successfully created/updated dating profile for ${userData.email}`);
-              if (profileDataResult) {
-                console.log(`Profile data result:`, JSON.stringify(profileDataResult, null, 2));
+              console.log(`Successfully created dating profile for ${userData.email}`);
+              if (data && data.length > 0) {
+                console.log(`Inserted profile data:`, JSON.stringify(data[0], null, 2));
               }
             }
           } catch (profileErr: any) {
-            console.error(`ERROR: Exception creating/updating dating profile for ${userData.email}:`, profileErr);
-            console.error(`Exception details:`, JSON.stringify(profileErr, null, 2));
-            // Continue anyway - user is created successfully
+            console.error(`ERROR: Exception creating dating profile for ${userData.email}:`, profileErr);
+            console.error(`Exception message: ${profileErr.message}`);
+            console.error(`Exception stack:`, profileErr.stack);
+            console.error(`Full exception:`, JSON.stringify(profileErr, null, 2));
+            // Re-throw so it's caught by outer try-catch and reported properly
+            throw profileErr;
           }
 
           results.push({ email: userData.email, status: 'updated', userId: userId });

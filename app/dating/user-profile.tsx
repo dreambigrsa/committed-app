@@ -170,10 +170,21 @@ export default function UserProfileScreen() {
         }
       }
 
-      // Convert conversation starter to actual question
-      // e.g., "Ask about Music" -> "Tell me about Music"
-      const message = starter.replace(/^Ask about /i, '').trim();
-      const question = message.endsWith('?') ? message : `Tell me about ${message}`;
+      // Convert conversation starter to actual question in second person
+      // e.g., "Ask about their weekend style" -> "Tell me about your weekend style"
+      let message = starter.replace(/^Ask about /i, '').trim();
+      
+      // Replace third person pronouns with second person for direct address
+      message = message
+        .replace(/\btheir\b/gi, 'your')
+        .replace(/\bthey\b/gi, 'you')
+        .replace(/\bthem\b/gi, 'you')
+        .replace(/\btheirs\b/gi, 'yours');
+      
+      // Format as a question if not already
+      const question = message.endsWith('?') 
+        ? message 
+        : `Tell me about ${message.startsWith('your ') ? message : message.replace(/^(a |an |the )/i, 'your ')}`;
 
       // Create or get conversation
       const conversation = await createOrGetConversation(params.userId);

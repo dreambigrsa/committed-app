@@ -117,18 +117,58 @@ export async function getConversationStarters(userId: string): Promise<string[]>
 
   const starters: string[] = [];
 
-  // Generate based on profile data
-  if (profile.interests && Array.isArray(profile.interests) && profile.interests.length > 0) {
-    starters.push(`Ask about ${profile.interests[0]}`);
+  // Priority 1: Use prompts if available (most engaging)
+  if (profile.prompts && Array.isArray(profile.prompts) && profile.prompts.length > 0) {
+    // Use the question from their prompts as conversation starters
+    profile.prompts.slice(0, 2).forEach((prompt: any) => {
+      if (prompt?.question) {
+        starters.push(prompt.question);
+      }
+    });
   }
-  if (profile.values && Array.isArray(profile.values) && profile.values.length > 0) {
-    starters.push(`Ask about ${profile.values[0]}`);
+
+  // Priority 2: What makes them different (interesting personal touch)
+  if (profile.what_makes_me_different && starters.length < 3) {
+    starters.push(`What makes you different?`);
   }
-  if (profile.weekend_style) {
-    starters.push(`Ask about their weekend style`);
+
+  // Priority 3: Headline (if it's interesting)
+  if (profile.headline && starters.length < 3) {
+    // Extract a key phrase from headline, or use it directly if short
+    const headlineText = profile.headline.length > 40 
+      ? `Tell me more about "${profile.headline.substring(0, 40)}..."` 
+      : `Tell me more about your headline`;
+    starters.push(headlineText);
   }
-  if (profile.local_food) {
-    starters.push(`Ask about ${profile.local_food}`);
+
+  // Priority 4: Local spot (great conversation starter about their city)
+  if (profile.local_spot && starters.length < 3) {
+    starters.push(`What's your favorite spot in ${profile.location_city || 'your city'}?`);
+  }
+
+  // Priority 5: Local food (cultural connection)
+  if (profile.local_food && starters.length < 3) {
+    starters.push(`Tell me about ${profile.local_food}`);
+  }
+
+  // Priority 6: Weekend style (lifestyle question)
+  if (profile.weekend_style && starters.length < 3) {
+    starters.push(`How do you spend your weekends?`);
+  }
+
+  // Priority 7: Local slang (fun and engaging)
+  if (profile.local_slang && starters.length < 3) {
+    starters.push(`Teach me some local slang!`);
+  }
+
+  // Priority 8: Interests (fallback, but make it more engaging)
+  if (profile.interests && Array.isArray(profile.interests) && profile.interests.length > 0 && starters.length < 3) {
+    starters.push(`What do you love about ${profile.interests[0]}?`);
+  }
+
+  // Priority 9: Values (fallback)
+  if (profile.values && Array.isArray(profile.values) && profile.values.length > 0 && starters.length < 3) {
+    starters.push(`Tell me about ${profile.values[0]}`);
   }
 
   return starters.slice(0, 3); // Return max 3 starters

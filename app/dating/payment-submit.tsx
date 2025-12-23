@@ -112,14 +112,27 @@ export default function PaymentSubmitScreen() {
       }
 
       // Convert URI to Uint8Array for upload
-      const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-
-      const binaryString = atob(base64);
-      const uint8Array = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        uint8Array[i] = binaryString.charCodeAt(i);
+      let uint8Array: Uint8Array;
+      
+      // Handle web platform differently
+      if (Platform.OS === 'web') {
+        // For web, fetch the image and convert to blob
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        const arrayBuffer = await blob.arrayBuffer();
+        uint8Array = new Uint8Array(arrayBuffer);
+      } else {
+        // For native platforms, use FileSystem
+        const base64 = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        
+        // Convert base64 to Uint8Array
+        const binaryString = atob(base64);
+        uint8Array = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          uint8Array[i] = binaryString.charCodeAt(i);
+        }
       }
 
       // Upload to Supabase Storage

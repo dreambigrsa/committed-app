@@ -9,6 +9,7 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { Stack } from 'expo-router';
 import { Image } from 'expo-image';
@@ -126,6 +127,13 @@ export default function AdminDatingScreen() {
     }
   };
 
+  const [selectedProfile, setSelectedProfile] = useState<any>(null);
+  const [showActionModal, setShowActionModal] = useState(false);
+  const [actionType, setActionType] = useState<'suspend' | 'limit' | 'delete' | 'premium' | 'badge' | null>(null);
+  const [actionReason, setActionReason] = useState('');
+  const [trialDays, setTrialDays] = useState('7');
+  const [badgeType, setBadgeType] = useState<'verified' | 'good_conversationalist' | 'replies_fast' | 'respectful_member' | 'active_member' | 'premium'>('verified');
+
   const deactivateProfile = async (profileId: string, userId: string) => {
     Alert.alert(
       'Deactivate Profile',
@@ -152,6 +160,223 @@ export default function AdminDatingScreen() {
         },
       ]
     );
+  };
+
+  const handleSuspendProfile = async (profile: any) => {
+    try {
+      const { error } = await supabase
+        .from('dating_profiles')
+        .update({
+          admin_suspended: true,
+          admin_suspended_at: new Date().toISOString(),
+          admin_suspended_by: currentUser?.id,
+          admin_suspended_reason: actionReason || 'No reason provided',
+          is_active: false,
+        })
+        .eq('id', profile.id);
+
+      if (error) throw error;
+      Alert.alert('Success', 'Profile suspended');
+      setShowActionModal(false);
+      loadProfiles();
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    }
+  };
+
+  const handleUnsuspendProfile = async (profile: any) => {
+    try {
+      const { error } = await supabase
+        .from('dating_profiles')
+        .update({
+          admin_suspended: false,
+          admin_suspended_at: null,
+          admin_suspended_by: null,
+          admin_suspended_reason: null,
+          is_active: true,
+        })
+        .eq('id', profile.id);
+
+      if (error) throw error;
+      Alert.alert('Success', 'Profile unsuspended');
+      loadProfiles();
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    }
+  };
+
+  const handleLimitProfile = async (profile: any) => {
+    try {
+      const { error } = await supabase
+        .from('dating_profiles')
+        .update({
+          admin_limited: true,
+          admin_limited_at: new Date().toISOString(),
+          admin_limited_by: currentUser?.id,
+          admin_limited_reason: actionReason || 'No reason provided',
+        })
+        .eq('id', profile.id);
+
+      if (error) throw error;
+      Alert.alert('Success', 'Profile limited');
+      setShowActionModal(false);
+      loadProfiles();
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    }
+  };
+
+  const handleUnlimitProfile = async (profile: any) => {
+    try {
+      const { error } = await supabase
+        .from('dating_profiles')
+        .update({
+          admin_limited: false,
+          admin_limited_at: null,
+          admin_limited_by: null,
+          admin_limited_reason: null,
+        })
+        .eq('id', profile.id);
+
+      if (error) throw error;
+      Alert.alert('Success', 'Profile limits removed');
+      loadProfiles();
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    }
+  };
+
+  const handleDeleteProfile = async (profile: any) => {
+    Alert.alert(
+      'Delete Profile',
+      'Are you sure you want to permanently delete this dating profile? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Delete photos and videos first
+              const { data: photos } = await supabase
+                .from('dating_photos')
+                .select('photo_url')
+                .eq('dating_profile_id', profile.id);
+
+              const { data: videos } = await supabase
+                .from('dating_videos')
+                .select('video_url, thumbnail_url')
+                .eq('dating_profile_id', profile.id);
+
+              // Delete from storage
+              if (photos) {
+                for (const photo of photos) {
+                  if (photo.photo_url && photo.photo_url.includes('supabase.co/storage')) {
+                    try {
+                      const urlParts = photo.photo_url.split('/storage/v1/object/public/');
+                      if (urlParts.length === 2) {
+                        const pathParts = urlParts[1].split('/');
+                        const bucket = pathParts[0];
+                        const filePath = pathParts.slice(1).join('/');
+                        await supabase.storage.from(bucket).remove([filePath]);
+                      }
+                    } catch (e) {
+                      console.warn('Error deleting photo:', e);
+                    }
+                  }
+                }
+              }
+
+              if (videos) {
+                for (const video of videos) {
+                  if (video.video_url && video.video_url.includes('supabase.co/storage')) {
+                    try {
+                      const urlParts = video.video_url.split('/storage/v1/object/public/');
+                      if (urlParts.length === 2) {
+                        const pathParts = urlParts[1].split('/');
+                        const bucket = pathParts[0];
+                        const filePath = pathParts.slice(1).join('/');
+                        await supabase.storage.from(bucket).remove([filePath]);
+                      }
+                    } catch (e) {
+                      console.warn('Error deleting video:', e);
+                    }
+                  }
+                }
+              }
+
+              // Delete the profile (cascade will handle related records)
+              const { error } = await supabase
+                .from('dating_profiles')
+                .delete()
+                .eq('id', profile.id);
+
+              if (error) throw error;
+              Alert.alert('Success', 'Profile deleted');
+              setShowActionModal(false);
+              loadProfiles();
+            } catch (error: any) {
+              Alert.alert('Error', error.message);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleGrantPremium = async (profile: any) => {
+    try {
+      const days = parseInt(trialDays) || 7;
+      const { error } = await supabase.rpc('grant_trial_premium', {
+        p_user_id: profile.user_id,
+        p_granted_by: currentUser?.id,
+        p_days: days,
+      });
+
+      if (error) throw error;
+      Alert.alert('Success', `Premium trial granted for ${days} days`);
+      setShowActionModal(false);
+      loadProfiles();
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    }
+  };
+
+  const handleGrantBadge = async (profile: any) => {
+    try {
+      const { error } = await supabase
+        .from('user_dating_badges')
+        .upsert({
+          user_id: profile.user_id,
+          badge_type: badgeType,
+          earned_at: new Date().toISOString(),
+        }, {
+          onConflict: 'user_id,badge_type',
+        });
+
+      if (error) throw error;
+      Alert.alert('Success', `Badge "${badgeType}" granted`);
+      setShowActionModal(false);
+      loadProfiles();
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    }
+  };
+
+  const handleRemoveBadge = async (profile: any, badgeTypeToRemove: string) => {
+    try {
+      const { error } = await supabase
+        .from('user_dating_badges')
+        .delete()
+        .eq('user_id', profile.user_id)
+        .eq('badge_type', badgeTypeToRemove);
+
+      if (error) throw error;
+      Alert.alert('Success', 'Badge removed');
+      loadProfiles();
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    }
   };
 
   if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'super_admin')) {
@@ -339,6 +564,196 @@ export default function AdminDatingScreen() {
           )}
         </ScrollView>
       )}
+
+      {/* Action Modal */}
+      <Modal
+        visible={showActionModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowActionModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>
+              {actionType === 'suspend' && (selectedProfile?.admin_suspended ? 'Unsuspend Profile' : 'Suspend Profile')}
+              {actionType === 'limit' && (selectedProfile?.admin_limited ? 'Remove Limits' : 'Limit Profile')}
+              {actionType === 'delete' && 'Delete Profile'}
+              {actionType === 'premium' && 'Grant Premium Trial'}
+              {actionType === 'badge' && 'Grant Badge'}
+            </Text>
+
+            {actionType === 'suspend' && !selectedProfile?.admin_suspended && (
+              <>
+                <Text style={styles.modalLabel}>Reason (optional):</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Enter reason for suspension..."
+                  value={actionReason}
+                  onChangeText={setActionReason}
+                  multiline
+                />
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalButtonCancel]}
+                    onPress={() => setShowActionModal(false)}
+                  >
+                    <Text style={styles.modalButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalButtonConfirm]}
+                    onPress={() => handleSuspendProfile(selectedProfile)}
+                  >
+                    <Text style={[styles.modalButtonText, { color: '#fff' }]}>Suspend</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+            {actionType === 'suspend' && selectedProfile?.admin_suspended && (
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonCancel]}
+                  onPress={() => setShowActionModal(false)}
+                >
+                  <Text style={styles.modalButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonConfirm]}
+                  onPress={() => handleUnsuspendProfile(selectedProfile)}
+                >
+                  <Text style={[styles.modalButtonText, { color: '#fff' }]}>Unsuspend</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {actionType === 'limit' && !selectedProfile?.admin_limited && (
+              <>
+                <Text style={styles.modalLabel}>Reason (optional):</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Enter reason for limiting..."
+                  value={actionReason}
+                  onChangeText={setActionReason}
+                  multiline
+                />
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalButtonCancel]}
+                    onPress={() => setShowActionModal(false)}
+                  >
+                    <Text style={styles.modalButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalButtonConfirm]}
+                    onPress={() => handleLimitProfile(selectedProfile)}
+                  >
+                    <Text style={[styles.modalButtonText, { color: '#fff' }]}>Limit</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+            {actionType === 'limit' && selectedProfile?.admin_limited && (
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonCancel]}
+                  onPress={() => setShowActionModal(false)}
+                >
+                  <Text style={styles.modalButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonConfirm]}
+                  onPress={() => handleUnlimitProfile(selectedProfile)}
+                >
+                  <Text style={[styles.modalButtonText, { color: '#fff' }]}>Remove Limits</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {actionType === 'delete' && (
+              <>
+                <Text style={styles.modalText}>
+                  Are you sure you want to permanently delete this profile? This action cannot be undone.
+                </Text>
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalButtonCancel]}
+                    onPress={() => setShowActionModal(false)}
+                  >
+                    <Text style={styles.modalButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalButton, { backgroundColor: colors.danger }]}
+                    onPress={() => handleDeleteProfile(selectedProfile)}
+                  >
+                    <Text style={[styles.modalButtonText, { color: '#fff' }]}>Delete</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+            {actionType === 'premium' && (
+              <>
+                <Text style={styles.modalLabel}>Trial Duration (days):</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="7"
+                  value={trialDays}
+                  onChangeText={setTrialDays}
+                  keyboardType="numeric"
+                />
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalButtonCancel]}
+                    onPress={() => setShowActionModal(false)}
+                  >
+                    <Text style={styles.modalButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalButtonConfirm]}
+                    onPress={() => handleGrantPremium(selectedProfile)}
+                  >
+                    <Text style={[styles.modalButtonText, { color: '#fff' }]}>Grant Trial</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+            {actionType === 'badge' && (
+              <>
+                <Text style={styles.modalLabel}>Badge Type:</Text>
+                <View style={styles.badgeOptions}>
+                  {['verified', 'good_conversationalist', 'replies_fast', 'respectful_member', 'active_member', 'premium'].map((badge) => (
+                    <TouchableOpacity
+                      key={badge}
+                      style={[styles.badgeOption, badgeType === badge && styles.badgeOptionSelected]}
+                      onPress={() => setBadgeType(badge as any)}
+                    >
+                      <Text style={[styles.badgeOptionText, badgeType === badge && styles.badgeOptionTextSelected]}>
+                        {badge.replace('_', ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalButtonCancel]}
+                    onPress={() => setShowActionModal(false)}
+                  >
+                    <Text style={styles.modalButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalButtonConfirm]}
+                    onPress={() => handleGrantBadge(selectedProfile)}
+                  >
+                    <Text style={[styles.modalButtonText, { color: '#fff' }]}>Grant Badge</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -504,6 +919,100 @@ const createStyles = (colors: any) =>
     statLabel: {
       fontSize: 14,
       color: colors.text.secondary,
+    },
+    actionButtons: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    modalContent: {
+      backgroundColor: colors.background.primary,
+      borderRadius: 16,
+      padding: 24,
+      width: '90%',
+      maxWidth: 400,
+    },
+    modalTitle: {
+      fontSize: 20,
+      fontWeight: '700',
+      color: colors.text.primary,
+      marginBottom: 20,
+    },
+    modalLabel: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.text.primary,
+      marginBottom: 8,
+    },
+    modalText: {
+      fontSize: 16,
+      color: colors.text.secondary,
+      marginBottom: 20,
+      lineHeight: 22,
+    },
+    modalInput: {
+      backgroundColor: colors.background.secondary,
+      borderRadius: 12,
+      padding: 12,
+      fontSize: 16,
+      color: colors.text.primary,
+      marginBottom: 20,
+      minHeight: 80,
+      textAlignVertical: 'top',
+    },
+    modalButtons: {
+      flexDirection: 'row',
+      gap: 12,
+      justifyContent: 'flex-end',
+    },
+    modalButton: {
+      paddingHorizontal: 20,
+      paddingVertical: 12,
+      borderRadius: 12,
+      minWidth: 100,
+      alignItems: 'center',
+    },
+    modalButtonCancel: {
+      backgroundColor: colors.background.secondary,
+    },
+    modalButtonConfirm: {
+      backgroundColor: colors.primary,
+    },
+    modalButtonText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.text.primary,
+    },
+    badgeOptions: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginBottom: 20,
+    },
+    badgeOption: {
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: 12,
+      backgroundColor: colors.background.secondary,
+      borderWidth: 1,
+      borderColor: colors.border.light,
+    },
+    badgeOptionSelected: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    badgeOptionText: {
+      fontSize: 14,
+      color: colors.text.primary,
+      fontWeight: '500',
+    },
+    badgeOptionTextSelected: {
+      color: '#fff',
     },
   });
 

@@ -11,10 +11,10 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Plus, X, MapPin } from 'lucide-react-native';
+import { ArrowLeft, Plus, X, MapPin, Eye, Trash2 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
-import { trpc } from '@/lib/trpc';
+// Removed trpc import - using Supabase directly
 import * as DatingService from '@/lib/dating-service';
 import * as ImagePicker from 'expo-image-picker';
 import { Image as ExpoImage } from 'expo-image';
@@ -58,7 +58,7 @@ export default function ProfileSetupScreen() {
     loadData();
   }, []);
 
-  const deletePhotoMutation = trpc.dating.deletePhoto.useMutation();
+  // Photo deletion now handled directly with Supabase
 
   const [bio, setBio] = useState('');
   const [age, setAge] = useState('');
@@ -73,6 +73,27 @@ export default function ProfileSetupScreen() {
   const [photos, setPhotos] = useState<Array<{ id?: string; url: string; isPrimary: boolean }>>([]);
   const [videos, setVideos] = useState<Array<{ id?: string; url: string; thumbnailUrl?: string; duration?: number; isPrimary: boolean }>>([]);
   const [isActive, setIsActive] = useState(true);
+  
+  // New comprehensive profile features
+  const [headline, setHeadline] = useState('');
+  const [introVoiceUrl, setIntroVoiceUrl] = useState('');
+  const [values, setValues] = useState<string[]>([]);
+  const [mood, setMood] = useState<'chill' | 'romantic' | 'fun' | 'serious' | 'adventurous' | ''>('');
+  const [whatMakesMeDifferent, setWhatMakesMeDifferent] = useState('');
+  const [weekendStyle, setWeekendStyle] = useState<'homebody' | 'out_with_friends' | 'church_faith' | 'side_hustling' | 'exploring' | ''>('');
+  const [dailyQuestionAnswer, setDailyQuestionAnswer] = useState('');
+  const [dailyQuestion, setDailyQuestion] = useState<any>(null);
+  const [intentionTag, setIntentionTag] = useState<'friendship' | 'dating' | 'serious' | 'marriage' | ''>('');
+  const [respectFirstBadge, setRespectFirstBadge] = useState(false);
+  const [localFood, setLocalFood] = useState('');
+  const [localSlang, setLocalSlang] = useState('');
+  const [localSpot, setLocalSpot] = useState('');
+  const [whatImLookingFor, setWhatImLookingFor] = useState('');
+  const [kids, setKids] = useState<'have_kids' | 'want_kids' | 'dont_want_kids' | 'have_and_want_more' | 'not_sure' | ''>('');
+  const [work, setWork] = useState('');
+  const [smoke, setSmoke] = useState<'yes' | 'no' | 'sometimes' | 'prefer_not_to_say' | ''>('');
+  const [drink, setDrink] = useState<'yes' | 'no' | 'sometimes' | 'prefer_not_to_say' | ''>('');
+  const [prompts, setPrompts] = useState<Array<{ question: string; answer: string }>>([]);
 
   useEffect(() => {
     if (existingProfile) {
@@ -86,6 +107,26 @@ export default function ProfileSetupScreen() {
       setAgeRangeMax(existingProfile.age_range_max?.toString() || '99');
       setMaxDistanceKm(existingProfile.max_distance_km?.toString() || '50');
       setIsActive(existingProfile.is_active || true);
+      
+      // Load new comprehensive features
+      setHeadline(existingProfile.headline || '');
+      setIntroVoiceUrl(existingProfile.intro_voice_url || '');
+      setValues(existingProfile.values || []);
+      setMood(existingProfile.mood || '');
+      setWhatMakesMeDifferent(existingProfile.what_makes_me_different || '');
+      setWeekendStyle(existingProfile.weekend_style || '');
+      setDailyQuestionAnswer(existingProfile.daily_question_answer || '');
+      setIntentionTag(existingProfile.intention_tag || '');
+      setRespectFirstBadge(existingProfile.respect_first_badge || false);
+      setLocalFood(existingProfile.local_food || '');
+      setLocalSlang(existingProfile.local_slang || '');
+      setLocalSpot(existingProfile.local_spot || '');
+      setWhatImLookingFor(existingProfile.what_im_looking_for || '');
+      setKids(existingProfile.kids || '');
+      setWork(existingProfile.work || '');
+      setSmoke(existingProfile.smoke || '');
+      setDrink(existingProfile.drink || '');
+      setPrompts(existingProfile.prompts || []);
       
       if (existingProfile.photos) {
         setPhotos(
@@ -194,6 +235,19 @@ export default function ProfileSetupScreen() {
 
           const isPrimary = photos.length === 0;
 
+          // Check for duplicate photo URL to prevent duplicates
+          const { data: existingPhoto } = await supabase
+            .from('dating_photos')
+            .select('id')
+            .eq('dating_profile_id', profile.id)
+            .eq('photo_url', uploadedUrl)
+            .single();
+
+          if (existingPhoto) {
+            Alert.alert('Duplicate Photo', 'This photo is already in your profile');
+            return;
+          }
+
           // If setting as primary, unset other primary photos
           if (isPrimary) {
             await supabase
@@ -218,8 +272,22 @@ export default function ProfileSetupScreen() {
             throw photoError;
           }
 
-          // Update local state
-          setPhotos([...photos, { id: photo.id, url: uploadedUrl, isPrimary }]);
+          // Reload photos from database to ensure consistency
+          const { data: allPhotos } = await supabase
+            .from('dating_photos')
+            .select('*')
+            .eq('dating_profile_id', profile.id)
+            .order('display_order', { ascending: true });
+
+          if (allPhotos) {
+            setPhotos(
+              allPhotos.map((p: any) => ({
+                id: p.id,
+                url: p.photo_url,
+                isPrimary: p.is_primary,
+              }))
+            );
+          }
           Alert.alert('Success', 'Photo uploaded successfully!');
         } catch (uploadError: any) {
           console.error('Error uploading photo:', uploadError);
@@ -405,6 +473,7 @@ export default function ProfileSetupScreen() {
       await DatingService.createOrUpdateDatingProfile({
         bio,
         age: age ? parseInt(age) : undefined,
+        location_city: locationCity || undefined,
         relationship_goals: relationshipGoals,
         interests,
         looking_for: lookingFor,
@@ -412,6 +481,25 @@ export default function ProfileSetupScreen() {
         age_range_max: ageRangeMax ? parseInt(ageRangeMax) : undefined,
         max_distance_km: maxDistanceKm ? parseInt(maxDistanceKm) : undefined,
         is_active: isActive,
+        headline: headline || undefined,
+        intro_voice_url: introVoiceUrl || undefined,
+        values: values.length > 0 ? values : undefined,
+        mood: mood || undefined,
+        what_makes_me_different: whatMakesMeDifferent || undefined,
+        weekend_style: weekendStyle || undefined,
+        daily_question_answer: dailyQuestionAnswer || undefined,
+        daily_question_id: dailyQuestion?.id || undefined,
+        intention_tag: intentionTag || undefined,
+        respect_first_badge: respectFirstBadge,
+        local_food: localFood || undefined,
+        local_slang: localSlang || undefined,
+        local_spot: localSpot || undefined,
+        what_im_looking_for: whatImLookingFor || undefined,
+        kids: kids || undefined,
+        work: work || undefined,
+        smoke: smoke || undefined,
+        drink: drink || undefined,
+        prompts: prompts.length > 0 ? prompts : undefined,
       });
       Alert.alert('Success', 'Profile updated successfully!');
       router.back();
@@ -473,11 +561,31 @@ export default function ProfileSetupScreen() {
                 )}
                 <TouchableOpacity
                   style={styles.removePhotoButton}
-                  onPress={() => {
+                  onPress={async () => {
                     if (photo.id) {
-                      deletePhotoMutation.mutate({ photoId: photo.id });
+                      try {
+                        // Delete from Supabase
+                        await DatingService.deleteDatingPhoto(photo.id);
+                        // Reload photos from database
+                        const profile = await DatingService.getDatingProfile();
+                        if (profile?.photos) {
+                          setPhotos(
+                            profile.photos.map((p: any) => ({
+                              id: p.id,
+                              url: p.photo_url,
+                              isPrimary: p.is_primary,
+                            }))
+                          );
+                        } else {
+                          setPhotos(photos.filter((_, i) => i !== index));
+                        }
+                      } catch (error: any) {
+                        Alert.alert('Error', error.message || 'Failed to delete photo');
+                      }
+                    } else {
+                      // If no ID, just remove from local state (not yet saved)
+                      setPhotos(photos.filter((_, i) => i !== index));
                     }
-                    setPhotos(photos.filter((_, i) => i !== index));
                   }}
                 >
                   <X size={16} color="#fff" />
@@ -627,6 +735,354 @@ export default function ProfileSetupScreen() {
           </View>
         </View>
 
+        {/* Headline */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Headline ✨</Text>
+          <Text style={styles.sectionHint}>A short catchy line that captures who you are</Text>
+          <TextInput
+            style={styles.textInput}
+            placeholder="e.g., 'Serious about love, fun about life'"
+            placeholderTextColor={colors.text.tertiary}
+            value={headline}
+            onChangeText={setHeadline}
+            maxLength={100}
+          />
+          <Text style={styles.charCount}>{headline.length}/100</Text>
+        </View>
+
+        {/* What I'm Looking For */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>What I'm Looking For 💬</Text>
+          <Text style={styles.sectionHint}>Describe the person you're looking for</Text>
+          <TextInput
+            style={[styles.textInput, { minHeight: 100 }]}
+            placeholder="Describe the kind of person you're looking for..."
+            placeholderTextColor={colors.text.tertiary}
+            value={whatImLookingFor}
+            onChangeText={setWhatImLookingFor}
+            multiline
+            numberOfLines={4}
+            maxLength={500}
+          />
+          <Text style={styles.charCount}>{whatImLookingFor.length}/500</Text>
+        </View>
+
+        {/* Values Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Values ❤️</Text>
+          <Text style={styles.sectionHint}>What matters most to you (select all that apply)</Text>
+          <View style={styles.tagsContainer}>
+            {['Family', 'Faith', 'Growth', 'Honesty', 'Adventure'].map((value) => (
+              <TouchableOpacity
+                key={value}
+                style={[
+                  styles.tag,
+                  values.includes(value) && styles.tagSelected,
+                ]}
+                onPress={() => {
+                  if (values.includes(value)) {
+                    setValues(values.filter(v => v !== value));
+                  } else {
+                    setValues([...values, value]);
+                  }
+                }}
+              >
+                <Text
+                  style={[
+                    styles.tagText,
+                    values.includes(value) && styles.tagTextSelected,
+                  ]}
+                >
+                  {value}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* Mood/Vibe Selector */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Mood / Vibe 😊</Text>
+          <Text style={styles.sectionHint}>Pick one that best describes you</Text>
+          <View style={styles.moodContainer}>
+            {[
+              { value: 'chill', emoji: '😌', label: 'Chill' },
+              { value: 'romantic', emoji: '❤️', label: 'Romantic' },
+              { value: 'fun', emoji: '😂', label: 'Fun' },
+              { value: 'serious', emoji: '🎯', label: 'Serious' },
+              { value: 'adventurous', emoji: '🌍', label: 'Adventurous' },
+            ].map((item) => (
+              <TouchableOpacity
+                key={item.value}
+                style={[
+                  styles.moodOption,
+                  mood === item.value && styles.moodOptionSelected,
+                ]}
+                onPress={() => setMood(item.value as any)}
+              >
+                <Text style={styles.moodEmoji}>{item.emoji}</Text>
+                <Text style={[styles.moodLabel, mood === item.value && styles.moodLabelSelected]}>
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* What Makes Me Different */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>What Makes Me Different 🔥</Text>
+          <Text style={styles.sectionHint}>Share what makes you unique</Text>
+          <TextInput
+            style={[styles.textInput, { minHeight: 80 }]}
+            placeholder="e.g., 'I never give up on people I care about'"
+            placeholderTextColor={colors.text.tertiary}
+            value={whatMakesMeDifferent}
+            onChangeText={setWhatMakesMeDifferent}
+            multiline
+            numberOfLines={3}
+            maxLength={200}
+          />
+          <Text style={styles.charCount}>{whatMakesMeDifferent.length}/200</Text>
+        </View>
+
+        {/* Weekend Style */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Weekend Style 🕒</Text>
+          <Text style={styles.sectionHint}>How do you typically spend your weekends?</Text>
+          <View style={styles.weekendContainer}>
+            {[
+              { value: 'homebody', emoji: '🛋️', label: 'Homebody' },
+              { value: 'out_with_friends', emoji: '🍔', label: 'Out with Friends' },
+              { value: 'church_faith', emoji: '⛪', label: 'Church/Faith' },
+              { value: 'side_hustling', emoji: '💻', label: 'Side Hustling' },
+              { value: 'exploring', emoji: '🌄', label: 'Exploring' },
+            ].map((item) => (
+              <TouchableOpacity
+                key={item.value}
+                style={[
+                  styles.weekendOption,
+                  weekendStyle === item.value && styles.weekendOptionSelected,
+                ]}
+                onPress={() => setWeekendStyle(item.value as any)}
+              >
+                <Text style={styles.weekendEmoji}>{item.emoji}</Text>
+                <Text style={[styles.weekendLabel, weekendStyle === item.value && styles.weekendLabelSelected]}>
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* Daily Question */}
+        {dailyQuestion && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Daily Question ✍🏽</Text>
+            <Text style={styles.dailyQuestionText}>{dailyQuestion.question}</Text>
+            <TextInput
+              style={[styles.textInput, { minHeight: 80 }]}
+              placeholder="Share your answer..."
+              placeholderTextColor={colors.text.tertiary}
+              value={dailyQuestionAnswer}
+              onChangeText={setDailyQuestionAnswer}
+              multiline
+              numberOfLines={3}
+              maxLength={300}
+            />
+            <Text style={styles.charCount}>{dailyQuestionAnswer.length}/300</Text>
+          </View>
+        )}
+
+        {/* Safety + Intention Tag */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Intention & Safety 🔒</Text>
+          <Text style={styles.sectionHint}>What are you here for?</Text>
+          <View style={styles.tagsContainer}>
+            {['friendship', 'dating', 'serious', 'marriage'].map((intention) => (
+              <TouchableOpacity
+                key={intention}
+                style={[
+                  styles.tag,
+                  intentionTag === intention && styles.tagSelected,
+                ]}
+                onPress={() => setIntentionTag(intention as any)}
+              >
+                <Text
+                  style={[
+                    styles.tagText,
+                    intentionTag === intention && styles.tagTextSelected,
+                  ]}
+                >
+                  {intention.charAt(0).toUpperCase() + intention.slice(1)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <TouchableOpacity
+            style={[styles.checkboxRow, respectFirstBadge && styles.checkboxRowSelected]}
+            onPress={() => setRespectFirstBadge(!respectFirstBadge)}
+          >
+            <View style={[styles.checkbox, respectFirstBadge && styles.checkboxChecked]}>
+              {respectFirstBadge && <Text style={styles.checkmark}>✓</Text>}
+            </View>
+            <Text style={styles.checkboxLabel}>Respect First Badge</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Local Flavor */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Local Flavor 🌍</Text>
+          <Text style={styles.sectionHint}>Share your favorite local things</Text>
+          <TextInput
+            style={styles.textInput}
+            placeholder="Favorite local food (e.g., Sadza & nyama)"
+            placeholderTextColor={colors.text.tertiary}
+            value={localFood}
+            onChangeText={setLocalFood}
+            maxLength={50}
+          />
+          <TextInput
+            style={[styles.textInput, { marginTop: 12 }]}
+            placeholder="Favorite slang word"
+            placeholderTextColor={colors.text.tertiary}
+            value={localSlang}
+            onChangeText={setLocalSlang}
+            maxLength={30}
+          />
+          <TextInput
+            style={[styles.textInput, { marginTop: 12 }]}
+            placeholder="Favorite local spot"
+            placeholderTextColor={colors.text.tertiary}
+            value={localSpot}
+            onChangeText={setLocalSpot}
+            maxLength={50}
+          />
+        </View>
+
+        {/* Prompts / Short Questions */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Prompts / Short Questions ✍🏽</Text>
+          <Text style={styles.sectionHint}>Answer fun questions to help others get to know you</Text>
+          
+          {prompts.map((prompt, index) => (
+            <View key={index} style={styles.promptItem}>
+              <Text style={styles.promptQuestion}>{prompt.question}</Text>
+              <TextInput
+                style={[styles.textInput, { marginTop: 8 }]}
+                placeholder="Your answer..."
+                placeholderTextColor={colors.text.tertiary}
+                value={prompt.answer}
+                onChangeText={(text) => {
+                  const newPrompts = [...prompts];
+                  newPrompts[index].answer = text;
+                  setPrompts(newPrompts);
+                }}
+                multiline
+                maxLength={200}
+              />
+              <TouchableOpacity
+                style={styles.removePromptButton}
+                onPress={() => setPrompts(prompts.filter((_, i) => i !== index))}
+              >
+                <X size={16} color={colors.danger} />
+                <Text style={styles.removePromptText}>Remove</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+          
+          {prompts.length < 3 && (
+            <TouchableOpacity
+              style={styles.addPromptButton}
+              onPress={() => {
+                const questions = [
+                  'What\'s your ideal first date?',
+                  'What\'s something you\'re passionate about?',
+                  'What makes you laugh?',
+                  'What\'s your favorite way to spend a weekend?',
+                  'What\'s a goal you\'re working towards?',
+                ];
+                const randomQuestion = questions[Math.floor(Math.random() * questions.length)];
+                setPrompts([...prompts, { question: randomQuestion, answer: '' }]);
+              }}
+            >
+              <Plus size={18} color={colors.primary} />
+              <Text style={styles.addPromptText}>Add Prompt</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Lifestyle Fields */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Lifestyle</Text>
+          
+          <View style={styles.preferenceRow}>
+            <Text style={styles.preferenceLabel}>Kids:</Text>
+            <View style={styles.radioGroup}>
+              {[
+                { value: 'have_kids', label: 'Have Kids' },
+                { value: 'want_kids', label: 'Want Kids' },
+                { value: 'dont_want_kids', label: "Don't Want" },
+                { value: 'have_and_want_more', label: 'Have & Want More' },
+                { value: 'not_sure', label: 'Not Sure' },
+              ].map((option) => (
+                <TouchableOpacity
+                  key={option.value}
+                  style={styles.radioOption}
+                  onPress={() => setKids(option.value as any)}
+                >
+                  <View style={[styles.radio, kids === option.value && styles.radioSelected]} />
+                  <Text style={styles.radioLabel}>{option.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.preferenceRow}>
+            <Text style={styles.preferenceLabel}>Work:</Text>
+            <TextInput
+              style={[styles.textInput, { marginTop: 8 }]}
+              placeholder="What do you do?"
+              placeholderTextColor={colors.text.tertiary}
+              value={work}
+              onChangeText={setWork}
+              maxLength={100}
+            />
+          </View>
+
+          <View style={styles.preferenceRow}>
+            <Text style={styles.preferenceLabel}>Smoke:</Text>
+            <View style={styles.radioGroup}>
+              {['yes', 'no', 'sometimes', 'prefer_not_to_say'].map((option) => (
+                <TouchableOpacity
+                  key={option}
+                  style={styles.radioOption}
+                  onPress={() => setSmoke(option as any)}
+                >
+                  <View style={[styles.radio, smoke === option && styles.radioSelected]} />
+                  <Text style={styles.radioLabel}>{option.charAt(0).toUpperCase() + option.slice(1).replace('_', ' ')}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.preferenceRow}>
+            <Text style={styles.preferenceLabel}>Drink:</Text>
+            <View style={styles.radioGroup}>
+              {['yes', 'no', 'sometimes', 'prefer_not_to_say'].map((option) => (
+                <TouchableOpacity
+                  key={option}
+                  style={styles.radioOption}
+                  onPress={() => setDrink(option as any)}
+                >
+                  <View style={[styles.radio, drink === option && styles.radioSelected]} />
+                  <Text style={styles.radioLabel}>{option.charAt(0).toUpperCase() + option.slice(1).replace('_', ' ')}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+
         {/* Preferences */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Preferences</Text>
@@ -677,17 +1133,61 @@ export default function ProfileSetupScreen() {
           </View>
         </View>
 
-        <TouchableOpacity
-          style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
-          onPress={handleSave}
-          disabled={isSaving}
-        >
-          {isSaving ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.saveButtonText}>Save Profile</Text>
-          )}
-        </TouchableOpacity>
+        <View style={styles.saveButtonsRow}>
+          <TouchableOpacity
+            style={[styles.saveButton, styles.previewButton]}
+            onPress={() => router.push('/dating/profile-preview')}
+          >
+            <Eye size={18} color={colors.primary} />
+            <Text style={[styles.saveButtonText, { color: colors.primary }]}>
+              Preview
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
+            onPress={handleSave}
+            disabled={isSaving}
+          >
+            {isSaving ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.saveButtonText}>Save Profile</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Delete Profile Section */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.danger }]}>Danger Zone</Text>
+          <TouchableOpacity
+            style={styles.deleteButton}
+            onPress={() => {
+              Alert.alert(
+                'Delete Dating Profile',
+                'Are you sure you want to permanently delete your dating profile? This will remove all your photos, videos, matches, and likes. This action cannot be undone.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: async () => {
+                      try {
+                        await DatingService.deleteDatingProfile();
+                        Alert.alert('Success', 'Your dating profile has been deleted');
+                        router.back();
+                      } catch (error: any) {
+                        Alert.alert('Error', error.message || 'Failed to delete profile');
+                      }
+                    },
+                  },
+                ]
+              );
+            }}
+          >
+            <Trash2 size={18} color={colors.danger} />
+            <Text style={styles.deleteButtonText}>Delete Dating Profile</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -798,6 +1298,162 @@ const createStyles = (colors: any) =>
       color: colors.text.tertiary,
       textAlign: 'right',
       marginTop: 4,
+    },
+    sectionHint: {
+      fontSize: 13,
+      color: colors.text.secondary,
+      marginBottom: 12,
+      fontStyle: 'italic',
+    },
+    moodContainer: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 12,
+    },
+    moodOption: {
+      flex: 1,
+      minWidth: '30%',
+      alignItems: 'center',
+      padding: 16,
+      backgroundColor: colors.background.secondary,
+      borderRadius: 12,
+      borderWidth: 2,
+      borderColor: colors.border.light,
+    },
+    moodOptionSelected: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primary + '15',
+    },
+    moodEmoji: {
+      fontSize: 32,
+      marginBottom: 8,
+    },
+    moodLabel: {
+      fontSize: 14,
+      color: colors.text.primary,
+      fontWeight: '600',
+    },
+    moodLabelSelected: {
+      color: colors.primary,
+    },
+    weekendContainer: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 12,
+    },
+    weekendOption: {
+      flex: 1,
+      minWidth: '45%',
+      alignItems: 'center',
+      padding: 16,
+      backgroundColor: colors.background.secondary,
+      borderRadius: 12,
+      borderWidth: 2,
+      borderColor: colors.border.light,
+    },
+    weekendOptionSelected: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primary + '15',
+    },
+    weekendEmoji: {
+      fontSize: 28,
+      marginBottom: 8,
+    },
+    weekendLabel: {
+      fontSize: 13,
+      color: colors.text.primary,
+      fontWeight: '600',
+      textAlign: 'center',
+    },
+    weekendLabelSelected: {
+      color: colors.primary,
+    },
+    dailyQuestionText: {
+      fontSize: 16,
+      color: colors.text.primary,
+      fontWeight: '600',
+      marginBottom: 12,
+      padding: 12,
+      backgroundColor: colors.background.secondary,
+      borderRadius: 8,
+    },
+    checkboxRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      marginTop: 16,
+      padding: 12,
+      backgroundColor: colors.background.secondary,
+      borderRadius: 12,
+    },
+    checkboxRowSelected: {
+      backgroundColor: colors.primary + '15',
+    },
+    checkbox: {
+      width: 24,
+      height: 24,
+      borderRadius: 6,
+      borderWidth: 2,
+      borderColor: colors.border.light,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    checkboxChecked: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    checkmark: {
+      color: '#fff',
+      fontSize: 16,
+      fontWeight: 'bold',
+    },
+    checkboxLabel: {
+      fontSize: 14,
+      color: colors.text.primary,
+      fontWeight: '600',
+    },
+    promptItem: {
+      marginBottom: 20,
+      padding: 16,
+      backgroundColor: colors.background.secondary,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border.light,
+    },
+    promptQuestion: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.text.primary,
+      marginBottom: 8,
+    },
+    removePromptButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginTop: 8,
+      alignSelf: 'flex-start',
+    },
+    removePromptText: {
+      fontSize: 14,
+      color: colors.danger,
+      fontWeight: '600',
+    },
+    addPromptButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      padding: 16,
+      backgroundColor: colors.background.secondary,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      borderStyle: 'dashed',
+    },
+    addPromptText: {
+      fontSize: 14,
+      color: colors.primary,
+      fontWeight: '600',
     },
     locationRow: {
       flexDirection: 'row',
@@ -919,13 +1575,26 @@ const createStyles = (colors: any) =>
       fontSize: 18,
       color: colors.text.secondary,
     },
+    saveButtonsRow: {
+      flexDirection: 'row',
+      gap: 12,
+      marginTop: 8,
+      marginBottom: 40,
+    },
     saveButton: {
+      flex: 1,
       backgroundColor: colors.primary,
       paddingVertical: 16,
       borderRadius: 12,
       alignItems: 'center',
-      marginTop: 8,
-      marginBottom: 40,
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: 8,
+    },
+    previewButton: {
+      backgroundColor: colors.background.secondary,
+      borderWidth: 1,
+      borderColor: colors.primary,
     },
     saveButtonDisabled: {
       opacity: 0.6,
@@ -934,6 +1603,22 @@ const createStyles = (colors: any) =>
       color: '#fff',
       fontSize: 16,
       fontWeight: '600',
+    },
+    deleteButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      padding: 16,
+      backgroundColor: colors.danger + '15',
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.danger,
+    },
+    deleteButtonText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.danger,
     },
   });
 

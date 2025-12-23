@@ -28,9 +28,11 @@ export default function CreateDateRequestScreen() {
 
   const matchId = params.matchId as string;
   const [match, setMatch] = useState<any>(null);
+  const [matches, setMatches] = useState<any[]>([]);
   const [dateOptions, setDateOptions] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showMatchSelector, setShowMatchSelector] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -40,8 +42,16 @@ export default function CreateDateRequestScreen() {
           DatingService.getDatingMatches(),
           DatingService.getDateOptions(),
         ]);
-        const foundMatch = matchesData?.find((m: any) => m.id === matchId);
-        setMatch(foundMatch);
+        setMatches(matchesData || []);
+        
+        if (matchId) {
+          const foundMatch = matchesData?.find((m: any) => m.id === matchId);
+          setMatch(foundMatch);
+        } else if (matchesData && matchesData.length > 0) {
+          // If no matchId provided but user has matches, show selector
+          setShowMatchSelector(true);
+        }
+        
         setDateOptions(optionsData);
       } catch (error: any) {
         console.error('Error loading data:', error);

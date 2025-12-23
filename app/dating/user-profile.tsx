@@ -11,12 +11,14 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Heart, Star, MapPin, Calendar, Users, Video, Image as ImageIcon, Share2, MoreVertical, Shield, CheckCircle2 } from 'lucide-react-native';
+import { ArrowLeft, Heart, Star, MapPin, Calendar, Users, Video, Image as ImageIcon, Share2, MoreVertical, Shield, CheckCircle2, Crown, Mic, Clock, MessageCircle, TrendingUp, Smile, Coffee, Home, Church, Briefcase, Mountain } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
 import { Image as ExpoImage } from 'expo-image';
 import * as DatingService from '@/lib/dating-service';
+import * as ProfileEnhancements from '@/lib/dating-profile-enhancements';
 import { LinearGradient } from 'expo-linear-gradient';
+import { supabase } from '@/lib/supabase';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -31,6 +33,11 @@ export default function UserProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'photos' | 'videos'>('photos');
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
+  const [badges, setBadges] = useState<any[]>([]);
+  const [compatibility, setCompatibility] = useState<number | null>(null);
+  const [conversationStarters, setConversationStarters] = useState<string[]>([]);
+  const [isOwnProfile, setIsOwnProfile] = useState(false);
+  const [subscription, setSubscription] = useState<any>(null);
 
   useEffect(() => {
     loadProfile();
@@ -39,8 +46,48 @@ export default function UserProfileScreen() {
   const loadProfile = async () => {
     try {
       setLoading(true);
-      const data = await DatingService.getDatingProfile(params.userId);
-      setProfile(data);
+      const { data: { user } } = await supabase.auth.getUser();
+      setIsOwnProfile(user?.id === params.userId);
+      
+      const [profileData, badgesData, subscriptionData] = await Promise.all([
+        DatingService.getDatingProfile(params.userId),
+        ProfileEnhancements.getUserBadges(params.userId).catch(() => []),
+        user?.id === params.userId ? DatingService.getSubscriptionInfo().catch(() => null) : Promise.resolve(null),
+      ]);
+      
+      setProfile(profileData);
+      setBadges(badgesData);
+      setSubscription(subscriptionData);
+      
+      // Update last_active_at when viewing someone else's profile
+      if (user?.id && user.id !== params.userId && profileData) {
+        try {
+          await supabase
+            .from('dating_profiles')
+            .update({ last_active_at: new Date().toISOString() })
+            .eq('user_id', params.userId);
+        } catch (e) {
+          console.error('Error updating last_active_at:', e);
+        }
+      }
+      
+      // Load compatibility if viewing someone else's profile
+      if (user?.id && user.id !== params.userId) {
+        try {
+          const compat = await ProfileEnhancements.calculateCompatibility(user.id, params.userId);
+          setCompatibility(compat);
+        } catch (e) {
+          console.error('Error calculating compatibility:', e);
+        }
+        
+        // Load conversation starters
+        try {
+          const starters = await ProfileEnhancements.getConversationStarters(params.userId);
+          setConversationStarters(starters);
+        } catch (e) {
+          console.error('Error loading conversation starters:', e);
+        }
+      }
     } catch (error: any) {
       console.error('Error loading profile:', error);
       Alert.alert('Error', 'Failed to load profile');
@@ -74,6 +121,19 @@ export default function UserProfileScreen() {
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to super like user');
     }
+  };
+
+  const getLastSeenText = (lastActive: string) => {
+    const now = new Date();
+    const lastSeen = new Date(lastActive);
+    const diffMs = now.getTime() - lastSeen.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    
+    if (diffMins < 5) return 'Online now';
+    if (diffMins < 60) return `Active ${diffMins}m ago`;
+    if (diffHours < 24) return `Active ${diffHours}h ago`;
+    return `Last seen ${Math.floor(diffHours / 24)}d ago`;
   };
 
   if (loading) {
@@ -190,11 +250,222 @@ export default function UserProfileScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Conversation Starters */}
+        {conversationStarters.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Conversation Starters 💬</Text>
+            <View style={styles.conversationStartersContainer}>
+              {conversationStarters.map((starter, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={styles.conversationStarterButton}
+                  onPress={() => {
+                    // Navigate to messages or show prompt
+                    Alert.alert('Start Conversation', starter);
+                  }}
+                >
+                  <MessageCircle size={16} color={colors.primary} />
+                  <Text style={styles.conversationStarterText}>{starter}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+
         {/* Bio Section */}
         {profile.bio && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>About</Text>
             <Text style={styles.bioText}>{profile.bio}</Text>
+          </View>
+        )}
+
+        {/* What Makes Me Different */}
+        {profile.what_makes_me_different && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>What Makes Me Different 🔥</Text>
+            <Text style={styles.bioText}>{profile.what_makes_me_different}</Text>
+          </View>
+        )}
+
+        {/* Values */}
+        {profile.values && profile.values.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Values ❤️</Text>
+            <View style={styles.interestsContainer}>
+              {profile.values.map((value: string, index: number) => (
+                <View key={index} style={styles.valueTag}>
+                  <Heart size={14} color={colors.primary} />
+                  <Text style={styles.interestText}>{value}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Mood & Weekend Style */}
+        {(profile.mood || profile.weekend_style) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Vibe & Lifestyle</Text>
+            <View style={styles.infoGrid}>
+              {profile.mood && (
+                <View style={styles.infoItem}>
+                  <Smile size={20} color={colors.primary} />
+                  <Text style={styles.infoLabel}>Mood</Text>
+                  <Text style={styles.infoValue}>
+                    {profile.mood.charAt(0).toUpperCase() + profile.mood.slice(1)}
+                  </Text>
+                </View>
+              )}
+              {profile.weekend_style && (
+                <View style={styles.infoItem}>
+                  {profile.weekend_style === 'homebody' && <Home size={20} color={colors.primary} />}
+                  {profile.weekend_style === 'out_with_friends' && <Users size={20} color={colors.primary} />}
+                  {profile.weekend_style === 'church_faith' && <Church size={20} color={colors.primary} />}
+                  {profile.weekend_style === 'side_hustling' && <Briefcase size={20} color={colors.primary} />}
+                  {profile.weekend_style === 'exploring' && <Mountain size={20} color={colors.primary} />}
+                  <Text style={styles.infoLabel}>Weekend</Text>
+                  <Text style={styles.infoValue}>
+                    {profile.weekend_style.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* Daily Question Answer */}
+        {profile.daily_question_answer && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Daily Question ✍🏽</Text>
+            <Text style={styles.bioText}>{profile.daily_question_answer}</Text>
+          </View>
+        )}
+
+        {/* Prompts / Short Questions */}
+        {profile.prompts && Array.isArray(profile.prompts) && profile.prompts.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Prompts / Short Questions ✍🏽</Text>
+            <View style={styles.promptsContainer}>
+              {profile.prompts.map((prompt: any, index: number) => (
+                <View key={index} style={styles.promptCard}>
+                  <Text style={styles.promptQuestion}>{prompt.question}</Text>
+                  <Text style={styles.promptAnswer}>{prompt.answer}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* What I'm Looking For */}
+        {profile.what_im_looking_for && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>What I'm Looking For 💬</Text>
+            <Text style={styles.bioText}>{profile.what_im_looking_for}</Text>
+          </View>
+        )}
+
+        {/* Intention Tag */}
+        {profile.intention_tag && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Intention 🔒</Text>
+            <View style={styles.intentionContainer}>
+              <View style={styles.intentionBadge}>
+                <Text style={styles.intentionText}>
+                  Here for: {profile.intention_tag.charAt(0).toUpperCase() + profile.intention_tag.slice(1)}
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* Local Flavor */}
+        {(profile.local_food || profile.local_slang || profile.local_spot) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Local Flavor 🌍</Text>
+            <View style={styles.localFlavorContainer}>
+              {profile.local_food && (
+                <View style={styles.localItem}>
+                  <Text style={styles.localLabel}>Favorite Food</Text>
+                  <Text style={styles.localValue}>{profile.local_food}</Text>
+                </View>
+              )}
+              {profile.local_slang && (
+                <View style={styles.localItem}>
+                  <Text style={styles.localLabel}>Favorite Slang</Text>
+                  <Text style={styles.localValue}>{profile.local_slang}</Text>
+                </View>
+              )}
+              {profile.local_spot && (
+                <View style={styles.localItem}>
+                  <Text style={styles.localLabel}>Favorite Spot</Text>
+                  <Text style={styles.localValue}>{profile.local_spot}</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* Lifestyle */}
+        {(profile.kids || profile.work || profile.smoke || profile.drink) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Lifestyle</Text>
+            <View style={styles.infoGrid}>
+              {profile.kids && (
+                <View style={styles.infoItem}>
+                  <Users size={20} color={colors.primary} />
+                  <Text style={styles.infoLabel}>Kids</Text>
+                  <Text style={styles.infoValue}>
+                    {profile.kids.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                  </Text>
+                </View>
+              )}
+              {profile.work && (
+                <View style={styles.infoItem}>
+                  <Briefcase size={20} color={colors.primary} />
+                  <Text style={styles.infoLabel}>Work</Text>
+                  <Text style={styles.infoValue}>{profile.work}</Text>
+                </View>
+              )}
+              {profile.smoke && (
+                <View style={styles.infoItem}>
+                  <Text style={styles.infoLabel}>Smoke</Text>
+                  <Text style={styles.infoValue}>
+                    {profile.smoke.charAt(0).toUpperCase() + profile.smoke.slice(1).replace('_', ' ')}
+                  </Text>
+                </View>
+              )}
+              {profile.drink && (
+                <View style={styles.infoItem}>
+                  <Coffee size={20} color={colors.primary} />
+                  <Text style={styles.infoLabel}>Drink</Text>
+                  <Text style={styles.infoValue}>
+                    {profile.drink.charAt(0).toUpperCase() + profile.drink.slice(1).replace('_', ' ')}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* Earned Badges */}
+        {badges.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Badges 🏆</Text>
+            <View style={styles.badgesContainer}>
+              {badges.map((badge: any) => (
+                <View key={badge.id} style={styles.badgeItem}>
+                  {badge.badge_type === 'verified' && <CheckCircle2 size={20} color={colors.primary} />}
+                  {badge.badge_type === 'good_conversationalist' && <MessageCircle size={20} color={colors.primary} />}
+                  {badge.badge_type === 'replies_fast' && <Clock size={20} color={colors.primary} />}
+                  {badge.badge_type === 'respectful_member' && <Shield size={20} color={colors.primary} />}
+                  {badge.badge_type === 'premium' && <Crown size={20} color={colors.accent} />}
+                  <Text style={styles.badgeItemText}>
+                    {badge.badge_type.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                  </Text>
+                </View>
+              ))}
+            </View>
           </View>
         )}
 
@@ -679,6 +950,233 @@ const createStyles = (colors: any) =>
     emptyMediaText: {
       fontSize: 16,
       color: colors.text.secondary,
+    },
+    headlineText: {
+      fontSize: 18,
+      fontWeight: '600',
+      color: '#fff',
+      marginBottom: 12,
+      textAlign: 'center',
+      fontStyle: 'italic',
+    },
+    badgesRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginLeft: 8,
+    },
+    verificationBadge: {
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      backgroundColor: colors.primary,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    premiumBadge: {
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      backgroundColor: colors.accent,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    freeBadge: {
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 8,
+      backgroundColor: 'rgba(255,255,255,0.2)',
+    },
+    freeBadgeText: {
+      fontSize: 10,
+      color: '#fff',
+      fontWeight: '600',
+    },
+    respectBadge: {
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      backgroundColor: colors.success,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    statusRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginTop: 8,
+    },
+    statusDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    statusText: {
+      fontSize: 14,
+      color: '#fff',
+      opacity: 0.9,
+    },
+    compatibilityContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginTop: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      backgroundColor: 'rgba(255,255,255,0.2)',
+      borderRadius: 16,
+      alignSelf: 'flex-start',
+    },
+    compatibilityText: {
+      fontSize: 14,
+      color: '#fff',
+      fontWeight: '700',
+    },
+    voiceIntroButton: {
+      position: 'absolute',
+      top: 20,
+      left: 20,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      backgroundColor: 'rgba(0,0,0,0.6)',
+      borderRadius: 20,
+    },
+    voiceIntroText: {
+      color: '#fff',
+      fontSize: 14,
+      fontWeight: '600',
+    },
+    conversationStartersContainer: {
+      gap: 12,
+    },
+    conversationStarterButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      padding: 16,
+      backgroundColor: colors.background.secondary,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border.light,
+    },
+    conversationStarterText: {
+      flex: 1,
+      fontSize: 15,
+      color: colors.text.primary,
+      fontWeight: '500',
+    },
+    valueTag: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      backgroundColor: colors.primary + '15',
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.primary + '30',
+    },
+    intentionContainer: {
+      marginTop: 8,
+    },
+    intentionBadge: {
+      alignSelf: 'flex-start',
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      backgroundColor: colors.primary + '15',
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.primary,
+    },
+    intentionText: {
+      fontSize: 14,
+      color: colors.primary,
+      fontWeight: '600',
+    },
+    localFlavorContainer: {
+      gap: 12,
+    },
+    localItem: {
+      padding: 12,
+      backgroundColor: colors.background.secondary,
+      borderRadius: 12,
+    },
+    localLabel: {
+      fontSize: 12,
+      color: colors.text.secondary,
+      marginBottom: 4,
+      fontWeight: '600',
+    },
+    localValue: {
+      fontSize: 15,
+      color: colors.text.primary,
+      fontWeight: '500',
+    },
+    badgesContainer: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 12,
+    },
+    badgeItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      backgroundColor: colors.background.secondary,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border.light,
+    },
+    badgeItemText: {
+      fontSize: 14,
+      color: colors.text.primary,
+      fontWeight: '600',
+    },
+    bioVideoContainer: {
+      width: '100%',
+      height: 200,
+      borderRadius: 16,
+      overflow: 'hidden',
+      position: 'relative',
+    },
+    bioVideoThumbnail: {
+      width: '100%',
+      height: '100%',
+    },
+    bioVideoOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: 'rgba(0,0,0,0.3)',
+    },
+    promptsContainer: {
+      gap: 16,
+    },
+    promptCard: {
+      padding: 16,
+      backgroundColor: colors.background.secondary,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border.light,
+    },
+    promptQuestion: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.text.primary,
+      marginBottom: 8,
+    },
+    promptAnswer: {
+      fontSize: 15,
+      color: colors.text.secondary,
+      lineHeight: 22,
     },
   });
 

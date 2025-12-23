@@ -11,7 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
-import { Calendar, MapPin, Clock, Check, X, ArrowRight, Edit2, Trash2, Send } from 'lucide-react-native';
+import { Calendar, MapPin, Clock, Check, X, ArrowRight, Edit2, Trash2, Send, Plus } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import * as DatingService from '@/lib/dating-service';
 import { Image as ExpoImage } from 'expo-image';
@@ -126,13 +126,33 @@ export default function DateRequestsScreen() {
   if (!dateRequests || dateRequests.length === 0) {
     return (
       <SafeAreaView style={styles.container}>
-        <Stack.Screen options={{ title: 'Date Requests', headerShown: true }} />
+        <Stack.Screen 
+          options={{ 
+            title: 'Date Requests', 
+            headerShown: true,
+            headerRight: () => (
+              <TouchableOpacity
+                onPress={() => router.push('/dating/matches')}
+                style={styles.headerButton}
+              >
+                <Plus size={24} color={colors.primary} />
+              </TouchableOpacity>
+            ),
+          }} 
+        />
         <Animated.View style={[styles.emptyContainer, { opacity: fadeAnim }]}>
           <Calendar size={80} color={colors.text.tertiary} />
           <Text style={styles.emptyTitle}>No Date Requests</Text>
           <Text style={styles.emptyText}>
-            When you or your matches create date requests, they'll appear here.
+            Create a date request with one of your matches to plan your first date!
           </Text>
+          <TouchableOpacity
+            style={styles.createButton}
+            onPress={() => router.push('/dating/matches')}
+          >
+            <Plus size={20} color="#fff" />
+            <Text style={styles.createButtonText}>Go to Matches</Text>
+          </TouchableOpacity>
         </Animated.View>
       </SafeAreaView>
     );
@@ -634,6 +654,30 @@ const createStyles = (colors: any) =>
       fontSize: 16,
       color: colors.text.secondary,
       textAlign: 'center',
+    },
+    createButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: colors.primary,
+      paddingHorizontal: 24,
+      paddingVertical: 14,
+      borderRadius: 16,
+      marginTop: 8,
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 6,
+    },
+    createButtonText: {
+      color: '#fff',
+      fontSize: 16,
+      fontWeight: '700',
+    },
+    headerButton: {
+      padding: 8,
+      marginRight: 8,
     },
   });
 

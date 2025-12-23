@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { ArrowLeft, MapPin, Sliders, X } from 'lucide-react-native';
@@ -30,6 +31,52 @@ export default function DatingFiltersScreen() {
   const [useCurrentLocation, setUseCurrentLocation] = useState(true);
   const [latitude, setLatitude] = useState<number | undefined>();
   const [longitude, setLongitude] = useState<number | undefined>();
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Load saved filters from profile
+  useEffect(() => {
+    loadSavedFilters();
+  }, []);
+
+  const loadSavedFilters = async () => {
+    try {
+      setIsLoading(true);
+      const profile = await DatingService.getDatingProfile();
+      
+      if (profile) {
+        // Load age range
+        if (profile.age_range_min) {
+          setMinAge(profile.age_range_min.toString());
+        }
+        if (profile.age_range_max) {
+          setMaxAge(profile.age_range_max.toString());
+        }
+        
+        // Load distance
+        if (profile.max_distance_km) {
+          setMaxDistance(profile.max_distance_km.toString());
+        }
+        
+        // Load location
+        if (profile.location_city) {
+          setLocationCity(profile.location_city);
+        }
+        if (profile.location_country) {
+          setLocationCountry(profile.location_country);
+        }
+        if (profile.location_latitude && profile.location_longitude) {
+          setLatitude(profile.location_latitude);
+          setLongitude(profile.location_longitude);
+          setUseCurrentLocation(false);
+        }
+      }
+    } catch (error: any) {
+      console.error('Error loading saved filters:', error);
+      // Continue with defaults if error
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleGetCurrentLocation = async () => {
     try {
@@ -90,8 +137,14 @@ export default function DatingFiltersScreen() {
         }}
       />
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* Location Section */}
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading your preferences...</Text>
+        </View>
+      ) : (
+        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+          {/* Location Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <MapPin size={20} color={colors.primary} />
@@ -206,6 +259,7 @@ export default function DatingFiltersScreen() {
           <Text style={styles.applyButtonText}>Apply Filters</Text>
         </TouchableOpacity>
       </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
@@ -314,6 +368,17 @@ const createStyles = (colors: any) =>
       fontSize: 18,
       fontWeight: '700',
       color: '#fff',
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 20,
+    },
+    loadingText: {
+      marginTop: 16,
+      fontSize: 16,
+      color: colors.text.secondary,
     },
   });
 

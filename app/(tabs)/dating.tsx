@@ -15,8 +15,8 @@ import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Heart, X, Star, Settings, Users, Sparkles, Zap, RotateCcw, Crown, Sliders } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { trpc } from '@/lib/trpc';
 import * as DatingService from '@/lib/dating-service';
+import { supabase } from '@/lib/supabase';
 import { useApp } from '@/contexts/AppContext';
 import DatingSwipeCard from '@/components/DatingSwipeCard';
 import MatchCelebrationModal from '@/components/MatchCelebrationModal';
@@ -178,8 +178,22 @@ export default function DatingScreen() {
     handleLike(userId, true);
   };
 
-  const handleRewind = () => {
+  const handleRewind = async () => {
     if (currentIndex > 0) {
+      // Check premium for rewind
+      const isPremium = await DatingService.checkPremiumSubscription();
+      if (!isPremium) {
+        Alert.alert(
+          'Premium Feature',
+          'Rewind is a premium feature. Upgrade to go back and swipe again!',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Go Premium', onPress: () => router.push('/dating/premium') },
+          ]
+        );
+        return;
+      }
+
       setCurrentIndex((prev) => prev - 1);
       // Remove from swiped set
       if (discovery && discovery[currentIndex - 1]) {
@@ -195,11 +209,71 @@ export default function DatingScreen() {
     }
   };
 
-  const handleBoost = () => {
-    Alert.alert('Boost Profile', 'Boost your profile to be seen by more people!', [
-      { text: 'Upgrade to Premium', onPress: () => router.push('/dating/premium') },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+  const handleBoost = async () => {
+    try {
+      // Check premium subscription
+      const isPremium = await DatingService.checkPremiumSubscription();
+      if (!isPremium) {
+        Alert.alert(
+          'Premium Feature',
+          'Boost is a premium feature. Upgrade to get 10x more profile views!',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Go Premium', onPress: () => router.push('/dating/premium') },
+          ]
+        );
+        return;
+      }
+
+      // Check if already boosted (cooldown)
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: recentBoost } = await supabase
+        .from('dating_usage_tracking')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('feature_name', 'boost')
+        .gte('period_start', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (recentBoost) {
+        Alert.alert('Boost Active', 'Your profile is already boosted! Boost again in 24 hours.');
+        return;
+      }
+
+      // Activate boost
+      Alert.alert(
+        'Boost Your Profile',
+        'Boost your profile for 30 minutes to get 10x more views!',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Boost Now',
+            onPress: async () => {
+              try {
+                // Record boost usage
+                await supabase.from('dating_usage_tracking').insert({
+                  user_id: user.id,
+                  feature_name: 'boost',
+                  usage_count: 1,
+                  period_start: new Date().toISOString(),
+                  period_end: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 minutes
+                });
+
+                Alert.alert('Boost Activated!', 'Your profile is now boosted for 30 minutes. Get ready for more matches!');
+              } catch (error: any) {
+                Alert.alert('Error', error.message || 'Failed to activate boost');
+              }
+            },
+          },
+        ]
+      );
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to boost profile');
+    }
   };
 
   const handleViewProfile = (profile: any) => {

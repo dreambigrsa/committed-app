@@ -8,7 +8,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
-import { Heart, Users, Sparkles, Calendar, ArrowRight } from 'lucide-react-native';
+import { Heart, Users, Sparkles, Calendar, ArrowRight, Eye } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import * as DatingService from '@/lib/dating-service';
 import { useFocusEffect } from '@react-navigation/native';
@@ -182,6 +182,22 @@ export default function DatingDashboardScreen() {
               <View style={styles.actionInfo}>
                 <Text style={styles.actionTitle}>Edit Profile</Text>
                 <Text style={styles.actionSubtitle}>Update your dating profile</Text>
+              </View>
+            </View>
+            <ArrowRight size={20} color={colors.text.secondary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionCard}
+            onPress={() => router.push('/dating/profile-preview')}
+          >
+            <View style={styles.actionLeft}>
+              <View style={[styles.actionIcon, { backgroundColor: colors.primary + '15' }]}>
+                <Eye size={24} color={colors.primary} />
+              </View>
+              <View style={styles.actionInfo}>
+                <Text style={styles.actionTitle}>Preview Profile</Text>
+                <Text style={styles.actionSubtitle}>See how others see your profile</Text>
               </View>
             </View>
             <ArrowRight size={20} color={colors.text.secondary} />

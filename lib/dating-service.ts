@@ -88,6 +88,27 @@ export async function createOrUpdateDatingProfile(profileData: {
   age_range_max?: number;
   max_distance_km?: number;
   is_active?: boolean;
+  what_im_looking_for?: string;
+  bio_video_url?: string;
+  kids?: 'have_kids' | 'want_kids' | 'dont_want_kids' | 'have_and_want_more' | 'not_sure';
+  work?: string;
+  smoke?: 'yes' | 'no' | 'sometimes' | 'prefer_not_to_say';
+  drink?: 'yes' | 'no' | 'sometimes' | 'prefer_not_to_say';
+  prompts?: Array<{ question: string; answer: string }>;
+  headline?: string;
+  intro_voice_url?: string;
+  values?: string[];
+  mood?: 'chill' | 'romantic' | 'fun' | 'serious' | 'adventurous';
+  what_makes_me_different?: string;
+  weekend_style?: 'homebody' | 'out_with_friends' | 'church_faith' | 'side_hustling' | 'exploring';
+  conversation_starters?: string[];
+  daily_question_answer?: string;
+  daily_question_id?: string;
+  intention_tag?: 'friendship' | 'dating' | 'serious' | 'marriage';
+  respect_first_badge?: boolean;
+  local_food?: string;
+  local_slang?: string;
+  local_spot?: string;
 }) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('User not authenticated');
@@ -131,21 +152,53 @@ export async function deleteDatingPhoto(photoId: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('User not authenticated');
 
-  // Verify photo belongs to user's profile
-  const { data: photo } = await supabase
+  // First, get the photo and verify it belongs to user's profile
+  const { data: photo, error: fetchError } = await supabase
     .from('dating_photos')
-    .select('dating_profile_id, dating_profiles!inner(user_id)')
+    .select('id, photo_url, dating_profile_id, dating_profiles!inner(user_id)')
     .eq('id', photoId)
     .single();
 
-  if (!photo) throw new Error('Photo not found');
+  if (fetchError || !photo) {
+    throw new Error('Photo not found or you do not have permission to delete it');
+  }
 
-  const { error } = await supabase
+  // Delete the photo record
+  const { error: deleteError } = await supabase
     .from('dating_photos')
     .delete()
     .eq('id', photoId);
 
-  if (error) throw error;
+  if (deleteError) {
+    console.error('Delete photo error:', deleteError);
+    throw new Error(deleteError.message || 'Failed to delete photo');
+  }
+
+  // Try to delete from storage if it's a Supabase storage URL
+  if (photo.photo_url && photo.photo_url.includes('supabase.co/storage')) {
+    try {
+      // Extract path from URL
+      const urlParts = photo.photo_url.split('/storage/v1/object/public/');
+      if (urlParts.length === 2) {
+        const pathParts = urlParts[1].split('/');
+        const bucket = pathParts[0];
+        const filePath = pathParts.slice(1).join('/');
+        
+        const { error: storageError } = await supabase.storage
+          .from(bucket)
+          .remove([filePath]);
+        
+        if (storageError) {
+          console.warn('Failed to delete from storage:', storageError);
+          // Don't throw - photo record is already deleted
+        }
+      }
+    } catch (storageErr) {
+      console.warn('Error deleting from storage:', storageErr);
+      // Don't throw - photo record is already deleted
+    }
+  }
+
   return { success: true };
 }
 
@@ -185,16 +238,33 @@ export async function getDatingDiscovery(filters?: {
     .neq('user_id', user.id)
     .limit(20);
 
-  // Apply age filters only if age is not null
-  const minAge = filters?.minAge || userProfile.age_range_min;
-  const maxAge = filters?.maxAge || userProfile.age_range_max;
+  // Apply filters - use provided filters or fall back to saved profile preferences
+  const minAge = filters?.minAge ?? userProfile.age_range_min ?? 18;
+  const maxAge = filters?.maxAge ?? userProfile.age_range_max ?? 99;
+  const maxDistance = filters?.maxDistance ?? userProfile.max_distance_km ?? 50;
+  const locationCity = filters?.locationCity ?? userProfile.location_city;
+  const locationCountry = filters?.locationCountry ?? userProfile.location_country;
+  const userLatitude = filters?.latitude ?? userProfile.location_latitude;
+  const userLongitude = filters?.longitude ?? userProfile.location_longitude;
   
+  // Apply age filters
   if (minAge) {
     query = query.gte('age', minAge);
   }
   if (maxAge) {
     query = query.lte('age', maxAge);
   }
+  
+  // Apply location filters (city and country)
+  if (locationCity) {
+    query = query.ilike('location_city', `%${locationCity}%`);
+  }
+  if (locationCountry) {
+    query = query.ilike('location_country', `%${locationCountry}%`);
+  }
+  
+  // Note: Distance filtering by coordinates would require PostGIS or manual calculation
+  // For now, we filter by city/country which is stored in the profile
 
   // Exclude already liked/passed users
   const { data: liked } = await supabase
@@ -726,6 +796,188 @@ export async function cancelDateRequest(requestId: string) {
     .from('dating_date_requests')
     .update({ status: 'cancelled' })
     .eq('id', requestId);
+
+  if (error) throw error;
+  return { success: true };
+}
+
+// ============================================
+// SUBSCRIPTION HELPERS
+// ============================================
+
+export async function checkPremiumSubscription(): Promise<boolean> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return false;
+
+  // Check for active subscription or trial
+  const { data: subscription } = await supabase
+    .from('user_subscriptions')
+    .select('*')
+    .eq('user_id', user.id)
+    .in('status', ['active', 'trial'])
+    .single();
+
+  if (!subscription) return false;
+
+  // If it's a trial, check if it hasn't expired
+  if (subscription.status === 'trial' && subscription.expires_at) {
+    const expiresAt = new Date(subscription.expires_at);
+    if (expiresAt < new Date()) {
+      return false; // Trial expired
+    }
+  }
+
+  // Also check dating profile for trial info
+  const { data: profile } = await supabase
+    .from('dating_profiles')
+    .select('premium_trial_ends_at')
+    .eq('user_id', user.id)
+    .single();
+
+  if (profile?.premium_trial_ends_at) {
+    const trialEndsAt = new Date(profile.premium_trial_ends_at);
+    if (trialEndsAt >= new Date()) {
+      return true; // Trial still active
+    }
+  }
+
+  return !!subscription;
+}
+
+export async function getSubscriptionInfo() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  // Get subscription (active or trial)
+  const { data: subscription } = await supabase
+    .from('user_subscriptions')
+    .select(`
+      *,
+      plan:subscription_plans(*)
+    `)
+    .eq('user_id', user.id)
+    .in('status', ['active', 'trial'])
+    .single();
+
+  // Also get trial info from dating profile
+  const { data: profile } = await supabase
+    .from('dating_profiles')
+    .select('premium_trial_ends_at, premium_trial_granted_at, premium_trial_granted_by')
+    .eq('user_id', user.id)
+    .single();
+
+  if (subscription) {
+    return {
+      ...subscription,
+      is_trial: subscription.status === 'trial',
+      trial_ends_at: subscription.expires_at || profile?.premium_trial_ends_at,
+      trial_granted_at: profile?.premium_trial_granted_at,
+    };
+  }
+
+  // If no subscription but has trial info in profile
+  if (profile?.premium_trial_ends_at) {
+    const trialEndsAt = new Date(profile.premium_trial_ends_at);
+    if (trialEndsAt >= new Date()) {
+      return {
+        status: 'trial',
+        is_trial: true,
+        trial_ends_at: profile.premium_trial_ends_at,
+        trial_granted_at: profile.premium_trial_granted_at,
+      };
+    }
+  }
+
+  return null;
+}
+
+// ============================================
+// PROFILE DELETION
+// ============================================
+
+export async function deleteDatingProfile() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('User not authenticated');
+
+  // Get profile to delete photos/videos
+  const { data: profile } = await supabase
+    .from('dating_profiles')
+    .select('id')
+    .eq('user_id', user.id)
+    .single();
+
+  if (!profile) {
+    throw new Error('Profile not found');
+  }
+
+  // Delete all photos
+  const { data: photos } = await supabase
+    .from('dating_photos')
+    .select('photo_url')
+    .eq('dating_profile_id', profile.id);
+
+  if (photos && photos.length > 0) {
+    // Delete photos from storage
+    for (const photo of photos) {
+      if (photo.photo_url && photo.photo_url.includes('supabase.co/storage')) {
+        try {
+          const urlParts = photo.photo_url.split('/storage/v1/object/public/');
+          if (urlParts.length === 2) {
+            const pathParts = urlParts[1].split('/');
+            const bucket = pathParts[0];
+            const filePath = pathParts.slice(1).join('/');
+            await supabase.storage.from(bucket).remove([filePath]);
+          }
+        } catch (e) {
+          console.warn('Error deleting photo from storage:', e);
+        }
+      }
+    }
+  }
+
+  // Delete all videos
+  const { data: videos } = await supabase
+    .from('dating_videos')
+    .select('video_url, thumbnail_url')
+    .eq('dating_profile_id', profile.id);
+
+  if (videos && videos.length > 0) {
+    // Delete videos from storage
+    for (const video of videos) {
+      if (video.video_url && video.video_url.includes('supabase.co/storage')) {
+        try {
+          const urlParts = video.video_url.split('/storage/v1/object/public/');
+          if (urlParts.length === 2) {
+            const pathParts = urlParts[1].split('/');
+            const bucket = pathParts[0];
+            const filePath = pathParts.slice(1).join('/');
+            await supabase.storage.from(bucket).remove([filePath]);
+          }
+        } catch (e) {
+          console.warn('Error deleting video from storage:', e);
+        }
+      }
+      if (video.thumbnail_url && video.thumbnail_url.includes('supabase.co/storage')) {
+        try {
+          const urlParts = video.thumbnail_url.split('/storage/v1/object/public/');
+          if (urlParts.length === 2) {
+            const pathParts = urlParts[1].split('/');
+            const bucket = pathParts[0];
+            const filePath = pathParts.slice(1).join('/');
+            await supabase.storage.from(bucket).remove([filePath]);
+          }
+        } catch (e) {
+          console.warn('Error deleting thumbnail from storage:', e);
+        }
+      }
+    }
+  }
+
+  // Delete the profile (cascade will handle related records)
+  const { error } = await supabase
+    .from('dating_profiles')
+    .delete()
+    .eq('user_id', user.id);
 
   if (error) throw error;
   return { success: true };

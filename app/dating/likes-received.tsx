@@ -10,10 +10,11 @@ import {
   Animated,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
-import { Heart, Sparkles, Crown, ArrowLeft } from 'lucide-react-native';
+import { Heart, Sparkles, Crown, ArrowLeft, Lock } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import * as DatingService from '@/lib/dating-service';
 import { Image as ExpoImage } from 'expo-image';
+import { BlurView } from 'expo-blur';
 import { useFocusEffect } from '@react-navigation/native';
 import PremiumModal from '@/components/PremiumModal';
 
@@ -26,11 +27,17 @@ export default function LikesReceivedScreen() {
   const [likes, setLikes] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [isPremium, setIsPremium] = useState(false);
 
   const loadLikes = async () => {
     try {
       setIsLoading(true);
       setShowPremiumModal(false); // Reset modal state
+      
+      // Check premium status
+      const premiumStatus = await DatingService.checkPremiumSubscription();
+      setIsPremium(premiumStatus);
+      
       const data = await DatingService.getLikesReceived();
       setLikes(data || []);
     } catch (error: any) {
@@ -126,9 +133,13 @@ export default function LikesReceivedScreen() {
     );
   }
 
+  const blurredCount = likes.filter(l => l.isBlurred).length;
+
   const renderLike = ({ item, index }: { item: any; index: number }) => {
     const liker = item.liker;
     const photo = item.primaryPhoto || liker?.profile_picture;
+    const isBlurred = item.isBlurred || !isPremium;
+    const displayName = isBlurred ? 'Someone' : (liker?.full_name || 'Unknown');
 
     return (
       <Animated.View
@@ -150,10 +161,16 @@ export default function LikesReceivedScreen() {
         <TouchableOpacity
           style={styles.likeContent}
           onPress={() => {
-            // Navigate to their profile or like them back
-            router.push('/(tabs)/dating' as any);
+            if (isBlurred) {
+              // Show premium modal instead of navigating
+              setShowPremiumModal(true);
+            } else {
+              // Navigate to their profile or like them back
+              router.push('/(tabs)/dating' as any);
+            }
           }}
-          activeOpacity={0.9}
+          activeOpacity={isBlurred ? 0.7 : 0.9}
+          disabled={false}
         >
           <View style={styles.likePhotoContainer}>
             <ExpoImage
@@ -161,39 +178,64 @@ export default function LikesReceivedScreen() {
               style={styles.likePhoto}
               contentFit="cover"
             />
+            {isBlurred && (
+              <BlurView
+                intensity={80}
+                style={StyleSheet.absoluteFill}
+                tint="dark"
+              />
+            )}
             <View style={styles.likeBadge}>
               <Heart size={16} color={colors.danger} fill={colors.danger} />
             </View>
+            {isBlurred && (
+              <View style={styles.premiumLockBadge}>
+                <Lock size={20} color={colors.accent} fill={colors.accent} />
+              </View>
+            )}
           </View>
           
           <View style={styles.likeInfo}>
             <View style={styles.likeHeader}>
-              <Text style={styles.likeName}>{liker?.full_name}</Text>
-              {item.is_super_like && (
+              <Text style={[styles.likeName, isBlurred && styles.blurredText]}>
+                {displayName}
+              </Text>
+              {item.is_super_like && !isBlurred && (
                 <View style={styles.superLikeBadge}>
                   <Sparkles size={16} color={colors.primary} fill={colors.primary} />
                 </View>
               )}
             </View>
-            <Text style={styles.likeDate}>
+            <Text style={[styles.likeDate, isBlurred && styles.blurredText]}>
               {new Date(item.created_at).toLocaleDateString()}
             </Text>
-            {liker?.phone_verified && (
+            {liker?.phone_verified && !isBlurred && (
               <View style={styles.verifiedBadge}>
                 <Text style={styles.verifiedText}>✓ Verified</Text>
+              </View>
+            )}
+            {isBlurred && (
+              <View style={styles.premiumPromptBadge}>
+                <Crown size={12} color={colors.accent} fill={colors.accent} />
+                <Text style={styles.premiumPromptText}>Tap to unlock</Text>
               </View>
             )}
           </View>
 
           <TouchableOpacity
-            style={styles.likeBackButton}
+            style={[styles.likeBackButton, isBlurred && styles.likeBackButtonDisabled]}
             onPress={(e) => {
               e.stopPropagation();
-              // Like them back
-              router.push('/(tabs)/dating' as any);
+              if (isBlurred) {
+                setShowPremiumModal(true);
+              } else {
+                // Like them back
+                router.push('/(tabs)/dating' as any);
+              }
             }}
+            disabled={isBlurred}
           >
-            <Heart size={24} color={colors.success} fill={colors.success} />
+            <Heart size={24} color={isBlurred ? colors.text.tertiary : colors.success} fill={isBlurred ? 'transparent' : colors.success} />
           </TouchableOpacity>
         </TouchableOpacity>
       </Animated.View>
@@ -219,7 +261,14 @@ export default function LikesReceivedScreen() {
             <Text style={styles.premiumText}>Premium Feature</Text>
           </View>
           <Text style={styles.headerTitle}>People Who Liked You</Text>
-          <Text style={styles.headerSubtitle}>{likes.length} {likes.length === 1 ? 'like' : 'likes'}</Text>
+          <Text style={styles.headerSubtitle}>
+            {isPremium 
+              ? `${likes.length} ${likes.length === 1 ? 'like' : 'likes'}`
+              : blurredCount > 0 
+                ? `${blurredCount} ${blurredCount === 1 ? 'like' : 'likes'} - Upgrade to see who`
+                : '0 likes'
+            }
+          </Text>
         </View>
         
         <FlatList
@@ -425,6 +474,51 @@ const createStyles = (colors: any) =>
       backgroundColor: colors.success + '15',
       justifyContent: 'center',
       alignItems: 'center',
+    },
+    likeBackButtonDisabled: {
+      backgroundColor: colors.border.light,
+      opacity: 0.5,
+    },
+    blurredText: {
+      opacity: 0.6,
+    },
+    premiumLockBadge: {
+      position: 'absolute',
+      top: '50%',
+      left: '50%',
+      marginTop: -20,
+      marginLeft: -20,
+      width: 40,
+      height: 40,
+      backgroundColor: colors.background.primary + 'DD',
+      borderRadius: 20,
+      justifyContent: 'center',
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.3,
+      shadowRadius: 4,
+      elevation: 5,
+      zIndex: 10,
+    },
+    premiumPromptBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      alignSelf: 'flex-start',
+      backgroundColor: colors.accent + '20',
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 12,
+      marginTop: 8,
+      borderWidth: 1,
+      borderColor: colors.accent + '40',
+    },
+    premiumPromptText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.accent,
+      letterSpacing: 0.5,
     },
   });
 

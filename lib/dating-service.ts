@@ -558,13 +558,12 @@ export async function getLikesReceived() {
     .from('user_subscriptions')
     .select('*')
     .eq('user_id', user.id)
-    .eq('status', 'active')
+    .in('status', ['active', 'trial'])
     .single();
 
-  if (!subscription) {
-    throw new Error('Premium subscription required to see who liked you');
-  }
+  const isPremium = !!subscription;
 
+  // Get likes count and basic info even for non-premium users
   const { data, error } = await supabase
     .from('dating_likes')
     .select(`
@@ -582,7 +581,25 @@ export async function getLikesReceived() {
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  return data || [];
+  
+  // If premium, return full data
+  if (isPremium) {
+    return data || [];
+  }
+
+  // For non-premium users, return blurred/anonymized data
+  return (data || []).map((like) => ({
+    ...like,
+    isBlurred: true,
+    liker: {
+      id: like.liker?.id || '',
+      full_name: like.liker?.full_name ? 'Someone' : 'Someone',
+      profile_picture: like.liker?.profile_picture || null,
+      id_verified: false,
+      phone_verified: false,
+      email_verified: false,
+    },
+  }));
 }
 
 // ============================================

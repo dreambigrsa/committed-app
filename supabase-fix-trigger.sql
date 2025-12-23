@@ -9,7 +9,7 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 
 -- Create an improved function that handles errors gracefully
 CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER AS $function_body$
 DECLARE
   v_phone_number TEXT;
 BEGIN
@@ -23,7 +23,7 @@ BEGIN
   -- If phone number is still null or empty, generate a unique one
   -- Format: +0000000XXXX where XXXX is the last 4 digits of the UUID
   IF v_phone_number IS NULL OR v_phone_number = '' THEN
-    v_phone_number := '+0000000' || RIGHT(REPLACE(NEW.id::TEXT, '-', ''), 4);
+    v_phone_number := '+0000000' || SUBSTRING(REPLACE(NEW.id::TEXT, '-', '') FROM LENGTH(REPLACE(NEW.id::TEXT, '-', '')) - 3);
   END IF;
 
   BEGIN
@@ -64,7 +64,7 @@ BEGIN
   
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$function_body$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Recreate the trigger
 CREATE TRIGGER on_auth_user_created

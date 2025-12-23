@@ -65,7 +65,7 @@ BEGIN
 
   RETURN v_auth_user_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Create user records for existing auth users
 -- NOTE: These will only work if auth users already exist in auth.users table
@@ -205,7 +205,7 @@ BEGIN
     interests = EXCLUDED.interests,
     updated_at = NOW();
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Kwekwe profiles with complete data
 SELECT create_sample_dating_profile(

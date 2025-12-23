@@ -93,9 +93,9 @@ export async function getPaymentSubmissions(status?: 'all' | 'pending' | 'approv
     .from('payment_submissions')
     .select(`
       *,
-      user:users(id, full_name, email, profile_picture),
-      subscription_plan:subscription_plans(id, name, price),
-      payment_method:payment_methods(id, name, icon_emoji)
+      user:users!payment_submissions_user_id_fkey(id, full_name, email, profile_picture),
+      subscription_plan:subscription_plans!payment_submissions_subscription_plan_id_fkey(id, name, price),
+      payment_method:payment_methods!payment_submissions_payment_method_id_fkey(id, name, icon_emoji)
     `)
     .order('created_at', { ascending: false });
 
@@ -133,9 +133,9 @@ export async function verifyPayment(
     .eq('id', submissionId)
     .select(`
       *,
-      user:users(id, full_name, email),
-      subscription_plan:subscription_plans(id, name, price),
-      payment_method:payment_methods(id, name, icon_emoji)
+      user:users!payment_submissions_user_id_fkey(id, full_name, email),
+      subscription_plan:subscription_plans!payment_submissions_subscription_plan_id_fkey(id, name, price),
+      payment_method:payment_methods!payment_submissions_payment_method_id_fkey(id, name, icon_emoji)
     `)
     .single();
 

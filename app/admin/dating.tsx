@@ -499,62 +499,90 @@ export default function AdminDatingScreen() {
                   );
                 })
                 .map((profile) => (
-                  <View key={profile.id} style={styles.card}>
-                    <Image
-                      source={{ uri: profile.users?.profile_picture || 'https://via.placeholder.com/50' }}
-                      style={styles.avatar}
-                      contentFit="cover"
-                    />
-                    <View style={styles.cardContent}>
-                      <Text style={styles.cardTitle}>{profile.users?.full_name || 'Unknown'}</Text>
-                      <Text style={styles.cardSubtitle}>{profile.users?.email || 'No email'}</Text>
-                      <View style={styles.badges}>
-                        {profile.users?.phone_verified && <CheckCircle size={16} color={colors.success} />}
-                        {profile.users?.id_verified && <CheckCircle size={16} color={colors.primary} />}
-                        {profile.is_active ? (
-                          <Text style={styles.badgeText}>Active</Text>
-                        ) : (
-                          <Text style={[styles.badgeText, styles.badgeInactive]}>Inactive</Text>
-                        )}
-                        {profile.admin_suspended && (
-                          <Text style={[styles.badgeText, { color: colors.danger }]}>Suspended</Text>
-                        )}
-                        {profile.admin_limited && (
-                          <Text style={[styles.badgeText, { color: colors.warning || '#FFA500' }]}>Limited</Text>
-                        )}
-                        {profile.badges && profile.badges.length > 0 && (
-                          <View style={styles.badgeList}>
-                            {profile.badges.map((badge: string) => (
-                              <TouchableOpacity
-                                key={badge}
-                                style={styles.badgeItem}
-                                onPress={() => {
-                                  Alert.alert(
-                                    'Remove Badge',
-                                    `Remove "${badge.replace('_', ' ')}" badge from this user?`,
-                                    [
-                                      { text: 'Cancel', style: 'cancel' },
-                                      {
-                                        text: 'Remove',
-                                        style: 'destructive',
-                                        onPress: () => handleRemoveBadge(profile, badge),
-                                      },
-                                    ]
-                                  );
-                                }}
-                              >
-                                <Text style={styles.badgeItemText}>
-                                  {badge.replace('_', ' ')} ×
-                                </Text>
-                              </TouchableOpacity>
-                            ))}
+                  <View key={profile.id} style={styles.profileCard}>
+                    <View style={styles.profileHeader}>
+                      <Image
+                        source={{ uri: profile.users?.profile_picture || 'https://via.placeholder.com/60' }}
+                        style={styles.profileAvatar}
+                        contentFit="cover"
+                      />
+                      <View style={styles.profileInfo}>
+                        <View style={styles.profileTitleRow}>
+                          <Text style={styles.profileName}>{profile.users?.full_name || 'Unknown'}</Text>
+                          {profile.users?.phone_verified && (
+                            <CheckCircle size={18} color={colors.success} fill={colors.success} />
+                          )}
+                          {profile.users?.id_verified && (
+                            <Shield size={18} color={colors.primary} fill={colors.primary} />
+                          )}
+                        </View>
+                        <Text style={styles.profileEmail}>{profile.users?.email || 'No email'}</Text>
+                        <View style={styles.statusRow}>
+                          <View style={[
+                            styles.statusBadge,
+                            profile.is_active ? styles.statusActive : styles.statusInactive
+                          ]}>
+                            <View style={[
+                              styles.statusDot,
+                              profile.is_active ? { backgroundColor: colors.success } : { backgroundColor: colors.text.tertiary }
+                            ]} />
+                            <Text style={[
+                              styles.statusText,
+                              profile.is_active ? { color: colors.success } : { color: colors.text.tertiary }
+                            ]}>
+                              {profile.is_active ? 'Active' : 'Inactive'}
+                            </Text>
                           </View>
-                        )}
+                          {profile.admin_suspended && (
+                            <View style={[styles.statusBadge, styles.statusSuspended]}>
+                              <Ban size={12} color={colors.danger} />
+                              <Text style={[styles.statusText, { color: colors.danger }]}>Suspended</Text>
+                            </View>
+                          )}
+                          {profile.admin_limited && (
+                            <View style={[styles.statusBadge, styles.statusLimited]}>
+                              <Shield size={12} color={colors.warning || '#FFA500'} />
+                              <Text style={[styles.statusText, { color: colors.warning || '#FFA500' }]}>Limited</Text>
+                            </View>
+                          )}
+                        </View>
                       </View>
                     </View>
-                    <View style={styles.actionButtons}>
+                    
+                    {profile.badges && profile.badges.length > 0 && (
+                      <View style={styles.badgesSection}>
+                        <Text style={styles.badgesLabel}>Badges:</Text>
+                        <View style={styles.badgesRow}>
+                          {profile.badges.map((badge: string) => (
+                            <TouchableOpacity
+                              key={badge}
+                              style={styles.badgeChip}
+                              onPress={() => {
+                                Alert.alert(
+                                  'Remove Badge',
+                                  `Remove "${badge.replace('_', ' ')}" badge?`,
+                                  [
+                                    { text: 'Cancel', style: 'cancel' },
+                                    {
+                                      text: 'Remove',
+                                      style: 'destructive',
+                                      onPress: () => handleRemoveBadge(profile, badge),
+                                    },
+                                  ]
+                                );
+                              }}
+                            >
+                              <Text style={styles.badgeChipText}>{badge.replace('_', ' ')}</Text>
+                              <Text style={styles.badgeChipRemove}>×</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
+                    )}
+
+                    <View style={styles.actionsRow}>
                       <TouchableOpacity
-                        style={styles.actionButton}
+                        style={[styles.actionBtn, profile.admin_suspended && styles.actionBtnActive]}
                         onPress={() => {
                           setSelectedProfile(profile);
                           setActionType(profile.admin_suspended ? null : 'suspend');
@@ -562,14 +590,13 @@ export default function AdminDatingScreen() {
                           setShowActionModal(true);
                         }}
                       >
-                        {profile.admin_suspended ? (
-                          <CheckCircle size={20} color={colors.success} />
-                        ) : (
-                          <Ban size={20} color={colors.danger} />
-                        )}
+                        <Ban size={18} color={profile.admin_suspended ? colors.success : colors.danger} />
+                        <Text style={[styles.actionBtnText, profile.admin_suspended && { color: colors.success }]}>
+                          {profile.admin_suspended ? 'Unsuspend' : 'Suspend'}
+                        </Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={styles.actionButton}
+                        style={[styles.actionBtn, profile.admin_limited && styles.actionBtnActive]}
                         onPress={() => {
                           setSelectedProfile(profile);
                           setActionType(profile.admin_limited ? null : 'limit');
@@ -577,10 +604,13 @@ export default function AdminDatingScreen() {
                           setShowActionModal(true);
                         }}
                       >
-                        <Shield size={20} color={profile.admin_limited ? colors.success : colors.warning || '#FFA500'} />
+                        <Shield size={18} color={profile.admin_limited ? colors.success : colors.warning || '#FFA500'} />
+                        <Text style={[styles.actionBtnText, profile.admin_limited && { color: colors.success }]}>
+                          {profile.admin_limited ? 'Unlimit' : 'Limit'}
+                        </Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={styles.actionButton}
+                        style={styles.actionBtn}
                         onPress={() => {
                           setSelectedProfile(profile);
                           setActionType('premium');
@@ -588,10 +618,11 @@ export default function AdminDatingScreen() {
                           setShowActionModal(true);
                         }}
                       >
-                        <Sparkles size={20} color={colors.primary} />
+                        <Sparkles size={18} color={colors.primary} />
+                        <Text style={styles.actionBtnText}>Premium</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={styles.actionButton}
+                        style={styles.actionBtn}
                         onPress={() => {
                           setSelectedProfile(profile);
                           setActionType('badge');
@@ -599,17 +630,19 @@ export default function AdminDatingScreen() {
                           setShowActionModal(true);
                         }}
                       >
-                        <CheckCircle size={20} color={colors.primary} />
+                        <CheckCircle size={18} color={colors.primary} />
+                        <Text style={styles.actionBtnText}>Badge</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={styles.actionButton}
+                        style={[styles.actionBtn, styles.actionBtnDanger]}
                         onPress={() => {
                           setSelectedProfile(profile);
                           setActionType('delete');
                           setShowActionModal(true);
                         }}
                       >
-                        <Trash2 size={20} color={colors.danger} />
+                        <Trash2 size={18} color={colors.danger} />
+                        <Text style={[styles.actionBtnText, { color: colors.danger }]}>Delete</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -1039,6 +1072,169 @@ const createStyles = (colors: any) =>
       elevation: 2,
       borderWidth: 1,
       borderColor: colors.border.light,
+    },
+    profileCard: {
+      backgroundColor: colors.background.secondary,
+      borderRadius: 20,
+      padding: 20,
+      marginBottom: 16,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.08,
+      shadowRadius: 12,
+      elevation: 4,
+      borderWidth: 1,
+      borderColor: colors.border.light,
+    },
+    profileHeader: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      marginBottom: 16,
+    },
+    profileAvatar: {
+      width: 64,
+      height: 64,
+      borderRadius: 32,
+      borderWidth: 3,
+      borderColor: colors.primary + '20',
+      marginRight: 16,
+    },
+    profileInfo: {
+      flex: 1,
+    },
+    profileTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 4,
+    },
+    profileName: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.text.primary,
+      letterSpacing: -0.3,
+    },
+    profileEmail: {
+      fontSize: 14,
+      color: colors.text.secondary,
+      marginBottom: 12,
+    },
+    statusRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    statusBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 12,
+      backgroundColor: colors.background.primary,
+      borderWidth: 1,
+      borderColor: colors.border.light,
+    },
+    statusActive: {
+      borderColor: colors.success + '40',
+      backgroundColor: colors.success + '10',
+    },
+    statusInactive: {
+      borderColor: colors.border.light,
+    },
+    statusSuspended: {
+      borderColor: colors.danger + '40',
+      backgroundColor: colors.danger + '10',
+    },
+    statusLimited: {
+      borderColor: (colors.warning || '#FFA500') + '40',
+      backgroundColor: (colors.warning || '#FFA500') + '10',
+    },
+    statusDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    statusText: {
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    badgesSection: {
+      marginTop: 12,
+      paddingTop: 16,
+      borderTopWidth: 1,
+      borderTopColor: colors.border.light,
+    },
+    badgesLabel: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.text.secondary,
+      marginBottom: 8,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    badgesRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    badgeChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 16,
+      backgroundColor: colors.primary + '15',
+      borderWidth: 1,
+      borderColor: colors.primary + '30',
+    },
+    badgeChipText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.primary,
+    },
+    badgeChipRemove: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: colors.primary,
+      marginLeft: 2,
+    },
+    actionsRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginTop: 16,
+      paddingTop: 16,
+      borderTopWidth: 1,
+      borderTopColor: colors.border.light,
+    },
+    actionBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 12,
+      backgroundColor: colors.background.primary,
+      borderWidth: 1.5,
+      borderColor: colors.border.medium,
+      flex: 1,
+      minWidth: '30%',
+      justifyContent: 'center',
+    },
+    actionBtnActive: {
+      borderColor: colors.success + '60',
+      backgroundColor: colors.success + '10',
+    },
+    actionBtnDanger: {
+      borderColor: colors.danger + '60',
+      backgroundColor: colors.danger + '10',
+    },
+    actionBtnText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text.primary,
     },
     avatar: {
       width: 56,

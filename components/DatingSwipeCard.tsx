@@ -41,13 +41,16 @@ export default function DatingSwipeCard({
   const styles = createStyles(colors);
   
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
-  const position = useRef(new Animated.ValueXY()).current;
+  // Position must use JS driver (ValueXY doesn't support native driver)
+  const position = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  // These can use native driver
   const rotate = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(isTop ? 1 : 0.95)).current;
   const opacity = useRef(new Animated.Value(isTop ? 1 : 0.9)).current;
   const likeOpacity = useRef(new Animated.Value(0)).current;
   const passOpacity = useRef(new Animated.Value(0)).current;
-  const animationRef = useRef<Animated.CompositeAnimation | null>(null);
+  const positionAnimRef = useRef<Animated.CompositeAnimation | null>(null);
+  const rotateAnimRef = useRef<Animated.CompositeAnimation | null>(null);
   const isAnimatingRef = useRef(false);
 
   const photos = profile.photos || [];
@@ -85,6 +88,19 @@ export default function DatingSwipeCard({
     }
   }, [isTop]);
 
+  // Cleanup animations on unmount
+  useEffect(() => {
+    return () => {
+      stopAllAnimations();
+      position.setValue({ x: 0, y: 0 });
+      rotate.setValue(0);
+      scale.setValue(1);
+      opacity.setValue(1);
+      likeOpacity.setValue(0);
+      passOpacity.setValue(0);
+    };
+  }, []);
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => isTop,
@@ -120,15 +136,8 @@ export default function DatingSwipeCard({
       onPanResponderRelease: (_, gesture) => {
         if (!isTop || isAnimatingRef.current) return;
         
-        // Stop any existing animations
-        if (animationRef.current) {
-          animationRef.current.stop();
-          animationRef.current = null;
-        }
-        position.stopAnimation();
-        rotate.stopAnimation();
-        likeOpacity.stopAnimation();
-        passOpacity.stopAnimation();
+        // Stop all animations first
+        stopAllAnimations();
         
         // Flatten offset after stopping animations
         position.flattenOffset();
@@ -144,163 +153,177 @@ export default function DatingSwipeCard({
           }
         } else {
           // Return to center
-          isAnimatingRef.current = true;
-          
-          // Get current values
-          const currentX = (position.x as any)._value || 0;
-          const currentY = (position.y as any)._value || 0;
-          const currentRotate = (rotate as any)._value || 0;
-          
-          // Reset values immediately
-          position.setValue({ x: currentX, y: currentY });
-          rotate.setValue(currentRotate);
-          
-          // Use setTimeout to ensure animations are fully stopped
-          setTimeout(() => {
-            // Animate position (JS-driven only - ValueXY cannot use native driver)
-            const positionAnim = Animated.timing(position, {
-              toValue: { x: 0, y: 0 },
-              duration: 300,
-              useNativeDriver: false,
-            });
-            
-            // Animate rotate (native-driven)
-            const rotateAnim = Animated.timing(rotate, {
-              toValue: 0,
-              duration: 300,
-              useNativeDriver: true,
-            });
-            
-            // Animate opacity (native-driven)
-            const opacityAnim = Animated.parallel([
-              Animated.timing(likeOpacity, {
-                toValue: 0,
-                duration: 200,
-                useNativeDriver: true,
-              }),
-              Animated.timing(passOpacity, {
-                toValue: 0,
-                duration: 200,
-                useNativeDriver: true,
-              }),
-            ]);
-            
-            // Start position animation separately (JS driver)
-            positionAnim.start(() => {
-              isAnimatingRef.current = false;
-            });
-            
-            // Start rotate and opacity animations together (native driver)
-            Animated.parallel([rotateAnim, opacityAnim]).start();
-          }, 50);
+          resetToCenter();
         }
       },
     })
   ).current;
 
+  const stopAllAnimations = () => {
+    // Stop position animations (JS-driven)
+    if (positionAnimRef.current) {
+      positionAnimRef.current.stop();
+      positionAnimRef.current = null;
+    }
+    position.stopAnimation();
+    
+    // Stop rotate animations (native-driven)
+    if (rotateAnimRef.current) {
+      rotateAnimRef.current.stop();
+      rotateAnimRef.current = null;
+    }
+    rotate.stopAnimation();
+    
+    // Stop opacity animations (native-driven)
+    likeOpacity.stopAnimation();
+    passOpacity.stopAnimation();
+  };
+
+  const resetToCenter = () => {
+    if (isAnimatingRef.current) return;
+    isAnimatingRef.current = true;
+    
+    stopAllAnimations();
+    
+    // Get current values before resetting
+    const currentX = (position.x as any)._value || 0;
+    const currentY = (position.y as any)._value || 0;
+    const currentRotate = (rotate as any)._value || 0;
+    
+    // Reset values immediately
+    position.setValue({ x: currentX, y: currentY });
+    rotate.setValue(currentRotate);
+    
+    // Wait a frame to ensure animations are stopped
+    requestAnimationFrame(() => {
+      // Animate position (JS-driven only - ValueXY cannot use native driver)
+      positionAnimRef.current = Animated.timing(position, {
+        toValue: { x: 0, y: 0 },
+        duration: 300,
+        useNativeDriver: false,
+      });
+      
+      // Animate rotate (native-driven)
+      rotateAnimRef.current = Animated.timing(rotate, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      });
+      
+      // Animate opacity (native-driven)
+      const opacityAnim = Animated.parallel([
+        Animated.timing(likeOpacity, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(passOpacity, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]);
+      
+      // Start position animation separately (JS driver)
+      positionAnimRef.current.start(() => {
+        positionAnimRef.current = null;
+        isAnimatingRef.current = false;
+      });
+      
+      // Start rotate and opacity animations together (native driver)
+      rotateAnimRef.current.start(() => {
+        rotateAnimRef.current = null;
+      });
+      opacityAnim.start();
+    });
+  };
+
   const handleSwipeRight = () => {
     if (isAnimatingRef.current) return;
     isAnimatingRef.current = true;
     
-    // Stop any ongoing animations first
-    if (animationRef.current) {
-      animationRef.current.stop();
-      animationRef.current = null;
-    }
-    position.stopAnimation();
-    rotate.stopAnimation();
-    likeOpacity.stopAnimation();
-    passOpacity.stopAnimation();
+    stopAllAnimations();
     
-    // Use setTimeout to ensure animations are fully stopped
-    setTimeout(() => {
+    // Wait a frame to ensure animations are stopped
+    requestAnimationFrame(() => {
       // Animate position (JS-driven only)
-      const positionAnim = Animated.timing(position, {
+      positionAnimRef.current = Animated.timing(position, {
         toValue: { x: SCREEN_WIDTH + 100, y: 0 },
         duration: 300,
         useNativeDriver: false,
       });
       
       // Animate rotate (native-driven)
-      const rotateAnim = Animated.timing(rotate, {
+      rotateAnimRef.current = Animated.timing(rotate, {
         toValue: 30,
         duration: 300,
         useNativeDriver: true,
       });
       
       // Start position animation separately
-      positionAnim.start(() => {
+      positionAnimRef.current.start(() => {
+        positionAnimRef.current = null;
         onSwipeRight();
         resetCard();
         isAnimatingRef.current = false;
       });
       
       // Start rotate animation separately
-      rotateAnim.start();
-    }, 50);
+      rotateAnimRef.current.start(() => {
+        rotateAnimRef.current = null;
+      });
+    });
   };
 
   const handleSwipeLeft = () => {
     if (isAnimatingRef.current) return;
     isAnimatingRef.current = true;
     
-    // Stop any ongoing animations first
-    if (animationRef.current) {
-      animationRef.current.stop();
-      animationRef.current = null;
-    }
-    position.stopAnimation();
-    rotate.stopAnimation();
-    likeOpacity.stopAnimation();
-    passOpacity.stopAnimation();
+    stopAllAnimations();
     
-    // Use setTimeout to ensure animations are fully stopped
-    setTimeout(() => {
+    // Wait a frame to ensure animations are stopped
+    requestAnimationFrame(() => {
       // Animate position (JS-driven only)
-      const positionAnim = Animated.timing(position, {
+      positionAnimRef.current = Animated.timing(position, {
         toValue: { x: -SCREEN_WIDTH - 100, y: 0 },
         duration: 300,
         useNativeDriver: false,
       });
       
       // Animate rotate (native-driven)
-      const rotateAnim = Animated.timing(rotate, {
+      rotateAnimRef.current = Animated.timing(rotate, {
         toValue: -30,
         duration: 300,
         useNativeDriver: true,
       });
       
       // Start position animation separately
-      positionAnim.start(() => {
+      positionAnimRef.current.start(() => {
+        positionAnimRef.current = null;
         onSwipeLeft();
         resetCard();
         isAnimatingRef.current = false;
       });
       
       // Start rotate animation separately
-      rotateAnim.start();
-    }, 50);
+      rotateAnimRef.current.start(() => {
+        rotateAnimRef.current = null;
+      });
+    });
   };
 
   const resetCard = () => {
     // Stop all animations before resetting to prevent conflicts
-    if (animationRef.current) {
-      animationRef.current.stop();
-      animationRef.current = null;
-    }
-    position.stopAnimation();
-    rotate.stopAnimation();
-    likeOpacity.stopAnimation();
-    passOpacity.stopAnimation();
+    stopAllAnimations();
     
-    // Use setTimeout to ensure animations are fully stopped before resetting
-    setTimeout(() => {
+    // Wait a frame to ensure animations are stopped before resetting
+    requestAnimationFrame(() => {
       position.setValue({ x: 0, y: 0 });
       rotate.setValue(0);
       likeOpacity.setValue(0);
       passOpacity.setValue(0);
       isAnimatingRef.current = false;
-    }, 100);
+    });
   };
 
   const rotateInterpolate = rotate.interpolate({

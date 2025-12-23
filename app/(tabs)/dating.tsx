@@ -20,6 +20,7 @@ import { supabase } from '@/lib/supabase';
 import { useApp } from '@/contexts/AppContext';
 import DatingSwipeCard from '@/components/DatingSwipeCard';
 import MatchCelebrationModal from '@/components/MatchCelebrationModal';
+import PremiumModal from '@/components/PremiumModal';
 import { DatingDiscoveryUser } from '@/types';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -35,6 +36,8 @@ export default function DatingScreen() {
   const [swipedProfiles, setSwipedProfiles] = useState<Set<string>>(new Set());
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [matchedUser, setMatchedUser] = useState<any>(null);
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [premiumFeature, setPremiumFeature] = useState<{ name?: string; description?: string }>({});
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -183,14 +186,11 @@ export default function DatingScreen() {
       // Check premium for rewind
       const isPremium = await DatingService.checkPremiumSubscription();
       if (!isPremium) {
-        Alert.alert(
-          'Premium Feature',
-          'Rewind is a premium feature. Upgrade to go back and swipe again!',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Go Premium', onPress: () => router.push('/dating/premium') },
-          ]
-        );
+        setPremiumFeature({
+          name: 'Unlimited Rewinds',
+          description: 'Go back and swipe again on profiles you may have missed',
+        });
+        setShowPremiumModal(true);
         return;
       }
 
@@ -214,14 +214,11 @@ export default function DatingScreen() {
       // Check premium subscription
       const isPremium = await DatingService.checkPremiumSubscription();
       if (!isPremium) {
-        Alert.alert(
-          'Premium Feature',
-          'Boost is a premium feature. Upgrade to get 10x more profile views!',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Go Premium', onPress: () => router.push('/dating/premium') },
-          ]
-        );
+        setPremiumFeature({
+          name: 'Boost Your Profile',
+          description: 'Get 10x more profile views for 30 minutes. Perfect for getting noticed!',
+        });
+        setShowPremiumModal(true);
         return;
       }
 

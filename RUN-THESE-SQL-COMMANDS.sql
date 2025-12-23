@@ -320,6 +320,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- ============================================
 
 -- Check if user can send conversation starter
+-- (Functions are dropped above in HELPER FUNCTIONS section)
 CREATE OR REPLACE FUNCTION check_conversation_starter_limit(
   sender_id_param UUID,
   receiver_id_param UUID

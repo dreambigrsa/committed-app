@@ -15,6 +15,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import * as DatingService from '@/lib/dating-service';
 import { Image as ExpoImage } from 'expo-image';
 import { useFocusEffect } from '@react-navigation/native';
+import PremiumModal from '@/components/PremiumModal';
 
 export default function LikesReceivedScreen() {
   const router = useRouter();
@@ -24,6 +25,7 @@ export default function LikesReceivedScreen() {
 
   const [likes, setLikes] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
 
   const loadLikes = async () => {
     try {
@@ -32,6 +34,10 @@ export default function LikesReceivedScreen() {
       setLikes(data || []);
     } catch (error: any) {
       console.error('Error loading likes:', error);
+      // Check if error is about premium subscription
+      if (error?.message?.includes('Premium subscription required')) {
+        setShowPremiumModal(true);
+      }
       setLikes([]);
     } finally {
       setIsLoading(false);
@@ -191,6 +197,13 @@ export default function LikesReceivedScreen() {
           showsVerticalScrollIndicator={false}
         />
       </Animated.View>
+
+      <PremiumModal
+        visible={showPremiumModal}
+        onClose={() => setShowPremiumModal(false)}
+        featureName="See Who Liked You"
+        featureDescription="View all profiles that have liked you with Premium"
+      />
     </SafeAreaView>
   );
 }

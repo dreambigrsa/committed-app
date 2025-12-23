@@ -10,19 +10,21 @@ import {
   Alert,
   ActivityIndicator,
   Switch,
+  Modal,
 } from 'react-native';
 import { Stack } from 'expo-router';
-import { Plus, Trash2, Shield, CreditCard, Edit2 } from 'lucide-react-native';
+import { Plus, Trash2, Shield, CreditCard, Edit2, X, Save, Info } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import * as PaymentAdminService from '@/lib/payment-admin-service';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const PAYMENT_TYPES = [
-  { value: 'bank_transfer', label: 'Bank Transfer', icon: '🏦' },
-  { value: 'mobile_money', label: 'Mobile Money', icon: '📱' },
-  { value: 'cash', label: 'Cash Payment', icon: '💵' },
-  { value: 'crypto', label: 'Cryptocurrency', icon: '₿' },
-  { value: 'other', label: 'Other', icon: '💳' },
+  { value: 'bank_transfer', label: 'Bank Transfer', icon: '🏦', color: '#3B82F6' },
+  { value: 'mobile_money', label: 'Mobile Money', icon: '📱', color: '#10B981' },
+  { value: 'cash', label: 'Cash Payment', icon: '💵', color: '#F59E0B' },
+  { value: 'crypto', label: 'Cryptocurrency', icon: '₿', color: '#8B5CF6' },
+  { value: 'other', label: 'Other', icon: '💳', color: '#6B7280' },
 ];
 
 export default function AdminPaymentMethodsScreen() {
@@ -181,6 +183,8 @@ export default function AdminPaymentMethodsScreen() {
     );
   }
 
+  const selectedType = PAYMENT_TYPES.find(t => t.value === formData.paymentType);
+
   return (
     <SafeAreaView style={styles.container}>
       <Stack.Screen options={{ title: 'Payment Methods', headerShown: true }} />
@@ -190,223 +194,307 @@ export default function AdminPaymentMethodsScreen() {
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : (
-        <ScrollView style={styles.content} contentContainerStyle={styles.scrollContent}>
-          {paymentMethods?.map((method: any) => (
-            <View key={method.id} style={styles.methodCard}>
-              <View style={styles.methodLeft}>
-                <View style={styles.methodHeader}>
-                  <Text style={styles.methodIcon}>{method.icon_emoji || '💳'}</Text>
-                  <View style={styles.methodInfo}>
-                    <Text style={styles.methodName}>{method.name}</Text>
-                    <Text style={styles.methodType}>
-                      {PAYMENT_TYPES.find(t => t.value === method.payment_type)?.label || method.payment_type}
+        <>
+          <ScrollView style={styles.content} contentContainerStyle={styles.scrollContent}>
+            {paymentMethods?.length === 0 ? (
+              <View style={styles.emptyState}>
+                <CreditCard size={64} color={colors.text.tertiary} />
+                <Text style={styles.emptyTitle}>No Payment Methods</Text>
+                <Text style={styles.emptyText}>
+                  Add payment methods to allow users to subscribe
+                </Text>
+              </View>
+            ) : (
+              paymentMethods?.map((method: any) => {
+                const typeInfo = PAYMENT_TYPES.find(t => t.value === method.payment_type);
+                return (
+                  <View key={method.id} style={[styles.methodCard, !method.is_active && styles.inactiveCard]}>
+                    <View style={styles.methodHeader}>
+                      <View style={[styles.iconContainer, { backgroundColor: (typeInfo?.color || colors.primary) + '15' }]}>
+                        <Text style={styles.methodIcon}>{method.icon_emoji || typeInfo?.icon || '💳'}</Text>
+                      </View>
+                      <View style={styles.methodInfo}>
+                        <View style={styles.methodTitleRow}>
+                          <Text style={styles.methodName}>{method.name}</Text>
+                          {!method.is_active && (
+                            <View style={styles.inactiveBadge}>
+                              <Text style={styles.inactiveText}>Inactive</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={styles.methodType}>
+                          {typeInfo?.label || method.payment_type}
+                        </Text>
+                      </View>
+                      <View style={styles.methodActions}>
+                        <Switch
+                          value={method.is_active}
+                          onValueChange={() => handleToggleActive(method.id, method.is_active)}
+                          trackColor={{ false: colors.border.light, true: colors.primary + '50' }}
+                          thumbColor={method.is_active ? colors.primary : colors.text.tertiary}
+                        />
+                      </View>
+                    </View>
+
+                    {method.description && (
+                      <Text style={styles.methodDescription}>{method.description}</Text>
+                    )}
+
+                    {method.account_details && Object.keys(method.account_details).length > 0 && (
+                      <View style={styles.detailsSection}>
+                        <Text style={styles.detailsTitle}>Account Details</Text>
+                        <View style={styles.detailsGrid}>
+                          {Object.entries(method.account_details).map(([key, value]: [string, any]) => (
+                            <View key={key} style={styles.detailItem}>
+                              <Text style={styles.detailLabel}>
+                                {key.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                              </Text>
+                              <Text style={styles.detailValue}>{value}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      </View>
+                    )}
+
+                    {method.instructions && (
+                      <View style={styles.instructionsSection}>
+                        <Text style={styles.instructionsTitle}>Instructions</Text>
+                        <Text style={styles.instructionsText}>{method.instructions}</Text>
+                      </View>
+                    )}
+
+                    <View style={styles.cardActions}>
+                      <TouchableOpacity
+                        style={styles.editButton}
+                        onPress={() => handleEdit(method)}
+                      >
+                        <Edit2 size={18} color={colors.primary} />
+                        <Text style={styles.editButtonText}>Edit</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.deleteButton}
+                        onPress={() => handleDelete(method.id, method.name)}
+                      >
+                        <Trash2 size={18} color={colors.danger} />
+                        <Text style={styles.deleteButtonText}>Delete</Text>
+                      </TouchableOpacity>
+                      <View style={styles.orderBadge}>
+                        <Text style={styles.orderText}>Order: {method.display_order}</Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </ScrollView>
+
+          {/* Floating Add Button */}
+          <TouchableOpacity
+            style={styles.floatingAddButton}
+            onPress={() => {
+              resetForm();
+              setEditingMethod(null);
+              setShowAddModal(true);
+            }}
+          >
+            <LinearGradient
+              colors={[colors.primary, colors.primary + 'DD']}
+              style={styles.floatingButtonGradient}
+            >
+              <Plus size={24} color="#fff" />
+            </LinearGradient>
+          </TouchableOpacity>
+        </>
+      )}
+
+      {/* Add/Edit Modal */}
+      <Modal
+        visible={showAddModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => {
+          setShowAddModal(false);
+          resetForm();
+          setEditingMethod(null);
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+              {/* Modal Header */}
+              <View style={styles.modalHeader}>
+                <View style={styles.modalHeaderLeft}>
+                  <View style={[styles.modalIconContainer, { backgroundColor: (selectedType?.color || colors.primary) + '15' }]}>
+                    <Text style={styles.modalIcon}>{selectedType?.icon || '💳'}</Text>
+                  </View>
+                  <View>
+                    <Text style={styles.modalTitle}>
+                      {editingMethod ? 'Edit Payment Method' : 'Add Payment Method'}
+                    </Text>
+                    <Text style={styles.modalSubtitle}>
+                      {selectedType?.label || 'Configure payment settings'}
                     </Text>
                   </View>
                 </View>
-                {method.description && (
-                  <Text style={styles.methodDescription}>{method.description}</Text>
-                )}
-                {method.account_details && Object.keys(method.account_details).length > 0 && (
-                  <View style={styles.accountDetailsContainer}>
-                    <Text style={styles.accountDetailsLabel}>Account Details:</Text>
-                    {Object.entries(method.account_details).map(([key, value]: [string, any]) => (
-                      <Text key={key} style={styles.accountDetail}>
-                        {key.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}: {value}
-                      </Text>
+                <TouchableOpacity
+                  style={styles.modalCloseButton}
+                  onPress={() => {
+                    setShowAddModal(false);
+                    resetForm();
+                    setEditingMethod(null);
+                  }}
+                >
+                  <X size={24} color={colors.text.secondary} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Form Fields */}
+              <View style={styles.formContent}>
+                <View style={styles.formGroup}>
+                  <Text style={styles.inputLabel}>Name *</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g., Bank Transfer"
+                    value={formData.name}
+                    onChangeText={(text) => setFormData({ ...formData, name: text })}
+                    placeholderTextColor={colors.text.tertiary}
+                  />
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.inputLabel}>Description</Text>
+                  <TextInput
+                    style={[styles.input, styles.textArea]}
+                    placeholder="Brief description of the payment method"
+                    value={formData.description}
+                    onChangeText={(text) => setFormData({ ...formData, description: text })}
+                    placeholderTextColor={colors.text.tertiary}
+                    multiline
+                    numberOfLines={2}
+                  />
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.inputLabel}>Payment Type *</Text>
+                  <View style={styles.typeGrid}>
+                    {PAYMENT_TYPES.map((type) => (
+                      <TouchableOpacity
+                        key={type.value}
+                        style={[
+                          styles.typeCard,
+                          formData.paymentType === type.value && {
+                            borderColor: type.color,
+                            backgroundColor: type.color + '10',
+                          },
+                        ]}
+                        onPress={() => setFormData({ ...formData, paymentType: type.value as any })}
+                      >
+                        <Text style={styles.typeCardIcon}>{type.icon}</Text>
+                        <Text
+                          style={[
+                            styles.typeCardText,
+                            formData.paymentType === type.value && { color: type.color, fontWeight: '600' },
+                          ]}
+                        >
+                          {type.label}
+                        </Text>
+                      </TouchableOpacity>
                     ))}
                   </View>
-                )}
-                {method.instructions && (
-                  <View style={styles.instructionsContainer}>
-                    <Text style={styles.instructionsLabel}>Instructions:</Text>
-                    <Text style={styles.instructionsText}>{method.instructions}</Text>
+                </View>
+
+                <View style={styles.formGroup}>
+                  <View style={styles.labelRow}>
+                    <Text style={styles.inputLabel}>Account Details (JSON)</Text>
+                    <Info size={16} color={colors.text.tertiary} />
                   </View>
-                )}
-                <Text style={styles.methodOrder}>Order: {method.display_order}</Text>
+                  <Text style={styles.inputHint}>
+                    Example: {'{"bank_name": "Example Bank", "account_number": "1234567890"}'}
+                  </Text>
+                  <TextInput
+                    style={[styles.input, styles.textArea, styles.codeInput]}
+                    placeholder='{"bank_name": "Example Bank", "account_number": "1234567890"}'
+                    value={formData.accountDetails}
+                    onChangeText={(text) => setFormData({ ...formData, accountDetails: text })}
+                    placeholderTextColor={colors.text.tertiary}
+                    multiline
+                    numberOfLines={6}
+                  />
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.inputLabel}>Instructions</Text>
+                  <Text style={styles.inputHint}>
+                    Step-by-step instructions for users (use \n for new lines)
+                  </Text>
+                  <TextInput
+                    style={[styles.input, styles.textArea]}
+                    placeholder="1. Step one\n2. Step two\n3. Step three"
+                    value={formData.instructions}
+                    onChangeText={(text) => setFormData({ ...formData, instructions: text })}
+                    placeholderTextColor={colors.text.tertiary}
+                    multiline
+                    numberOfLines={5}
+                  />
+                </View>
+
+                <View style={styles.formRow}>
+                  <View style={[styles.formGroup, { flex: 1 }]}>
+                    <Text style={styles.inputLabel}>Icon Emoji</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="🏦"
+                      value={formData.iconEmoji}
+                      onChangeText={(text) => setFormData({ ...formData, iconEmoji: text })}
+                      placeholderTextColor={colors.text.tertiary}
+                      maxLength={2}
+                    />
+                  </View>
+                  <View style={[styles.formGroup, { flex: 1 }]}>
+                    <Text style={styles.inputLabel}>Display Order</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="0"
+                      value={formData.displayOrder}
+                      onChangeText={(text) => setFormData({ ...formData, displayOrder: text })}
+                      placeholderTextColor={colors.text.tertiary}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                </View>
               </View>
-              <View style={styles.methodActions}>
-                <Switch
-                  value={method.is_active}
-                  onValueChange={() => handleToggleActive(method.id, method.is_active)}
-                  trackColor={{ false: colors.border.light, true: colors.primary + '50' }}
-                  thumbColor={method.is_active ? colors.primary : colors.text.tertiary}
-                />
+
+              {/* Modal Actions */}
+              <View style={styles.modalActions}>
                 <TouchableOpacity
-                  style={styles.editButton}
-                  onPress={() => handleEdit(method)}
+                  style={styles.cancelButton}
+                  onPress={() => {
+                    setShowAddModal(false);
+                    resetForm();
+                    setEditingMethod(null);
+                  }}
                 >
-                  <Edit2 size={18} color={colors.primary} />
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={styles.deleteButton}
-                  onPress={() => handleDelete(method.id, method.name)}
+                  style={styles.saveButton}
+                  onPress={handleSubmit}
                 >
-                  <Trash2 size={18} color={colors.danger} />
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))}
-        </ScrollView>
-      )}
-
-      {/* Add Button */}
-      <TouchableOpacity
-        style={styles.addButton}
-        onPress={() => {
-          resetForm();
-          setEditingMethod(null);
-          setShowAddModal(true);
-        }}
-      >
-        <Plus size={24} color="#fff" />
-      </TouchableOpacity>
-
-      {/* Add/Edit Modal */}
-      {showAddModal && (
-        <View style={styles.modalOverlay}>
-          <ScrollView style={styles.modal} contentContainerStyle={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {editingMethod ? 'Edit Payment Method' : 'Add Payment Method'}
-              </Text>
-              <TouchableOpacity onPress={() => {
-                setShowAddModal(false);
-                resetForm();
-                setEditingMethod(null);
-              }}>
-                <Text style={styles.closeButton}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            
-            <View style={styles.formGroup}>
-              <Text style={styles.inputLabel}>Name *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g., Bank Transfer"
-                value={formData.name}
-                onChangeText={(text) => setFormData({ ...formData, name: text })}
-                placeholderTextColor={colors.text.tertiary}
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.inputLabel}>Description</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                placeholder="Brief description of the payment method"
-                value={formData.description}
-                onChangeText={(text) => setFormData({ ...formData, description: text })}
-                placeholderTextColor={colors.text.tertiary}
-                multiline
-                numberOfLines={2}
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.inputLabel}>Payment Type *</Text>
-              <View style={styles.typeContainer}>
-                {PAYMENT_TYPES.map((type) => (
-                  <TouchableOpacity
-                    key={type.value}
-                    style={[
-                      styles.typeChip,
-                      formData.paymentType === type.value && styles.typeChipActive,
-                    ]}
-                    onPress={() => setFormData({ ...formData, paymentType: type.value as any })}
+                  <LinearGradient
+                    colors={[colors.primary, colors.primary + 'DD']}
+                    style={styles.saveButtonGradient}
                   >
-                    <Text style={styles.typeIcon}>{type.icon}</Text>
-                    <Text
-                      style={[
-                        styles.typeText,
-                        formData.paymentType === type.value && styles.typeTextActive,
-                      ]}
-                    >
-                      {type.label}
+                    <Save size={18} color="#fff" />
+                    <Text style={styles.saveButtonText}>
+                      {editingMethod ? 'Update' : 'Create'}
                     </Text>
-                  </TouchableOpacity>
-                ))}
+                  </LinearGradient>
+                </TouchableOpacity>
               </View>
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.inputLabel}>Account Details (JSON)</Text>
-              <Text style={styles.inputHint}>
-                Example: {"{"}"bank_name": "Example Bank", "account_number": "1234567890"{"}"}
-              </Text>
-              <TextInput
-                style={[styles.input, styles.textArea, styles.codeInput]}
-                placeholder='{"bank_name": "Example Bank", "account_number": "1234567890"}'
-                value={formData.accountDetails}
-                onChangeText={(text) => setFormData({ ...formData, accountDetails: text })}
-                placeholderTextColor={colors.text.tertiary}
-                multiline
-                numberOfLines={6}
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.inputLabel}>Instructions</Text>
-              <Text style={styles.inputHint}>
-                Step-by-step instructions for users (use \n for new lines)
-              </Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                placeholder="1. Step one\n2. Step two\n3. Step three"
-                value={formData.instructions}
-                onChangeText={(text) => setFormData({ ...formData, instructions: text })}
-                placeholderTextColor={colors.text.tertiary}
-                multiline
-                numberOfLines={5}
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.inputLabel}>Icon Emoji</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="🏦"
-                value={formData.iconEmoji}
-                onChangeText={(text) => setFormData({ ...formData, iconEmoji: text })}
-                placeholderTextColor={colors.text.tertiary}
-                maxLength={2}
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.inputLabel}>Display Order</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="0"
-                value={formData.displayOrder}
-                onChangeText={(text) => setFormData({ ...formData, displayOrder: text })}
-                placeholderTextColor={colors.text.tertiary}
-                keyboardType="numeric"
-              />
-            </View>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={() => {
-                  setShowAddModal(false);
-                  resetForm();
-                  setEditingMethod(null);
-                }}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.saveButton}
-                onPress={handleSubmit}
-              >
-                <Text style={styles.saveButtonText}>
-                  {editingMethod ? 'Update' : 'Create'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
+            </ScrollView>
+          </View>
         </View>
-      )}
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -438,168 +526,296 @@ const createStyles = (colors: any) =>
     },
     scrollContent: {
       padding: 20,
+      paddingBottom: 100,
+    },
+    emptyState: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingVertical: 60,
+      gap: 16,
+    },
+    emptyTitle: {
+      fontSize: 24,
+      fontWeight: '700',
+      color: colors.text.primary,
+    },
+    emptyText: {
+      fontSize: 16,
+      color: colors.text.secondary,
+      textAlign: 'center',
     },
     methodCard: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
       backgroundColor: colors.background.secondary,
-      borderRadius: 16,
-      padding: 16,
-      marginBottom: 12,
+      borderRadius: 20,
+      padding: 20,
+      marginBottom: 16,
       borderWidth: 1,
       borderColor: colors.border.light,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 8,
+      elevation: 2,
     },
-    methodLeft: {
-      flex: 1,
-      gap: 8,
+    inactiveCard: {
+      opacity: 0.6,
     },
     methodHeader: {
       flexDirection: 'row',
       alignItems: 'center',
+      marginBottom: 16,
       gap: 12,
     },
+    iconContainer: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
     methodIcon: {
-      fontSize: 32,
+      fontSize: 28,
     },
     methodInfo: {
       flex: 1,
     },
+    methodTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 4,
+    },
     methodName: {
-      fontSize: 18,
-      fontWeight: 'bold',
+      fontSize: 20,
+      fontWeight: '700',
       color: colors.text.primary,
+    },
+    inactiveBadge: {
+      backgroundColor: colors.danger + '20',
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 8,
+    },
+    inactiveText: {
+      fontSize: 10,
+      fontWeight: '600',
+      color: colors.danger,
     },
     methodType: {
       fontSize: 14,
       color: colors.text.secondary,
-      marginTop: 2,
+      fontWeight: '500',
+    },
+    methodActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
     },
     methodDescription: {
       fontSize: 14,
       color: colors.text.secondary,
       lineHeight: 20,
+      marginBottom: 16,
     },
-    accountDetailsContainer: {
-      marginTop: 8,
-      padding: 12,
+    detailsSection: {
       backgroundColor: colors.background.primary,
-      borderRadius: 8,
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 12,
     },
-    accountDetailsLabel: {
-      fontSize: 12,
+    detailsTitle: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors.text.primary,
+      marginBottom: 12,
+    },
+    detailsGrid: {
+      gap: 12,
+    },
+    detailItem: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      paddingBottom: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border.light,
+    },
+    detailLabel: {
+      fontSize: 13,
       fontWeight: '600',
       color: colors.text.secondary,
-      marginBottom: 6,
+      textTransform: 'capitalize',
     },
-    accountDetail: {
+    detailValue: {
       fontSize: 13,
+      fontWeight: '600',
       color: colors.text.primary,
-      marginBottom: 4,
       fontFamily: 'monospace',
     },
-    instructionsContainer: {
-      marginTop: 8,
-      padding: 12,
+    instructionsSection: {
       backgroundColor: colors.background.primary,
-      borderRadius: 8,
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 12,
     },
-    instructionsLabel: {
-      fontSize: 12,
-      fontWeight: '600',
-      color: colors.text.secondary,
-      marginBottom: 6,
+    instructionsTitle: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors.text.primary,
+      marginBottom: 8,
     },
     instructionsText: {
       fontSize: 13,
       color: colors.text.primary,
-      lineHeight: 18,
+      lineHeight: 20,
     },
-    methodOrder: {
-      fontSize: 12,
-      color: colors.text.tertiary,
-      marginTop: 4,
-    },
-    methodActions: {
+    cardActions: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 12,
+      paddingTop: 16,
+      borderTopWidth: 1,
+      borderTopColor: colors.border.light,
     },
     editButton: {
-      padding: 8,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      backgroundColor: colors.primary + '15',
+      borderRadius: 10,
+    },
+    editButtonText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.primary,
     },
     deleteButton: {
-      padding: 8,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      backgroundColor: colors.danger + '15',
+      borderRadius: 10,
     },
-    addButton: {
+    deleteButtonText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.danger,
+    },
+    orderBadge: {
+      marginLeft: 'auto',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      backgroundColor: colors.background.primary,
+      borderRadius: 8,
+    },
+    orderText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.text.secondary,
+    },
+    floatingAddButton: {
       position: 'absolute',
       bottom: 24,
       right: 24,
       width: 64,
       height: 64,
       borderRadius: 32,
-      backgroundColor: colors.primary,
-      justifyContent: 'center',
-      alignItems: 'center',
       shadowColor: colors.primary,
       shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 8,
+      shadowOpacity: 0.4,
+      shadowRadius: 12,
       elevation: 8,
     },
-    modalOverlay: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    floatingButtonGradient: {
+      width: '100%',
+      height: '100%',
+      borderRadius: 32,
       justifyContent: 'center',
       alignItems: 'center',
-      zIndex: 1000,
     },
-    modal: {
-      width: '90%',
-      maxWidth: 500,
-      maxHeight: '90%',
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.6)',
+      justifyContent: 'flex-end',
+    },
+    modalContainer: {
       backgroundColor: colors.background.primary,
-      borderRadius: 24,
-      padding: 24,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      maxHeight: '90%',
       shadowColor: '#000',
-      shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: 0.3,
+      shadowOffset: { width: 0, height: -4 },
+      shadowOpacity: 0.2,
       shadowRadius: 16,
-      elevation: 12,
+      elevation: 16,
     },
-    modalContent: {
-      gap: 16,
+    modalScroll: {
+      flex: 1,
     },
     modalHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: 8,
+      padding: 24,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border.light,
+    },
+    modalHeaderLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 16,
+      flex: 1,
+    },
+    modalIconContainer: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    modalIcon: {
+      fontSize: 24,
     },
     modalTitle: {
-      fontSize: 24,
-      fontWeight: 'bold',
+      fontSize: 22,
+      fontWeight: '700',
       color: colors.text.primary,
+      marginBottom: 4,
     },
-    closeButton: {
-      fontSize: 24,
-      color: colors.text.primary,
-      fontWeight: '300',
+    modalSubtitle: {
+      fontSize: 14,
+      color: colors.text.secondary,
+    },
+    modalCloseButton: {
+      padding: 8,
+    },
+    formContent: {
+      padding: 24,
+      gap: 20,
     },
     formGroup: {
       gap: 8,
     },
+    formRow: {
+      flexDirection: 'row',
+      gap: 16,
+    },
     inputLabel: {
       fontSize: 14,
-      fontWeight: '600',
+      fontWeight: '700',
       color: colors.text.primary,
+    },
+    labelRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
     },
     inputHint: {
       fontSize: 12,
-      color: colors.text.secondary,
+      color: colors.text.tertiary,
       fontStyle: 'italic',
     },
     input: {
@@ -619,45 +835,41 @@ const createStyles = (colors: any) =>
       fontFamily: 'monospace',
       fontSize: 14,
     },
-    typeContainer: {
+    typeGrid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: 8,
+      gap: 12,
     },
-    typeChip: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      paddingHorizontal: 16,
-      paddingVertical: 10,
-      borderRadius: 20,
-      backgroundColor: colors.background.secondary,
-      borderWidth: 1,
+    typeCard: {
+      width: '47%',
+      padding: 16,
+      borderRadius: 16,
+      borderWidth: 2,
       borderColor: colors.border.light,
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: colors.background.secondary,
     },
-    typeChipActive: {
-      backgroundColor: colors.primary,
-      borderColor: colors.primary,
+    typeCardIcon: {
+      fontSize: 32,
     },
-    typeIcon: {
-      fontSize: 18,
-    },
-    typeText: {
+    typeCardText: {
       fontSize: 14,
       fontWeight: '500',
       color: colors.text.primary,
-    },
-    typeTextActive: {
-      color: '#fff',
+      textAlign: 'center',
     },
     modalActions: {
       flexDirection: 'row',
       gap: 12,
-      marginTop: 8,
+      padding: 24,
+      paddingTop: 0,
+      borderTopWidth: 1,
+      borderTopColor: colors.border.light,
     },
     cancelButton: {
       flex: 1,
-      paddingVertical: 14,
+      paddingVertical: 16,
       borderRadius: 12,
       backgroundColor: colors.background.secondary,
       borderWidth: 1,
@@ -666,20 +878,24 @@ const createStyles = (colors: any) =>
     },
     cancelButtonText: {
       fontSize: 16,
-      fontWeight: '600',
+      fontWeight: '700',
       color: colors.text.primary,
     },
     saveButton: {
       flex: 1,
-      paddingVertical: 14,
       borderRadius: 12,
-      backgroundColor: colors.primary,
+      overflow: 'hidden',
+    },
+    saveButtonGradient: {
+      flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 16,
+      gap: 8,
     },
     saveButtonText: {
       fontSize: 16,
-      fontWeight: '600',
+      fontWeight: '700',
       color: '#fff',
     },
   });
-

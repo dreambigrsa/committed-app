@@ -244,11 +244,19 @@ export default function AdminRolesScreen() {
             {admins.map((admin) => (
               <View key={admin.id} style={styles.adminCard}>
                 <View style={styles.adminHeader}>
-                  <Image
-                    source={{ uri: admin.profilePicture || 'https://via.placeholder.com/100' }}
-                    style={styles.adminAvatar}
-                    contentFit="cover"
-                  />
+                  {admin.profilePicture ? (
+                    <Image
+                      source={{ uri: admin.profilePicture }}
+                      style={styles.adminAvatar}
+                      contentFit="cover"
+                    />
+                  ) : (
+                    <View style={[styles.adminAvatar, styles.avatarPlaceholder]}>
+                      <Text style={styles.avatarPlaceholderText}>
+                        {admin.fullName?.charAt(0)?.toUpperCase() || '?'}
+                      </Text>
+                    </View>
+                  )}
                   <View style={styles.adminInfo}>
                     <Text style={styles.adminName}>{admin.fullName}</Text>
                     <Text style={styles.adminEmail}>{admin.email}</Text>
@@ -507,6 +515,16 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
+  },
+  avatarPlaceholder: {
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarPlaceholderText: {
+    fontSize: 24,
+    fontWeight: '600' as const,
+    color: colors.text.white,
   },
   adminInfo: {
     flex: 1,

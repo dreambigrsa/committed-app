@@ -541,11 +541,19 @@ export default function AdminUsersScreen() {
             {filteredUsers.map((user) => (
               <View key={user.id} style={styles.userCard}>
                 <View style={styles.userHeader}>
-                  <Image
-                    source={{ uri: user.profilePicture || 'https://via.placeholder.com/100' }}
-                    style={styles.userAvatar}
-                    contentFit="cover"
-                  />
+                  {user.profilePicture ? (
+                    <Image
+                      source={{ uri: user.profilePicture }}
+                      style={styles.userAvatar}
+                      contentFit="cover"
+                    />
+                  ) : (
+                    <View style={[styles.userAvatar, styles.avatarPlaceholder]}>
+                      <Text style={styles.avatarPlaceholderText}>
+                        {user.fullName?.charAt(0)?.toUpperCase() || '?'}
+                      </Text>
+                    </View>
+                  )}
                   <View style={styles.userInfo}>
                     <View style={styles.userNameRow}>
                       <Text style={styles.userName}>{user.fullName}</Text>
@@ -825,6 +833,16 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
+  },
+  avatarPlaceholder: {
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarPlaceholderText: {
+    fontSize: 24,
+    fontWeight: '600' as const,
+    color: colors.text.white,
   },
   userInfo: {
     flex: 1,

@@ -501,11 +501,19 @@ export default function AdminDatingScreen() {
                 .map((profile) => (
                   <View key={profile.id} style={styles.profileCard}>
                     <View style={styles.profileHeader}>
-                      <Image
-                        source={{ uri: profile.users?.profile_picture || 'https://via.placeholder.com/60' }}
-                        style={styles.profileAvatar}
-                        contentFit="cover"
-                      />
+                      {profile.users?.profile_picture ? (
+                        <Image
+                          source={{ uri: profile.users.profile_picture }}
+                          style={styles.profileAvatar}
+                          contentFit="cover"
+                        />
+                      ) : (
+                        <View style={[styles.profileAvatar, styles.avatarPlaceholder]}>
+                          <Text style={styles.avatarPlaceholderText}>
+                            {profile.users?.full_name?.charAt(0)?.toUpperCase() || '?'}
+                          </Text>
+                        </View>
+                      )}
                       <View style={styles.profileInfo}>
                         <View style={styles.profileTitleRow}>
                           <Text style={styles.profileName}>{profile.users?.full_name || 'Unknown'}</Text>
@@ -1098,6 +1106,16 @@ const createStyles = (colors: any) =>
       borderWidth: 3,
       borderColor: colors.primary + '20',
       marginRight: 16,
+    },
+    avatarPlaceholder: {
+      backgroundColor: colors.primary,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    avatarPlaceholderText: {
+      fontSize: 24,
+      fontWeight: '600' as const,
+      color: colors.text.white,
     },
     profileInfo: {
       flex: 1,

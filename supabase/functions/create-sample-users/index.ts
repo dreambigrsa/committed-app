@@ -96,9 +96,8 @@ serve(async (req: Request) => {
     const results = [];
 
     for (const userData of SAMPLE_USERS) {
+      let authUserId: string | undefined = undefined;
       try {
-        let authUserId: string;
-        
         // Try to create auth user
         const { data: newAuthUser, error: authError } = await adminClient.auth.admin.createUser({
           email: userData.email,
@@ -111,17 +110,26 @@ serve(async (req: Request) => {
         });
 
         if (authError) {
-          // If user already exists, get the existing user
-          if (authError.message?.includes('already registered') || authError.message?.includes('already exists')) {
-            const { data: usersList } = await adminClient.auth.admin.listUsers();
-            const existingUser = usersList?.users.find(u => u.email === userData.email);
-            if (existingUser) {
-              authUserId = existingUser.id;
+          // If user already exists, get the user ID from the database
+          if (authError.message?.includes('already registered') || 
+              authError.message?.includes('already exists') ||
+              authError.message?.includes('User already registered')) {
+            // Try to get user ID from database users table (faster than listing auth users)
+            const { data: dbUser, error: dbError } = await adminClient
+              .from('users')
+              .select('id')
+              .eq('email', userData.email)
+              .maybeSingle();
+            
+            if (dbUser?.id) {
+              authUserId = dbUser.id;
+            } else if (dbError) {
+              throw new Error(`Failed to find existing user: ${dbError.message}`);
             } else {
-              throw new Error(`Auth user exists but could not be found: ${userData.email}`);
+              throw new Error(`Auth user exists but could not be found in database: ${userData.email}`);
             }
           } else {
-            throw new Error(authError.message || 'Failed to create auth user');
+            throw new Error(`Auth error: ${authError.message || 'Failed to create auth user'}`);
           }
         } else if (newAuthUser?.user) {
           authUserId = newAuthUser.user.id;
@@ -129,11 +137,19 @@ serve(async (req: Request) => {
           throw new Error('Failed to create auth user: No user returned');
         }
 
+        // Ensure authUserId is set before proceeding
+        if (!authUserId) {
+          throw new Error('Failed to obtain user ID for user creation');
+        }
+
+        // authUserId is guaranteed to be defined here
+        const userId = authUserId;
+
         // Check if user record exists
         const { data: existingUser } = await adminClient
           .from('users')
           .select('id')
-          .eq('id', authUserId)
+          .eq('id', userId)
           .maybeSingle();
 
         if (existingUser) {
@@ -147,15 +163,15 @@ serve(async (req: Request) => {
               phone_verified: true,
               email_verified: true,
             })
-            .eq('id', authUserId);
+            .eq('id', userId);
 
           if (updateError) throw updateError;
 
           // Create or update dating profile
-          await adminClient
+          const { error: profileError } = await adminClient
             .from('dating_profiles')
             .upsert({
-              user_id: authUserId,
+              user_id: userId,
               bio: `Looking for meaningful connections in ${userData.city}. Love good conversations and authentic people.`,
               age: userData.age,
               location_city: userData.city,
@@ -192,13 +208,17 @@ serve(async (req: Request) => {
               onConflict: 'user_id',
             });
 
-          results.push({ email: userData.email, status: 'updated', userId: authUserId });
+          if (profileError) {
+            throw new Error(`Failed to create/update dating profile: ${profileError.message}`);
+          }
+
+          results.push({ email: userData.email, status: 'updated', userId: userId });
         } else {
           // Create user record
           const { error: insertError } = await adminClient
             .from('users')
             .insert({
-              id: authUserId,
+              id: userId,
               full_name: userData.fullName,
               email: userData.email,
               phone_number: userData.phone,
@@ -220,7 +240,7 @@ serve(async (req: Request) => {
                   phone_verified: true,
                   email_verified: true,
                 })
-                .eq('id', authUserId);
+                .eq('id', userId);
 
               if (updateError) throw updateError;
             } else {
@@ -229,10 +249,10 @@ serve(async (req: Request) => {
           }
 
           // Create dating profile
-          await adminClient
+          const { error: profileInsertError } = await adminClient
             .from('dating_profiles')
             .insert({
-              user_id: authUserId,
+              user_id: userId,
               bio: `Looking for meaningful connections in ${userData.city}. Love good conversations and authentic people.`,
               age: userData.age,
               location_city: userData.city,
@@ -267,14 +287,21 @@ serve(async (req: Request) => {
               last_active_at: new Date().toISOString(),
             });
 
-          results.push({ email: userData.email, status: 'created', userId: authUserId });
+          if (profileInsertError) {
+            throw new Error(`Failed to create dating profile: ${profileInsertError.message}`);
+          }
+
+          results.push({ email: userData.email, status: 'created', userId: userId });
         }
       } catch (userError: any) {
         console.error(`Error processing user ${userData.email}:`, userError);
+        console.error(`Error details:`, JSON.stringify(userError, null, 2));
+        const errorMessage = userError.message || userError.error?.message || JSON.stringify(userError) || 'Unknown error';
         results.push({
           email: userData.email,
           status: 'error',
-          error: userError.message || 'Unknown error',
+          error: errorMessage,
+          userId: authUserId, // authUserId is in scope from the loop, may be undefined if error occurred early
         });
       }
     }
@@ -283,10 +310,16 @@ serve(async (req: Request) => {
     const updated = results.filter(r => r.status === 'updated').length;
     const errors = results.filter(r => r.status === 'error').length;
 
+    const errorDetails = results
+      .filter(r => r.status === 'error')
+      .map(r => `${r.email}: ${r.error}`)
+      .join('; ');
+
     return json(200, {
       success: errors === 0,
       message: `Processed ${results.length} users: ${created} created, ${updated} updated${errors > 0 ? `, ${errors} errors` : ''}`,
       results,
+      errorDetails: errors > 0 ? errorDetails : undefined,
     });
   } catch (error: any) {
     console.error('Error creating sample users:', error);

@@ -93,6 +93,7 @@ export default function PremiumScreen() {
   }
 
   const isPremium = !!subscription;
+  const currentPlanId = subscription?.plan_id || subscription?.plan?.id;
 
   return (
     <SafeAreaView style={styles.container}>

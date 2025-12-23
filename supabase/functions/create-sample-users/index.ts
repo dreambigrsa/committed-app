@@ -168,45 +168,66 @@ serve(async (req: Request) => {
           if (updateError) throw updateError;
 
           // Create or update dating profile
-          const { error: profileError } = await adminClient
+          // Try with enhanced fields first, fallback to basic if columns don't exist
+          const basicProfileData: any = {
+            user_id: userId,
+            bio: `Looking for meaningful connections in ${userData.city}. Love good conversations and authentic people.`,
+            age: userData.age,
+            location_city: userData.city,
+            location_country: userData.country,
+            interests: ['Music', 'Travel', 'Food', 'Family', 'Faith'],
+            looking_for: 'everyone',
+            age_range_min: 22,
+            age_range_max: 40,
+            max_distance_km: 50,
+            is_active: true,
+            show_me: true,
+            last_active_at: new Date().toISOString(),
+          };
+
+          const enhancedFields: any = {
+            headline: 'Serious about love, fun about life',
+            values: ['Family', 'Faith', 'Growth', 'Honesty'],
+            mood: 'romantic',
+            what_makes_me_different: 'I never give up on people I care about',
+            weekend_style: 'church_faith',
+            intention_tag: 'serious',
+            respect_first_badge: true,
+            local_food: 'Sadza & nyama',
+            local_slang: 'Sharp',
+            local_spot: `${userData.city} City Centre`,
+            what_im_looking_for: 'Looking for someone genuine, kind, and ready for something real. Values family and growth.',
+            kids: 'want_kids',
+            work: 'Professional',
+            smoke: 'no',
+            drink: 'sometimes',
+            prompts: [
+              { question: 'What makes you laugh?', answer: 'Good jokes and genuine moments' },
+              { question: 'Perfect weekend?', answer: 'Quality time with loved ones' },
+              { question: 'What are you passionate about?', answer: 'Building meaningful connections' }
+            ],
+          };
+
+          // Try with enhanced fields first
+          let { error: profileError } = await adminClient
             .from('dating_profiles')
             .upsert({
-              user_id: userId,
-              bio: `Looking for meaningful connections in ${userData.city}. Love good conversations and authentic people.`,
-              age: userData.age,
-              location_city: userData.city,
-              location_country: userData.country,
-              headline: 'Serious about love, fun about life',
-              values: ['Family', 'Faith', 'Growth', 'Honesty'],
-              mood: 'romantic',
-              what_makes_me_different: 'I never give up on people I care about',
-              weekend_style: 'church_faith',
-              intention_tag: 'serious',
-              respect_first_badge: true,
-              local_food: 'Sadza & nyama',
-              local_slang: 'Sharp',
-              local_spot: `${userData.city} City Centre`,
-              what_im_looking_for: 'Looking for someone genuine, kind, and ready for something real. Values family and growth.',
-              kids: 'want_kids',
-              work: 'Professional',
-              smoke: 'no',
-              drink: 'sometimes',
-              prompts: [
-                { question: 'What makes you laugh?', answer: 'Good jokes and genuine moments' },
-                { question: 'Perfect weekend?', answer: 'Quality time with loved ones' },
-                { question: 'What are you passionate about?', answer: 'Building meaningful connections' }
-              ],
-              interests: ['Music', 'Travel', 'Food', 'Family', 'Faith'],
-              looking_for: 'everyone',
-              age_range_min: 22,
-              age_range_max: 40,
-              max_distance_km: 50,
-              is_active: true,
-              show_me: true,
-              last_active_at: new Date().toISOString(),
+              ...basicProfileData,
+              ...enhancedFields,
             }, {
               onConflict: 'user_id',
             });
+
+          // If error is about missing columns, retry with basic fields only
+          if (profileError && (profileError.code === '42703' || profileError.message?.includes('column') || profileError.message?.includes('does not exist'))) {
+            console.log(`Enhanced columns not available for ${userData.email}, using basic profile only`);
+            const { error: basicError } = await adminClient
+              .from('dating_profiles')
+              .upsert(basicProfileData, {
+                onConflict: 'user_id',
+              });
+            profileError = basicError;
+          }
 
           if (profileError) {
             throw new Error(`Failed to create/update dating profile: ${profileError.message}`);
@@ -249,43 +270,62 @@ serve(async (req: Request) => {
           }
 
           // Create dating profile
-          const { error: profileInsertError } = await adminClient
+          // Try with enhanced fields first, fallback to basic if columns don't exist
+          const basicProfileData: any = {
+            user_id: userId,
+            bio: `Looking for meaningful connections in ${userData.city}. Love good conversations and authentic people.`,
+            age: userData.age,
+            location_city: userData.city,
+            location_country: userData.country,
+            interests: ['Music', 'Travel', 'Food', 'Family', 'Faith'],
+            looking_for: 'everyone',
+            age_range_min: 22,
+            age_range_max: 40,
+            max_distance_km: 50,
+            is_active: true,
+            show_me: true,
+            last_active_at: new Date().toISOString(),
+          };
+
+          const enhancedFields: any = {
+            headline: 'Serious about love, fun about life',
+            values: ['Family', 'Faith', 'Growth', 'Honesty'],
+            mood: 'romantic',
+            what_makes_me_different: 'I never give up on people I care about',
+            weekend_style: 'church_faith',
+            intention_tag: 'serious',
+            respect_first_badge: true,
+            local_food: 'Sadza & nyama',
+            local_slang: 'Sharp',
+            local_spot: `${userData.city} City Centre`,
+            what_im_looking_for: 'Looking for someone genuine, kind, and ready for something real. Values family and growth.',
+            kids: 'want_kids',
+            work: 'Professional',
+            smoke: 'no',
+            drink: 'sometimes',
+            prompts: [
+              { question: 'What makes you laugh?', answer: 'Good jokes and genuine moments' },
+              { question: 'Perfect weekend?', answer: 'Quality time with loved ones' },
+              { question: 'What are you passionate about?', answer: 'Building meaningful connections' }
+            ],
+          };
+
+          // Try with enhanced fields first
+          let { error: profileInsertError } = await adminClient
             .from('dating_profiles')
             .insert({
-              user_id: userId,
-              bio: `Looking for meaningful connections in ${userData.city}. Love good conversations and authentic people.`,
-              age: userData.age,
-              location_city: userData.city,
-              location_country: userData.country,
-              headline: 'Serious about love, fun about life',
-              values: ['Family', 'Faith', 'Growth', 'Honesty'],
-              mood: 'romantic',
-              what_makes_me_different: 'I never give up on people I care about',
-              weekend_style: 'church_faith',
-              intention_tag: 'serious',
-              respect_first_badge: true,
-              local_food: 'Sadza & nyama',
-              local_slang: 'Sharp',
-              local_spot: `${userData.city} City Centre`,
-              what_im_looking_for: 'Looking for someone genuine, kind, and ready for something real. Values family and growth.',
-              kids: 'want_kids',
-              work: 'Professional',
-              smoke: 'no',
-              drink: 'sometimes',
-              prompts: [
-                { question: 'What makes you laugh?', answer: 'Good jokes and genuine moments' },
-                { question: 'Perfect weekend?', answer: 'Quality time with loved ones' },
-                { question: 'What are you passionate about?', answer: 'Building meaningful connections' }
-              ],
-              interests: ['Music', 'Travel', 'Food', 'Family', 'Faith'],
-              looking_for: 'everyone',
-              age_range_min: 22,
-              age_range_max: 40,
-              max_distance_km: 50,
-              is_active: true,
-              show_me: true,
-              last_active_at: new Date().toISOString(),
+              ...basicProfileData,
+              ...enhancedFields,
             });
+
+          // If error is about missing columns, retry with basic fields only
+          if (profileInsertError && (profileInsertError.code === '42703' || profileInsertError.message?.includes('column') || profileInsertError.message?.includes('does not exist'))) {
+            console.log(`Enhanced columns not available for ${userData.email}, using basic profile only`);
+            const { error: basicError } = await adminClient
+              .from('dating_profiles')
+              .insert(basicProfileData);
+            profileInsertError = basicError;
+          }
 
           if (profileInsertError) {
             throw new Error(`Failed to create dating profile: ${profileInsertError.message}`);

@@ -10,6 +10,7 @@ import {
   Alert,
   TextInput,
   Platform,
+  Dimensions,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Upload, CreditCard, CheckCircle, AlertCircle } from 'lucide-react-native';
@@ -246,7 +247,12 @@ export default function PaymentSubmitScreen() {
         }} 
       />
       
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.scrollView} 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* Plan Summary */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Plan Details</Text>
@@ -339,7 +345,7 @@ export default function PaymentSubmitScreen() {
                 <ExpoImage
                   source={{ uri: paymentProofUri }}
                   style={styles.proofImage}
-                  contentFit="cover"
+                  contentFit="contain"
                 />
                 <View style={styles.proofOverlay}>
                   <Upload size={24} color="#fff" />
@@ -409,6 +415,9 @@ export default function PaymentSubmitScreen() {
     </SafeAreaView>
   );
 }
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const MAX_IMAGE_HEIGHT = Math.min(SCREEN_WIDTH * 0.8, 350);
 
 const createStyles = (colors: any) =>
   StyleSheet.create({
@@ -549,20 +558,25 @@ const createStyles = (colors: any) =>
       marginLeft: 8,
       flex: 1,
     },
+    scrollContent: {
+      paddingBottom: 40,
+    },
     uploadButton: {
       backgroundColor: colors.background.secondary,
       borderWidth: 2,
       borderColor: colors.border.light,
       borderStyle: 'dashed',
       borderRadius: 12,
-      padding: 40,
+      padding: 16,
       alignItems: 'center',
       justifyContent: 'center',
       minHeight: 200,
+      height: MAX_IMAGE_HEIGHT,
+      overflow: 'hidden',
     },
     proofPreview: {
       width: '100%',
-      height: '100%',
+      height: MAX_IMAGE_HEIGHT - 32,
       position: 'relative',
     },
     proofImage: {

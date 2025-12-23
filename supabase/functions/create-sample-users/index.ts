@@ -190,12 +190,30 @@ serve(async (req: Request) => {
 
           // Create or update dating profile with ALL enhanced fields
           try {
+            // Calculate date of birth from age
+            const currentYear = new Date().getFullYear();
+            const birthYear = currentYear - userData.age;
+            const dateOfBirth = `${birthYear}-01-15`; // Use Jan 15 as a default date
+            
+            // Get coordinates for the city
+            const cityCoords: { [key: string]: { lat: number; lng: number } } = {
+              'Harare': { lat: -17.8292, lng: 31.0522 },
+              'Bulawayo': { lat: -20.1325, lng: 28.6265 },
+              'Kwekwe': { lat: -18.9286, lng: 29.8150 },
+            };
+            const coords = cityCoords[userData.city] || { lat: -19.0154, lng: 29.1549 }; // Default to Zimbabwe center
+            
             const profileData: any = {
               user_id: userId,
               bio: `Looking for meaningful connections in ${userData.city}. Love good conversations and authentic people.`,
               age: userData.age,
+              date_of_birth: dateOfBirth,
               location_city: userData.city,
               location_country: userData.country,
+              location_latitude: coords.lat,
+              location_longitude: coords.lng,
+              location_updated_at: new Date().toISOString(),
+              relationship_goals: ['serious_relationship', 'marriage', 'family'],
               interests: ['Music', 'Travel', 'Food', 'Family', 'Faith'],
               looking_for: 'everyone',
               age_range_min: 22,
@@ -279,12 +297,30 @@ serve(async (req: Request) => {
 
           // Create dating profile with ALL enhanced fields
           try {
+            // Calculate date of birth from age
+            const currentYear = new Date().getFullYear();
+            const birthYear = currentYear - userData.age;
+            const dateOfBirth = `${birthYear}-01-15`; // Use Jan 15 as a default date
+            
+            // Get coordinates for the city
+            const cityCoords: { [key: string]: { lat: number; lng: number } } = {
+              'Harare': { lat: -17.8292, lng: 31.0522 },
+              'Bulawayo': { lat: -20.1325, lng: 28.6265 },
+              'Kwekwe': { lat: -18.9286, lng: 29.8150 },
+            };
+            const coords = cityCoords[userData.city] || { lat: -19.0154, lng: 29.1549 }; // Default to Zimbabwe center
+            
             const profileData: any = {
               user_id: userId,
               bio: `Looking for meaningful connections in ${userData.city}. Love good conversations and authentic people.`,
               age: userData.age,
+              date_of_birth: dateOfBirth,
               location_city: userData.city,
               location_country: userData.country,
+              location_latitude: coords.lat,
+              location_longitude: coords.lng,
+              location_updated_at: new Date().toISOString(),
+              relationship_goals: ['serious_relationship', 'marriage', 'family'],
               interests: ['Music', 'Travel', 'Food', 'Family', 'Faith'],
               looking_for: 'everyone',
               age_range_min: 22,

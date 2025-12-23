@@ -130,7 +130,17 @@ export default function DatingSwipeCard({
             handleSwipeLeft();
           }
         } else {
-          // Return to center
+          // Return to center - Stop any ongoing animations first
+          position.stopAnimation();
+          rotate.stopAnimation();
+          likeOpacity.stopAnimation();
+          passOpacity.stopAnimation();
+          
+          // Reset to current values before animating
+          const currentPos = { x: (position.x as any)._value, y: (position.y as any)._value };
+          position.setValue(currentPos);
+          
+          // Animate back to center - separate native and JS animations
           Animated.parallel([
             Animated.spring(position, {
               toValue: { x: 0, y: 0 },
@@ -141,7 +151,13 @@ export default function DatingSwipeCard({
             Animated.spring(rotate, {
               toValue: 0,
               useNativeDriver: true,
+              tension: 50,
+              friction: 7,
             }),
+          ]).start();
+          
+          // Animate opacity separately
+          Animated.parallel([
             Animated.timing(likeOpacity, {
               toValue: 0,
               duration: 200,

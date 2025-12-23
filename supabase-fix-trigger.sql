@@ -21,9 +21,9 @@ BEGIN
   );
   
   -- If phone number is still null or empty, generate a unique one
-  -- Format: +0000000XXXX where XXXX is the last 4 digits of the UUID
+  -- Format: +0000000XXXX where XXXX is the last 4 characters of the UUID
   IF v_phone_number IS NULL OR v_phone_number = '' THEN
-    v_phone_number := '+0000000' || SUBSTRING(REPLACE(NEW.id::TEXT, '-', '') FROM LENGTH(REPLACE(NEW.id::TEXT, '-', '')) - 3);
+    v_phone_number := '+0000000' || RIGHT(REPLACE(NEW.id::TEXT, '-', ''), 4);
   END IF;
 
   BEGIN

@@ -478,16 +478,18 @@ export default function AdminUsersScreen() {
               )}
               <Text style={styles.sampleUserButtonText}>Add All</Text>
             </TouchableOpacity>
-            {sampleUsersCount > 0 && (
-              <TouchableOpacity
-                style={[styles.sampleUserButton, styles.deleteButton]}
-                onPress={handleDeleteSampleUsers}
-                disabled={isManagingSamples}
-              >
-                <UserMinus size={18} color="#fff" />
-                <Text style={styles.sampleUserButtonText}>Delete All</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity
+              style={[
+                styles.sampleUserButton, 
+                styles.deleteButton,
+                (sampleUsersCount === 0 || isManagingSamples) && styles.disabledButton
+              ]}
+              onPress={handleDeleteSampleUsers}
+              disabled={sampleUsersCount === 0 || isManagingSamples}
+            >
+              <UserMinus size={18} color="#fff" />
+              <Text style={styles.sampleUserButtonText}>Delete All</Text>
+            </TouchableOpacity>
           </View>
         </View>
         {sampleUsersCount > 0 && (
@@ -910,6 +912,9 @@ const styles = StyleSheet.create({
   },
   deleteAllButton: {
     backgroundColor: '#8B0000',
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
   restrictionsContainer: {
     marginTop: 16,

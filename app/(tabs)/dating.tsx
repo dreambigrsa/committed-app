@@ -429,7 +429,7 @@ export default function DatingScreen() {
             onPress={() => visibleProfiles[0] && handleSwipeLeft(visibleProfiles[0])}
             disabled={false}
           >
-            <X size={32} color={colors.danger} strokeWidth={3} />
+            <X size={32} color="#FFFFFF" strokeWidth={3} />
           </TouchableOpacity>
 
           {/* Super Like */}
@@ -438,7 +438,7 @@ export default function DatingScreen() {
             onPress={() => visibleProfiles[0] && handleSuperLike(visibleProfiles[0])}
             disabled={false}
           >
-            <Star size={28} color={colors.primary} fill={colors.primary} />
+            <Star size={28} color="#FFFFFF" fill="#FFFFFF" />
           </TouchableOpacity>
 
           {/* Like */}
@@ -447,7 +447,7 @@ export default function DatingScreen() {
             onPress={() => visibleProfiles[0] && handleSwipeRight(visibleProfiles[0])}
             disabled={false}
           >
-            <Heart size={32} color={colors.success} fill={colors.success} />
+            <Heart size={32} color="#FFFFFF" fill="#FFFFFF" />
           </TouchableOpacity>
 
           {/* Boost (Premium) */}
@@ -548,6 +548,8 @@ const createStyles = (colors: any) =>
       justifyContent: 'center',
       alignItems: 'center',
       paddingHorizontal: 16,
+      paddingBottom: 160,
+      overflow: 'hidden',
     },
     loadingContainer: {
       flex: 1,
@@ -623,6 +625,9 @@ const createStyles = (colors: any) =>
       paddingVertical: 24,
       paddingBottom: 32,
       paddingHorizontal: 20,
+      backgroundColor: colors.background.primary,
+      zIndex: 10,
+      position: 'relative',
     },
     actionButton: {
       width: 56,

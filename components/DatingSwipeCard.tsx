@@ -14,7 +14,7 @@ import { MapPin, Shield, CheckCircle2, Heart, X } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH - 32;
-const CARD_HEIGHT = SCREEN_HEIGHT * 0.75;
+const CARD_HEIGHT = SCREEN_HEIGHT * 0.65; // Reduced from 0.75 to 0.65 to prevent content cutoff
 const SWIPE_THRESHOLD = 100;
 const ROTATION_MULTIPLIER = 0.1;
 

@@ -85,6 +85,51 @@ export default function AdminPricingScreen() {
     }
   };
 
+  const updatePlanName = async (planId: string, field: 'display_name' | 'description', value: string) => {
+    try {
+      const { error } = await supabase
+        .from('subscription_plans')
+        .update({ [field]: value, updated_at: new Date().toISOString() })
+        .eq('id', planId);
+
+      if (error) throw error;
+      loadData();
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    }
+  };
+
+  const addNewPlan = async () => {
+    try {
+      // Get max display_order
+      const { data: existingPlans } = await supabase
+        .from('subscription_plans')
+        .select('display_order')
+        .order('display_order', { ascending: false })
+        .limit(1);
+
+      const maxOrder = existingPlans?.[0]?.display_order || 0;
+
+      const { error } = await supabase
+        .from('subscription_plans')
+        .insert({
+          name: `plan_${Date.now()}`,
+          display_name: 'New Plan',
+          description: 'Plan description',
+          price_monthly: 0,
+          price_yearly: 0,
+          display_order: maxOrder + 1,
+          is_active: true,
+        });
+
+      if (error) throw error;
+      loadData();
+      Alert.alert('Success', 'New plan created! You can now edit it.');
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    }
+  };
+
   const updateLimit = async (limitId: string, value: string) => {
     try {
       const numValue = value === '' || value === 'unlimited' ? null : parseInt(value);
@@ -167,12 +212,36 @@ export default function AdminPricingScreen() {
 
           {/* Subscription Plans */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Subscription Plans</Text>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Subscription Plans</Text>
+              <TouchableOpacity
+                style={styles.addButton}
+                onPress={addNewPlan}
+              >
+                <Plus size={20} color={colors.primary} />
+                <Text style={styles.addButtonText}>Add Plan</Text>
+              </TouchableOpacity>
+            </View>
             {plans.map((plan) => (
               <View key={plan.id} style={styles.planCard}>
                 <View style={styles.planHeader}>
-                  <Text style={styles.planName}>{plan.display_name}</Text>
-                  <Text style={styles.planDescription}>{plan.description}</Text>
+                  <View style={styles.planNameContainer}>
+                    <TextInput
+                      style={styles.planNameInput}
+                      value={plan.display_name}
+                      onChangeText={(text) => updatePlanName(plan.id, 'display_name', text)}
+                      placeholder="Plan Name"
+                    />
+                    <Text style={styles.planNameLabel}>Plan Name</Text>
+                  </View>
+                  <TextInput
+                    style={styles.planDescriptionInput}
+                    value={plan.description || ''}
+                    onChangeText={(text) => updatePlanName(plan.id, 'description', text)}
+                    placeholder="Plan description"
+                    multiline
+                    numberOfLines={2}
+                  />
                 </View>
                 
                 <View style={styles.priceRow}>
@@ -288,15 +357,37 @@ const createStyles = (colors: any) =>
     planHeader: {
       marginBottom: 16,
     },
-    planName: {
+    planNameContainer: {
+      marginBottom: 12,
+    },
+    planNameInput: {
       fontSize: 18,
       fontWeight: 'bold',
       color: colors.text.primary,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      backgroundColor: colors.background.primary,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border.light,
       marginBottom: 4,
     },
-    planDescription: {
+    planNameLabel: {
+      fontSize: 12,
+      color: colors.text.secondary,
+      marginLeft: 4,
+    },
+    planDescriptionInput: {
       fontSize: 14,
       color: colors.text.secondary,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      backgroundColor: colors.background.primary,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border.light,
+      minHeight: 60,
+      textAlignVertical: 'top',
     },
     priceRow: {
       flexDirection: 'row',

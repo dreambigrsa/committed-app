@@ -6,7 +6,15 @@ import { createContext } from "./trpc/create-context";
 
 const app = new Hono();
 
-app.use("*", cors());
+// Configure CORS to allow all origins (including Expo dev servers)
+app.use("*", cors({
+  origin: "*", // Allow all origins (Expo dev servers use dynamic URLs)
+  allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowHeaders: ["Content-Type", "Authorization"],
+  exposeHeaders: ["Content-Length"],
+  maxAge: 600,
+  credentials: true,
+}));
 
 app.use(
   "/trpc/*",

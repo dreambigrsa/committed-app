@@ -12,8 +12,10 @@ const getBaseUrl = () => {
   // 1. Production server: https://committed-5mxf.onrender.com (always works, no local server needed)
   // 2. Local server on physical device: http://YOUR_COMPUTER_IP:3000 (requires local server running)
   // 3. Local server on emulator: http://localhost:3000 (requires local server running)
-  if (process.env.EXPO_PUBLIC_COMMITTED_API_BASE_URL) {
-    return process.env.EXPO_PUBLIC_COMMITTED_API_BASE_URL;
+  const envUrl = process.env.EXPO_PUBLIC_COMMITTED_API_BASE_URL;
+  if (envUrl) {
+    console.log('[tRPC] Using API URL from environment:', envUrl);
+    return envUrl;
   }
 
   // Fallback options:
@@ -22,6 +24,9 @@ const getBaseUrl = () => {
   const defaultUrl = __DEV__ 
     ? "http://localhost:3000" // Only works in emulator/simulator
     : "https://committed-5mxf.onrender.com"; // Production server
+  
+  console.log('[tRPC] Using default API URL:', defaultUrl);
+  console.log('[tRPC] Environment variable EXPO_PUBLIC_COMMITTED_API_BASE_URL:', process.env.EXPO_PUBLIC_COMMITTED_API_BASE_URL || 'NOT SET');
   
   if (__DEV__) {
     console.warn(

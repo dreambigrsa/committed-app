@@ -530,13 +530,22 @@ export async function unmatchUser(matchId: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('User not authenticated');
 
-  // Verify match belongs to user
-  const { data: match } = await supabase
+  // Verify match belongs to user - use separate queries to avoid ambiguous column
+  const { data: matchAsUser1 } = await supabase
     .from('dating_matches')
     .select('*')
     .eq('id', matchId)
-    .or(`dating_matches.user1_id.eq.${user.id},dating_matches.user2_id.eq.${user.id}`)
+    .eq('user1_id', user.id)
     .single();
+
+  const { data: matchAsUser2 } = await supabase
+    .from('dating_matches')
+    .select('*')
+    .eq('id', matchId)
+    .eq('user2_id', user.id)
+    .single();
+
+  const match = matchAsUser1 || matchAsUser2;
 
   if (!match) throw new Error('Match not found');
 

@@ -103,17 +103,20 @@ export default function DatingSwipeCard({
 
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => isTop,
-      onMoveShouldSetPanResponder: () => isTop,
+      onStartShouldSetPanResponder: () => isTop && !isAnimatingRef.current,
+      onMoveShouldSetPanResponder: () => isTop && !isAnimatingRef.current,
       onPanResponderGrant: () => {
+        if (isAnimatingRef.current) return;
+        // Stop any ongoing animations before starting new gesture
+        stopAllAnimations();
         position.setOffset({
-          x: (position.x as any)._value,
-          y: (position.y as any)._value,
+          x: (position.x as any)._value || 0,
+          y: (position.y as any)._value || 0,
         });
         position.setValue({ x: 0, y: 0 });
       },
       onPanResponderMove: (_, gesture) => {
-        if (!isTop) return;
+        if (!isTop || isAnimatingRef.current) return;
         
         position.setValue({ x: gesture.dx, y: gesture.dy });
         
@@ -194,47 +197,53 @@ export default function DatingSwipeCard({
     position.setValue({ x: currentX, y: currentY });
     rotate.setValue(currentRotate);
     
-    // Wait a frame to ensure animations are stopped
+    // Use double requestAnimationFrame to ensure animations are fully stopped
     requestAnimationFrame(() => {
-      // Animate position (JS-driven only - ValueXY cannot use native driver)
-      positionAnimRef.current = Animated.timing(position, {
-        toValue: { x: 0, y: 0 },
-        duration: 300,
-        useNativeDriver: false,
-      });
-      
-      // Animate rotate (native-driven)
-      rotateAnimRef.current = Animated.timing(rotate, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      });
-      
-      // Animate opacity (native-driven)
-      const opacityAnim = Animated.parallel([
-        Animated.timing(likeOpacity, {
+      requestAnimationFrame(() => {
+        // Animate position (JS-driven only - ValueXY cannot use native driver)
+        positionAnimRef.current = Animated.timing(position, {
+          toValue: { x: 0, y: 0 },
+          duration: 300,
+          useNativeDriver: false,
+        });
+        
+        // Animate rotate (native-driven)
+        rotateAnimRef.current = Animated.timing(rotate, {
           toValue: 0,
-          duration: 200,
+          duration: 300,
           useNativeDriver: true,
-        }),
-        Animated.timing(passOpacity, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]);
-      
-      // Start position animation separately (JS driver)
-      positionAnimRef.current.start(() => {
-        positionAnimRef.current = null;
-        isAnimatingRef.current = false;
+        });
+        
+        // Animate opacity (native-driven)
+        const opacityAnim = Animated.parallel([
+          Animated.timing(likeOpacity, {
+            toValue: 0,
+            duration: 200,
+            useNativeDriver: true,
+          }),
+          Animated.timing(passOpacity, {
+            toValue: 0,
+            duration: 200,
+            useNativeDriver: true,
+          }),
+        ]);
+        
+        // Start position animation separately (JS driver)
+        positionAnimRef.current.start((finished) => {
+          if (finished) {
+            positionAnimRef.current = null;
+            isAnimatingRef.current = false;
+          }
+        });
+        
+        // Start rotate and opacity animations together (native driver)
+        rotateAnimRef.current.start((finished) => {
+          if (finished) {
+            rotateAnimRef.current = null;
+          }
+        });
+        opacityAnim.start();
       });
-      
-      // Start rotate and opacity animations together (native driver)
-      rotateAnimRef.current.start(() => {
-        rotateAnimRef.current = null;
-      });
-      opacityAnim.start();
     });
   };
 
@@ -244,33 +253,39 @@ export default function DatingSwipeCard({
     
     stopAllAnimations();
     
-    // Wait a frame to ensure animations are stopped
+    // Use double requestAnimationFrame to ensure animations are fully stopped
     requestAnimationFrame(() => {
-      // Animate position (JS-driven only)
-      positionAnimRef.current = Animated.timing(position, {
-        toValue: { x: SCREEN_WIDTH + 100, y: 0 },
-        duration: 300,
-        useNativeDriver: false,
-      });
-      
-      // Animate rotate (native-driven)
-      rotateAnimRef.current = Animated.timing(rotate, {
-        toValue: 30,
-        duration: 300,
-        useNativeDriver: true,
-      });
-      
-      // Start position animation separately
-      positionAnimRef.current.start(() => {
-        positionAnimRef.current = null;
-        onSwipeRight();
-        resetCard();
-        isAnimatingRef.current = false;
-      });
-      
-      // Start rotate animation separately
-      rotateAnimRef.current.start(() => {
-        rotateAnimRef.current = null;
+      requestAnimationFrame(() => {
+        // Animate position (JS-driven only)
+        positionAnimRef.current = Animated.timing(position, {
+          toValue: { x: SCREEN_WIDTH + 100, y: 0 },
+          duration: 300,
+          useNativeDriver: false,
+        });
+        
+        // Animate rotate (native-driven)
+        rotateAnimRef.current = Animated.timing(rotate, {
+          toValue: 30,
+          duration: 300,
+          useNativeDriver: true,
+        });
+        
+        // Start position animation separately
+        positionAnimRef.current.start((finished) => {
+          if (finished) {
+            positionAnimRef.current = null;
+            onSwipeRight();
+            resetCard();
+            isAnimatingRef.current = false;
+          }
+        });
+        
+        // Start rotate animation separately
+        rotateAnimRef.current.start((finished) => {
+          if (finished) {
+            rotateAnimRef.current = null;
+          }
+        });
       });
     });
   };
@@ -281,33 +296,39 @@ export default function DatingSwipeCard({
     
     stopAllAnimations();
     
-    // Wait a frame to ensure animations are stopped
+    // Use double requestAnimationFrame to ensure animations are fully stopped
     requestAnimationFrame(() => {
-      // Animate position (JS-driven only)
-      positionAnimRef.current = Animated.timing(position, {
-        toValue: { x: -SCREEN_WIDTH - 100, y: 0 },
-        duration: 300,
-        useNativeDriver: false,
-      });
-      
-      // Animate rotate (native-driven)
-      rotateAnimRef.current = Animated.timing(rotate, {
-        toValue: -30,
-        duration: 300,
-        useNativeDriver: true,
-      });
-      
-      // Start position animation separately
-      positionAnimRef.current.start(() => {
-        positionAnimRef.current = null;
-        onSwipeLeft();
-        resetCard();
-        isAnimatingRef.current = false;
-      });
-      
-      // Start rotate animation separately
-      rotateAnimRef.current.start(() => {
-        rotateAnimRef.current = null;
+      requestAnimationFrame(() => {
+        // Animate position (JS-driven only)
+        positionAnimRef.current = Animated.timing(position, {
+          toValue: { x: -SCREEN_WIDTH - 100, y: 0 },
+          duration: 300,
+          useNativeDriver: false,
+        });
+        
+        // Animate rotate (native-driven)
+        rotateAnimRef.current = Animated.timing(rotate, {
+          toValue: -30,
+          duration: 300,
+          useNativeDriver: true,
+        });
+        
+        // Start position animation separately
+        positionAnimRef.current.start((finished) => {
+          if (finished) {
+            positionAnimRef.current = null;
+            onSwipeLeft();
+            resetCard();
+            isAnimatingRef.current = false;
+          }
+        });
+        
+        // Start rotate animation separately
+        rotateAnimRef.current.start((finished) => {
+          if (finished) {
+            rotateAnimRef.current = null;
+          }
+        });
       });
     });
   };
@@ -316,13 +337,15 @@ export default function DatingSwipeCard({
     // Stop all animations before resetting to prevent conflicts
     stopAllAnimations();
     
-    // Wait a frame to ensure animations are stopped before resetting
+    // Use double requestAnimationFrame to ensure animations are fully stopped before resetting
     requestAnimationFrame(() => {
-      position.setValue({ x: 0, y: 0 });
-      rotate.setValue(0);
-      likeOpacity.setValue(0);
-      passOpacity.setValue(0);
-      isAnimatingRef.current = false;
+      requestAnimationFrame(() => {
+        position.setValue({ x: 0, y: 0 });
+        rotate.setValue(0);
+        likeOpacity.setValue(0);
+        passOpacity.setValue(0);
+        isAnimatingRef.current = false;
+      });
     });
   };
 

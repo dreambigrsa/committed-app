@@ -118,6 +118,13 @@ export default function DatingSwipeCard({
       onPanResponderRelease: (_, gesture) => {
         if (!isTop) return;
         
+        // Stop all animations first to prevent conflicts
+        position.stopAnimation();
+        rotate.stopAnimation();
+        likeOpacity.stopAnimation();
+        passOpacity.stopAnimation();
+        
+        // Flatten offset after stopping animations
         position.flattenOffset();
         
         if (Math.abs(gesture.dx) > SWIPE_THRESHOLD) {
@@ -130,51 +137,57 @@ export default function DatingSwipeCard({
             handleSwipeLeft();
           }
         } else {
-          // Return to center - Stop any ongoing animations first
-          position.stopAnimation();
-          rotate.stopAnimation();
-          likeOpacity.stopAnimation();
-          passOpacity.stopAnimation();
+          // Return to center - Get current values
+          const currentX = (position.x as any)._value || 0;
+          const currentY = (position.y as any)._value || 0;
+          const currentRotate = (rotate as any)._value || 0;
           
-          // Reset to current values before animating
-          const currentPos = { x: (position.x as any)._value, y: (position.y as any)._value };
-          position.setValue(currentPos);
-          
-          // Animate back to center - separate native and JS animations
-          Animated.parallel([
-            Animated.spring(position, {
-              toValue: { x: 0, y: 0 },
-              useNativeDriver: false,
-              tension: 50,
-              friction: 7,
-            }),
-            Animated.spring(rotate, {
-              toValue: 0,
-              useNativeDriver: true,
-              tension: 50,
-              friction: 7,
-            }),
-          ]).start();
-          
-          // Animate opacity separately
-          Animated.parallel([
-            Animated.timing(likeOpacity, {
-              toValue: 0,
-              duration: 200,
-              useNativeDriver: true,
-            }),
-            Animated.timing(passOpacity, {
-              toValue: 0,
-              duration: 200,
-              useNativeDriver: true,
-            }),
-          ]).start();
+          // Use requestAnimationFrame to ensure clean state before animating
+          requestAnimationFrame(() => {
+            // Reset to current position to ensure clean state
+            position.setValue({ x: currentX, y: currentY });
+            rotate.setValue(currentRotate);
+            
+            // Animate back to center - separate native and JS animations
+            Animated.parallel([
+              Animated.spring(position, {
+                toValue: { x: 0, y: 0 },
+                useNativeDriver: false,
+                tension: 50,
+                friction: 7,
+              }),
+              Animated.spring(rotate, {
+                toValue: 0,
+                useNativeDriver: true,
+                tension: 50,
+                friction: 7,
+              }),
+            ]).start();
+            
+            // Animate opacity separately
+            Animated.parallel([
+              Animated.timing(likeOpacity, {
+                toValue: 0,
+                duration: 200,
+                useNativeDriver: true,
+              }),
+              Animated.timing(passOpacity, {
+                toValue: 0,
+                duration: 200,
+                useNativeDriver: true,
+              }),
+            ]).start();
+          });
         }
       },
     })
   ).current;
 
   const handleSwipeRight = () => {
+    // Stop any ongoing animations first
+    position.stopAnimation();
+    rotate.stopAnimation();
+    
     Animated.parallel([
       Animated.timing(position, {
         toValue: { x: SCREEN_WIDTH + 100, y: 0 },
@@ -193,6 +206,10 @@ export default function DatingSwipeCard({
   };
 
   const handleSwipeLeft = () => {
+    // Stop any ongoing animations first
+    position.stopAnimation();
+    rotate.stopAnimation();
+    
     Animated.parallel([
       Animated.timing(position, {
         toValue: { x: -SCREEN_WIDTH - 100, y: 0 },

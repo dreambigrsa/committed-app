@@ -9,9 +9,10 @@ import {
   Dimensions,
   ActivityIndicator,
   Alert,
+  Modal,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Heart, Star, MapPin, Calendar, Users, Video, Image as ImageIcon, Share2, MoreVertical, Shield, CheckCircle2, Crown, Mic, Clock, MessageCircle, TrendingUp, Smile, Coffee, Home, Church, Briefcase, Mountain } from 'lucide-react-native';
+import { ArrowLeft, Heart, Star, MapPin, Calendar, Users, Video, Image as ImageIcon, Share2, MoreVertical, Shield, CheckCircle2, Crown, Mic, Clock, MessageCircle, TrendingUp, Smile, Coffee, Home, Church, Briefcase, Mountain, Flag } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
 import { Image as ExpoImage } from 'expo-image';
@@ -19,6 +20,7 @@ import * as DatingService from '@/lib/dating-service';
 import * as ProfileEnhancements from '@/lib/dating-profile-enhancements';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
+import ReportContentModal from '@/components/ReportContentModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -26,7 +28,7 @@ export default function UserProfileScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ userId: string }>();
   const { colors } = useTheme();
-  const { currentUser } = useApp();
+  const { currentUser, reportContent } = useApp();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [profile, setProfile] = useState<any>(null);
@@ -38,6 +40,8 @@ export default function UserProfileScreen() {
   const [conversationStarters, setConversationStarters] = useState<string[]>([]);
   const [isOwnProfile, setIsOwnProfile] = useState(false);
   const [subscription, setSubscription] = useState<any>(null);
+  const [showMenuModal, setShowMenuModal] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   useEffect(() => {
     loadProfile();
@@ -123,6 +127,20 @@ export default function UserProfileScreen() {
     }
   };
 
+  const handleShare = async () => {
+    try {
+      if (!profile) return;
+      
+      const shareText = `Check out ${profile.user?.full_name || 'this profile'} on Committed Dating!`;
+      Alert.alert('Share Profile', shareText, [
+        { text: 'OK' }
+      ]);
+    } catch (error: any) {
+      console.error('Share error:', error);
+      Alert.alert('Error', 'Failed to share profile');
+    }
+  };
+
   const getLastSeenText = (lastActive: string) => {
     const now = new Date();
     const lastSeen = new Date(lastActive);
@@ -169,12 +187,20 @@ export default function UserProfileScreen() {
           <ArrowLeft size={24} color={colors.text.primary} />
         </TouchableOpacity>
         <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.headerIconButton}>
+          <TouchableOpacity 
+            style={styles.headerIconButton}
+            onPress={handleShare}
+          >
             <Share2 size={22} color={colors.text.primary} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.headerIconButton}>
-            <MoreVertical size={22} color={colors.text.primary} />
-          </TouchableOpacity>
+          {!isOwnProfile && (
+            <TouchableOpacity 
+              style={styles.headerIconButton}
+              onPress={() => setShowMenuModal(true)}
+            >
+              <MoreVertical size={22} color={colors.text.primary} />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -623,6 +649,54 @@ export default function UserProfileScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* Menu Modal */}
+      <Modal
+        visible={showMenuModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowMenuModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowMenuModal(false)}
+        >
+          <View style={styles.menuContainer}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowMenuModal(false);
+                setShowReportModal(true);
+              }}
+            >
+              <Flag size={20} color={colors.danger} />
+              <Text style={styles.menuItemText}>Report Profile</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.menuCancel}
+              onPress={() => setShowMenuModal(false)}
+            >
+              <Text style={styles.menuCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Report Modal */}
+      {profile && (
+        <ReportContentModal
+          visible={showReportModal}
+          onClose={() => setShowReportModal(false)}
+          contentType="profile"
+          reportedUserId={params.userId}
+          onReport={async (contentType, contentId, reportedUserId, reason, description) => {
+            if (!reportContent) return;
+            await reportContent(contentType, contentId, reportedUserId, reason, description);
+          }}
+          colors={colors}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -1177,6 +1251,39 @@ const createStyles = (colors: any) =>
       fontSize: 15,
       color: colors.text.secondary,
       lineHeight: 22,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'flex-end',
+    },
+    menuContainer: {
+      backgroundColor: colors.background.primary,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      paddingBottom: 20,
+    },
+    menuItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      padding: 20,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border.light,
+    },
+    menuItemText: {
+      fontSize: 16,
+      color: colors.text.primary,
+      fontWeight: '500',
+    },
+    menuCancel: {
+      padding: 20,
+      alignItems: 'center',
+    },
+    menuCancelText: {
+      fontSize: 16,
+      color: colors.text.secondary,
+      fontWeight: '600',
     },
   });
 

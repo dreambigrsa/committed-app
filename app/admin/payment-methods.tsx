@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import { Stack } from 'expo-router';
 import { Plus, Trash2, Shield, CreditCard, Edit2 } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { trpc } from '@/lib/trpc';
+import * as PaymentAdminService from '@/lib/payment-admin-service';
 
 const PAYMENT_TYPES = [
   { value: 'bank_transfer', label: 'Bank Transfer', icon: '🏦' },
@@ -41,41 +41,24 @@ export default function AdminPaymentMethodsScreen() {
     displayOrder: '0',
     iconEmoji: '',
   });
+  const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const { data: paymentMethods, isLoading, refetch } = trpc.admin.getPaymentMethods.useQuery();
-  const createMutation = trpc.admin.createPaymentMethod.useMutation({
-    onSuccess: () => {
-      Alert.alert('Success', 'Payment method created successfully');
-      setShowAddModal(false);
-      resetForm();
-      refetch();
-    },
-    onError: (error: any) => {
-      Alert.alert('Error', error.message || 'Failed to create payment method');
-    },
-  });
+  useEffect(() => {
+    loadPaymentMethods();
+  }, []);
 
-  const updateMutation = trpc.admin.updatePaymentMethod.useMutation({
-    onSuccess: () => {
-      Alert.alert('Success', 'Payment method updated successfully');
-      setEditingMethod(null);
-      resetForm();
-      refetch();
-    },
-    onError: (error: any) => {
-      Alert.alert('Error', error.message || 'Failed to update payment method');
-    },
-  });
-
-  const deleteMutation = trpc.admin.deletePaymentMethod.useMutation({
-    onSuccess: () => {
-      Alert.alert('Success', 'Payment method deleted successfully');
-      refetch();
-    },
-    onError: (error: any) => {
-      Alert.alert('Error', error.message || 'Failed to delete payment method');
-    },
-  });
+  const loadPaymentMethods = async () => {
+    try {
+      setIsLoading(true);
+      const methods = await PaymentAdminService.getPaymentMethods();
+      setPaymentMethods(methods);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to load payment methods');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const resetForm = () => {
     setFormData({
@@ -103,11 +86,16 @@ export default function AdminPaymentMethodsScreen() {
     setShowAddModal(true);
   };
 
-  const handleToggleActive = (methodId: string, currentStatus: boolean) => {
-    updateMutation.mutate({
-      paymentMethodId: methodId,
-      isActive: !currentStatus,
-    });
+  const handleToggleActive = async (methodId: string, currentStatus: boolean) => {
+    try {
+      await PaymentAdminService.updatePaymentMethod(methodId, {
+        isActive: !currentStatus,
+      });
+      Alert.alert('Success', 'Payment method updated');
+      loadPaymentMethods();
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to update payment method');
+    }
   };
 
   const handleDelete = (methodId: string, name: string) => {
@@ -119,15 +107,21 @@ export default function AdminPaymentMethodsScreen() {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => {
-            deleteMutation.mutate({ paymentMethodId: methodId });
+          onPress: async () => {
+            try {
+              await PaymentAdminService.deletePaymentMethod(methodId);
+              Alert.alert('Success', 'Payment method deleted');
+              loadPaymentMethods();
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'Failed to delete payment method');
+            }
           },
         },
       ]
     );
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!formData.name.trim()) {
       Alert.alert('Error', 'Please enter a payment method name');
       return;
@@ -143,26 +137,35 @@ export default function AdminPaymentMethodsScreen() {
       }
     }
 
-    if (editingMethod) {
-      updateMutation.mutate({
-        paymentMethodId: editingMethod.id,
-        name: formData.name.trim(),
-        description: formData.description.trim() || undefined,
-        accountDetails: Object.keys(accountDetailsObj).length > 0 ? accountDetailsObj : undefined,
-        instructions: formData.instructions.trim() || undefined,
-        displayOrder: parseInt(formData.displayOrder) || 0,
-        iconEmoji: formData.iconEmoji.trim() || undefined,
-      });
-    } else {
-      createMutation.mutate({
-        name: formData.name.trim(),
-        description: formData.description.trim() || undefined,
-        paymentType: formData.paymentType,
-        accountDetails: Object.keys(accountDetailsObj).length > 0 ? accountDetailsObj : undefined,
-        instructions: formData.instructions.trim() || undefined,
-        displayOrder: parseInt(formData.displayOrder) || 0,
-        iconEmoji: formData.iconEmoji.trim() || undefined,
-      });
+    try {
+      if (editingMethod) {
+        await PaymentAdminService.updatePaymentMethod(editingMethod.id, {
+          name: formData.name.trim(),
+          description: formData.description.trim() || undefined,
+          accountDetails: Object.keys(accountDetailsObj).length > 0 ? accountDetailsObj : undefined,
+          instructions: formData.instructions.trim() || undefined,
+          displayOrder: parseInt(formData.displayOrder) || 0,
+          iconEmoji: formData.iconEmoji.trim() || undefined,
+        });
+        Alert.alert('Success', 'Payment method updated successfully');
+      } else {
+        await PaymentAdminService.createPaymentMethod({
+          name: formData.name.trim(),
+          description: formData.description.trim() || undefined,
+          paymentType: formData.paymentType,
+          accountDetails: Object.keys(accountDetailsObj).length > 0 ? accountDetailsObj : undefined,
+          instructions: formData.instructions.trim() || undefined,
+          displayOrder: parseInt(formData.displayOrder) || 0,
+          iconEmoji: formData.iconEmoji.trim() || undefined,
+        });
+        Alert.alert('Success', 'Payment method created successfully');
+      }
+      setShowAddModal(false);
+      resetForm();
+      setEditingMethod(null);
+      loadPaymentMethods();
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to save payment method');
     }
   };
 
@@ -395,15 +398,10 @@ export default function AdminPaymentMethodsScreen() {
               <TouchableOpacity
                 style={styles.saveButton}
                 onPress={handleSubmit}
-                disabled={createMutation.isPending || updateMutation.isPending}
               >
-                {(createMutation.isPending || updateMutation.isPending) ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.saveButtonText}>
-                    {editingMethod ? 'Update' : 'Create'}
-                  </Text>
-                )}
+                <Text style={styles.saveButtonText}>
+                  {editingMethod ? 'Update' : 'Create'}
+                </Text>
               </TouchableOpacity>
             </View>
           </ScrollView>

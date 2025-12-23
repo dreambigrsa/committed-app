@@ -35,8 +35,13 @@ export default function AdminUsersScreen() {
   }, []);
 
   const loadSampleUsersCount = async () => {
-    const count = await SampleUsersService.getSampleUsersCount();
-    setSampleUsersCount(count);
+    try {
+      const count = await SampleUsersService.getSampleUsersCount();
+      setSampleUsersCount(count);
+    } catch (error: any) {
+      console.error('Error loading sample users count:', error);
+      setSampleUsersCount(0);
+    }
   };
 
   const loadUsers = async () => {
@@ -372,8 +377,8 @@ export default function AdminUsersScreen() {
 
   const handleCreateSampleUsers = async () => {
     Alert.alert(
-      'Create Sample Users',
-      `This will create ${SampleUsersService.SAMPLE_USERS.length} sample users for testing.\n\nNote: Auth users must be created separately in Supabase Dashboard.\n\nPassword for all: Test123456!`,
+      'Create Sample Dating Profiles',
+      `This will create ${SampleUsersService.SAMPLE_USERS.length} sample users with COMPLETE dating profiles for testing.\n\nEach profile includes:\n• Headlines, values, mood\n• Lifestyle info (kids, work, smoke, drink)\n• Interests, prompts, intention tags\n• Local flavor and weekend style\n• Location data (Kwekwe, Harare, Bulawayo)\n\nNote: Auth users must be created separately in Supabase Dashboard.\n\nPassword for all: Test123456!`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -402,8 +407,8 @@ export default function AdminUsersScreen() {
 
   const handleDeleteSampleUsers = async () => {
     Alert.alert(
-      'Delete All Sample Users',
-      `This will permanently delete ${sampleUsersCount} sample users and ALL their data (profiles, matches, likes, etc.).\n\nThis action cannot be undone!`,
+      'Delete All Sample Dating Profiles',
+      `This will permanently delete ${sampleUsersCount} sample dating profiles and ALL their data (profiles, matches, likes, photos, etc.).\n\nThis action cannot be undone!`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -457,7 +462,7 @@ export default function AdminUsersScreen() {
         <View style={styles.sampleUsersHeader}>
           <View style={styles.sampleUsersInfo}>
             <Users size={20} color={colors.primary} />
-            <Text style={styles.sampleUsersTitle}>Sample Users</Text>
+            <Text style={styles.sampleUsersTitle}>Sample Dating Profiles</Text>
             <Text style={styles.sampleUsersCount}>({sampleUsersCount})</Text>
           </View>
           <View style={styles.sampleUsersActions}>
@@ -483,7 +488,7 @@ export default function AdminUsersScreen() {
         </View>
         {sampleUsersCount > 0 && (
           <Text style={styles.sampleUsersHint}>
-            Sample users are marked for testing. They can be bulk deleted.
+            Sample dating profiles with complete profile data for testing. They can be bulk deleted.
           </Text>
         )}
       </View>

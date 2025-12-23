@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import { Stack, useRouter } from 'expo-router';
 import { Check, X, Eye, Clock, DollarSign, CreditCard, Shield } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { trpc } from '@/lib/trpc';
+import * as PaymentAdminService from '@/lib/payment-admin-service';
 import { Image as ExpoImage } from 'expo-image';
 
 export default function AdminPaymentVerificationsScreen() {
@@ -24,22 +24,26 @@ export default function AdminPaymentVerificationsScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
+  const [submissions, setSubmissions] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const { data: submissions, isLoading, refetch } = trpc.admin.getPaymentSubmissions.useQuery({
-    status: statusFilter,
-  });
+  useEffect(() => {
+    loadSubmissions();
+  }, [statusFilter]);
 
-  const verifyMutation = trpc.admin.verifyPayment.useMutation({
-    onSuccess: () => {
-      Alert.alert('Success', 'Payment verification updated');
-      refetch();
-    },
-    onError: (error: any) => {
-      Alert.alert('Error', error.message || 'Failed to verify payment');
-    },
-  });
+  const loadSubmissions = async () => {
+    try {
+      setIsLoading(true);
+      const data = await PaymentAdminService.getPaymentSubmissions(statusFilter);
+      setSubmissions(data);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to load payment submissions');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-  const handleVerify = (submissionId: string, status: 'approved' | 'rejected') => {
+  const handleVerify = async (submissionId: string, status: 'approved' | 'rejected') => {
     if (status === 'rejected') {
       Alert.prompt(
         'Reject Payment',
@@ -49,12 +53,18 @@ export default function AdminPaymentVerificationsScreen() {
           {
             text: 'Reject',
             style: 'destructive',
-            onPress: (reason) => {
-              verifyMutation.mutate({
-                paymentSubmissionId: submissionId,
-                status: 'rejected',
-                rejectionReason: reason || 'Payment verification failed',
-              });
+            onPress: async (reason?: string) => {
+              try {
+                await PaymentAdminService.verifyPayment(
+                  submissionId,
+                  'rejected',
+                  reason || 'Payment verification failed'
+                );
+                Alert.alert('Success', 'Payment rejected');
+                loadSubmissions();
+              } catch (error: any) {
+                Alert.alert('Error', error.message || 'Failed to reject payment');
+              }
             },
           },
         ],
@@ -68,11 +78,14 @@ export default function AdminPaymentVerificationsScreen() {
           { text: 'Cancel', style: 'cancel' },
           {
             text: 'Approve',
-            onPress: () => {
-              verifyMutation.mutate({
-                paymentSubmissionId: submissionId,
-                status: 'approved',
-              });
+            onPress: async () => {
+              try {
+                await PaymentAdminService.verifyPayment(submissionId, 'approved');
+                Alert.alert('Success', 'Payment approved and subscription activated');
+                loadSubmissions();
+              } catch (error: any) {
+                Alert.alert('Error', error.message || 'Failed to approve payment');
+              }
             },
           },
         ]
@@ -227,7 +240,6 @@ export default function AdminPaymentVerificationsScreen() {
             <TouchableOpacity
               style={[styles.actionButton, styles.approveButton]}
               onPress={() => handleVerify(item.id, 'approved')}
-              disabled={verifyMutation.isPending}
             >
               <Check size={20} color="#fff" />
               <Text style={styles.actionButtonText}>Approve</Text>
@@ -235,7 +247,6 @@ export default function AdminPaymentVerificationsScreen() {
             <TouchableOpacity
               style={[styles.actionButton, styles.rejectButton]}
               onPress={() => handleVerify(item.id, 'rejected')}
-              disabled={verifyMutation.isPending}
             >
               <X size={20} color="#fff" />
               <Text style={styles.actionButtonText}>Reject</Text>

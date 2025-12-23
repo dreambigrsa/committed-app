@@ -63,20 +63,46 @@ export async function createSampleUsers() {
 
           if (updateError) throw updateError;
 
-          // Create or update dating profile
-          await supabase
-            .from('dating_profiles')
-            .upsert({
-              user_id: existing.id,
-              bio: `Looking for meaningful connections in ${userData.city}`,
-              age: userData.age,
-              location_city: userData.city,
-              location_country: userData.country,
-              is_active: true,
-              show_me: true,
-            }, {
-              onConflict: 'user_id',
-            });
+        // Create or update complete dating profile with all enhancement fields
+        await supabase
+          .from('dating_profiles')
+          .upsert({
+            user_id: existing.id,
+            bio: `Looking for meaningful connections in ${userData.city}. Love good conversations and authentic people.`,
+            age: userData.age,
+            location_city: userData.city,
+            location_country: userData.country,
+            headline: 'Serious about love, fun about life',
+            values: ['Family', 'Faith', 'Growth', 'Honesty'],
+            mood: 'romantic',
+            what_makes_me_different: 'I never give up on people I care about',
+            weekend_style: 'church_faith',
+            intention_tag: 'serious',
+            respect_first_badge: true,
+            local_food: 'Sadza & nyama',
+            local_slang: 'Sharp',
+            local_spot: `${userData.city} City Centre`,
+            what_im_looking_for: 'Looking for someone genuine, kind, and ready for something real. Values family and growth.',
+            kids: 'want_kids',
+            work: 'Professional',
+            smoke: 'no',
+            drink: 'sometimes',
+            prompts: [
+              { question: 'What makes you laugh?', answer: 'Good jokes and genuine moments' },
+              { question: 'Perfect weekend?', answer: 'Quality time with loved ones' },
+              { question: 'What are you passionate about?', answer: 'Building meaningful connections' }
+            ],
+            interests: ['Music', 'Travel', 'Food', 'Family', 'Faith'],
+            looking_for: 'everyone',
+            age_range_min: 22,
+            age_range_max: 40,
+            max_distance_km: 50,
+            is_active: true,
+            show_me: true,
+            last_active_at: new Date().toISOString(),
+          }, {
+            onConflict: 'user_id',
+          });
 
           results.push({ email: userData.email, status: 'updated', userId: existing.id });
         } else {
@@ -113,19 +139,43 @@ export async function createSampleUsers() {
             continue;
           }
 
-          // Create dating profile
+          // Create complete dating profile with all enhancement fields
           await supabase
             .from('dating_profiles')
-            .upsert({
+            .insert({
               user_id: userId,
-              bio: `Looking for meaningful connections in ${userData.city}`,
+              bio: `Looking for meaningful connections in ${userData.city}. Love good conversations and authentic people.`,
               age: userData.age,
               location_city: userData.city,
               location_country: userData.country,
+              headline: 'Serious about love, fun about life',
+              values: ['Family', 'Faith', 'Growth', 'Honesty'],
+              mood: 'romantic',
+              what_makes_me_different: 'I never give up on people I care about',
+              weekend_style: 'church_faith',
+              intention_tag: 'serious',
+              respect_first_badge: true,
+              local_food: 'Sadza & nyama',
+              local_slang: 'Sharp',
+              local_spot: `${userData.city} City Centre`,
+              what_im_looking_for: 'Looking for someone genuine, kind, and ready for something real. Values family and growth.',
+              kids: 'want_kids',
+              work: 'Professional',
+              smoke: 'no',
+              drink: 'sometimes',
+              prompts: [
+                { question: 'What makes you laugh?', answer: 'Good jokes and genuine moments' },
+                { question: 'Perfect weekend?', answer: 'Quality time with loved ones' },
+                { question: 'What are you passionate about?', answer: 'Building meaningful connections' }
+              ],
+              interests: ['Music', 'Travel', 'Food', 'Family', 'Faith'],
+              looking_for: 'everyone',
+              age_range_min: 22,
+              age_range_max: 40,
+              max_distance_km: 50,
               is_active: true,
               show_me: true,
-            }, {
-              onConflict: 'user_id',
+              last_active_at: new Date().toISOString(),
             });
 
           results.push({ email: userData.email, status: 'created', userId });
@@ -233,15 +283,28 @@ export async function deleteSampleUsers() {
  */
 export async function getSampleUsersCount() {
   try {
+    // First check if the column exists by trying to query it
+    // If it doesn't exist, the column will be created by the migration
     const { count, error } = await supabase
       .from('users')
       .select('*', { count: 'exact', head: true })
       .eq('is_sample_user', true);
 
-    if (error) throw error;
+    if (error) {
+      // If column doesn't exist, return 0 (migration hasn't been run yet)
+      if (error.code === '42703' || error.message?.includes('column') || error.message?.includes('does not exist')) {
+        console.log('is_sample_user column does not exist yet. Run the migration first.');
+        return 0;
+      }
+      throw error;
+    }
     return count || 0;
   } catch (error: any) {
-    console.error('Error getting sample users count:', error);
+    // Silently handle errors - column might not exist yet
+    if (error?.code === '42703' || error?.message?.includes('column') || error?.message?.includes('does not exist')) {
+      return 0;
+    }
+    console.error('Error getting sample users count:', error?.message || error);
     return 0;
   }
 }

@@ -188,7 +188,7 @@ serve(async (req: Request) => {
 
           if (updateError) throw updateError;
 
-          // Create or update dating profile with ALL enhanced fields
+          // UPDATE existing dating profile with ALL enhanced fields (use UPDATE instead of upsert to ensure all fields are updated)
           try {
             // Calculate date of birth from age
             const currentYear = new Date().getFullYear();
@@ -204,7 +204,6 @@ serve(async (req: Request) => {
             const coords = cityCoords[userData.city] || { lat: -19.0154, lng: 29.1549 }; // Default to Zimbabwe center
             
             const profileData: any = {
-              user_id: userId,
               bio: `Looking for meaningful connections in ${userData.city}. Love good conversations and authentic people.`,
               age: userData.age,
               date_of_birth: dateOfBirth,
@@ -243,14 +242,39 @@ serve(async (req: Request) => {
               ],
             };
 
-            console.log(`Inserting dating profile data for ${userData.email}:`, JSON.stringify(profileData, null, 2));
+            console.log(`Updating dating profile data for ${userData.email}:`, JSON.stringify(profileData, null, 2));
             
-            const { error: profileError, data: profileDataResult } = await adminClient
+            // First check if profile exists, if not create it, if yes update it
+            const { data: existingProfile } = await adminClient
               .from('dating_profiles')
-              .upsert(profileData, {
-                onConflict: 'user_id',
-              })
-              .select();
+              .select('user_id')
+              .eq('user_id', userId)
+              .maybeSingle();
+
+            let profileError = null;
+            let profileDataResult = null;
+
+            if (existingProfile) {
+              // UPDATE existing profile with all fields
+              const { error, data } = await adminClient
+                .from('dating_profiles')
+                .update(profileData)
+                .eq('user_id', userId)
+                .select();
+              profileError = error;
+              profileDataResult = data;
+            } else {
+              // INSERT new profile with all fields including user_id
+              const { error, data } = await adminClient
+                .from('dating_profiles')
+                .insert({
+                  ...profileData,
+                  user_id: userId,
+                })
+                .select();
+              profileError = error;
+              profileDataResult = data;
+            }
 
             if (profileError) {
               console.error(`ERROR: Failed to create/update dating profile for ${userData.email}:`, profileError);
@@ -263,7 +287,8 @@ serve(async (req: Request) => {
               }
             }
           } catch (profileErr: any) {
-            console.warn(`Warning: Exception creating/updating dating profile for ${userData.email}: ${profileErr.message}`);
+            console.error(`ERROR: Exception creating/updating dating profile for ${userData.email}:`, profileErr);
+            console.error(`Exception details:`, JSON.stringify(profileErr, null, 2));
             // Continue anyway - user is created successfully
           }
 

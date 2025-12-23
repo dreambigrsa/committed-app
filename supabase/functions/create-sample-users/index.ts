@@ -243,15 +243,24 @@ serve(async (req: Request) => {
               ],
             };
 
-            const { error: profileError } = await adminClient
+            console.log(`Inserting dating profile data for ${userData.email}:`, JSON.stringify(profileData, null, 2));
+            
+            const { error: profileError, data: profileDataResult } = await adminClient
               .from('dating_profiles')
               .upsert(profileData, {
                 onConflict: 'user_id',
-              });
+              })
+              .select();
 
             if (profileError) {
-              console.warn(`Warning: Failed to create/update dating profile for ${userData.email}: ${profileError.message}`);
+              console.error(`ERROR: Failed to create/update dating profile for ${userData.email}:`, profileError);
+              console.error(`Error details:`, JSON.stringify(profileError, null, 2));
               // Continue anyway - user is created successfully
+            } else {
+              console.log(`Successfully created/updated dating profile for ${userData.email}`);
+              if (profileDataResult) {
+                console.log(`Profile data result:`, JSON.stringify(profileDataResult, null, 2));
+              }
             }
           } catch (profileErr: any) {
             console.warn(`Warning: Exception creating/updating dating profile for ${userData.email}: ${profileErr.message}`);
@@ -350,13 +359,22 @@ serve(async (req: Request) => {
               ],
             };
 
-            const { error: profileInsertError } = await adminClient
+            console.log(`Inserting dating profile data for ${userData.email}:`, JSON.stringify(profileData, null, 2));
+            
+            const { error: profileInsertError, data: profileInsertResult } = await adminClient
               .from('dating_profiles')
-              .insert(profileData);
+              .insert(profileData)
+              .select();
 
             if (profileInsertError) {
-              console.warn(`Warning: Failed to create dating profile for ${userData.email}: ${profileInsertError.message}`);
+              console.error(`ERROR: Failed to create dating profile for ${userData.email}:`, profileInsertError);
+              console.error(`Error details:`, JSON.stringify(profileInsertError, null, 2));
               // Continue anyway - user is created successfully
+            } else {
+              console.log(`Successfully created dating profile for ${userData.email}`);
+              if (profileInsertResult) {
+                console.log(`Profile insert result:`, JSON.stringify(profileInsertResult, null, 2));
+              }
             }
           } catch (profileErr: any) {
             console.warn(`Warning: Exception creating dating profile for ${userData.email}: ${profileErr.message}`);

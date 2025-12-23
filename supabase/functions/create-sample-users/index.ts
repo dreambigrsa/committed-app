@@ -33,6 +33,13 @@ const SAMPLE_USERS = [
   { fullName: 'Lungile Ncube', email: 'lungile.ncube@sample.com', phone: '+263771234515', city: 'Bulawayo', country: 'Zimbabwe', age: 30 },
 ];
 
+// Generate profile picture URL using UI Avatars API
+function getProfilePictureUrl(name: string): string {
+  const encodedName = encodeURIComponent(name);
+  // Use UI Avatars API with random colors for variety
+  return `https://ui-avatars.com/api/?name=${encodedName}&size=400&background=random&color=fff&bold=true&font-size=0.5`;
+}
+
 const DEFAULT_PASSWORD = 'Test123456!';
 
 function corsHeaders() {
@@ -175,11 +182,13 @@ serve(async (req: Request) => {
 
         if (existingUser) {
           // Update existing user
+          const profilePictureUrl = getProfilePictureUrl(userData.fullName);
           const { error: updateError } = await adminClient
             .from('users')
             .update({
               full_name: userData.fullName,
               phone_number: userData.phone,
+              profile_picture: profilePictureUrl,
               is_sample_user: true,
               phone_verified: true,
               email_verified: true,
@@ -287,6 +296,7 @@ serve(async (req: Request) => {
           results.push({ email: userData.email, status: 'updated', userId: userId });
         } else {
           // Create new user record
+          const profilePictureUrl = getProfilePictureUrl(userData.fullName);
           const { error: insertError } = await adminClient
             .from('users')
             .insert({
@@ -294,6 +304,7 @@ serve(async (req: Request) => {
               full_name: userData.fullName,
               email: userData.email,
               phone_number: userData.phone,
+              profile_picture: profilePictureUrl,
               role: 'user',
               is_sample_user: true,
               phone_verified: true,
@@ -305,11 +316,13 @@ serve(async (req: Request) => {
             // If it's a duplicate key error, the user was created by trigger in the meantime
             if (insertError.code === '23505') {
               console.log(`User record for ${userData.email} was created by trigger, updating...`);
+              const profilePictureUrl = getProfilePictureUrl(userData.fullName);
               const { error: updateError } = await adminClient
                 .from('users')
                 .update({
                   full_name: userData.fullName,
                   phone_number: userData.phone,
+                  profile_picture: profilePictureUrl,
                   is_sample_user: true,
                   phone_verified: true,
                   email_verified: true,

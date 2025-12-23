@@ -37,6 +37,7 @@ function RootLayoutNav() {
         <Stack.Screen name="settings/professional-availability" options={{ headerShown: true, title: "Professional Availability" }} />
         <Stack.Screen name="professional/session-requests" options={{ headerShown: true, title: "Session Requests" }} />
         <Stack.Screen name="dating/premium" options={{ headerShown: true, title: "Go Premium" }} />
+        <Stack.Screen name="dating/payment-submit" options={{ headerShown: true, title: "Submit Payment" }} />
         <Stack.Screen name="+not-found" />
       </Stack>
       <NotificationToast />

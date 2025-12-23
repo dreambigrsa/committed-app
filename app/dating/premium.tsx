@@ -53,72 +53,11 @@ export default function PremiumScreen() {
   };
 
   const handleSubscribe = async (planId: string) => {
-    try {
-      if (!currentUser) {
-        Alert.alert('Error', 'You must be logged in to subscribe');
-        return;
-      }
-
-      setIsSubscribing(true);
-
-      // Get the plan details
-      const selectedPlan = plans.find(p => p.id === planId);
-      if (!selectedPlan) {
-        Alert.alert('Error', 'Plan not found');
-        return;
-      }
-
-      // Calculate expiration date (30 days from now for monthly, or null for lifetime)
-      const expiresAt = selectedPlan.price_monthly > 0 
-        ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-        : null;
-
-      // Use upsert to update existing subscription or create new one
-      // This handles the UNIQUE constraint on user_id
-      const subscriptionData = {
-        user_id: currentUser.id,
-        plan_id: planId,
-        status: 'active',
-        started_at: new Date().toISOString(),
-        expires_at: expiresAt,
-        payment_provider: 'manual',
-        payment_provider_subscription_id: `manual_${Date.now()}_${currentUser.id}`,
-        auto_renew: false, // Manual payments don't auto-renew
-        cancelled_at: null, // Clear cancellation if updating
-        updated_at: new Date().toISOString(),
-      };
-
-      const { data: newSubscription, error: subscribeError } = await supabase
-        .from('user_subscriptions')
-        .upsert(subscriptionData, {
-          onConflict: 'user_id',
-        })
-        .select()
-        .single();
-
-      if (subscribeError) {
-        console.error('Subscription error:', subscribeError);
-        throw subscribeError;
-      }
-
-      Alert.alert(
-        'Success!',
-        `You've successfully subscribed to ${selectedPlan.display_name}!`,
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              loadData(); // Reload to show updated subscription status
-            },
-          },
-        ]
-      );
-    } catch (error: any) {
-      console.error('Subscribe error:', error);
-      Alert.alert('Error', error.message || 'Failed to start subscription');
-    } finally {
-      setIsSubscribing(false);
-    }
+    // Navigate to payment submission screen (not creating subscription directly)
+    router.push({
+      pathname: '/dating/payment-submit',
+      params: { planId },
+    } as any);
   };
 
   const premiumFeatures = [

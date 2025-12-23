@@ -75,30 +75,53 @@ CREATE POLICY "Admins can verify payments" ON payment_submissions FOR UPDATE
 -- ============================================
 CREATE OR REPLACE FUNCTION activate_subscription_on_payment_approval()
 RETURNS TRIGGER AS $$
+DECLARE
+  expires_at TIMESTAMPTZ;
 BEGIN
   -- If payment is approved and has a subscription plan, activate the subscription
   IF NEW.status = 'approved' AND OLD.status = 'pending' AND NEW.subscription_plan_id IS NOT NULL THEN
-    -- Check if user already has an active subscription for this plan
+    -- Calculate expiration date (30 days from now for monthly plans, null for lifetime)
+    -- We check if plan has a monthly price - if yes, it's monthly (30 days), if no, it's lifetime (null)
+    SELECT 
+      CASE 
+        WHEN sp.price_monthly > 0 THEN NOW() + INTERVAL '30 days'
+        ELSE NULL -- Lifetime subscription
+      END
+    INTO expires_at
+    FROM subscription_plans sp
+    WHERE sp.id = NEW.subscription_plan_id;
+    
+    -- Upsert subscription (map subscription_plan_id to plan_id)
     INSERT INTO user_subscriptions (
       user_id,
-      subscription_plan_id,
+      plan_id,
       status,
-      start_date,
-      end_date
+      started_at,
+      expires_at,
+      payment_provider,
+      payment_provider_subscription_id,
+      auto_renew
     )
-    SELECT
+    VALUES (
       NEW.user_id,
-      NEW.subscription_plan_id,
+      NEW.subscription_plan_id, -- This becomes plan_id in user_subscriptions
       'active',
       NOW(),
-      NOW() + INTERVAL '1 month' * sp.duration_months
-    FROM subscription_plans sp
-    WHERE sp.id = NEW.subscription_plan_id
-    ON CONFLICT (user_id, subscription_plan_id) 
+      expires_at,
+      'manual',
+      'payment_submission_' || NEW.id::TEXT,
+      false
+    )
+    ON CONFLICT (user_id) 
     DO UPDATE SET
+      plan_id = NEW.subscription_plan_id,
       status = 'active',
-      start_date = NOW(),
-      end_date = NOW() + INTERVAL '1 month' * (SELECT duration_months FROM subscription_plans WHERE id = NEW.subscription_plan_id),
+      started_at = NOW(),
+      expires_at = expires_at,
+      payment_provider = 'manual',
+      payment_provider_subscription_id = 'payment_submission_' || NEW.id::TEXT,
+      auto_renew = false,
+      cancelled_at = NULL, -- Clear cancellation if reactivating
       updated_at = NOW();
   END IF;
   

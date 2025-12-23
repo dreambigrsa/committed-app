@@ -30,7 +30,7 @@ export const SAMPLE_USERS = [
 const DEFAULT_PASSWORD = 'Test123456!';
 
 /**
- * Create all sample users
+ * Create all sample users using Supabase Edge Function
  * This creates auth users, user records, and dating profiles automatically
  * Password for all: Test123456!
  */
@@ -42,31 +42,19 @@ export async function createSampleUsers() {
       throw new Error('You must be logged in to create sample users');
     }
 
-    // Get base URL
-    const getBaseUrl = () => {
-      if (process.env.EXPO_PUBLIC_COMMITTED_API_BASE_URL) {
-        return process.env.EXPO_PUBLIC_COMMITTED_API_BASE_URL;
-      }
-      return __DEV__ 
-        ? "http://localhost:3000"
-        : "https://committed-5mxf.onrender.com";
-    };
+    // Get Supabase URL
+    const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://dizcuexznganwgddsrfo.supabase.co';
+    const functionUrl = `${supabaseUrl}/functions/v1/create-sample-users`;
 
-    // Call tRPC endpoint directly
-    // tRPC uses POST with JSON body: { "0": { "json": input } }
-    const url = `${getBaseUrl()}/trpc/admin.createSampleUsers`;
-    
-    const response = await fetch(url, {
+    // Call Supabase Edge Function
+    const response = await fetch(functionUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session.access_token}`,
+        'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '',
       },
-      body: JSON.stringify({
-        "0": {
-          "json": {}
-        }
-      }),
+      body: JSON.stringify({}),
     });
 
     if (!response.ok) {
@@ -74,12 +62,7 @@ export async function createSampleUsers() {
       let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
       try {
         const errorData = JSON.parse(errorText);
-        // tRPC error format: { error: { message: "...", code: "..." } }
-        if (errorData.error) {
-          errorMessage = errorData.error.message || errorMessage;
-        } else if (errorData.message) {
-          errorMessage = errorData.message;
-        }
+        errorMessage = errorData.error || errorData.message || errorMessage;
       } catch {
         errorMessage = errorText || errorMessage;
       }
@@ -87,13 +70,6 @@ export async function createSampleUsers() {
     }
 
     const result = await response.json();
-    
-    // tRPC returns data in result[0].result.data format
-    if (result[0]?.result?.data) {
-      return result[0].result.data;
-    }
-    
-    // Fallback: return result as-is
     return result;
   } catch (error: any) {
     console.error('Error creating sample users:', error);
@@ -106,65 +82,52 @@ export async function createSampleUsers() {
 }
 
 /**
- * Delete all sample users using SQL function
+ * Delete all sample users using Supabase Edge Function
  */
 export async function deleteSampleUsers() {
   try {
-    // Use the SQL function to delete all sample users
-    const { data, error } = await supabase.rpc('delete_all_sample_users');
+    // Get current session for auth
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      throw new Error('You must be logged in to delete sample users');
+    }
 
-    if (error) throw error;
+    // Get Supabase URL
+    const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://dizcuexznganwgddsrfo.supabase.co';
+    const functionUrl = `${supabaseUrl}/functions/v1/delete-sample-users`;
 
-    const deletedCount = data || 0;
+    // Call Supabase Edge Function
+    const response = await fetch(functionUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+        'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '',
+      },
+      body: JSON.stringify({}),
+    });
 
-    return {
-      success: true,
-      message: `Deleted ${deletedCount} sample users and all their data`,
-      deletedCount,
-    };
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.error || errorData.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const result = await response.json();
+    return result;
   } catch (error: any) {
     console.error('Error deleting sample users:', error);
-    
-    // Fallback: manual deletion if function doesn't exist
-    try {
-      const { data: sampleUsers } = await supabase
-        .from('users')
-        .select('id')
-        .eq('is_sample_user', true);
-
-      if (sampleUsers && sampleUsers.length > 0) {
-        const userIds = sampleUsers.map(u => u.id);
-        
-        // Delete in batches
-        for (const userId of userIds) {
-          // Delete dating profiles (cascade will handle related data)
-          await supabase.from('dating_profiles').delete().eq('user_id', userId);
-          // Delete other data
-          await supabase.from('user_subscriptions').delete().eq('user_id', userId);
-          await supabase.from('user_dating_badges').delete().eq('user_id', userId);
-          // Delete user
-          await supabase.from('users').delete().eq('id', userId);
-        }
-
-        return {
-          success: true,
-          message: `Deleted ${userIds.length} sample users`,
-          deletedCount: userIds.length,
-        };
-      }
-
-      return {
-        success: true,
-        message: 'No sample users found to delete',
-        deletedCount: 0,
-      };
-    } catch (fallbackError: any) {
-      return {
-        success: false,
-        message: error.message || fallbackError.message || 'Failed to delete sample users',
-        error: error || fallbackError,
-      };
-    }
+    return {
+      success: false,
+      message: error.message || 'Failed to delete sample users',
+      error,
+    };
   }
 }
 

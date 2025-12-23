@@ -53,11 +53,18 @@ export default function PremiumScreen() {
   const handleSubscribe = async (planId: string) => {
     try {
       setIsSubscribing(true);
-      // Navigate to payment method selection
-      router.push({
-        pathname: '/dating/payment',
-        params: { planId },
-      } as any);
+      // TODO: Implement payment flow
+      // For now, show a message that payment integration is coming soon
+      Alert.alert(
+        'Coming Soon',
+        'Payment integration is coming soon! This will allow you to subscribe to premium features.',
+        [{ text: 'OK' }]
+      );
+      // When payment is implemented, navigate to:
+      // router.push({
+      //   pathname: '/dating/payment',
+      //   params: { planId },
+      // } as any);
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to start subscription');
     } finally {

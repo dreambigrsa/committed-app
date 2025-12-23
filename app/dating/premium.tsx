@@ -145,52 +145,47 @@ export default function PremiumScreen() {
         </View>
 
         {/* Subscription Plans */}
-        {!isPremium && plans.length > 0 && (
+        {plans.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Choose Your Plan</Text>
-            {plans.map((plan) => (
-              <TouchableOpacity
-                key={plan.id}
-                style={styles.planCard}
-                onPress={() => handleSubscribe(plan.id)}
-                disabled={isSubscribing}
-              >
-                <View style={styles.planHeader}>
-                  <Text style={styles.planName}>{plan.display_name}</Text>
-                  {plan.price_monthly > 0 && (
-                    <Text style={styles.planPrice}>
-                      ${plan.price_monthly.toFixed(2)}/mo
-                    </Text>
+            {plans.map((plan) => {
+              const isCurrentPlan = plan.id === currentPlanId;
+              return (
+                <View
+                  key={plan.id}
+                  style={[
+                    styles.planCard,
+                    isCurrentPlan && styles.currentPlanCard
+                  ]}
+                >
+                  <View style={styles.planHeader}>
+                    <Text style={styles.planName}>{plan.display_name}</Text>
+                    {plan.price_monthly > 0 && (
+                      <Text style={styles.planPrice}>
+                        ${plan.price_monthly.toFixed(2)}/mo
+                      </Text>
+                    )}
+                  </View>
+                  {plan.description && (
+                    <Text style={styles.planDescription}>{plan.description}</Text>
+                  )}
+                  {isCurrentPlan ? (
+                    <View style={styles.currentPlanBadge}>
+                      <Check size={20} color={colors.success} />
+                      <Text style={styles.currentPlanText}>Current Plan</Text>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.planButton}
+                      onPress={() => handleSubscribe(plan.id)}
+                      disabled={isSubscribing}
+                    >
+                      <Text style={styles.planButtonText}>Subscribe</Text>
+                    </TouchableOpacity>
                   )}
                 </View>
-                {plan.description && (
-                  <Text style={styles.planDescription}>{plan.description}</Text>
-                )}
-                <View style={styles.planButton}>
-                  <Text style={styles.planButtonText}>Subscribe</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
-        {/* Current Subscription */}
-        {isPremium && subscription && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Your Subscription</Text>
-            <View style={styles.subscriptionCard}>
-              <View style={styles.subscriptionHeader}>
-                <Crown size={24} color={colors.primary} fill={colors.primary} />
-                <Text style={styles.subscriptionPlan}>
-                  {subscription.plan?.display_name || 'Premium'}
-                </Text>
-              </View>
-              {subscription.expires_at && (
-                <Text style={styles.subscriptionExpiry}>
-                  Expires: {new Date(subscription.expires_at).toLocaleDateString()}
-                </Text>
-              )}
-            </View>
+              );
+            })}
           </View>
         )}
       </ScrollView>
@@ -336,6 +331,26 @@ const createStyles = (colors: any) =>
     subscriptionExpiry: {
       fontSize: 14,
       color: colors.text.secondary,
+    },
+    currentPlanCard: {
+      borderWidth: 2,
+      borderColor: colors.primary,
+      backgroundColor: colors.primary + '10',
+    },
+    currentPlanBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.success + '20',
+      paddingVertical: 12,
+      paddingHorizontal: 20,
+      borderRadius: 8,
+      gap: 8,
+    },
+    currentPlanText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.success,
     },
   });
 

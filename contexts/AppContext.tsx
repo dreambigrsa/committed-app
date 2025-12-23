@@ -2208,6 +2208,35 @@ export const [AppContext, useApp] = createContextHook(() => {
     if (showBanModal(restriction)) {
       return null;
     }
+
+    // Check dating message limits (only for 2-participant conversations)
+    try {
+      const { data: conversation } = await supabase
+        .from('conversations')
+        .select('participant_ids')
+        .eq('id', conversationId)
+        .single();
+
+      // Only check limits for 2-participant conversations (dating conversations)
+      if (conversation?.participant_ids && conversation.participant_ids.length === 2) {
+        const { checkDatingMessageLimit } = await import('@/lib/dating-message-limits');
+        const limitCheck = await checkDatingMessageLimit(conversationId);
+        
+        if (!limitCheck.allowed) {
+          // Import and show premium modal if available
+          const errorMessage = limitCheck.error || 'Message limit reached. Upgrade to Premium for unlimited messaging!';
+          // We'll throw an error that the UI can catch and show premium modal
+          throw new Error(errorMessage);
+        }
+      }
+    } catch (limitError: any) {
+      // If it's a limit error, throw it to be caught by UI
+      if (limitError.message?.includes('limit') || limitError.message?.includes('Premium')) {
+        throw limitError;
+      }
+      // Otherwise, log and continue (might be a network error, etc.)
+      console.warn('Error checking message limit, allowing message:', limitError);
+    }
     
     try {
       const insertData: any = {

@@ -46,6 +46,7 @@ import RequestLiveHelpModal from '@/components/RequestLiveHelpModal';
 import SessionReviewModal from '@/components/SessionReviewModal';
 import ProfessionalHelpSuggestionModal from '@/components/ProfessionalHelpSuggestionModal';
 import SessionManagementModal from '@/components/SessionManagementModal';
+import PremiumModal from '@/components/PremiumModal';
 import { getActiveSession } from '@/lib/professional-sessions';
 import { ProfessionalSession } from '@/types';
 import { Users, Shield } from 'lucide-react-native';
@@ -200,6 +201,8 @@ export default function ConversationDetailScreen() {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [showSessionManagementModal, setShowSessionManagementModal] = useState(false);
   const [hasReview, setHasReview] = useState(false);
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [premiumFeature, setPremiumFeature] = useState<{ name?: string; description?: string }>({});
   const conversation = getConversation(conversationId);
   const recordedImpressions = useRef<Set<string>>(new Set());
   const failedAdImages = useRef<Set<string>>(new Set());
@@ -1347,11 +1350,21 @@ export default function ConversationDetailScreen() {
       // The real-time subscription will replace the optimistic message with the real one
       // We match by content, sender, and time to replace the optimistic message
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to send message:', error);
       // Remove optimistic message on error
       setLocalMessages(prev => prev.filter((m) => m.id !== tempId));
-      Alert.alert('Error', 'Failed to send message. Please try again.');
+      
+      // Check if it's a message limit error (should show premium modal)
+      if (error.message?.includes('limit') || error.message?.includes('Premium')) {
+        setPremiumFeature({
+          name: 'Unlimited Messaging',
+          description: error.message || 'Upgrade to Premium for unlimited messaging!',
+        });
+        setShowPremiumModal(true);
+      } else {
+        Alert.alert('Error', error.message || 'Failed to send message. Please try again.');
+      }
     }
   };
 
@@ -2688,6 +2701,14 @@ export default function ConversationDetailScreen() {
           />
         </>
       )}
+
+      {/* Premium Modal */}
+      <PremiumModal
+        visible={showPremiumModal}
+        onClose={() => setShowPremiumModal(false)}
+        featureName={premiumFeature.name}
+        featureDescription={premiumFeature.description}
+      />
     </>
   );
 }

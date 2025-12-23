@@ -18,9 +18,11 @@ import { useApp } from '@/contexts/AppContext';
 import { Image as ExpoImage } from 'expo-image';
 import * as DatingService from '@/lib/dating-service';
 import * as ProfileEnhancements from '@/lib/dating-profile-enhancements';
+import * as DatingMessageLimits from '@/lib/dating-message-limits';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
 import ReportContentModal from '@/components/ReportContentModal';
+import PremiumModal from '@/components/PremiumModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -42,6 +44,8 @@ export default function UserProfileScreen() {
   const [subscription, setSubscription] = useState<any>(null);
   const [showMenuModal, setShowMenuModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [premiumFeature, setPremiumFeature] = useState<{ name?: string; description?: string }>({});
 
   useEffect(() => {
     loadProfile();
@@ -144,6 +148,17 @@ export default function UserProfileScreen() {
   const handleConversationStarter = async (starter: string) => {
     try {
       if (!currentUser) return;
+
+      // Check if user can send conversation starter (limit: 1 per user)
+      const limitCheck = await DatingMessageLimits.checkConversationStarterLimit(params.userId);
+      if (!limitCheck.allowed) {
+        setPremiumFeature({
+          name: 'Unlimited Messaging',
+          description: limitCheck.error || 'Upgrade to Premium to send unlimited conversation starters and messages!',
+        });
+        setShowPremiumModal(true);
+        return;
+      }
 
       // First, like the user (if not already liked) - this acts as an "opener"
       try {
@@ -740,6 +755,14 @@ export default function UserProfileScreen() {
           colors={colors}
         />
       )}
+
+      {/* Premium Modal */}
+      <PremiumModal
+        visible={showPremiumModal}
+        onClose={() => setShowPremiumModal(false)}
+        featureName={premiumFeature.name}
+        featureDescription={premiumFeature.description}
+      />
     </SafeAreaView>
   );
 }

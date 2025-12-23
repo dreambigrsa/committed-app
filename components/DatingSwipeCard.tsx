@@ -163,20 +163,20 @@ export default function DatingSwipeCard({
               tension: 50,
               friction: 7,
             }).start();
-            
+          
             // Animate opacity (native-driven) separately
-            Animated.parallel([
-              Animated.timing(likeOpacity, {
-                toValue: 0,
-                duration: 200,
-                useNativeDriver: true,
-              }),
-              Animated.timing(passOpacity, {
-                toValue: 0,
-                duration: 200,
-                useNativeDriver: true,
-              }),
-            ]).start();
+          Animated.parallel([
+            Animated.timing(likeOpacity, {
+              toValue: 0,
+              duration: 200,
+              useNativeDriver: true,
+            }),
+            Animated.timing(passOpacity, {
+              toValue: 0,
+              duration: 200,
+              useNativeDriver: true,
+            }),
+          ]).start();
           });
         }
       },
@@ -187,21 +187,26 @@ export default function DatingSwipeCard({
     // Stop any ongoing animations first
     position.stopAnimation();
     rotate.stopAnimation();
+    likeOpacity.stopAnimation();
+    passOpacity.stopAnimation();
     
-    Animated.parallel([
-      Animated.timing(position, {
-        toValue: { x: SCREEN_WIDTH + 100, y: 0 },
-        duration: 300,
-        useNativeDriver: false,
-      }),
-      Animated.timing(rotate, {
-        toValue: 30,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      onSwipeRight();
-      resetCard();
+    // Ensure we're not mixing drivers - use requestAnimationFrame to ensure clean state
+    requestAnimationFrame(() => {
+      Animated.parallel([
+        Animated.timing(position, {
+          toValue: { x: SCREEN_WIDTH + 100, y: 0 },
+          duration: 300,
+          useNativeDriver: false,
+        }),
+        Animated.timing(rotate, {
+          toValue: 30,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        onSwipeRight();
+        resetCard();
+      });
     });
   };
 
@@ -209,29 +214,43 @@ export default function DatingSwipeCard({
     // Stop any ongoing animations first
     position.stopAnimation();
     rotate.stopAnimation();
+    likeOpacity.stopAnimation();
+    passOpacity.stopAnimation();
     
-    Animated.parallel([
-      Animated.timing(position, {
-        toValue: { x: -SCREEN_WIDTH - 100, y: 0 },
-        duration: 300,
-        useNativeDriver: false,
-      }),
-      Animated.timing(rotate, {
-        toValue: -30,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      onSwipeLeft();
-      resetCard();
+    // Ensure we're not mixing drivers - use requestAnimationFrame to ensure clean state
+    requestAnimationFrame(() => {
+      Animated.parallel([
+        Animated.timing(position, {
+          toValue: { x: -SCREEN_WIDTH - 100, y: 0 },
+          duration: 300,
+          useNativeDriver: false,
+        }),
+        Animated.timing(rotate, {
+          toValue: -30,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        onSwipeLeft();
+        resetCard();
+      });
     });
   };
 
   const resetCard = () => {
-    position.setValue({ x: 0, y: 0 });
-    rotate.setValue(0);
-    likeOpacity.setValue(0);
-    passOpacity.setValue(0);
+    // Stop all animations before resetting to prevent conflicts
+    position.stopAnimation();
+    rotate.stopAnimation();
+    likeOpacity.stopAnimation();
+    passOpacity.stopAnimation();
+    
+    // Use requestAnimationFrame to ensure animations are fully stopped
+    requestAnimationFrame(() => {
+      position.setValue({ x: 0, y: 0 });
+      rotate.setValue(0);
+      likeOpacity.setValue(0);
+      passOpacity.setValue(0);
+    });
   };
 
   const rotateInterpolate = rotate.interpolate({

@@ -455,34 +455,72 @@ export async function getDatingMatches() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('User not authenticated');
 
-  const { data, error } = await supabase
-    .from('dating_matches')
-    .select(`
-      *,
-      user1:users!dating_matches_user1_id_fkey(
-        id,
-        full_name,
-        profile_picture,
-        id_verified,
-        phone_verified,
-        email_verified
-      ),
-      user2:users!dating_matches_user2_id_fkey(
-        id,
-        full_name,
-        profile_picture,
-        id_verified,
-        phone_verified,
-        email_verified
-      )
-    `)
-    .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
-    .order('matched_at', { ascending: false });
+  // Query matches where user is either user1 or user2
+  // Split into two queries to avoid ambiguous column reference
+  const [user1Matches, user2Matches] = await Promise.all([
+    supabase
+      .from('dating_matches')
+      .select(`
+        *,
+        user1:users!dating_matches_user1_id_fkey(
+          id,
+          full_name,
+          profile_picture,
+          id_verified,
+          phone_verified,
+          email_verified
+        ),
+        user2:users!dating_matches_user2_id_fkey(
+          id,
+          full_name,
+          profile_picture,
+          id_verified,
+          phone_verified,
+          email_verified
+        )
+      `)
+      .eq('user1_id', user.id)
+      .order('matched_at', { ascending: false }),
+    supabase
+      .from('dating_matches')
+      .select(`
+        *,
+        user1:users!dating_matches_user1_id_fkey(
+          id,
+          full_name,
+          profile_picture,
+          id_verified,
+          phone_verified,
+          email_verified
+        ),
+        user2:users!dating_matches_user2_id_fkey(
+          id,
+          full_name,
+          profile_picture,
+          id_verified,
+          phone_verified,
+          email_verified
+        )
+      `)
+      .eq('user2_id', user.id)
+      .order('matched_at', { ascending: false }),
+  ]);
 
-  if (error) throw error;
+  if (user1Matches.error) throw user1Matches.error;
+  if (user2Matches.error) throw user2Matches.error;
+
+  // Combine and deduplicate results
+  const allMatches = [...(user1Matches.data || []), ...(user2Matches.data || [])];
+  const uniqueMatches = Array.from(
+    new Map(allMatches.map(match => [match.id, match])).values()
+  );
+
+  const data = uniqueMatches.sort((a, b) => 
+    new Date(b.matched_at).getTime() - new Date(a.matched_at).getTime()
+  );
 
   // Format matches to show the other user
-  return (data || []).map(match => ({
+  return data.map(match => ({
     ...match,
     matchedUser: match.user1_id === user.id ? match.user2 : match.user1,
   }));
@@ -497,7 +535,7 @@ export async function unmatchUser(matchId: string) {
     .from('dating_matches')
     .select('*')
     .eq('id', matchId)
-    .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
+    .or(`dating_matches.user1_id.eq.${user.id},dating_matches.user2_id.eq.${user.id}`)
     .single();
 
   if (!match) throw new Error('Match not found');

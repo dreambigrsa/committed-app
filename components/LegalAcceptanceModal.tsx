@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,8 +12,9 @@ import { AlertTriangle, Shield, CheckCircle2, RefreshCw } from 'lucide-react-nat
 import { useTheme } from '@/contexts/ThemeContext';
 import { LegalDocument } from '@/types';
 import LegalAcceptanceCheckbox from './LegalAcceptanceCheckbox';
-import { saveUserAcceptance } from '@/lib/legal-enforcement';
+import { saveUserAcceptance, checkUserLegalAcceptances } from '@/lib/legal-enforcement';
 import { useApp } from '@/contexts/AppContext';
+import { supabase } from '@/lib/supabase';
 
 interface LegalAcceptanceModalProps {
   visible: boolean;
@@ -36,12 +37,75 @@ export default function LegalAcceptanceModal({
 
   const [acceptances, setAcceptances] = useState<Record<string, boolean>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [isChecking, setIsChecking] = useState(false);
+  const documentsRef = useRef<LegalDocument[]>([]);
 
-  const allDocuments = [...missingDocuments, ...needsReAcceptance];
-  const requiredDocs = allDocuments.filter((doc) => doc.isRequired);
-  const allRequiredAccepted = requiredDocs.every(
-    (doc) => acceptances[doc.id] === true
+  const allDocuments = useMemo(() => [...missingDocuments, ...needsReAcceptance], [missingDocuments, needsReAcceptance]);
+  const requiredDocs = useMemo(() => allDocuments.filter((doc) => doc.isRequired), [allDocuments]);
+  const allRequiredAccepted = useMemo(() => 
+    requiredDocs.every((doc) => acceptances[doc.id] === true),
+    [requiredDocs, acceptances]
   );
+
+  // Update ref when documents change
+  useEffect(() => {
+    documentsRef.current = allDocuments;
+  }, [allDocuments]);
+
+  // Check existing acceptances when modal opens
+  useEffect(() => {
+    if (!visible) {
+      // Reset acceptances when modal closes
+      setAcceptances({});
+      return;
+    }
+
+    const allDocs = documentsRef.current;
+    const documentIds = allDocs.map(d => d.id);
+    const requiredDocIds = allDocs.filter(d => d.isRequired).map(d => d.id);
+
+    if (currentUser?.id && documentIds.length > 0) {
+      setIsChecking(true);
+      // Check which documents are already accepted
+      supabase
+        .from('user_legal_acceptances')
+        .select('document_id, document_version')
+        .eq('user_id', currentUser.id)
+        .in('document_id', documentIds)
+        .then(({ data, error }) => {
+          if (!error && data) {
+            const existingAcceptances: Record<string, boolean> = {};
+            // Check if each document is already accepted with the correct version
+            allDocs.forEach(doc => {
+              const acceptance = data.find(a => a.document_id === doc.id);
+              if (acceptance && acceptance.document_version === doc.version) {
+                existingAcceptances[doc.id] = true;
+              }
+            });
+            setAcceptances(existingAcceptances);
+            
+            // If all required documents are already accepted, auto-close
+            const allRequiredAlreadyAccepted = requiredDocIds.length > 0 && 
+              requiredDocIds.every(docId => existingAcceptances[docId] === true);
+            
+            if (allRequiredAlreadyAccepted) {
+              // Small delay to show the checkmarks, then close
+              setTimeout(() => {
+                onComplete();
+              }, 500);
+            }
+          }
+          setIsChecking(false);
+        })
+        .catch((error) => {
+          console.error('Error checking existing acceptances:', error);
+          setIsChecking(false);
+        });
+    } else if (documentIds.length === 0) {
+      // If modal is visible but no documents, call onComplete to close it
+      onComplete();
+    }
+  }, [visible, currentUser?.id, onComplete]);
 
   const handleToggle = (documentId: string, accepted: boolean) => {
     setAcceptances((prev) => ({
@@ -73,15 +137,27 @@ export default function LegalAcceptanceModal({
           };
         });
 
-      for (const { documentId, version } of acceptancesToSave) {
-        await saveUserAcceptance(
-          currentUser.id,
-          documentId,
-          version,
-          needsReAcceptance.find((d) => d.id === documentId) ? 'update' : 'manual'
-        );
+      // Save all acceptances and track failures
+      const saveResults = await Promise.all(
+        acceptancesToSave.map(({ documentId, version }) =>
+          saveUserAcceptance(
+            currentUser.id,
+            documentId,
+            version,
+            needsReAcceptance.find((d) => d.id === documentId) ? 'update' : 'manual'
+          )
+        )
+      );
+
+      // Check if all saves succeeded
+      const allSucceeded = saveResults.every((result) => result === true);
+      
+      if (!allSucceeded) {
+        alert('Failed to save some acceptances. Please try again.');
+        return;
       }
 
+      // Only call onComplete if all saves succeeded
       onComplete();
     } catch (error) {
       console.error('Failed to save acceptances:', error);

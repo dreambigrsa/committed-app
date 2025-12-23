@@ -92,6 +92,7 @@ export async function checkUserLegalAcceptances(userId: string): Promise<Accepta
 
 /**
  * Save user acceptance of a legal document
+ * Uses upsert to handle both new acceptances and updates to existing ones
  */
 export async function saveUserAcceptance(
   userId: string,
@@ -102,14 +103,19 @@ export async function saveUserAcceptance(
   try {
     const { error } = await supabase
       .from('user_legal_acceptances')
-      .insert({
+      .upsert({
         user_id: userId,
         document_id: documentId,
         document_version: documentVersion,
         context,
+      }, {
+        onConflict: 'user_id,document_id',
       });
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error saving acceptance:', error);
+      throw error;
+    }
     return true;
   } catch (error) {
     console.error('Error saving acceptance:', error);

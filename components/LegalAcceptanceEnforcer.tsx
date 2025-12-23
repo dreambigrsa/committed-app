@@ -30,11 +30,11 @@ export default function LegalAcceptanceEnforcer() {
       timeoutRef.current = setTimeout(() => {
         const shouldShow =
           currentUser &&
-          legalAcceptanceStatus &&
+          legalAcceptanceStatus !== null &&
           !legalAcceptanceStatus.hasAllRequired &&
           (legalAcceptanceStatus.missingDocuments.length > 0 ||
             legalAcceptanceStatus.needsReAcceptance.length > 0);
-        setModalVisible(shouldShow || false);
+        setModalVisible(shouldShow);
         timeoutRef.current = null;
       }, 300);
     }
@@ -61,41 +61,56 @@ export default function LegalAcceptanceEnforcer() {
     }, 100);
   };
 
-  const handleComplete = () => {
+  const handleComplete = async () => {
+    // Close modal immediately
+    setModalVisible(false);
+    
     // Refresh acceptance status
     if (currentUser?.id) {
-      import('@/lib/legal-enforcement').then(({ checkUserLegalAcceptances }) => {
-        checkUserLegalAcceptances(currentUser.id).then((status) => {
-          setLegalAcceptanceStatus(status);
-        });
-      });
+      try {
+        const { checkUserLegalAcceptances } = await import('@/lib/legal-enforcement');
+        const status = await checkUserLegalAcceptances(currentUser.id);
+        setLegalAcceptanceStatus(status);
+        
+        // If status shows all required are accepted, ensure modal stays closed
+        if (status.hasAllRequired) {
+          setModalVisible(false);
+        }
+      } catch (error) {
+        console.error('Error refreshing legal acceptance status:', error);
+      }
     }
   };
 
   useEffect(() => {
     // Only show modal if not currently viewing a document
     if (!isViewingDocument) {
+      // Only show if:
+      // 1. User is logged in
+      // 2. Status has been checked (not null)
+      // 3. User doesn't have all required documents
+      // 4. There are actually missing or needs-reacceptance documents
       const shouldShow =
         currentUser &&
-        legalAcceptanceStatus &&
+        legalAcceptanceStatus !== null &&
         !legalAcceptanceStatus.hasAllRequired &&
         (legalAcceptanceStatus.missingDocuments.length > 0 ||
           legalAcceptanceStatus.needsReAcceptance.length > 0);
-      setModalVisible(shouldShow || false);
+      setModalVisible(shouldShow);
     }
   }, [currentUser, legalAcceptanceStatus, isViewingDocument]);
 
   const showModal =
     !isViewingDocument &&
     currentUser &&
-    legalAcceptanceStatus &&
+    legalAcceptanceStatus !== null &&
     !legalAcceptanceStatus.hasAllRequired &&
     (legalAcceptanceStatus.missingDocuments.length > 0 ||
       legalAcceptanceStatus.needsReAcceptance.length > 0);
 
   return (
     <LegalAcceptanceModal
-      visible={modalVisible && showModal || false}
+      visible={modalVisible && showModal}
       missingDocuments={legalAcceptanceStatus?.missingDocuments || []}
       needsReAcceptance={legalAcceptanceStatus?.needsReAcceptance || []}
       onComplete={handleComplete}

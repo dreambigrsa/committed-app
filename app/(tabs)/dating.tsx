@@ -305,12 +305,6 @@ export default function DatingScreen() {
             >
               <Text style={styles.primaryButtonText}>Get Started</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.primaryButton, { marginTop: 12, backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.primary }]}
-              onPress={loadDatingData}
-            >
-              <Text style={[styles.primaryButtonText, { color: colors.primary }]}>Refresh</Text>
-            </TouchableOpacity>
           </View>
         </Animated.View>
       </SafeAreaView>
@@ -353,25 +347,9 @@ export default function DatingScreen() {
           </Text>
           <TouchableOpacity
             style={styles.secondaryButton}
-            onPress={() => {
-              setCurrentIndex(0);
-              setSwipedProfiles(new Set());
-              DatingService.getDatingDiscovery().then(data => {
-                const normalizedProfiles = (data.profiles || []).map((p: any) => ({
-                  ...p,
-                  full_name: p.user?.full_name || p.full_name,
-                  profile_picture: p.user?.profile_picture || p.profile_picture,
-                  user_id: p.user?.id || p.user_id,
-                  verified: p.user?.verified || false,
-                  email_verified: p.user?.email_verified || false,
-                  phone_verified: p.user?.phone_verified || false,
-                  id_verified: p.user?.id_verified || false,
-                }));
-                setDiscovery(normalizedProfiles);
-              }).catch(console.error);
-            }}
+            onPress={() => router.push('/dating/filters')}
           >
-            <Text style={styles.secondaryButtonText}>Refresh</Text>
+            <Text style={styles.secondaryButtonText}>Adjust Filters</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>

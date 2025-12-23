@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -39,24 +40,28 @@ export default function ProfileSetupScreen() {
   } | null>(null);
 
   // Load profile and interests on mount
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        setLoadingProfile(true);
-        const [profile, interests] = await Promise.all([
-          DatingService.getDatingProfile().catch(() => null),
-          DatingService.getDatingInterests(),
-        ]);
-        setExistingProfile(profile);
-        setInterestsData(interests);
-      } catch (error: any) {
-        console.error('Error loading data:', error);
-      } finally {
-        setLoadingProfile(false);
-      }
-    };
-    loadData();
-  }, []);
+  const loadData = async () => {
+    try {
+      setLoadingProfile(true);
+      const [profile, interests] = await Promise.all([
+        DatingService.getDatingProfile().catch(() => null),
+        DatingService.getDatingInterests(),
+      ]);
+      setExistingProfile(profile);
+      setInterestsData(interests);
+    } catch (error: any) {
+      console.error('Error loading data:', error);
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+
+  // Load data when screen comes into focus (auto-refresh)
+  useFocusEffect(
+    React.useCallback(() => {
+      loadData();
+    }, [])
+  );
 
   // Photo deletion now handled directly with Supabase
 

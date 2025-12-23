@@ -110,11 +110,16 @@ serve(async (req: Request) => {
         });
 
         if (authError) {
-          // If user already exists, get the user ID from the database
-          if (authError.message?.includes('already registered') || 
+          // If user already exists, get the user ID from the users table
+          const isUserExistsError = authError.message?.includes('already registered') || 
               authError.message?.includes('already exists') ||
-              authError.message?.includes('User already registered')) {
-            // Try to get user ID from database users table (faster than listing auth users)
+              authError.message?.includes('User already registered') ||
+              authError.status === 422;
+              
+          if (isUserExistsError) {
+            console.log(`Auth user already exists for ${userData.email}, checking users table...`);
+            
+            // Get user ID from users table (fast and reliable)
             const { data: dbUser, error: dbError } = await adminClient
               .from('users')
               .select('id')
@@ -123,15 +128,17 @@ serve(async (req: Request) => {
             
             if (dbUser?.id) {
               authUserId = dbUser.id;
+              console.log(`Found existing user ID from users table: ${authUserId}`);
             } else if (dbError) {
-              throw new Error(`Failed to find existing user: ${dbError.message}`);
+              throw new Error(`Failed to find existing user in database: ${dbError.message}`);
             } else {
-              throw new Error(`Auth user exists but could not be found in database: ${userData.email}`);
+              // User exists in auth but not in users table - skip with clear error
+              throw new Error(`Auth user exists for ${userData.email} but not found in users table. Please run the database migration to sync auth users with users table.`);
             }
           } else {
-            throw new Error(`Auth error: ${authError.message || 'Failed to create auth user'}`);
+            throw new Error(`Auth error: ${authError.message || JSON.stringify(authError) || 'Failed to create auth user'}`);
           }
-        } else if (newAuthUser?.user) {
+        } else if (newAuthUser?.user?.id) {
           authUserId = newAuthUser.user.id;
         } else {
           throw new Error('Failed to create auth user: No user returned');
@@ -268,12 +275,15 @@ serve(async (req: Request) => {
       } catch (userError: any) {
         console.error(`Error processing user ${userData.email}:`, userError);
         console.error(`Error details:`, JSON.stringify(userError, null, 2));
-        const errorMessage = userError.message || userError.error?.message || JSON.stringify(userError) || 'Unknown error';
+        if (userError.stack) {
+          console.error(`Error stack:`, userError.stack);
+        }
+        const errorMessage = userError.message || userError.error?.message || userError.toString() || 'Unknown error';
         results.push({
           email: userData.email,
           status: 'error',
           error: errorMessage,
-          userId: authUserId, // authUserId is in scope from the loop, may be undefined if error occurred early
+          userId: authUserId || undefined,
         });
       }
     }
@@ -287,11 +297,23 @@ serve(async (req: Request) => {
       .map(r => `${r.email}: ${r.error}`)
       .join('; ');
 
+    // Log summary for debugging
+    console.log(`Sample users creation summary: ${created} created, ${updated} updated, ${errors} errors`);
+    if (errors > 0) {
+      console.error('Error details:', errorDetails);
+      results.filter(r => r.status === 'error').forEach((r: any) => {
+        console.error(`- ${r.email}: ${r.error}`);
+      });
+    }
+
     return json(200, {
       success: errors === 0,
       message: `Processed ${results.length} users: ${created} created, ${updated} updated${errors > 0 ? `, ${errors} errors` : ''}`,
       results,
       errorDetails: errors > 0 ? errorDetails : undefined,
+      errorCount: errors,
+      createdCount: created,
+      updatedCount: updated,
     });
   } catch (error: any) {
     console.error('Error creating sample users:', error);

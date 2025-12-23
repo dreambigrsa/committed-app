@@ -392,9 +392,15 @@ export default function AdminUsersScreen() {
                 await loadUsers();
                 await loadSampleUsersCount();
               } else {
-                Alert.alert('Error', result.message);
+                // Show detailed error information
+                const errorMsg = result.errorDetails 
+                  ? `${result.message}\n\nErrors:\n${result.errorDetails.substring(0, 500)}${result.errorDetails.length > 500 ? '...' : ''}`
+                  : result.message || 'Failed to create sample users';
+                Alert.alert('Error', errorMsg);
+                console.error('Sample users creation errors:', result.results?.filter((r: any) => r.status === 'error'));
               }
             } catch (error: any) {
+              console.error('Sample users creation error:', error);
               Alert.alert('Error', error.message || 'Failed to create sample users');
             } finally {
               setIsManagingSamples(false);

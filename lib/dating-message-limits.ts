@@ -24,12 +24,21 @@ export async function checkConversationStarterLimit(
     });
 
     if (error) {
-      console.error('Error checking conversation starter limit:', error);
+      // Properly extract error message
+      const errorMessage = error?.message || error?.details || error?.hint || String(error);
+      console.error('Error checking conversation starter limit:', {
+        message: errorMessage,
+        code: error?.code,
+        details: error?.details,
+        hint: error?.hint,
+        fullError: error,
+      });
       // Allow by default if check fails (fail open)
       return { allowed: true };
     }
 
-    if (!allowed) {
+    // The function returns a boolean
+    if (allowed === false) {
       return {
         allowed: false,
         error: 'You can only send one conversation starter per person. Upgrade to Premium for unlimited messaging!',
@@ -38,7 +47,9 @@ export async function checkConversationStarterLimit(
 
     return { allowed: true };
   } catch (error: any) {
-    console.error('Error checking conversation starter limit:', error);
+    console.error('Exception checking conversation starter limit:', error);
+    const errorMessage = error?.message || error?.toString() || 'Unknown error';
+    console.error('Exception details:', errorMessage);
     // Allow by default if check fails
     return { allowed: true };
   }

@@ -15,10 +15,12 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import * as DatingService from '@/lib/dating-service';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useApp } from '@/contexts/AppContext';
 
 export default function PremiumScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const { currentUser } = useApp();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [subscription, setSubscription] = useState<any>(null);
@@ -52,20 +54,71 @@ export default function PremiumScreen() {
 
   const handleSubscribe = async (planId: string) => {
     try {
+      if (!currentUser) {
+        Alert.alert('Error', 'You must be logged in to subscribe');
+        return;
+      }
+
       setIsSubscribing(true);
-      // TODO: Implement payment flow
-      // For now, show a message that payment integration is coming soon
+
+      // Get the plan details
+      const selectedPlan = plans.find(p => p.id === planId);
+      if (!selectedPlan) {
+        Alert.alert('Error', 'Plan not found');
+        return;
+      }
+
+      // Calculate expiration date (30 days from now for monthly, or null for lifetime)
+      const expiresAt = selectedPlan.price_monthly > 0 
+        ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+        : null;
+
+      // Cancel any existing subscription first
+      await supabase
+        .from('user_subscriptions')
+        .update({
+          status: 'cancelled',
+          cancelled_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', currentUser.id)
+        .in('status', ['active', 'trial']);
+
+      // Create new subscription with manual payment
+      const { data: newSubscription, error: subscribeError } = await supabase
+        .from('user_subscriptions')
+        .insert({
+          user_id: currentUser.id,
+          plan_id: planId,
+          status: 'active',
+          started_at: new Date().toISOString(),
+          expires_at: expiresAt,
+          payment_provider: 'manual',
+          payment_provider_subscription_id: `manual_${Date.now()}_${currentUser.id}`,
+          auto_renew: false, // Manual payments don't auto-renew
+        })
+        .select()
+        .single();
+
+      if (subscribeError) {
+        console.error('Subscription error:', subscribeError);
+        throw subscribeError;
+      }
+
       Alert.alert(
-        'Coming Soon',
-        'Payment integration is coming soon! This will allow you to subscribe to premium features.',
-        [{ text: 'OK' }]
+        'Success!',
+        `You've successfully subscribed to ${selectedPlan.display_name}!`,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              loadData(); // Reload to show updated subscription status
+            },
+          },
+        ]
       );
-      // When payment is implemented, navigate to:
-      // router.push({
-      //   pathname: '/dating/payment',
-      //   params: { planId },
-      // } as any);
     } catch (error: any) {
+      console.error('Subscribe error:', error);
       Alert.alert('Error', error.message || 'Failed to start subscription');
     } finally {
       setIsSubscribing(false);

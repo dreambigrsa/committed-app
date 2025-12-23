@@ -28,7 +28,7 @@ export default function UserProfileScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ userId: string }>();
   const { colors } = useTheme();
-  const { currentUser, reportContent } = useApp();
+  const { currentUser, reportContent, createOrGetConversation, sendMessage } = useApp();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [profile, setProfile] = useState<any>(null);
@@ -138,6 +138,52 @@ export default function UserProfileScreen() {
     } catch (error: any) {
       console.error('Share error:', error);
       Alert.alert('Error', 'Failed to share profile');
+    }
+  };
+
+  const handleConversationStarter = async (starter: string) => {
+    try {
+      if (!currentUser) return;
+
+      // First, like the user (if not already liked) - this acts as an "opener"
+      try {
+        await DatingService.likeUser(params.userId, false);
+      } catch (error: any) {
+        // If already liked, that's okay - continue to send message
+        if (!error.message?.includes('already')) {
+          console.warn('Could not like user before sending starter:', error);
+        }
+      }
+
+      // Convert conversation starter to actual question
+      // e.g., "Ask about Music" -> "Tell me about Music"
+      const message = starter.replace(/^Ask about /i, '').trim();
+      const question = message.endsWith('?') ? message : `Tell me about ${message}`;
+
+      // Create or get conversation
+      const conversation = await createOrGetConversation(params.userId);
+      if (!conversation) {
+        Alert.alert('Error', 'Could not create conversation');
+        return;
+      }
+
+      // Send the conversation starter as a message
+      await sendMessage(
+        conversation.id,
+        params.userId,
+        question,
+        undefined, // no media
+        undefined, // no document
+        undefined, // no document name
+        'text',
+        undefined // no sticker
+      );
+
+      // Navigate to the conversation
+      router.push(`/messages/${conversation.id}` as any);
+    } catch (error: any) {
+      console.error('Error sending conversation starter:', error);
+      Alert.alert('Error', error.message || 'Failed to send conversation starter');
     }
   };
 
@@ -285,10 +331,7 @@ export default function UserProfileScreen() {
                 <TouchableOpacity
                   key={index}
                   style={styles.conversationStarterButton}
-                  onPress={() => {
-                    // Navigate to messages or show prompt
-                    Alert.alert('Start Conversation', starter);
-                  }}
+                  onPress={() => handleConversationStarter(starter)}
                 >
                   <MessageCircle size={16} color={colors.primary} />
                   <Text style={styles.conversationStarterText}>{starter}</Text>

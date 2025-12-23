@@ -57,7 +57,7 @@ export async function getDatingProfile(userId?: string) {
       .order('display_order', { ascending: true }),
     supabase
       .from('users')
-      .select('id, full_name, profile_picture, verified, email_verified, phone_verified, id_verified')
+      .select('id, full_name, profile_picture, id_verified, email_verified, phone_verified')
       .eq('id', targetUserId)
       .single(),
   ]);
@@ -314,7 +314,7 @@ export async function getDatingDiscovery(filters?: {
           .order('display_order', { ascending: true }),
         supabase
           .from('users')
-          .select('id, full_name, profile_picture, verified, email_verified, phone_verified, id_verified')
+          .select('id, full_name, profile_picture, id_verified, email_verified, phone_verified')
           .eq('id', profile.user_id)
           .single(),
       ]);
@@ -463,13 +463,17 @@ export async function getDatingMatches() {
         id,
         full_name,
         profile_picture,
-        verified
+        id_verified,
+        phone_verified,
+        email_verified
       ),
       user2:users!dating_matches_user2_id_fkey(
         id,
         full_name,
         profile_picture,
-        verified
+        id_verified,
+        phone_verified,
+        email_verified
       )
     `)
     .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
@@ -531,7 +535,9 @@ export async function getLikesReceived() {
         id,
         full_name,
         profile_picture,
-        verified
+        id_verified,
+        phone_verified,
+        email_verified
       )
     `)
     .eq('liked_id', user.id)
@@ -613,13 +619,17 @@ export async function getDateRequests() {
         id,
         full_name,
         profile_picture,
-        verified
+        id_verified,
+        phone_verified,
+        email_verified
       ),
       recipient:users!dating_date_requests_recipient_id_fkey(
         id,
         full_name,
         profile_picture,
-        verified
+        id_verified,
+        phone_verified,
+        email_verified
       )
     `)
     .or(`initiator_id.eq.${user.id},recipient_id.eq.${user.id}`)

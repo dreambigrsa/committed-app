@@ -242,39 +242,21 @@ serve(async (req: Request) => {
               ],
             };
 
+            // Include user_id in profileData
+            profileData.user_id = userId;
+            
             console.log(`Updating dating profile data for ${userData.email}:`, JSON.stringify(profileData, null, 2));
             
-            // First check if profile exists, if not create it, if yes update it
-            const { data: existingProfile } = await adminClient
+            // Always use upsert to ensure all fields are updated (will insert if not exists, update if exists)
+            const { error, data } = await adminClient
               .from('dating_profiles')
-              .select('user_id')
-              .eq('user_id', userId)
-              .maybeSingle();
-
-            let profileError = null;
-            let profileDataResult = null;
-
-            if (existingProfile) {
-              // UPDATE existing profile with all fields
-              const { error, data } = await adminClient
-                .from('dating_profiles')
-                .update(profileData)
-                .eq('user_id', userId)
-                .select();
-              profileError = error;
-              profileDataResult = data;
-            } else {
-              // INSERT new profile with all fields including user_id
-              const { error, data } = await adminClient
-                .from('dating_profiles')
-                .insert({
-                  ...profileData,
-                  user_id: userId,
-                })
-                .select();
-              profileError = error;
-              profileDataResult = data;
-            }
+              .upsert(profileData, {
+                onConflict: 'user_id',
+              })
+              .select();
+            
+            const profileError = error;
+            const profileDataResult = data;
 
             if (profileError) {
               console.error(`ERROR: Failed to create/update dating profile for ${userData.email}:`, profileError);

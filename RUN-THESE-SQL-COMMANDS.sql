@@ -168,6 +168,9 @@ CREATE POLICY "Admins can manage pricing" ON pricing_configuration FOR ALL
 -- HELPER FUNCTIONS
 -- ============================================
 
+-- Drop existing function first (if it exists) to avoid return type conflicts
+DROP FUNCTION IF EXISTS get_user_subscription_plan(UUID);
+
 -- Get user's subscription plan
 CREATE OR REPLACE FUNCTION get_user_subscription_plan(user_id_param UUID)
 RETURNS TABLE(plan_id UUID, plan_name TEXT) AS $$

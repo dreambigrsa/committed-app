@@ -99,6 +99,8 @@ serve(async (req: Request) => {
       let authUserId: string | undefined = undefined;
       try {
         // Try to create auth user
+        // Note: The database trigger will attempt to create the user record
+        // We provide phone_number in metadata so the trigger has it available
         const { data: newAuthUser, error: authError } = await adminClient.auth.admin.createUser({
           email: userData.email,
           password: DEFAULT_PASSWORD,
@@ -107,6 +109,7 @@ serve(async (req: Request) => {
             full_name: userData.fullName,
             phone_number: userData.phone,
           },
+          phone: userData.phone, // Also set phone directly in case trigger uses NEW.phone
         });
 
         if (authError) {

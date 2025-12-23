@@ -142,29 +142,29 @@ export default function DatingSwipeCard({
           const currentY = (position.y as any)._value || 0;
           const currentRotate = (rotate as any)._value || 0;
           
+          // Reset values immediately
+          position.setValue({ x: currentX, y: currentY });
+          rotate.setValue(currentRotate);
+          
           // Use requestAnimationFrame to ensure clean state before animating
           requestAnimationFrame(() => {
-            // Reset to current position to ensure clean state
-            position.setValue({ x: currentX, y: currentY });
-            rotate.setValue(currentRotate);
+            // Animate position (JS-driven) separately to avoid mixing with native driver
+            Animated.spring(position, {
+              toValue: { x: 0, y: 0 },
+              useNativeDriver: false,
+              tension: 50,
+              friction: 7,
+            }).start();
             
-            // Animate back to center - separate native and JS animations
-            Animated.parallel([
-              Animated.spring(position, {
-                toValue: { x: 0, y: 0 },
-                useNativeDriver: false,
-                tension: 50,
-                friction: 7,
-              }),
-              Animated.spring(rotate, {
-                toValue: 0,
-                useNativeDriver: true,
-                tension: 50,
-                friction: 7,
-              }),
-            ]).start();
+            // Animate rotate (native-driven) separately
+            Animated.spring(rotate, {
+              toValue: 0,
+              useNativeDriver: true,
+              tension: 50,
+              friction: 7,
+            }).start();
             
-            // Animate opacity separately
+            // Animate opacity (native-driven) separately
             Animated.parallel([
               Animated.timing(likeOpacity, {
                 toValue: 0,

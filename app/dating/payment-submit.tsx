@@ -18,7 +18,8 @@ import { supabase } from '@/lib/supabase';
 import * as PaymentAdminService from '@/lib/payment-admin-service';
 import { Image as ExpoImage } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+// @ts-ignore - legacy path works at runtime, TypeScript definitions may not include it
+import * as FileSystem from 'expo-file-system/legacy';
 import { useApp } from '@/contexts/AppContext';
 
 export default function PaymentSubmitScreen() {

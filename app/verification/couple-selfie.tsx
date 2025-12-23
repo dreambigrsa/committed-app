@@ -17,7 +17,6 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'expo-image';
 import { useApp } from '@/contexts/AppContext';
 import colors from '@/constants/colors';
-import { trpcClient } from '@/lib/trpc';
 import { supabase } from '@/lib/supabase';
 
 export default function CoupleSelfieVerificationScreen() {
@@ -80,11 +79,37 @@ export default function CoupleSelfieVerificationScreen() {
         .from('media')
         .getPublicUrl(fileName);
 
-      // Now create certificate with the uploaded URL
-      const certificateData = await trpcClient.certificates.create.mutate({
-        relationshipId,
-        verificationSelfieUrl: publicUrl,
-      });
+      // Verify relationship exists and user is part of it
+      const { data: relationship, error: relationshipError } = await supabase
+        .from('relationships')
+        .select('*')
+        .eq('id', relationshipId)
+        .eq('status', 'verified')
+        .single();
+
+      if (relationshipError || !relationship) {
+        throw new Error('Verified relationship not found');
+      }
+
+      if (
+        relationship.user_id !== currentUser?.id &&
+        relationship.partner_user_id !== currentUser?.id
+      ) {
+        throw new Error('Not authorized to create certificate for this relationship');
+      }
+
+      // Create certificate
+      const certificateUrl = `https://committed.app/certificates/${relationshipId}`;
+      const { error: certificateError } = await supabase
+        .from('couple_certificates')
+        .insert({
+          relationship_id: relationshipId,
+          certificate_url: certificateUrl,
+          verification_selfie_url: publicUrl,
+          issued_at: new Date().toISOString(),
+        });
+
+      if (certificateError) throw certificateError;
 
       Alert.alert(
         'Success',

@@ -13,7 +13,6 @@ import { Stack } from 'expo-router';
 import { Heart, CheckCircle, XCircle, Calendar } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
-import { trpc } from '@/lib/trpc';
 import colors from '@/constants/colors';
 import { Relationship } from '@/types';
 
@@ -21,7 +20,6 @@ export default function AdminRelationshipsScreen() {
   const { currentUser } = useApp();
   const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const deleteRelationshipMutation = trpc.admin.deleteRelationship.useMutation();
 
   useEffect(() => {
     loadRelationships();
@@ -129,7 +127,13 @@ export default function AdminRelationshipsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await deleteRelationshipMutation.mutateAsync({ relationshipId });
+              const { error } = await supabase
+                .from('relationships')
+                .delete()
+                .eq('id', relationshipId);
+
+              if (error) throw error;
+
               Alert.alert('Success', 'Relationship deleted');
               loadRelationships();
             } catch (error: any) {
@@ -256,7 +260,6 @@ export default function AdminRelationshipsScreen() {
                   <TouchableOpacity
                     style={styles.deleteButtonFull}
                     onPress={() => handleDeleteRelationship(relationship.id)}
-                    disabled={deleteRelationshipMutation.isPending}
                   >
                     <Text style={styles.deleteButtonText}>Delete</Text>
                   </TouchableOpacity>

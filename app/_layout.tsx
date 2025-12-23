@@ -1,18 +1,14 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { AppContext, useApp } from "@/contexts/AppContext";
 import { ThemeProvider } from "@/components/ThemeProvider";
-import { trpc, trpcClient } from "@/lib/trpc";
 import NotificationToast from "../components/NotificationToast";
 import BanMessageModal from "@/components/BanMessageModal";
 import LegalAcceptanceEnforcer from "@/components/LegalAcceptanceEnforcer";
 
 SplashScreen.preventAutoHideAsync();
-
-const queryClient = new QueryClient();
 
 function RootLayoutNav() {
   const { banModalVisible, banModalData, setBanModalVisible, currentUser } = useApp();
@@ -66,16 +62,12 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <trpc.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>
-        <AppContext>
-          <ThemeProvider>
-            <GestureHandlerRootView style={{ flex: 1 }}>
-              <RootLayoutNav />
-            </GestureHandlerRootView>
-          </ThemeProvider>
-        </AppContext>
-      </QueryClientProvider>
-    </trpc.Provider>
+    <AppContext>
+      <ThemeProvider>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <RootLayoutNav />
+        </GestureHandlerRootView>
+      </ThemeProvider>
+    </AppContext>
   );
 }

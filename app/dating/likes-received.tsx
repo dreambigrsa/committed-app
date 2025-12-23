@@ -30,15 +30,24 @@ export default function LikesReceivedScreen() {
   const loadLikes = async () => {
     try {
       setIsLoading(true);
+      setShowPremiumModal(false); // Reset modal state
       const data = await DatingService.getLikesReceived();
       setLikes(data || []);
     } catch (error: any) {
-      console.error('Error loading likes:', error);
       // Check if error is about premium subscription
-      if (error?.message?.includes('Premium subscription required')) {
+      const isPremiumError = error?.message?.includes('Premium subscription required') || 
+                             error?.message?.includes('premium subscription') ||
+                             error?.message?.toLowerCase().includes('premium');
+      
+      if (isPremiumError) {
+        // Don't log premium errors to console, just show the modal immediately
         setShowPremiumModal(true);
+        setLikes([]);
+      } else {
+        // Only log non-premium errors
+        console.error('Error loading likes:', error);
+        setLikes([]);
       }
-      setLikes([]);
     } finally {
       setIsLoading(false);
     }
@@ -71,6 +80,30 @@ export default function LikesReceivedScreen() {
   }
 
   if (!likes || likes.length === 0) {
+    // If premium modal should show, don't show empty state
+    if (showPremiumModal) {
+      return (
+        <SafeAreaView style={styles.container}>
+          <Stack.Screen options={{ title: 'Likes', headerShown: true }} />
+          <View style={styles.emptyContainer}>
+            <View style={styles.emptyIconContainer}>
+              <Crown size={80} color={colors.accent} />
+            </View>
+            <Text style={styles.emptyTitle}>Premium Feature</Text>
+            <Text style={styles.emptyText}>
+              Upgrade to Premium to see who liked you!
+            </Text>
+          </View>
+          <PremiumModal
+            visible={showPremiumModal}
+            onClose={() => setShowPremiumModal(false)}
+            featureName="See Who Liked You"
+            featureDescription="View all profiles that have liked you with Premium"
+          />
+        </SafeAreaView>
+      );
+    }
+    
     return (
       <SafeAreaView style={styles.container}>
         <Stack.Screen options={{ title: 'Likes', headerShown: true }} />

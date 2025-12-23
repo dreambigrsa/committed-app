@@ -968,7 +968,9 @@ export const [AppContext, useApp] = createContextHook(() => {
         await Promise.all(supabaseKeys.map((key: string) => AsyncStorage.removeItem(key)));
         
         // Also try to clear by the known Supabase storage key pattern
-        const supabaseUrl = supabase.auth['_storageKey'] || 'supabase.auth.token';
+        // Use type assertion since _storageKey is an internal property
+        const supabaseAuth = supabase.auth as any;
+        const supabaseUrl = supabaseAuth._storageKey || 'supabase.auth.token';
         try {
           await AsyncStorage.removeItem(supabaseUrl);
         } catch (e) {

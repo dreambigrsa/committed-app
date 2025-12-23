@@ -106,44 +106,31 @@ export async function createSampleUsers() {
 
           results.push({ email: userData.email, status: 'updated', userId: existing.id });
         } else {
-          // Generate UUID for new user
-          const generateUUID = () => {
-            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-              const r = Math.random() * 16 | 0;
-              const v = c === 'x' ? r : (r & 0x3 | 0x8);
-              return v.toString(16);
-            });
-          };
-          const userId = generateUUID();
-          
-          const { error: insertError } = await supabase
-            .from('users')
-            .insert({
-              id: userId,
-              full_name: userData.fullName,
-              email: userData.email,
-              phone_number: userData.phone,
-              role: 'user',
-              is_sample_user: true,
-              phone_verified: true,
-              email_verified: true,
-            });
+          // Use SQL function to create user (bypasses RLS)
+          const { data: userId, error: rpcError } = await supabase.rpc('create_sample_user_record', {
+            p_email: userData.email,
+            p_full_name: userData.fullName,
+            p_phone: userData.phone,
+          });
 
-          if (insertError) {
-            // If constraint error, user might exist
-            if (insertError.code === '23505') {
-              results.push({ email: userData.email, status: 'exists', userId: null });
-            } else {
-              throw insertError;
+          if (rpcError || !userId) {
+            // If auth user doesn't exist, skip
+            if (rpcError?.message?.includes('does not exist') || !userId) {
+              results.push({ 
+                email: userData.email, 
+                status: 'skipped', 
+                error: 'Auth user not found. Please create auth user in Supabase Dashboard first.' 
+              });
+              continue;
             }
-            continue;
+            throw rpcError || new Error('Failed to create user record');
           }
 
           // Create complete dating profile with all enhancement fields
           await supabase
             .from('dating_profiles')
             .insert({
-              user_id: userId,
+              user_id: userId as string,
               bio: `Looking for meaningful connections in ${userData.city}. Love good conversations and authentic people.`,
               age: userData.age,
               location_city: userData.city,
@@ -193,12 +180,14 @@ export async function createSampleUsers() {
     const created = results.filter(r => r.status === 'created').length;
     const updated = results.filter(r => r.status === 'updated').length;
     const exists = results.filter(r => r.status === 'exists').length;
+    const skipped = results.filter(r => r.status === 'skipped').length;
     const errors = results.filter(r => r.status === 'error').length;
 
     let message = `Processed ${results.length} users: ${created} created, ${updated} updated`;
     if (exists > 0) message += `, ${exists} already exist`;
+    if (skipped > 0) message += `, ${skipped} skipped (auth users not found)`;
     if (errors > 0) message += `, ${errors} errors`;
-    message += '.\n\nNote: To enable login, create auth users in Supabase Dashboard (Authentication → Users).';
+    message += '.\n\nNote: To enable login, create auth users in Supabase Dashboard (Authentication → Users) first, then run this again.';
 
     return {
       success: errors === 0,

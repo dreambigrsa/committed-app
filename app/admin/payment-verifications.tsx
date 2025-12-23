@@ -160,7 +160,9 @@ export default function AdminPaymentVerificationsScreen() {
             <DollarSign size={16} color={colors.text.secondary} />
             <Text style={styles.detailLabel}>Plan:</Text>
             <Text style={styles.detailValue}>{plan?.name || 'N/A'}</Text>
-            <Text style={styles.detailValue}>${plan?.price || '0'}</Text>
+            <Text style={styles.detailValue}>
+              ${plan?.price_monthly ? `${plan.price_monthly}/mo` : plan?.price_yearly ? `${plan.price_yearly}/yr` : '0'}
+            </Text>
           </View>
 
           <View style={styles.detailRow}>

@@ -481,6 +481,14 @@ export default function DatingScreen() {
           router.push('/dating/matches');
         }}
       />
+
+      {/* Premium Modal */}
+      <PremiumModal
+        visible={showPremiumModal}
+        onClose={() => setShowPremiumModal(false)}
+        featureName={premiumFeature.name}
+        featureDescription={premiumFeature.description}
+      />
     </SafeAreaView>
   );
 }

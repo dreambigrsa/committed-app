@@ -31,169 +31,70 @@ const DEFAULT_PASSWORD = 'Test123456!';
 
 /**
  * Create all sample users
- * This creates user records in the users table
- * Note: Auth users should be created separately via Supabase Dashboard for login
+ * This creates auth users, user records, and dating profiles automatically
  * Password for all: Test123456!
  */
 export async function createSampleUsers() {
   try {
-    const results = [];
-    
-    for (const userData of SAMPLE_USERS) {
-      try {
-        // Check if user already exists
-        const { data: existing } = await supabase
-          .from('users')
-          .select('id')
-          .eq('email', userData.email)
-          .maybeSingle();
-
-        if (existing) {
-          // Update existing user
-          const { error: updateError } = await supabase
-            .from('users')
-            .update({
-              full_name: userData.fullName,
-              phone_number: userData.phone,
-              is_sample_user: true,
-              phone_verified: true,
-              email_verified: true,
-            })
-            .eq('id', existing.id);
-
-          if (updateError) throw updateError;
-
-        // Create or update complete dating profile with all enhancement fields
-        await supabase
-          .from('dating_profiles')
-          .upsert({
-            user_id: existing.id,
-            bio: `Looking for meaningful connections in ${userData.city}. Love good conversations and authentic people.`,
-            age: userData.age,
-            location_city: userData.city,
-            location_country: userData.country,
-            headline: 'Serious about love, fun about life',
-            values: ['Family', 'Faith', 'Growth', 'Honesty'],
-            mood: 'romantic',
-            what_makes_me_different: 'I never give up on people I care about',
-            weekend_style: 'church_faith',
-            intention_tag: 'serious',
-            respect_first_badge: true,
-            local_food: 'Sadza & nyama',
-            local_slang: 'Sharp',
-            local_spot: `${userData.city} City Centre`,
-            what_im_looking_for: 'Looking for someone genuine, kind, and ready for something real. Values family and growth.',
-            kids: 'want_kids',
-            work: 'Professional',
-            smoke: 'no',
-            drink: 'sometimes',
-            prompts: [
-              { question: 'What makes you laugh?', answer: 'Good jokes and genuine moments' },
-              { question: 'Perfect weekend?', answer: 'Quality time with loved ones' },
-              { question: 'What are you passionate about?', answer: 'Building meaningful connections' }
-            ],
-            interests: ['Music', 'Travel', 'Food', 'Family', 'Faith'],
-            looking_for: 'everyone',
-            age_range_min: 22,
-            age_range_max: 40,
-            max_distance_km: 50,
-            is_active: true,
-            show_me: true,
-            last_active_at: new Date().toISOString(),
-          }, {
-            onConflict: 'user_id',
-          });
-
-          results.push({ email: userData.email, status: 'updated', userId: existing.id });
-        } else {
-          // Use SQL function to create user (bypasses RLS)
-          const { data: userId, error: rpcError } = await supabase.rpc('create_sample_user_record', {
-            p_email: userData.email,
-            p_full_name: userData.fullName,
-            p_phone: userData.phone,
-          });
-
-          if (rpcError || !userId) {
-            // If auth user doesn't exist, skip
-            if (rpcError?.message?.includes('does not exist') || !userId) {
-              results.push({ 
-                email: userData.email, 
-                status: 'skipped', 
-                error: 'Auth user not found. Please create auth user in Supabase Dashboard first.' 
-              });
-              continue;
-            }
-            throw rpcError || new Error('Failed to create user record');
-          }
-
-          // Create complete dating profile with all enhancement fields
-          await supabase
-            .from('dating_profiles')
-            .insert({
-              user_id: userId as string,
-              bio: `Looking for meaningful connections in ${userData.city}. Love good conversations and authentic people.`,
-              age: userData.age,
-              location_city: userData.city,
-              location_country: userData.country,
-              headline: 'Serious about love, fun about life',
-              values: ['Family', 'Faith', 'Growth', 'Honesty'],
-              mood: 'romantic',
-              what_makes_me_different: 'I never give up on people I care about',
-              weekend_style: 'church_faith',
-              intention_tag: 'serious',
-              respect_first_badge: true,
-              local_food: 'Sadza & nyama',
-              local_slang: 'Sharp',
-              local_spot: `${userData.city} City Centre`,
-              what_im_looking_for: 'Looking for someone genuine, kind, and ready for something real. Values family and growth.',
-              kids: 'want_kids',
-              work: 'Professional',
-              smoke: 'no',
-              drink: 'sometimes',
-              prompts: [
-                { question: 'What makes you laugh?', answer: 'Good jokes and genuine moments' },
-                { question: 'Perfect weekend?', answer: 'Quality time with loved ones' },
-                { question: 'What are you passionate about?', answer: 'Building meaningful connections' }
-              ],
-              interests: ['Music', 'Travel', 'Food', 'Family', 'Faith'],
-              looking_for: 'everyone',
-              age_range_min: 22,
-              age_range_max: 40,
-              max_distance_km: 50,
-              is_active: true,
-              show_me: true,
-              last_active_at: new Date().toISOString(),
-            });
-
-          results.push({ email: userData.email, status: 'created', userId });
-        }
-      } catch (userError: any) {
-        console.error(`Error processing user ${userData.email}:`, userError);
-        results.push({ 
-          email: userData.email, 
-          status: 'error', 
-          error: userError.message 
-        });
-      }
+    // Get current session for auth
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      throw new Error('You must be logged in to create sample users');
     }
 
-    const created = results.filter(r => r.status === 'created').length;
-    const updated = results.filter(r => r.status === 'updated').length;
-    const exists = results.filter(r => r.status === 'exists').length;
-    const skipped = results.filter(r => r.status === 'skipped').length;
-    const errors = results.filter(r => r.status === 'error').length;
-
-    let message = `Processed ${results.length} users: ${created} created, ${updated} updated`;
-    if (exists > 0) message += `, ${exists} already exist`;
-    if (skipped > 0) message += `, ${skipped} skipped (auth users not found)`;
-    if (errors > 0) message += `, ${errors} errors`;
-    message += '.\n\nNote: To enable login, create auth users in Supabase Dashboard (Authentication → Users) first, then run this again.';
-
-    return {
-      success: errors === 0,
-      message,
-      results,
+    // Get base URL
+    const getBaseUrl = () => {
+      if (process.env.EXPO_PUBLIC_COMMITTED_API_BASE_URL) {
+        return process.env.EXPO_PUBLIC_COMMITTED_API_BASE_URL;
+      }
+      return __DEV__ 
+        ? "http://localhost:3000"
+        : "https://committed-5mxf.onrender.com";
     };
+
+    // Call tRPC endpoint directly
+    // tRPC uses POST with JSON body: { "0": { "json": input } }
+    const url = `${getBaseUrl()}/trpc/admin.createSampleUsers`;
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        "0": {
+          "json": {}
+        }
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        // tRPC error format: { error: { message: "...", code: "..." } }
+        if (errorData.error) {
+          errorMessage = errorData.error.message || errorMessage;
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        }
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const result = await response.json();
+    
+    // tRPC returns data in result[0].result.data format
+    if (result[0]?.result?.data) {
+      return result[0].result.data;
+    }
+    
+    // Fallback: return result as-is
+    return result;
   } catch (error: any) {
     console.error('Error creating sample users:', error);
     return {

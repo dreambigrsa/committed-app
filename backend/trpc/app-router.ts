@@ -58,6 +58,7 @@ import {
   getPaymentSubmissionsProcedure,
   verifyPaymentProcedure,
 } from "./routes/admin/verify-payment";
+import { createSampleUsersProcedure } from "./routes/admin/create-sample-users";
 
 export const appRouter = createTRPCRouter({
   example: createTRPCRouter({
@@ -98,6 +99,7 @@ export const appRouter = createTRPCRouter({
     deletePaymentMethod: deletePaymentMethodProcedure,
     getPaymentSubmissions: getPaymentSubmissionsProcedure,
     verifyPayment: verifyPaymentProcedure,
+    createSampleUsers: createSampleUsersProcedure,
   }),
   fraud: createTRPCRouter({
     detectDuplicates: detectDuplicateRelationshipsProcedure,

@@ -18,6 +18,7 @@ import { supabase } from '@/lib/supabase';
 import colors from '@/constants/colors';
 import { User } from '@/types';
 import * as SampleUsersService from '@/lib/sample-users-service';
+import { trpc } from '@/lib/trpc';
 
 export default function AdminUsersScreen() {
   const { currentUser } = useApp();
@@ -28,6 +29,20 @@ export default function AdminUsersScreen() {
   const [restrictions, setRestrictions] = useState<any[]>([]);
   const [sampleUsersCount, setSampleUsersCount] = useState<number>(0);
   const [isManagingSamples, setIsManagingSamples] = useState(false);
+
+  // tRPC mutation for creating sample users
+  const createSampleUsersMutation = trpc.admin.createSampleUsers.useMutation({
+    onSuccess: (result) => {
+      Alert.alert('Success', result.message);
+      loadUsers();
+      loadSampleUsersCount();
+      setIsManagingSamples(false);
+    },
+    onError: (error) => {
+      Alert.alert('Error', error.message || 'Failed to create sample users');
+      setIsManagingSamples(false);
+    },
+  });
 
   useEffect(() => {
     loadUsers();
@@ -378,27 +393,14 @@ export default function AdminUsersScreen() {
   const handleCreateSampleUsers = async () => {
     Alert.alert(
       'Create Sample Dating Profiles',
-      `This will create ${SampleUsersService.SAMPLE_USERS.length} sample users with COMPLETE dating profiles for testing.\n\nEach profile includes:\n• Headlines, values, mood\n• Lifestyle info (kids, work, smoke, drink)\n• Interests, prompts, intention tags\n• Local flavor and weekend style\n• Location data (Kwekwe, Harare, Bulawayo)\n\nNote: Auth users must be created separately in Supabase Dashboard.\n\nPassword for all: Test123456!`,
+      `This will create ${SampleUsersService.SAMPLE_USERS.length} sample users with COMPLETE dating profiles for testing.\n\nEach profile includes:\n• Headlines, values, mood\n• Lifestyle info (kids, work, smoke, drink)\n• Interests, prompts, intention tags\n• Local flavor and weekend style\n• Location data (Kwekwe, Harare, Bulawayo)\n\nAuth users will be created automatically!\n\nPassword for all: Test123456!`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Create',
-          onPress: async () => {
-            try {
-              setIsManagingSamples(true);
-              const result = await SampleUsersService.createSampleUsers();
-              if (result.success) {
-                Alert.alert('Success', result.message);
-                await loadUsers();
-                await loadSampleUsersCount();
-              } else {
-                Alert.alert('Error', result.message);
-              }
-            } catch (error: any) {
-              Alert.alert('Error', error.message || 'Failed to create sample users');
-            } finally {
-              setIsManagingSamples(false);
-            }
+          onPress: () => {
+            setIsManagingSamples(true);
+            createSampleUsersMutation.mutate();
           },
         },
       ]
@@ -469,9 +471,13 @@ export default function AdminUsersScreen() {
             <TouchableOpacity
               style={[styles.sampleUserButton, styles.createButton]}
               onPress={handleCreateSampleUsers}
-              disabled={isManagingSamples}
+              disabled={isManagingSamples || createSampleUsersMutation.isPending}
             >
-              <UserPlus size={18} color="#fff" />
+              {createSampleUsersMutation.isPending ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <UserPlus size={18} color="#fff" />
+              )}
               <Text style={styles.sampleUserButtonText}>Add All</Text>
             </TouchableOpacity>
             {sampleUsersCount > 0 && (

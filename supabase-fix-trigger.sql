@@ -12,6 +12,7 @@ CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $function_body$
 DECLARE
   v_phone_number TEXT;
+  uuid_str TEXT;
 BEGIN
   -- Get phone number with fallbacks
   v_phone_number := COALESCE(
@@ -23,12 +24,8 @@ BEGIN
   -- If phone number is still null or empty, generate a unique one
   -- Format: +0000000XXXX where XXXX is derived from UUID
   IF v_phone_number IS NULL OR v_phone_number = '' THEN
-    DECLARE
-      uuid_str TEXT;
-    BEGIN
-      uuid_str := REPLACE(NEW.id::TEXT, '-', '');
-      v_phone_number := '+0000000' || SUBSTRING(uuid_str, LENGTH(uuid_str) - 3);
-    END;
+    uuid_str := REPLACE(NEW.id::TEXT, '-', '');
+    v_phone_number := '+0000000' || SUBSTRING(uuid_str, LENGTH(uuid_str) - 3);
   END IF;
 
   BEGIN

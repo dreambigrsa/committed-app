@@ -376,26 +376,46 @@ serve(async (req: Request) => {
               ],
             };
 
-            console.log(`Inserting dating profile data for ${userData.email}:`, JSON.stringify(profileData, null, 2));
+            // Ensure user_id is included
+            profileData.user_id = userId;
             
+            console.log(`Creating dating profile for ${userData.email} with data:`, JSON.stringify(profileData, null, 2));
+            
+            // Delete existing profile first to ensure clean slate (if it exists)
+            await adminClient
+              .from('dating_profiles')
+              .delete()
+              .eq('user_id', userId)
+              .then(({ error: deleteError }) => {
+                if (deleteError && deleteError.code !== 'PGRST116') { // PGRST116 = no rows deleted (not an error)
+                  console.warn(`Warning: Error deleting existing profile (may not exist): ${deleteError.message}`);
+                }
+              });
+            
+            // Insert fresh profile with ALL fields
             const { error: profileInsertError, data: profileInsertResult } = await adminClient
               .from('dating_profiles')
               .insert(profileData)
               .select();
 
             if (profileInsertError) {
-              console.error(`ERROR: Failed to create dating profile for ${userData.email}:`, profileInsertError);
-              console.error(`Error details:`, JSON.stringify(profileInsertError, null, 2));
-              // Continue anyway - user is created successfully
+              console.error(`ERROR: Failed to insert dating profile for ${userData.email}:`, profileInsertError);
+              console.error(`Error code: ${profileInsertError.code}, Error message: ${profileInsertError.message}`);
+              console.error(`Full error:`, JSON.stringify(profileInsertError, null, 2));
+              throw new Error(`Failed to create dating profile: ${profileInsertError.message || JSON.stringify(profileInsertError)}`);
             } else {
               console.log(`Successfully created dating profile for ${userData.email}`);
-              if (profileInsertResult) {
-                console.log(`Profile insert result:`, JSON.stringify(profileInsertResult, null, 2));
+              if (profileInsertResult && profileInsertResult.length > 0) {
+                console.log(`Inserted profile data:`, JSON.stringify(profileInsertResult[0], null, 2));
               }
             }
           } catch (profileErr: any) {
-            console.warn(`Warning: Exception creating dating profile for ${userData.email}: ${profileErr.message}`);
-            // Continue anyway - user is created successfully
+            console.error(`ERROR: Exception creating dating profile for ${userData.email}:`, profileErr);
+            console.error(`Exception message: ${profileErr.message}`);
+            console.error(`Exception stack:`, profileErr.stack);
+            console.error(`Full exception:`, JSON.stringify(profileErr, null, 2));
+            // Re-throw so it's caught by outer try-catch and reported properly
+            throw profileErr;
           }
 
           results.push({ email: userData.email, status: 'created', userId: userId });

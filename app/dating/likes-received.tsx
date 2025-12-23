@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useEffect } from 'react';
+import React, { useMemo, useRef, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -12,8 +12,9 @@ import {
 import { Stack, useRouter } from 'expo-router';
 import { Heart, Sparkles, Crown, ArrowLeft } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { trpc } from '@/lib/trpc';
+import * as DatingService from '@/lib/dating-service';
 import { Image as ExpoImage } from 'expo-image';
+import { useFocusEffect } from '@react-navigation/native';
 
 export default function LikesReceivedScreen() {
   const router = useRouter();
@@ -21,7 +22,27 @@ export default function LikesReceivedScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  const { data: likes, isLoading, refetch } = trpc.dating.getLikesReceived.useQuery();
+  const [likes, setLikes] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const loadLikes = async () => {
+    try {
+      setIsLoading(true);
+      const data = await DatingService.getLikesReceived();
+      setLikes(data || []);
+    } catch (error: any) {
+      console.error('Error loading likes:', error);
+      setLikes([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useFocusEffect(
+    React.useCallback(() => {
+      loadLikes();
+    }, [])
+  );
 
   useEffect(() => {
     Animated.timing(fadeAnim, {

@@ -13,8 +13,10 @@ import {
 import { Stack, useRouter } from 'expo-router';
 import { Calendar, MapPin, Clock, Check, X, ArrowRight, Edit2, Trash2, Send } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { trpc } from '@/lib/trpc';
+import * as DatingService from '@/lib/dating-service';
 import { Image as ExpoImage } from 'expo-image';
+import { useFocusEffect } from '@react-navigation/native';
+import { supabase } from '@/lib/supabase';
 
 export default function DateRequestsScreen() {
   const router = useRouter();
@@ -22,29 +24,51 @@ export default function DateRequestsScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  const { data: profile } = trpc.dating.getProfile.useQuery();
-  const currentUserId = profile?.user_id;
-  
-  const { data: dateRequests, isLoading, refetch } = trpc.dating.getDateRequests.useQuery();
-  const respondMutation = trpc.dating.respondDateRequest.useMutation({
-    onSuccess: () => {
-      refetch();
-    },
-    onError: (error) => {
-      Alert.alert('Error', error.message);
-    },
-  });
-
-  const cancelMutation = trpc.dating.cancelDateRequest.useMutation({
-    onSuccess: () => {
-      refetch();
-    },
-    onError: (error) => {
-      Alert.alert('Error', error.message);
-    },
-  });
-
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [dateRequests, setDateRequests] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'sent' | 'received'>('received');
+
+  const loadDateRequests = async () => {
+    try {
+      setIsLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      setCurrentUserId(user?.id || null);
+      const data = await DatingService.getDateRequests();
+      setDateRequests(data || []);
+    } catch (error: any) {
+      console.error('Error loading date requests:', error);
+      setDateRequests([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useFocusEffect(
+    React.useCallback(() => {
+      loadDateRequests();
+    }, [])
+  );
+
+  const handleRespond = async (requestId: string, response: 'accepted' | 'declined') => {
+    try {
+      await DatingService.respondToDateRequest(requestId, response);
+      await loadDateRequests();
+      Alert.alert('Success', `Date request ${response === 'accepted' ? 'accepted' : 'declined'}`);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to respond to date request');
+    }
+  };
+
+  const handleCancel = async (requestId: string) => {
+    try {
+      await DatingService.cancelDateRequest(requestId);
+      await loadDateRequests();
+      Alert.alert('Success', 'Date request cancelled');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to cancel date request');
+    }
+  };
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -59,7 +83,7 @@ export default function DateRequestsScreen() {
     return date.toLocaleString();
   };
 
-  const handleRespond = (requestId: string, response: 'accepted' | 'declined') => {
+  const handleRespondWithConfirm = (requestId: string, response: 'accepted' | 'declined') => {
     Alert.alert(
       response === 'accepted' ? 'Accept Date Request' : 'Decline Date Request',
       response === 'accepted'
@@ -70,15 +94,21 @@ export default function DateRequestsScreen() {
         {
           text: response === 'accepted' ? 'Accept' : 'Decline',
           style: response === 'declined' ? 'destructive' : 'default',
-          onPress: () => {
-            respondMutation.mutate({
-              dateRequestId: requestId,
-              response,
-            });
-          },
+          onPress: () => handleRespond(requestId, response),
         },
       ]
     );
+  };
+
+  const handleCancelWithConfirm = (requestId: string) => {
+    Alert.alert('Cancel Date Request', 'Are you sure you want to cancel this date request?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Yes, Cancel',
+        style: 'destructive',
+        onPress: () => handleCancel(requestId),
+      },
+    ]);
   };
 
   if (isLoading) {
@@ -108,22 +138,6 @@ export default function DateRequestsScreen() {
     );
   }
 
-  const handleCancel = (requestId: string) => {
-    Alert.alert(
-      'Cancel Date Request',
-      'Are you sure you want to cancel this date request?',
-      [
-        { text: 'No', style: 'cancel' },
-        {
-          text: 'Yes, Cancel',
-          style: 'destructive',
-          onPress: () => {
-            cancelMutation.mutate({ dateRequestId: requestId });
-          },
-        },
-      ]
-    );
-  };
 
   // Filter requests by tab
   const filteredRequests = dateRequests?.filter((item: any) => {
@@ -135,9 +149,9 @@ export default function DateRequestsScreen() {
   }) || [];
 
   const renderDateRequest = ({ item, index }: { item: any; index: number }) => {
-    const isReceived = item.to_user_id === currentUserId;
-    const isSent = item.from_user_id === currentUserId;
-    const otherUser = isReceived ? item.from_user : item.to_user;
+    const isReceived = item.recipient_id === currentUserId;
+    const isSent = item.initiator_id === currentUserId;
+    const otherUser = isReceived ? item.initiator : item.recipient;
     const photo = otherUser?.profile_picture;
 
     return (
@@ -280,16 +294,16 @@ export default function DateRequestsScreen() {
             <View style={styles.responseActions}>
               <TouchableOpacity
                 style={[styles.responseButton, styles.acceptButton]}
-                onPress={() => handleRespond(item.id, 'accepted')}
-                disabled={respondMutation.isPending}
+                onPress={() => handleRespondWithConfirm(item.id, 'accepted')}
+                disabled={isLoading}
               >
                 <Check size={20} color="#fff" />
                 <Text style={styles.responseButtonText}>Accept</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.responseButton, styles.declineButton]}
-                onPress={() => handleRespond(item.id, 'declined')}
-                disabled={respondMutation.isPending}
+                onPress={() => handleRespondWithConfirm(item.id, 'declined')}
+                disabled={isLoading}
               >
                 <X size={20} color="#fff" />
                 <Text style={styles.responseButtonText}>Decline</Text>

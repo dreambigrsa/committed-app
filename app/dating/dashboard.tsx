@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,19 +10,45 @@ import {
 import { Stack, useRouter } from 'expo-router';
 import { Heart, Users, Sparkles, Calendar, ArrowRight } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { trpc } from '@/lib/trpc';
+import * as DatingService from '@/lib/dating-service';
+import { useFocusEffect } from '@react-navigation/native';
 
 export default function DatingDashboardScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  const { data: matches } = trpc.dating.getMatches.useQuery();
-  const { data: likes } = trpc.dating.getLikesReceived.useQuery();
-  const { data: dateRequests } = trpc.dating.getDateRequests.useQuery();
+  const [matches, setMatches] = useState<any[]>([]);
+  const [likes, setLikes] = useState<any[]>([]);
+  const [dateRequests, setDateRequests] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      const [matchesData, likesData, requestsData] = await Promise.all([
+        DatingService.getDatingMatches().catch(() => []),
+        DatingService.getLikesReceived().catch(() => []),
+        DatingService.getDateRequests().catch(() => []),
+      ]);
+      setMatches(matchesData || []);
+      setLikes(likesData || []);
+      setDateRequests(requestsData || []);
+    } catch (error: any) {
+      console.error('Error loading dashboard data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useFocusEffect(
+    React.useCallback(() => {
+      loadData();
+    }, [])
+  );
 
   const pendingDateRequests = (dateRequests || []).filter(
-    (req: any) => req.status === 'pending' && req.to_user_id === (matches?.[0]?.matchedUser?.id || '')
+    (req: any) => req.status === 'pending' && req.recipient_id === (matches?.[0]?.matchedUser?.id || '')
   );
 
   return (

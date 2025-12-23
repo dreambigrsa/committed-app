@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import {
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { Calendar, MapPin, Clock, DollarSign, Shirt, X } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { trpc } from '@/lib/trpc';
+import * as DatingService from '@/lib/dating-service';
 import * as Location from 'expo-location';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
@@ -27,11 +27,30 @@ export default function CreateDateRequestScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const matchId = params.matchId as string;
-  const { data: match } = trpc.dating.getMatches.useQuery(undefined, {
-    select: (matches) => matches?.find((m: any) => m.id === matchId),
-  });
+  const [match, setMatch] = useState<any>(null);
+  const [dateOptions, setDateOptions] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { data: dateOptions } = trpc.dating.getDateOptions.useQuery();
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setIsLoading(true);
+        const [matchesData, optionsData] = await Promise.all([
+          DatingService.getDatingMatches(),
+          DatingService.getDateOptions(),
+        ]);
+        const foundMatch = matchesData?.find((m: any) => m.id === matchId);
+        setMatch(foundMatch);
+        setDateOptions(optionsData);
+      } catch (error: any) {
+        console.error('Error loading data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadData();
+  }, [matchId]);
   
   const dressCodes = dateOptions?.dressCodes || DEFAULT_DRESS_CODES.map(code => ({
     option_value: code,
@@ -64,16 +83,6 @@ export default function CreateDateRequestScreen() {
   const [suggestedActivities, setSuggestedActivities] = useState<string[]>([]);
   const [activityInput, setActivityInput] = useState('');
 
-  const createMutation = trpc.dating.createDateRequest.useMutation({
-    onSuccess: () => {
-      Alert.alert('Success', 'Date request sent!', [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
-    },
-    onError: (error) => {
-      Alert.alert('Error', error.message);
-    },
-  });
 
   const handleGetLocation = async () => {
     try {
@@ -113,7 +122,7 @@ export default function CreateDateRequestScreen() {
     setSuggestedActivities(suggestedActivities.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!dateTitle.trim()) {
       Alert.alert('Error', 'Please enter a date title');
       return;
@@ -122,30 +131,62 @@ export default function CreateDateRequestScreen() {
       Alert.alert('Error', 'Please enter a location');
       return;
     }
-    if (!matchId) {
+    if (!match || !match.matchedUser) {
       Alert.alert('Error', 'Match not found');
       return;
     }
 
-    createMutation.mutate({
-      matchId,
-      dateTitle: dateTitle.trim(),
-      dateDescription: dateDescription.trim() || undefined,
-      dateLocation: dateLocation.trim(),
-      dateTime: dateTime.toISOString(),
-      dateDurationHours: parseInt(dateDurationHours) || 2,
-      dressCode: dressCode && ['casual', 'smart_casual', 'formal', 'beach', 'outdoor'].includes(dressCode)
-        ? (dressCode as 'casual' | 'smart_casual' | 'formal' | 'beach' | 'outdoor')
-        : undefined,
-      budgetRange: budgetRange && ['low', 'medium', 'high'].includes(budgetRange)
-        ? (budgetRange as 'low' | 'medium' | 'high')
-        : undefined,
-      expenseHandling: expenseHandling as 'split' | 'initiator_pays' | 'acceptor_pays',
-      numberOfPeople: parseInt(numberOfPeople) || 2,
-      genderPreference: genderPreference,
-      specialRequests: specialRequests.trim() || undefined,
-      suggestedActivities: suggestedActivities.length > 0 ? suggestedActivities : undefined,
-    });
+    try {
+      setIsSubmitting(true);
+      
+      // Get location coordinates if available
+      let locationLatitude: number | undefined;
+      let locationLongitude: number | undefined;
+      
+      try {
+        const geocode = await Location.geocodeAsync(dateLocation);
+        if (geocode.length > 0) {
+          locationLatitude = geocode[0].latitude;
+          locationLongitude = geocode[0].longitude;
+        }
+      } catch (e) {
+        // Location geocoding failed, continue without coordinates
+      }
+
+      const dateStr = dateTime.toISOString().split('T')[0];
+      const timeStr = dateTime.toTimeString().split(' ')[0].substring(0, 5);
+
+      await DatingService.createDateRequest({
+        recipientId: match.matchedUser.id,
+        title: dateTitle.trim(),
+        description: dateDescription.trim() || undefined,
+        locationName: dateLocation.trim(),
+        locationLatitude,
+        locationLongitude,
+        proposedDate: dateStr,
+        proposedTime: timeStr,
+        durationMinutes: (parseInt(dateDurationHours) || 2) * 60,
+        dressCode: dressCode && ['casual', 'smart_casual', 'formal', 'beach', 'outdoor'].includes(dressCode)
+          ? dressCode
+          : undefined,
+        budgetRange: budgetRange && ['low', 'medium', 'high'].includes(budgetRange)
+          ? budgetRange
+          : undefined,
+        expenseHandling: expenseHandling as 'split' | 'initiator_pays' | 'acceptor_pays',
+        numberOfPeople: parseInt(numberOfPeople) || 2,
+        genderPreference: genderPreference,
+        specialRequests: specialRequests.trim() || undefined,
+        suggestedActivities: suggestedActivities.length > 0 ? suggestedActivities : undefined,
+      });
+
+      Alert.alert('Success', 'Date request sent!', [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to create date request');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -435,11 +476,11 @@ export default function CreateDateRequestScreen() {
 
         {/* Submit Button */}
         <TouchableOpacity
-          style={[styles.submitButton, createMutation.isPending && styles.submitButtonDisabled]}
+          style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
           onPress={handleSubmit}
-          disabled={createMutation.isPending}
+          disabled={isSubmitting || isLoading || !match}
         >
-          {createMutation.isPending ? (
+          {isSubmitting ? (
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={styles.submitButtonText}>Send Date Request</Text>

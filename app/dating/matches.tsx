@@ -1,4 +1,5 @@
-import React, { useMemo, useRef, useEffect } from 'react';
+import React, { useMemo, useRef, useEffect, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -13,7 +14,7 @@ import {
 import { useRouter } from 'expo-router';
 import { MessageSquare, Sparkles, Heart, ArrowLeft, Calendar } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { trpc } from '@/lib/trpc';
+import * as DatingService from '@/lib/dating-service';
 import { Image as ExpoImage } from 'expo-image';
 import { Stack } from 'expo-router';
 
@@ -25,12 +26,27 @@ export default function MatchesScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  const { data: matches, isLoading, refetch } = trpc.dating.getMatches.useQuery();
-  const unmatchMutation = trpc.dating.unmatch.useMutation({
-    onSuccess: () => {
-      refetch();
-    },
-  });
+  const [matches, setMatches] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const loadMatches = async () => {
+    try {
+      setIsLoading(true);
+      const data = await DatingService.getDatingMatches();
+      setMatches(data || []);
+    } catch (error: any) {
+      console.error('Error loading matches:', error);
+      setMatches([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useFocusEffect(
+    React.useCallback(() => {
+      loadMatches();
+    }, [])
+  );
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -39,6 +55,15 @@ export default function MatchesScreen() {
       useNativeDriver: true,
     }).start();
   }, []);
+
+  const handleUnmatch = async (matchId: string) => {
+    try {
+      await DatingService.unmatchUser(matchId);
+      await loadMatches();
+    } catch (error: any) {
+      console.error('Error unmatching:', error);
+    }
+  };
 
   const formatTimeAgo = (dateString: string) => {
     const date = new Date(dateString);

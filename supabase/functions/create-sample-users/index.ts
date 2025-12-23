@@ -188,25 +188,46 @@ serve(async (req: Request) => {
 
           if (updateError) throw updateError;
 
-          // Create or update dating profile (non-blocking - user is already created)
+          // Create or update dating profile with ALL enhanced fields
           try {
+            const profileData: any = {
+              user_id: userId,
+              bio: `Looking for meaningful connections in ${userData.city}. Love good conversations and authentic people.`,
+              age: userData.age,
+              location_city: userData.city,
+              location_country: userData.country,
+              interests: ['Music', 'Travel', 'Food', 'Family', 'Faith'],
+              looking_for: 'everyone',
+              age_range_min: 22,
+              age_range_max: 40,
+              max_distance_km: 50,
+              is_active: true,
+              show_me: true,
+              last_active_at: new Date().toISOString(),
+              // Enhanced fields
+              headline: `Authentic ${userData.city} local looking for genuine connections`,
+              values: ['Family', 'Faith', 'Honesty', 'Growth'],
+              mood: 'chill',
+              what_makes_me_different: `I'm passionate about building meaningful relationships and exploring ${userData.city} with someone special.`,
+              weekend_style: 'out_with_friends',
+              intention_tag: 'serious',
+              local_food: userData.city === 'Harare' ? 'Sadza and stew' : userData.city === 'Bulawayo' ? 'Boerewors roll' : 'Traditional Zimbabwean dishes',
+              local_slang: userData.city === 'Harare' ? 'Shamwari' : 'Mfowethu',
+              local_spot: `Favorite spot in ${userData.city} for coffee and conversations`,
+              what_im_looking_for: 'Someone who values family, faith, and authentic connections',
+              kids: 'not_sure',
+              work: 'Professional',
+              smoke: 'no',
+              drink: 'sometimes',
+              prompts: [
+                { question: 'What makes you smile?', answer: 'Good conversations, family time, and exploring new places' },
+                { question: 'What are you grateful for?', answer: 'My faith, family, and the opportunity to meet amazing people' }
+              ],
+            };
+
             const { error: profileError } = await adminClient
               .from('dating_profiles')
-              .upsert({
-                user_id: userId,
-                bio: `Looking for meaningful connections in ${userData.city}. Love good conversations and authentic people.`,
-                age: userData.age,
-                location_city: userData.city,
-                location_country: userData.country,
-                interests: ['Music', 'Travel', 'Food', 'Family', 'Faith'],
-                looking_for: 'everyone',
-                age_range_min: 22,
-                age_range_max: 40,
-                max_distance_km: 50,
-                is_active: true,
-                show_me: true,
-                last_active_at: new Date().toISOString(),
-              }, {
+              .upsert(profileData, {
                 onConflict: 'user_id',
               });
 
@@ -256,25 +277,46 @@ serve(async (req: Request) => {
             }
           }
 
-          // Create dating profile (non-blocking - user is already created)
+          // Create dating profile with ALL enhanced fields
           try {
+            const profileData: any = {
+              user_id: userId,
+              bio: `Looking for meaningful connections in ${userData.city}. Love good conversations and authentic people.`,
+              age: userData.age,
+              location_city: userData.city,
+              location_country: userData.country,
+              interests: ['Music', 'Travel', 'Food', 'Family', 'Faith'],
+              looking_for: 'everyone',
+              age_range_min: 22,
+              age_range_max: 40,
+              max_distance_km: 50,
+              is_active: true,
+              show_me: true,
+              last_active_at: new Date().toISOString(),
+              // Enhanced fields
+              headline: `Authentic ${userData.city} local looking for genuine connections`,
+              values: ['Family', 'Faith', 'Honesty', 'Growth'],
+              mood: 'chill',
+              what_makes_me_different: `I'm passionate about building meaningful relationships and exploring ${userData.city} with someone special.`,
+              weekend_style: 'out_with_friends',
+              intention_tag: 'serious',
+              local_food: userData.city === 'Harare' ? 'Sadza and stew' : userData.city === 'Bulawayo' ? 'Boerewors roll' : 'Traditional Zimbabwean dishes',
+              local_slang: userData.city === 'Harare' ? 'Shamwari' : 'Mfowethu',
+              local_spot: `Favorite spot in ${userData.city} for coffee and conversations`,
+              what_im_looking_for: 'Someone who values family, faith, and authentic connections',
+              kids: 'not_sure',
+              work: 'Professional',
+              smoke: 'no',
+              drink: 'sometimes',
+              prompts: [
+                { question: 'What makes you smile?', answer: 'Good conversations, family time, and exploring new places' },
+                { question: 'What are you grateful for?', answer: 'My faith, family, and the opportunity to meet amazing people' }
+              ],
+            };
+
             const { error: profileInsertError } = await adminClient
               .from('dating_profiles')
-              .insert({
-                user_id: userId,
-                bio: `Looking for meaningful connections in ${userData.city}. Love good conversations and authentic people.`,
-                age: userData.age,
-                location_city: userData.city,
-                location_country: userData.country,
-                interests: ['Music', 'Travel', 'Food', 'Family', 'Faith'],
-                looking_for: 'everyone',
-                age_range_min: 22,
-                age_range_max: 40,
-                max_distance_km: 50,
-                is_active: true,
-                show_me: true,
-                last_active_at: new Date().toISOString(),
-              });
+              .insert(profileData);
 
             if (profileInsertError) {
               console.warn(`Warning: Failed to create dating profile for ${userData.email}: ${profileInsertError.message}`);

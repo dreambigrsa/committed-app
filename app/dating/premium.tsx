@@ -73,29 +73,25 @@ export default function PremiumScreen() {
         ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
         : null;
 
-      // Cancel any existing subscription first
-      await supabase
-        .from('user_subscriptions')
-        .update({
-          status: 'cancelled',
-          cancelled_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('user_id', currentUser.id)
-        .in('status', ['active', 'trial']);
+      // Use upsert to update existing subscription or create new one
+      // This handles the UNIQUE constraint on user_id
+      const subscriptionData = {
+        user_id: currentUser.id,
+        plan_id: planId,
+        status: 'active',
+        started_at: new Date().toISOString(),
+        expires_at: expiresAt,
+        payment_provider: 'manual',
+        payment_provider_subscription_id: `manual_${Date.now()}_${currentUser.id}`,
+        auto_renew: false, // Manual payments don't auto-renew
+        cancelled_at: null, // Clear cancellation if updating
+        updated_at: new Date().toISOString(),
+      };
 
-      // Create new subscription with manual payment
       const { data: newSubscription, error: subscribeError } = await supabase
         .from('user_subscriptions')
-        .insert({
-          user_id: currentUser.id,
-          plan_id: planId,
-          status: 'active',
-          started_at: new Date().toISOString(),
-          expires_at: expiresAt,
-          payment_provider: 'manual',
-          payment_provider_subscription_id: `manual_${Date.now()}_${currentUser.id}`,
-          auto_renew: false, // Manual payments don't auto-renew
+        .upsert(subscriptionData, {
+          onConflict: 'user_id',
         })
         .select()
         .single();

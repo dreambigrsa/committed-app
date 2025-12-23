@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { MapPin, Shield, CheckCircle2 } from 'lucide-react-native';
+import { MapPin, Shield, CheckCircle2, Heart, X } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH - 32;
@@ -332,15 +332,31 @@ export default function DatingSwipeCard({
           )}
         </View>
 
-        {/* Swipe Indicators */}
+        {/* Swipe Indicators - Premium Design */}
         <Animated.View style={[styles.likeOverlay, { opacity: likeOpacity }]}>
           <View style={styles.likeBadge}>
-            <Text style={styles.likeText}>LIKE</Text>
+            <LinearGradient
+              colors={[colors.success, colors.success + 'DD']}
+              style={styles.badgeGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <Heart size={32} color="#fff" fill="#fff" />
+              <Text style={styles.likeText}>LIKE</Text>
+            </LinearGradient>
           </View>
         </Animated.View>
         <Animated.View style={[styles.passOverlay, { opacity: passOpacity }]}>
           <View style={styles.passBadge}>
-            <Text style={styles.passText}>NOPE</Text>
+            <LinearGradient
+              colors={[colors.danger, colors.danger + 'DD']}
+              style={styles.badgeGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <X size={32} color="#fff" strokeWidth={4} />
+              <Text style={styles.passText}>NOPE</Text>
+            </LinearGradient>
           </View>
         </Animated.View>
       </TouchableOpacity>
@@ -538,13 +554,20 @@ const createStyles = (colors: any) =>
       elevation: 10,
     },
     passText: {
-      fontSize: 48,
+      fontSize: 36,
       fontWeight: '900',
       color: '#fff',
-      letterSpacing: 4,
-      textShadowColor: 'rgba(0, 0, 0, 0.5)',
-      textShadowOffset: { width: 2, height: 2 },
+      letterSpacing: 2,
+      textShadowColor: 'rgba(0, 0, 0, 0.3)',
+      textShadowOffset: { width: 0, height: 2 },
       textShadowRadius: 4,
+    },
+    badgeGradient: {
+      paddingHorizontal: 32,
+      paddingVertical: 24,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
     },
   });
 

@@ -12,7 +12,8 @@ import {
   Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Heart, X, Star, Settings, Users, Sparkles, Zap, RotateCcw, Crown } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Heart, X, Star, Settings, Users, Sparkles, Zap, RotateCcw, Crown, Sliders } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { trpc } from '@/lib/trpc';
 import * as DatingService from '@/lib/dating-service';
@@ -201,16 +202,12 @@ export default function DatingScreen() {
     ]);
   };
 
-  const handleViewPhotoGallery = (profile: any) => {
-    const photos = profile.photos || [];
-    if (photos.length > 0) {
+  const handleViewProfile = (profile: any) => {
+    const userId = profile.user_id || profile.user?.id || profile.userId;
+    if (userId) {
       router.push({
-        pathname: '/dating/photo-gallery',
-        params: {
-          photos: JSON.stringify(photos),
-          userName: profile.full_name || profile.fullName,
-          userAge: (profile.age || profile.age)?.toString(),
-        },
+        pathname: '/dating/user-profile',
+        params: { userId },
       } as any);
     }
   };
@@ -265,6 +262,9 @@ export default function DatingScreen() {
           <View style={styles.headerActions}>
             <TouchableOpacity onPress={() => router.push('/dating/matches')} style={styles.headerButton}>
               <Users size={24} color={colors.text.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/dating/filters')} style={styles.headerButton}>
+              <Sliders size={24} color={colors.text.primary} />
             </TouchableOpacity>
             <TouchableOpacity onPress={() => router.push('/dating/profile-setup')} style={styles.headerButton}>
               <Settings size={24} color={colors.text.primary} />
@@ -328,6 +328,9 @@ export default function DatingScreen() {
               >
                 <Heart size={24} color={colors.danger} />
               </TouchableOpacity>
+              <TouchableOpacity onPress={() => router.push('/dating/filters')} style={styles.headerIconButton}>
+                <Sliders size={24} color={colors.text.primary} />
+              </TouchableOpacity>
               <TouchableOpacity onPress={() => router.push('/dating/profile-setup')} style={styles.headerIconButton}>
                 <Settings size={26} color={colors.text.primary} />
               </TouchableOpacity>
@@ -347,7 +350,7 @@ export default function DatingScreen() {
                 onSwipeLeft={() => handleSwipeLeft(profile)}
                 onSwipeRight={() => handleSwipeRight(profile)}
                 onSuperLike={() => handleSuperLike(profile)}
-                onTap={() => handleViewPhotoGallery(profile)}
+                onTap={() => handleViewProfile(profile)}
                 index={index}
                 isTop={isTop}
               />
@@ -359,11 +362,13 @@ export default function DatingScreen() {
         <View style={styles.actionsContainer}>
           {/* Rewind (Premium) */}
           <TouchableOpacity
-            style={[styles.actionButton, styles.rewindButton]}
+            style={[styles.actionButton, styles.rewindButton, currentIndex === 0 && styles.actionButtonDisabled]}
             onPress={handleRewind}
             disabled={currentIndex === 0}
           >
-            <RotateCcw size={24} color={colors.text.secondary} />
+            <View style={styles.actionButtonInner}>
+              <RotateCcw size={24} color={currentIndex === 0 ? colors.text.tertiary : colors.text.primary} />
+            </View>
           </TouchableOpacity>
 
           {/* Pass */}
@@ -585,26 +590,39 @@ const createStyles = (colors: any) =>
       borderColor: colors.border.medium,
     },
     passButton: {
-      backgroundColor: '#fff',
-      borderWidth: 3,
-      borderColor: colors.danger,
+      backgroundColor: colors.danger,
       width: 64,
       height: 64,
       borderRadius: 32,
     },
     superLikeButton: {
-      backgroundColor: '#fff',
-      borderWidth: 3,
-      borderColor: colors.primary,
-      width: 56,
-      height: 56,
-      borderRadius: 28,
+      backgroundColor: colors.primary,
+      width: 72,
+      height: 72,
+      borderRadius: 36,
     },
     likeButton: {
       backgroundColor: colors.success,
       width: 64,
       height: 64,
       borderRadius: 32,
+    },
+    actionButtonInner: {
+      width: '100%',
+      height: '100%',
+      borderRadius: 32,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    actionButtonGradient: {
+      width: '100%',
+      height: '100%',
+      borderRadius: 36,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    actionButtonDisabled: {
+      opacity: 0.4,
     },
     boostButton: {
       backgroundColor: colors.background.secondary,

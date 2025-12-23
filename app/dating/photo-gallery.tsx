@@ -24,6 +24,11 @@ export default function PhotoGalleryScreen() {
   
   const photos: DatingPhoto[] = params.photos ? JSON.parse(params.photos as string) : [];
   const initialIndex = params.initialIndex ? parseInt(params.initialIndex as string) : 0;
+  
+  // Handle both old format (array of objects) and new format
+  const photoUrls = photos.map((p: any) => 
+    typeof p === 'string' ? p : (p.photo_url || p.photoUrl || p)
+  );
   const userName = params.userName as string;
   const userAge = params.userAge ? parseInt(params.userAge as string) : undefined;
   

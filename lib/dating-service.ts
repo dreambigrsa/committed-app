@@ -78,6 +78,7 @@ export async function createOrUpdateDatingProfile(profileData: {
   bio?: string;
   age?: number;
   location_city?: string;
+  location_country?: string;
   location_latitude?: number;
   location_longitude?: number;
   relationship_goals?: string[];
@@ -157,6 +158,10 @@ export async function getDatingDiscovery(filters?: {
   maxAge?: number;
   maxDistance?: number;
   lookingFor?: 'men' | 'women' | 'everyone';
+  locationCity?: string;
+  locationCountry?: string;
+  latitude?: number;
+  longitude?: number;
 }) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('User not authenticated');
@@ -172,32 +177,23 @@ export async function getDatingDiscovery(filters?: {
     return { profiles: [], hasMore: false };
   }
 
-  // Build query
+  // Build query - start simple without relationships to avoid 400 errors
   let query = supabase
     .from('dating_profiles')
-    .select(`
-      *,
-      user:users!dating_profiles_user_id_fkey(
-        id,
-        full_name,
-        profile_picture,
-        verified,
-        email_verified,
-        phone_verified,
-        id_verified
-      ),
-      photos:dating_photos(*)
-    `)
+    .select('*')
     .eq('is_active', true)
     .neq('user_id', user.id)
     .limit(20);
 
-  // Apply filters
-  if (filters?.minAge || userProfile.age_range_min) {
-    query = query.gte('age', filters?.minAge || userProfile.age_range_min || 18);
+  // Apply age filters only if age is not null
+  const minAge = filters?.minAge || userProfile.age_range_min;
+  const maxAge = filters?.maxAge || userProfile.age_range_max;
+  
+  if (minAge) {
+    query = query.gte('age', minAge);
   }
-  if (filters?.maxAge || userProfile.age_range_max) {
-    query = query.lte('age', filters?.maxAge || userProfile.age_range_max || 99);
+  if (maxAge) {
+    query = query.lte('age', maxAge);
   }
 
   // Exclude already liked/passed users
@@ -212,18 +208,57 @@ export async function getDatingDiscovery(filters?: {
     .eq('passer_id', user.id);
 
   const excludedIds = [
-    ...(liked?.map(l => l.liked_id) || []),
-    ...(passed?.map(p => p.passed_id) || []),
+    ...(liked?.map((l: any) => l.liked_id) || []),
+    ...(passed?.map((p: any) => p.passed_id) || []),
   ];
 
   if (excludedIds.length > 0) {
     query = query.not('user_id', 'in', `(${excludedIds.join(',')})`);
   }
 
-  const { data, error } = await query;
+  const { data: profiles, error } = await query;
 
-  if (error) throw error;
-  return { profiles: data || [], hasMore: (data?.length || 0) >= 20 };
+  if (error) {
+    console.error('getDatingDiscovery query error:', error);
+    console.error('Error details:', JSON.stringify(error, null, 2));
+    throw error;
+  }
+
+  if (!profiles || profiles.length === 0) {
+    return { profiles: [], hasMore: false };
+  }
+
+  // Now fetch related data for each profile separately to avoid 400 errors
+  const profilesWithRelations = await Promise.all(
+    profiles.map(async (profile: any) => {
+      const [photosResult, videosResult, userResult] = await Promise.all([
+        supabase
+          .from('dating_photos')
+          .select('*')
+          .eq('dating_profile_id', profile.id)
+          .order('display_order', { ascending: true }),
+        supabase
+          .from('dating_videos')
+          .select('*')
+          .eq('dating_profile_id', profile.id)
+          .order('display_order', { ascending: true }),
+        supabase
+          .from('users')
+          .select('id, full_name, profile_picture, verified, email_verified, phone_verified, id_verified')
+          .eq('id', profile.user_id)
+          .single(),
+      ]);
+
+      return {
+        ...profile,
+        photos: photosResult.data || [],
+        videos: videosResult.data || [],
+        user: userResult.data || null,
+      };
+    })
+  );
+
+  return { profiles: profilesWithRelations, hasMore: profiles.length >= 20 };
 }
 
 export async function likeUser(likedUserId: string, isSuperLike: boolean = false) {

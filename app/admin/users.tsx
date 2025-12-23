@@ -12,11 +12,12 @@ import {
 } from 'react-native';
 import { Stack } from 'expo-router';
 import { Image } from 'expo-image';
-import { Search, Shield, Ban, CheckCircle, XCircle, Edit2, Trash2, X } from 'lucide-react-native';
+import { Search, Shield, Ban, CheckCircle, XCircle, Edit2, Trash2, X, Users, UserPlus, UserMinus } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
 import colors from '@/constants/colors';
 import { User } from '@/types';
+import * as SampleUsersService from '@/lib/sample-users-service';
 
 export default function AdminUsersScreen() {
   const { currentUser } = useApp();
@@ -25,10 +26,18 @@ export default function AdminUsersScreen() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [restrictions, setRestrictions] = useState<any[]>([]);
+  const [sampleUsersCount, setSampleUsersCount] = useState<number>(0);
+  const [isManagingSamples, setIsManagingSamples] = useState(false);
 
   useEffect(() => {
     loadUsers();
+    loadSampleUsersCount();
   }, []);
+
+  const loadSampleUsersCount = async () => {
+    const count = await SampleUsersService.getSampleUsersCount();
+    setSampleUsersCount(count);
+  };
 
   const loadUsers = async () => {
     try {
@@ -361,6 +370,67 @@ export default function AdminUsersScreen() {
     );
   };
 
+  const handleCreateSampleUsers = async () => {
+    Alert.alert(
+      'Create Sample Users',
+      `This will create ${SampleUsersService.SAMPLE_USERS.length} sample users for testing.\n\nNote: Auth users must be created separately in Supabase Dashboard.\n\nPassword for all: Test123456!`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Create',
+          onPress: async () => {
+            try {
+              setIsManagingSamples(true);
+              const result = await SampleUsersService.createSampleUsers();
+              if (result.success) {
+                Alert.alert('Success', result.message);
+                await loadUsers();
+                await loadSampleUsersCount();
+              } else {
+                Alert.alert('Error', result.message);
+              }
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'Failed to create sample users');
+            } finally {
+              setIsManagingSamples(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDeleteSampleUsers = async () => {
+    Alert.alert(
+      'Delete All Sample Users',
+      `This will permanently delete ${sampleUsersCount} sample users and ALL their data (profiles, matches, likes, etc.).\n\nThis action cannot be undone!`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete All',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setIsManagingSamples(true);
+              const result = await SampleUsersService.deleteSampleUsers();
+              if (result.success) {
+                Alert.alert('Success', result.message);
+                await loadUsers();
+                await loadSampleUsersCount();
+              } else {
+                Alert.alert('Error', result.message);
+              }
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'Failed to delete sample users');
+            } finally {
+              setIsManagingSamples(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const filteredUsers = users.filter(user =>
     user.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
     user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -382,6 +452,42 @@ export default function AdminUsersScreen() {
     <SafeAreaView style={styles.container}>
       <Stack.Screen options={{ title: 'Manage Users', headerShown: true }} />
       
+      {/* Sample Users Management */}
+      <View style={styles.sampleUsersSection}>
+        <View style={styles.sampleUsersHeader}>
+          <View style={styles.sampleUsersInfo}>
+            <Users size={20} color={colors.primary} />
+            <Text style={styles.sampleUsersTitle}>Sample Users</Text>
+            <Text style={styles.sampleUsersCount}>({sampleUsersCount})</Text>
+          </View>
+          <View style={styles.sampleUsersActions}>
+            <TouchableOpacity
+              style={[styles.sampleUserButton, styles.createButton]}
+              onPress={handleCreateSampleUsers}
+              disabled={isManagingSamples}
+            >
+              <UserPlus size={18} color="#fff" />
+              <Text style={styles.sampleUserButtonText}>Add All</Text>
+            </TouchableOpacity>
+            {sampleUsersCount > 0 && (
+              <TouchableOpacity
+                style={[styles.sampleUserButton, styles.deleteButton]}
+                onPress={handleDeleteSampleUsers}
+                disabled={isManagingSamples}
+              >
+                <UserMinus size={18} color="#fff" />
+                <Text style={styles.sampleUserButtonText}>Delete All</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+        {sampleUsersCount > 0 && (
+          <Text style={styles.sampleUsersHint}>
+            Sample users are marked for testing. They can be bulk deleted.
+          </Text>
+        )}
+      </View>
+
       <View style={styles.searchContainer}>
         <View style={styles.searchBox}>
           <Search size={20} color={colors.text.tertiary} />
@@ -586,6 +692,59 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: colors.text.primary,
   },
+  sampleUsersSection: {
+    backgroundColor: colors.background.secondary,
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.light,
+  },
+  sampleUsersHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  sampleUsersInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sampleUsersTitle: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+    color: colors.text.primary,
+  },
+  sampleUsersCount: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: colors.text.secondary,
+  },
+  sampleUsersActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  sampleUserButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  createButton: {
+    backgroundColor: colors.primary,
+  },
+  sampleUserButtonText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: '#fff',
+  },
+  sampleUsersHint: {
+    fontSize: 12,
+    color: colors.text.secondary,
+    fontStyle: 'italic',
+    marginTop: 4,
+  },
   searchContainer: {
     paddingHorizontal: 16,
     paddingVertical: 12,
@@ -738,6 +897,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   deleteButton: {
+    backgroundColor: colors.danger,
+  },
+  deleteAllButton: {
     backgroundColor: '#8B0000',
   },
   restrictionsContainer: {

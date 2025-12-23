@@ -41,17 +41,35 @@ export default function AdminDatingScreen() {
   const loadProfiles = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      const { data: profilesData, error: profilesError } = await supabase
         .from('dating_profiles')
         .select(`
           *,
-          users!inner(id, full_name, email, profile_picture, phone_verified, email_verified, id_verified)
+          users!dating_profiles_user_id_fkey(id, full_name, email, profile_picture, phone_verified, email_verified, id_verified)
         `)
         .order('created_at', { ascending: false })
         .limit(100);
 
-      if (error) throw error;
-      setProfiles(data || []);
+      if (profilesError) throw profilesError;
+
+      // Load badges for each profile
+      if (profilesData && profilesData.length > 0) {
+        const userIds = profilesData.map(p => p.user_id);
+        const { data: badgesData } = await supabase
+          .from('user_dating_badges')
+          .select('user_id, badge_type')
+          .in('user_id', userIds);
+
+        // Attach badges to profiles
+        const profilesWithBadges = profilesData.map(profile => ({
+          ...profile,
+          badges: badgesData?.filter(b => b.user_id === profile.user_id).map(b => b.badge_type) || [],
+        }));
+
+        setProfiles(profilesWithBadges);
+      } else {
+        setProfiles([]);
+      }
     } catch (error: any) {
       Alert.alert('Error', error.message);
     } finally {
@@ -327,27 +345,40 @@ export default function AdminDatingScreen() {
   const handleGrantPremium = async (profile: any) => {
     try {
       const days = parseInt(trialDays) || 7;
+      if (!currentUser?.id) {
+        Alert.alert('Error', 'You must be logged in to grant premium');
+        return;
+      }
+      
       const { error } = await supabase.rpc('grant_trial_premium', {
-        p_user_id: profile.user_id,
-        p_granted_by: currentUser?.id,
+        p_user_id: profile.user_id || profile.users?.id,
+        p_granted_by: currentUser.id,
         p_days: days,
       });
 
       if (error) throw error;
       Alert.alert('Success', `Premium trial granted for ${days} days`);
       setShowActionModal(false);
+      setActionReason('');
+      setTrialDays('7');
       loadProfiles();
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      Alert.alert('Error', error.message || 'Failed to grant premium trial');
     }
   };
 
   const handleGrantBadge = async (profile: any) => {
     try {
+      const userId = profile.user_id || profile.users?.id;
+      if (!userId) {
+        Alert.alert('Error', 'Invalid user ID');
+        return;
+      }
+
       const { error } = await supabase
         .from('user_dating_badges')
         .upsert({
-          user_id: profile.user_id,
+          user_id: userId,
           badge_type: badgeType,
           earned_at: new Date().toISOString(),
         }, {
@@ -355,27 +386,34 @@ export default function AdminDatingScreen() {
         });
 
       if (error) throw error;
-      Alert.alert('Success', `Badge "${badgeType}" granted`);
+      Alert.alert('Success', `Badge "${badgeType.replace('_', ' ')}" granted`);
       setShowActionModal(false);
+      setBadgeType('verified');
       loadProfiles();
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      Alert.alert('Error', error.message || 'Failed to grant badge');
     }
   };
 
   const handleRemoveBadge = async (profile: any, badgeTypeToRemove: string) => {
     try {
+      const userId = profile.user_id || profile.users?.id;
+      if (!userId) {
+        Alert.alert('Error', 'Invalid user ID');
+        return;
+      }
+
       const { error } = await supabase
         .from('user_dating_badges')
         .delete()
-        .eq('user_id', profile.user_id)
+        .eq('user_id', userId)
         .eq('badge_type', badgeTypeToRemove);
 
       if (error) throw error;
       Alert.alert('Success', 'Badge removed');
       loadProfiles();
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      Alert.alert('Error', error.message || 'Failed to remove badge');
     }
   };
 
@@ -445,39 +483,158 @@ export default function AdminDatingScreen() {
         <ScrollView style={styles.content}>
           {activeTab === 'profiles' && (
             <View style={styles.list}>
-              {profiles.map((profile) => (
-                <View key={profile.id} style={styles.card}>
-                  <Image
-                    source={{ uri: profile.users?.profile_picture }}
-                    style={styles.avatar}
-                    contentFit="cover"
-                  />
-                  <View style={styles.cardContent}>
-                    <Text style={styles.cardTitle}>{profile.users?.full_name}</Text>
-                    <Text style={styles.cardSubtitle}>{profile.users?.email}</Text>
-                    <View style={styles.badges}>
-                      {profile.users?.phone_verified && <CheckCircle size={16} color={colors.success} />}
-                      {profile.is_active ? (
-                        <Text style={styles.badgeText}>Active</Text>
-                      ) : (
-                        <Text style={[styles.badgeText, styles.badgeInactive]}>Inactive</Text>
-                      )}
+              {profiles.length === 0 && !loading && (
+                <View style={styles.emptyState}>
+                  <Users size={48} color={colors.text.tertiary} />
+                  <Text style={styles.emptyText}>No profiles found</Text>
+                </View>
+              )}
+              {profiles
+                .filter((profile) => {
+                  if (!searchQuery) return true;
+                  const query = searchQuery.toLowerCase();
+                  return (
+                    profile.users?.full_name?.toLowerCase().includes(query) ||
+                    profile.users?.email?.toLowerCase().includes(query)
+                  );
+                })
+                .map((profile) => (
+                  <View key={profile.id} style={styles.card}>
+                    <Image
+                      source={{ uri: profile.users?.profile_picture || 'https://via.placeholder.com/50' }}
+                      style={styles.avatar}
+                      contentFit="cover"
+                    />
+                    <View style={styles.cardContent}>
+                      <Text style={styles.cardTitle}>{profile.users?.full_name || 'Unknown'}</Text>
+                      <Text style={styles.cardSubtitle}>{profile.users?.email || 'No email'}</Text>
+                      <View style={styles.badges}>
+                        {profile.users?.phone_verified && <CheckCircle size={16} color={colors.success} />}
+                        {profile.users?.id_verified && <CheckCircle size={16} color={colors.primary} />}
+                        {profile.is_active ? (
+                          <Text style={styles.badgeText}>Active</Text>
+                        ) : (
+                          <Text style={[styles.badgeText, styles.badgeInactive]}>Inactive</Text>
+                        )}
+                        {profile.admin_suspended && (
+                          <Text style={[styles.badgeText, { color: colors.danger }]}>Suspended</Text>
+                        )}
+                        {profile.admin_limited && (
+                          <Text style={[styles.badgeText, { color: colors.warning || '#FFA500' }]}>Limited</Text>
+                        )}
+                        {profile.badges && profile.badges.length > 0 && (
+                          <View style={styles.badgeList}>
+                            {profile.badges.map((badge: string) => (
+                              <TouchableOpacity
+                                key={badge}
+                                style={styles.badgeItem}
+                                onPress={() => {
+                                  Alert.alert(
+                                    'Remove Badge',
+                                    `Remove "${badge.replace('_', ' ')}" badge from this user?`,
+                                    [
+                                      { text: 'Cancel', style: 'cancel' },
+                                      {
+                                        text: 'Remove',
+                                        style: 'destructive',
+                                        onPress: () => handleRemoveBadge(profile, badge),
+                                      },
+                                    ]
+                                  );
+                                }}
+                              >
+                                <Text style={styles.badgeItemText}>
+                                  {badge.replace('_', ' ')} ×
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                    <View style={styles.actionButtons}>
+                      <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={() => {
+                          setSelectedProfile(profile);
+                          setActionType(profile.admin_suspended ? null : 'suspend');
+                          setActionReason('');
+                          setShowActionModal(true);
+                        }}
+                      >
+                        {profile.admin_suspended ? (
+                          <CheckCircle size={20} color={colors.success} />
+                        ) : (
+                          <Ban size={20} color={colors.danger} />
+                        )}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={() => {
+                          setSelectedProfile(profile);
+                          setActionType(profile.admin_limited ? null : 'limit');
+                          setActionReason('');
+                          setShowActionModal(true);
+                        }}
+                      >
+                        <Shield size={20} color={profile.admin_limited ? colors.success : colors.warning || '#FFA500'} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={() => {
+                          setSelectedProfile(profile);
+                          setActionType('premium');
+                          setTrialDays('7');
+                          setShowActionModal(true);
+                        }}
+                      >
+                        <Sparkles size={20} color={colors.primary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={() => {
+                          setSelectedProfile(profile);
+                          setActionType('badge');
+                          setBadgeType('verified');
+                          setShowActionModal(true);
+                        }}
+                      >
+                        <CheckCircle size={20} color={colors.primary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={() => {
+                          setSelectedProfile(profile);
+                          setActionType('delete');
+                          setShowActionModal(true);
+                        }}
+                      >
+                        <Trash2 size={20} color={colors.danger} />
+                      </TouchableOpacity>
                     </View>
                   </View>
-                  <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={() => deactivateProfile(profile.id, profile.user_id)}
-                  >
-                    <Ban size={20} color={colors.danger} />
-                  </TouchableOpacity>
-                </View>
-              ))}
+                ))}
             </View>
           )}
 
           {activeTab === 'matches' && (
             <View style={styles.list}>
-              {matches.map((match) => (
+              {matches.length === 0 && !loading && (
+                <View style={styles.emptyState}>
+                  <Heart size={48} color={colors.text.tertiary} />
+                  <Text style={styles.emptyText}>No matches found</Text>
+                </View>
+              )}
+              {matches
+                .filter((match) => {
+                  if (!searchQuery) return true;
+                  const query = searchQuery.toLowerCase();
+                  return (
+                    match.user1?.full_name?.toLowerCase().includes(query) ||
+                    match.user2?.full_name?.toLowerCase().includes(query)
+                  );
+                })
+                .map((match) => (
                 <View key={match.id} style={styles.card}>
                   <View style={styles.matchUsers}>
                     <Image
@@ -507,7 +664,22 @@ export default function AdminDatingScreen() {
 
           {activeTab === 'likes' && (
             <View style={styles.list}>
-              {likes.map((like) => (
+              {likes.length === 0 && !loading && (
+                <View style={styles.emptyState}>
+                  <Sparkles size={48} color={colors.text.tertiary} />
+                  <Text style={styles.emptyText}>No likes found</Text>
+                </View>
+              )}
+              {likes
+                .filter((like) => {
+                  if (!searchQuery) return true;
+                  const query = searchQuery.toLowerCase();
+                  return (
+                    like.liker?.full_name?.toLowerCase().includes(query) ||
+                    like.liked?.full_name?.toLowerCase().includes(query)
+                  );
+                })
+                .map((like) => (
                 <View key={like.id} style={styles.card}>
                   <View style={styles.likeRow}>
                     <Image
@@ -610,20 +782,30 @@ export default function AdminDatingScreen() {
             )}
 
             {actionType === 'suspend' && selectedProfile?.admin_suspended && (
-              <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.modalButtonCancel]}
-                  onPress={() => setShowActionModal(false)}
-                >
-                  <Text style={styles.modalButtonText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.modalButtonConfirm]}
-                  onPress={() => handleUnsuspendProfile(selectedProfile)}
-                >
-                  <Text style={[styles.modalButtonText, { color: '#fff' }]}>Unsuspend</Text>
-                </TouchableOpacity>
-              </View>
+              <>
+                <Text style={styles.modalText}>
+                  Suspended by: {selectedProfile.admin_suspended_by || 'Unknown'}{'\n'}
+                  Reason: {selectedProfile.admin_suspended_reason || 'No reason provided'}{'\n'}
+                  Date: {selectedProfile.admin_suspended_at ? new Date(selectedProfile.admin_suspended_at).toLocaleString() : 'Unknown'}
+                </Text>
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalButtonCancel]}
+                    onPress={() => setShowActionModal(false)}
+                  >
+                    <Text style={styles.modalButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalButtonConfirm]}
+                    onPress={() => {
+                      handleUnsuspendProfile(selectedProfile);
+                      setShowActionModal(false);
+                    }}
+                  >
+                    <Text style={[styles.modalButtonText, { color: '#fff' }]}>Unsuspend</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
             )}
 
             {actionType === 'limit' && !selectedProfile?.admin_limited && (
@@ -654,20 +836,30 @@ export default function AdminDatingScreen() {
             )}
 
             {actionType === 'limit' && selectedProfile?.admin_limited && (
-              <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.modalButtonCancel]}
-                  onPress={() => setShowActionModal(false)}
-                >
-                  <Text style={styles.modalButtonText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.modalButtonConfirm]}
-                  onPress={() => handleUnlimitProfile(selectedProfile)}
-                >
-                  <Text style={[styles.modalButtonText, { color: '#fff' }]}>Remove Limits</Text>
-                </TouchableOpacity>
-              </View>
+              <>
+                <Text style={styles.modalText}>
+                  Limited by: {selectedProfile.admin_limited_by || 'Unknown'}{'\n'}
+                  Reason: {selectedProfile.admin_limited_reason || 'No reason provided'}{'\n'}
+                  Date: {selectedProfile.admin_limited_at ? new Date(selectedProfile.admin_limited_at).toLocaleString() : 'Unknown'}
+                </Text>
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalButtonCancel]}
+                    onPress={() => setShowActionModal(false)}
+                  >
+                    <Text style={styles.modalButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalButtonConfirm]}
+                    onPress={() => {
+                      handleUnlimitProfile(selectedProfile);
+                      setShowActionModal(false);
+                    }}
+                  >
+                    <Text style={[styles.modalButtonText, { color: '#fff' }]}>Remove Limits</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
             )}
 
             {actionType === 'delete' && (
@@ -896,6 +1088,26 @@ const createStyles = (colors: any) =>
     },
     actionButton: {
       padding: 8,
+      marginLeft: 4,
+    },
+    badgeList: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 4,
+      marginTop: 4,
+    },
+    badgeItem: {
+      backgroundColor: colors.primary + '20',
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.primary + '40',
+    },
+    badgeItemText: {
+      fontSize: 10,
+      color: colors.primary,
+      fontWeight: '600',
     },
     statsContainer: {
       flexDirection: 'row',
@@ -1013,6 +1225,18 @@ const createStyles = (colors: any) =>
     },
     badgeOptionTextSelected: {
       color: '#fff',
+    },
+    emptyState: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingVertical: 60,
+      gap: 16,
+    },
+    emptyText: {
+      fontSize: 16,
+      color: colors.text.secondary,
+      fontWeight: '500',
     },
   });
 

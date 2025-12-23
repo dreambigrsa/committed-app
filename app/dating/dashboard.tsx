@@ -202,6 +202,24 @@ export default function DatingDashboardScreen() {
             </View>
             <ArrowRight size={20} color={colors.text.secondary} />
           </TouchableOpacity>
+
+          {matches && matches.length > 0 && (
+            <TouchableOpacity
+              style={styles.actionCard}
+              onPress={() => router.push('/dating/create-date-request')}
+            >
+              <View style={styles.actionLeft}>
+                <View style={[styles.actionIcon, { backgroundColor: colors.accent + '15' }]}>
+                  <Calendar size={24} color={colors.accent} fill={colors.accent} />
+                </View>
+                <View style={styles.actionInfo}>
+                  <Text style={styles.actionTitle}>Create Date Request</Text>
+                  <Text style={styles.actionSubtitle}>Send a date request to a match</Text>
+                </View>
+              </View>
+              <ArrowRight size={20} color={colors.text.secondary} />
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>

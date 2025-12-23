@@ -24,21 +24,35 @@ export default function ProfilePreviewScreen() {
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
+  // Load profile on mount
   useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        setLoading(true);
+        const data = await DatingService.getDatingProfile();
+        setProfile(data);
+      } catch (error: any) {
+        console.error('Error loading profile:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
     loadProfile();
   }, []);
 
-  const loadProfile = async () => {
-    try {
-      setLoading(true);
-      const data = await DatingService.getDatingProfile();
-      setProfile(data);
-    } catch (error: any) {
-      console.error('Error loading profile:', error);
-    } finally {
-      setLoading(false);
+  // Redirect to user profile view with current user's ID
+  useEffect(() => {
+    if (currentUser?.id && profile && !loading) {
+      // Small delay to show the preview badge
+      const timer = setTimeout(() => {
+        router.replace({
+          pathname: '/dating/user-profile',
+          params: { userId: currentUser.id },
+        } as any);
+      }, 500);
+      return () => clearTimeout(timer);
     }
-  };
+  }, [currentUser?.id, profile, loading, router]);
 
   if (loading) {
     return (
@@ -77,20 +91,6 @@ export default function ProfilePreviewScreen() {
       </SafeAreaView>
     );
   }
-
-  // Redirect to user profile view with current user's ID
-  useEffect(() => {
-    if (currentUser?.id && profile) {
-      // Small delay to show the preview badge
-      const timer = setTimeout(() => {
-        router.replace({
-          pathname: '/dating/user-profile',
-          params: { userId: currentUser.id },
-        } as any);
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [currentUser?.id, profile]);
 
   return (
     <SafeAreaView style={styles.container}>

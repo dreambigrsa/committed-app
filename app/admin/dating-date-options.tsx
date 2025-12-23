@@ -15,13 +15,16 @@ import { Stack } from 'expo-router';
 import { Plus, Trash2, Save, Shield, Calendar } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { trpc } from '@/lib/trpc';
+import { supabase } from '@/lib/supabase';
 
 const OPTION_TYPES = [
   { value: 'dress_code', label: 'Dress Codes' },
   { value: 'budget_range', label: 'Budget Ranges' },
   { value: 'expense_handling', label: 'Expense Handling' },
   { value: 'suggested_activity', label: 'Suggested Activities' },
+  { value: 'date_duration', label: 'Date Duration' },
+  { value: 'group_size', label: 'Group Size' },
+  { value: 'time_of_day', label: 'Time of Day' },
 ];
 
 export default function AdminDatingDateOptionsScreen() {
@@ -32,50 +35,57 @@ export default function AdminDatingDateOptionsScreen() {
   const [selectedType, setSelectedType] = useState<string>('dress_code');
   const [editingOption, setEditingOption] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newOption, setNewOption] = useState({ value: '', label: '', order: '0' });
+  const [newOption, setNewOption] = useState({ value: '', label: '', order: '0', description: '', icon: '' });
+  const [optionsData, setOptionsData] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const { data: optionsData, isLoading, refetch } = trpc.admin.getDateOptions.useQuery();
-  const createMutation = trpc.admin.createDateOption.useMutation({
-    onSuccess: () => {
-      Alert.alert('Success', 'Option created successfully');
-      setShowAddModal(false);
-      setNewOption({ value: '', label: '', order: '0' });
-      refetch();
-    },
-    onError: (error: any) => {
-      Alert.alert('Error', error.message || 'Failed to create option');
-    },
-  });
+  const loadOptions = async () => {
+    try {
+      setIsLoading(true);
+      const { data, error } = await supabase
+        .from('dating_date_options')
+        .select('*')
+        .order('display_order', { ascending: true });
 
-  const updateMutation = trpc.admin.updateDateOption.useMutation({
-    onSuccess: () => {
-      Alert.alert('Success', 'Option updated successfully');
-      setEditingOption(null);
-      refetch();
-    },
-    onError: (error: any) => {
-      Alert.alert('Error', error.message || 'Failed to update option');
-    },
-  });
+      if (error) throw error;
 
-  const deleteMutation = trpc.admin.deleteDateOption.useMutation({
-    onSuccess: () => {
-      Alert.alert('Success', 'Option deleted successfully');
-      refetch();
-    },
-    onError: (error: any) => {
-      Alert.alert('Error', error.message || 'Failed to delete option');
-    },
-  });
+      // Group by option_type
+      const grouped: any = {};
+      (data || []).forEach((option: any) => {
+        if (!grouped[option.option_type]) {
+          grouped[option.option_type] = [];
+        }
+        grouped[option.option_type].push(option);
+      });
 
-  const handleToggleActive = (optionId: string, currentStatus: boolean) => {
-    updateMutation.mutate({
-      optionId,
-      isActive: !currentStatus,
-    });
+      setOptionsData({ all: data || [], grouped });
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to load options');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleDelete = (optionId: string, label: string) => {
+  useEffect(() => {
+    loadOptions();
+  }, []);
+
+  const handleToggleActive = async (optionId: string, currentStatus: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('dating_date_options')
+        .update({ is_active: !currentStatus })
+        .eq('id', optionId);
+
+      if (error) throw error;
+      Alert.alert('Success', 'Option updated successfully');
+      loadOptions();
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to update option');
+    }
+  };
+
+  const handleDelete = async (optionId: string, label: string) => {
     Alert.alert(
       'Delete Option',
       `Are you sure you want to delete "${label}"?`,
@@ -84,26 +94,52 @@ export default function AdminDatingDateOptionsScreen() {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => {
-            deleteMutation.mutate({ optionId });
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('dating_date_options')
+                .delete()
+                .eq('id', optionId);
+
+              if (error) throw error;
+              Alert.alert('Success', 'Option deleted successfully');
+              loadOptions();
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'Failed to delete option');
+            }
           },
         },
       ]
     );
   };
 
-  const handleAddOption = () => {
+  const handleAddOption = async () => {
     if (!newOption.value.trim() || !newOption.label.trim()) {
-      Alert.alert('Error', 'Please fill in all fields');
+      Alert.alert('Error', 'Please fill in value and label');
       return;
     }
 
-    createMutation.mutate({
-      optionType: selectedType as 'dress_code' | 'budget_range' | 'suggested_activity',
-      optionValue: newOption.value.trim(),
-      displayLabel: newOption.label.trim(),
-      displayOrder: parseInt(newOption.order) || 0,
-    });
+    try {
+      const { error } = await supabase
+        .from('dating_date_options')
+        .insert({
+          option_type: selectedType,
+          option_value: newOption.value.trim(),
+          display_label: newOption.label.trim(),
+          display_order: parseInt(newOption.order) || 0,
+          description: newOption.description.trim() || null,
+          icon_emoji: newOption.icon.trim() || null,
+          is_active: true,
+        });
+
+      if (error) throw error;
+      Alert.alert('Success', 'Option created successfully');
+      setShowAddModal(false);
+      setNewOption({ value: '', label: '', order: '0', description: '', icon: '' });
+      loadOptions();
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to create option');
+    }
   };
 
   const filteredOptions = optionsData?.grouped?.[selectedType] || [];
@@ -150,7 +186,14 @@ export default function AdminDatingDateOptionsScreen() {
         </View>
       ) : (
         <ScrollView style={styles.content} contentContainerStyle={styles.scrollContent}>
-          {filteredOptions.map((option: any) => (
+          {filteredOptions.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Calendar size={48} color={colors.text.tertiary} />
+              <Text style={styles.emptyText}>No {OPTION_TYPES.find(t => t.value === selectedType)?.label.toLowerCase()} found</Text>
+              <Text style={styles.emptySubtext}>Tap the + button to add a new option</Text>
+            </View>
+          ) : (
+            filteredOptions.map((option: any) => (
             <View key={option.id} style={styles.optionCard}>
               <View style={styles.optionLeft}>
                 <View style={styles.optionInfo}>
@@ -174,7 +217,8 @@ export default function AdminDatingDateOptionsScreen() {
                 </TouchableOpacity>
               </View>
             </View>
-          ))}
+            ))
+          )}
         </ScrollView>
       )}
 
@@ -238,6 +282,29 @@ export default function AdminDatingDateOptionsScreen() {
                   keyboardType="numeric"
                 />
               </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Description (optional)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g., Under $50"
+                  value={newOption.description}
+                  onChangeText={(text) => setNewOption({ ...newOption, description: text })}
+                  placeholderTextColor={colors.text.tertiary}
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Icon Emoji (optional)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g., ☕"
+                  value={newOption.icon}
+                  onChangeText={(text) => setNewOption({ ...newOption, icon: text })}
+                  placeholderTextColor={colors.text.tertiary}
+                  maxLength={2}
+                />
+              </View>
             </View>
 
             <View style={styles.modalActions}>
@@ -245,7 +312,7 @@ export default function AdminDatingDateOptionsScreen() {
                 style={styles.cancelButton}
                 onPress={() => {
                   setShowAddModal(false);
-                  setNewOption({ value: '', label: '', order: '0' });
+                  setNewOption({ value: '', label: '', order: '0', description: '', icon: '' });
                 }}
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
@@ -253,13 +320,8 @@ export default function AdminDatingDateOptionsScreen() {
               <TouchableOpacity
                 style={styles.saveButton}
                 onPress={handleAddOption}
-                disabled={createMutation.isPending}
               >
-                {createMutation.isPending ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.saveButtonText}>Add Option</Text>
-                )}
+                <Text style={styles.saveButtonText}>Add Option</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -476,6 +538,23 @@ const createStyles = (colors: any) =>
       fontSize: 16,
       fontWeight: '600',
       color: '#fff',
+    },
+    emptyState: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingVertical: 60,
+      gap: 12,
+    },
+    emptyText: {
+      fontSize: 18,
+      fontWeight: '600',
+      color: colors.text.primary,
+    },
+    emptySubtext: {
+      fontSize: 14,
+      color: colors.text.secondary,
+      textAlign: 'center',
     },
   });
 

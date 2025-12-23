@@ -544,17 +544,36 @@ export default function ProfileSetupScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity 
+          onPress={() => router.back()}
+          style={styles.backButton}
+        >
           <ArrowLeft size={24} color={colors.text.primary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Dating Profile</Text>
-        <View style={{ width: 24 }} />
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>Dating Profile</Text>
+          <Text style={styles.headerSubtitle}>Make yourself stand out</Text>
+        </View>
+        <TouchableOpacity 
+          style={styles.previewHeaderButton}
+          onPress={() => router.push('/dating/profile-preview')}
+        >
+          <Eye size={20} color={colors.primary} />
+        </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+      <ScrollView 
+        style={styles.scrollView} 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        bounces={true}
+      >
         {/* Photos */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Photos</Text>
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Photos</Text>
+            <Text style={styles.sectionSubtitle}>Add up to 9 photos (max 9)</Text>
+          </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photosContainer}>
             {photos.map((photo, index) => (
               <View key={index} style={styles.photoItem}>
@@ -606,8 +625,11 @@ export default function ProfileSetupScreen() {
         </View>
 
         {/* Bio */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Bio</Text>
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Bio</Text>
+            <Text style={styles.sectionSubtitle}>Tell your story</Text>
+          </View>
           <TextInput
             style={styles.textInput}
             placeholder="Tell people about yourself..."
@@ -622,7 +644,7 @@ export default function ProfileSetupScreen() {
         </View>
 
         {/* Age */}
-        <View style={styles.section}>
+        <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Age</Text>
           <TextInput
             style={styles.textInput}
@@ -635,7 +657,7 @@ export default function ProfileSetupScreen() {
         </View>
 
         {/* Location */}
-        <View style={styles.section}>
+        <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Location</Text>
           <View style={styles.locationRow}>
             <TextInput
@@ -652,8 +674,11 @@ export default function ProfileSetupScreen() {
         </View>
 
         {/* Relationship Goals */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Relationship Goals (max 5)</Text>
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Relationship Goals</Text>
+            <Text style={styles.sectionSubtitle}>Select up to 5</Text>
+          </View>
           <View style={styles.tagsContainer}>
             {RELATIONSHIP_GOALS.map((goal) => (
               <TouchableOpacity
@@ -678,8 +703,11 @@ export default function ProfileSetupScreen() {
         </View>
 
         {/* Interests */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Interests</Text>
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Interests</Text>
+            <Text style={styles.sectionSubtitle}>What makes you unique</Text>
+          </View>
           
           {/* Category Filter */}
           {interestsData && interestsData.categories.length > 0 && (
@@ -741,9 +769,11 @@ export default function ProfileSetupScreen() {
         </View>
 
         {/* Headline */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Headline ✨</Text>
-          <Text style={styles.sectionHint}>A short catchy line that captures who you are</Text>
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Headline ✨</Text>
+            <Text style={styles.sectionSubtitle}>A short catchy line that captures who you are</Text>
+          </View>
           <TextInput
             style={styles.textInput}
             placeholder="e.g., 'Serious about love, fun about life'"
@@ -756,9 +786,11 @@ export default function ProfileSetupScreen() {
         </View>
 
         {/* What I'm Looking For */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>What I'm Looking For 💬</Text>
-          <Text style={styles.sectionHint}>Describe the person you're looking for</Text>
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>What I'm Looking For 💬</Text>
+            <Text style={styles.sectionSubtitle}>Describe the person you're looking for</Text>
+          </View>
           <TextInput
             style={[styles.textInput, { minHeight: 100 }]}
             placeholder="Describe the kind of person you're looking for..."
@@ -773,9 +805,11 @@ export default function ProfileSetupScreen() {
         </View>
 
         {/* Values Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Values ❤️</Text>
-          <Text style={styles.sectionHint}>What matters most to you (select all that apply)</Text>
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Values ❤️</Text>
+            <Text style={styles.sectionSubtitle}>What matters most to you</Text>
+          </View>
           <View style={styles.tagsContainer}>
             {['Family', 'Faith', 'Growth', 'Honesty', 'Adventure'].map((value) => (
               <TouchableOpacity
@@ -806,9 +840,11 @@ export default function ProfileSetupScreen() {
         </View>
 
         {/* Mood/Vibe Selector */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Mood / Vibe 😊</Text>
-          <Text style={styles.sectionHint}>Pick one that best describes you</Text>
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Mood / Vibe 😊</Text>
+            <Text style={styles.sectionSubtitle}>Pick one that best describes you</Text>
+          </View>
           <View style={styles.moodContainer}>
             {[
               { value: 'chill', emoji: '😌', label: 'Chill' },
@@ -835,9 +871,11 @@ export default function ProfileSetupScreen() {
         </View>
 
         {/* What Makes Me Different */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>What Makes Me Different 🔥</Text>
-          <Text style={styles.sectionHint}>Share what makes you unique</Text>
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>What Makes Me Different 🔥</Text>
+            <Text style={styles.sectionSubtitle}>Share what makes you unique</Text>
+          </View>
           <TextInput
             style={[styles.textInput, { minHeight: 80 }]}
             placeholder="e.g., 'I never give up on people I care about'"
@@ -852,9 +890,11 @@ export default function ProfileSetupScreen() {
         </View>
 
         {/* Weekend Style */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Weekend Style 🕒</Text>
-          <Text style={styles.sectionHint}>How do you typically spend your weekends?</Text>
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Weekend Style 🕒</Text>
+            <Text style={styles.sectionSubtitle}>How do you typically spend your weekends?</Text>
+          </View>
           <View style={styles.weekendContainer}>
             {[
               { value: 'homebody', emoji: '🛋️', label: 'Homebody' },
@@ -882,8 +922,11 @@ export default function ProfileSetupScreen() {
 
         {/* Daily Question */}
         {dailyQuestion && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Daily Question ✍🏽</Text>
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Daily Question ✍🏽</Text>
+              <Text style={styles.sectionSubtitle}>Answer today's question</Text>
+            </View>
             <Text style={styles.dailyQuestionText}>{dailyQuestion.question}</Text>
             <TextInput
               style={[styles.textInput, { minHeight: 80 }]}
@@ -900,9 +943,11 @@ export default function ProfileSetupScreen() {
         )}
 
         {/* Safety + Intention Tag */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Intention & Safety 🔒</Text>
-          <Text style={styles.sectionHint}>What are you here for?</Text>
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Intention & Safety 🔒</Text>
+            <Text style={styles.sectionSubtitle}>What are you here for?</Text>
+          </View>
           <View style={styles.tagsContainer}>
             {['friendship', 'dating', 'serious', 'marriage'].map((intention) => (
               <TouchableOpacity
@@ -936,9 +981,11 @@ export default function ProfileSetupScreen() {
         </View>
 
         {/* Local Flavor */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Local Flavor 🌍</Text>
-          <Text style={styles.sectionHint}>Share your favorite local things</Text>
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Local Flavor 🌍</Text>
+            <Text style={styles.sectionSubtitle}>Share your favorite local things</Text>
+          </View>
           <TextInput
             style={styles.textInput}
             placeholder="Favorite local food (e.g., Sadza & nyama)"
@@ -966,9 +1013,11 @@ export default function ProfileSetupScreen() {
         </View>
 
         {/* Prompts / Short Questions */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Prompts / Short Questions ✍🏽</Text>
-          <Text style={styles.sectionHint}>Answer fun questions to help others get to know you</Text>
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Prompts / Short Questions ✍🏽</Text>
+            <Text style={styles.sectionSubtitle}>Answer fun questions to help others get to know you</Text>
+          </View>
           
           {prompts.map((prompt, index) => (
             <View key={index} style={styles.promptItem}>
@@ -1018,8 +1067,11 @@ export default function ProfileSetupScreen() {
         </View>
 
         {/* Lifestyle Fields */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Lifestyle</Text>
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Lifestyle</Text>
+            <Text style={styles.sectionSubtitle}>Tell us about your lifestyle</Text>
+          </View>
           
           <View style={styles.preferenceRow}>
             <Text style={styles.preferenceLabel}>Kids:</Text>
@@ -1089,8 +1141,11 @@ export default function ProfileSetupScreen() {
         </View>
 
         {/* Preferences */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Preferences</Text>
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Preferences</Text>
+            <Text style={styles.sectionSubtitle}>Who you want to meet</Text>
+          </View>
           
           <View style={styles.preferenceRow}>
             <Text style={styles.preferenceLabel}>Looking for:</Text>
@@ -1162,8 +1217,11 @@ export default function ProfileSetupScreen() {
         </View>
 
         {/* Delete Profile Section */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.danger }]}>Danger Zone</Text>
+        <View style={[styles.sectionCard, styles.dangerCard]}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.danger }]}>Danger Zone</Text>
+            <Text style={[styles.sectionSubtitle, { color: colors.danger }]}>Permanent actions</Text>
+          </View>
           <TouchableOpacity
             style={styles.deleteButton}
             onPress={() => {
@@ -1209,14 +1267,45 @@ const createStyles = (colors: any) =>
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: 20,
-      paddingVertical: 16,
+      paddingTop: 12,
+      paddingBottom: 16,
+      backgroundColor: colors.background.primary,
       borderBottomWidth: 1,
       borderBottomColor: colors.border.light,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 4,
+      elevation: 2,
+    },
+    backButton: {
+      padding: 8,
+      borderRadius: 12,
+      backgroundColor: colors.background.secondary,
+    },
+    headerCenter: {
+      flex: 1,
+      alignItems: 'center',
+      marginHorizontal: 12,
     },
     headerTitle: {
-      fontSize: 20,
-      fontWeight: 'bold',
+      fontSize: 22,
+      fontWeight: '700',
       color: colors.text.primary,
+      letterSpacing: -0.5,
+    },
+    headerSubtitle: {
+      fontSize: 12,
+      color: colors.text.secondary,
+      marginTop: 2,
+      fontWeight: '500',
+    },
+    previewHeaderButton: {
+      padding: 10,
+      borderRadius: 12,
+      backgroundColor: colors.primary + '15',
+      borderWidth: 1,
+      borderColor: colors.primary + '30',
     },
     loadingContainer: {
       flex: 1,
@@ -1227,82 +1316,39 @@ const createStyles = (colors: any) =>
       flex: 1,
     },
     scrollContent: {
+      padding: 16,
+      paddingBottom: 40,
+    },
+    sectionCard: {
+      backgroundColor: colors.background.secondary,
+      borderRadius: 16,
       padding: 20,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: colors.border.light,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.04,
+      shadowRadius: 8,
+      elevation: 2,
     },
     section: {
       marginBottom: 24,
     },
+    sectionHeader: {
+      marginBottom: 16,
+    },
     sectionTitle: {
-      fontSize: 18,
-      fontWeight: '600',
+      fontSize: 20,
+      fontWeight: '700',
       color: colors.text.primary,
-      marginBottom: 12,
+      marginBottom: 4,
+      letterSpacing: -0.3,
     },
-    photosContainer: {
-      flexDirection: 'row',
-      gap: 12,
-    },
-    photoItem: {
-      width: 120,
-      height: 160,
-      borderRadius: 12,
-      overflow: 'hidden',
-      position: 'relative',
-    },
-    photo: {
-      width: '100%',
-      height: '100%',
-    },
-    primaryBadge: {
-      position: 'absolute',
-      top: 8,
-      left: 8,
-      backgroundColor: colors.primary,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 8,
-    },
-    primaryBadgeText: {
-      color: '#fff',
-      fontSize: 10,
-      fontWeight: '600',
-    },
-    removePhotoButton: {
-      position: 'absolute',
-      top: 8,
-      right: 8,
-      backgroundColor: 'rgba(0,0,0,0.6)',
-      borderRadius: 12,
-      width: 24,
-      height: 24,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    addPhotoButton: {
-      width: 120,
-      height: 160,
-      borderRadius: 12,
-      borderWidth: 2,
-      borderColor: colors.border.light,
-      borderStyle: 'dashed',
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: colors.background.secondary,
-    },
-    textInput: {
-      backgroundColor: colors.background.secondary,
-      borderRadius: 12,
-      padding: 16,
-      fontSize: 16,
-      color: colors.text.primary,
-      borderWidth: 1,
-      borderColor: colors.border.light,
-    },
-    charCount: {
-      fontSize: 12,
-      color: colors.text.tertiary,
-      textAlign: 'right',
-      marginTop: 4,
+    sectionSubtitle: {
+      fontSize: 13,
+      color: colors.text.secondary,
+      fontWeight: '500',
     },
     sectionHint: {
       fontSize: 13,
@@ -1310,95 +1356,213 @@ const createStyles = (colors: any) =>
       marginBottom: 12,
       fontStyle: 'italic',
     },
+    photosContainer: {
+      flexDirection: 'row',
+      gap: 12,
+      marginTop: 8,
+    },
+    photoItem: {
+      width: 130,
+      height: 180,
+      borderRadius: 16,
+      overflow: 'hidden',
+      position: 'relative',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.15,
+      shadowRadius: 8,
+      elevation: 4,
+    },
+    photo: {
+      width: '100%',
+      height: '100%',
+    },
+    primaryBadge: {
+      position: 'absolute',
+      top: 10,
+      left: 10,
+      backgroundColor: colors.primary,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 12,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.3,
+      shadowRadius: 4,
+      elevation: 4,
+    },
+    primaryBadgeText: {
+      color: '#fff',
+      fontSize: 11,
+      fontWeight: '700',
+      letterSpacing: 0.3,
+    },
+    removePhotoButton: {
+      position: 'absolute',
+      top: 10,
+      right: 10,
+      backgroundColor: 'rgba(0,0,0,0.7)',
+      borderRadius: 16,
+      width: 28,
+      height: 28,
+      justifyContent: 'center',
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.3,
+      shadowRadius: 4,
+      elevation: 4,
+    },
+    addPhotoButton: {
+      width: 130,
+      height: 180,
+      borderRadius: 16,
+      borderWidth: 2.5,
+      borderColor: colors.primary + '40',
+      borderStyle: 'dashed',
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: colors.primary + '08',
+    },
+    textInput: {
+      backgroundColor: colors.background.primary,
+      borderRadius: 14,
+      padding: 16,
+      fontSize: 16,
+      color: colors.text.primary,
+      borderWidth: 1.5,
+      borderColor: colors.border.light,
+      minHeight: 52,
+    },
+    charCount: {
+      fontSize: 12,
+      color: colors.text.tertiary,
+      textAlign: 'right',
+      marginTop: 6,
+      fontWeight: '500',
+    },
     moodContainer: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: 12,
+      marginTop: 8,
     },
     moodOption: {
       flex: 1,
       minWidth: '30%',
       alignItems: 'center',
-      padding: 16,
-      backgroundColor: colors.background.secondary,
-      borderRadius: 12,
+      padding: 18,
+      backgroundColor: colors.background.primary,
+      borderRadius: 16,
       borderWidth: 2,
       borderColor: colors.border.light,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 4,
+      elevation: 1,
     },
     moodOptionSelected: {
       borderColor: colors.primary,
       backgroundColor: colors.primary + '15',
+      borderWidth: 2.5,
+      shadowColor: colors.primary,
+      shadowOpacity: 0.2,
+      shadowRadius: 8,
+      elevation: 3,
     },
     moodEmoji: {
-      fontSize: 32,
-      marginBottom: 8,
+      fontSize: 36,
+      marginBottom: 10,
     },
     moodLabel: {
       fontSize: 14,
       color: colors.text.primary,
       fontWeight: '600',
+      letterSpacing: 0.2,
     },
     moodLabelSelected: {
       color: colors.primary,
+      fontWeight: '700',
     },
     weekendContainer: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: 12,
+      marginTop: 8,
     },
     weekendOption: {
       flex: 1,
       minWidth: '45%',
       alignItems: 'center',
-      padding: 16,
-      backgroundColor: colors.background.secondary,
-      borderRadius: 12,
+      padding: 18,
+      backgroundColor: colors.background.primary,
+      borderRadius: 16,
       borderWidth: 2,
       borderColor: colors.border.light,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 4,
+      elevation: 1,
     },
     weekendOptionSelected: {
       borderColor: colors.primary,
       backgroundColor: colors.primary + '15',
+      borderWidth: 2.5,
+      shadowColor: colors.primary,
+      shadowOpacity: 0.2,
+      shadowRadius: 8,
+      elevation: 3,
     },
     weekendEmoji: {
-      fontSize: 28,
-      marginBottom: 8,
+      fontSize: 32,
+      marginBottom: 10,
     },
     weekendLabel: {
       fontSize: 13,
       color: colors.text.primary,
       fontWeight: '600',
       textAlign: 'center',
+      letterSpacing: 0.2,
     },
     weekendLabelSelected: {
       color: colors.primary,
+      fontWeight: '700',
     },
     dailyQuestionText: {
       fontSize: 16,
       color: colors.text.primary,
       fontWeight: '600',
-      marginBottom: 12,
-      padding: 12,
-      backgroundColor: colors.background.secondary,
-      borderRadius: 8,
+      marginBottom: 16,
+      marginTop: 8,
+      padding: 16,
+      backgroundColor: colors.background.primary,
+      borderRadius: 14,
+      borderWidth: 1.5,
+      borderColor: colors.border.light,
+      lineHeight: 22,
     },
     checkboxRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 12,
       marginTop: 16,
-      padding: 12,
-      backgroundColor: colors.background.secondary,
-      borderRadius: 12,
+      padding: 16,
+      backgroundColor: colors.background.primary,
+      borderRadius: 14,
+      borderWidth: 1.5,
+      borderColor: colors.border.light,
     },
     checkboxRowSelected: {
       backgroundColor: colors.primary + '15',
+      borderColor: colors.primary + '40',
     },
     checkbox: {
-      width: 24,
-      height: 24,
-      borderRadius: 6,
-      borderWidth: 2,
+      width: 26,
+      height: 26,
+      borderRadius: 8,
+      borderWidth: 2.5,
       borderColor: colors.border.light,
       alignItems: 'center',
       justifyContent: 'center',
@@ -1409,27 +1573,34 @@ const createStyles = (colors: any) =>
     },
     checkmark: {
       color: '#fff',
-      fontSize: 16,
+      fontSize: 18,
       fontWeight: 'bold',
     },
     checkboxLabel: {
-      fontSize: 14,
+      fontSize: 15,
       color: colors.text.primary,
       fontWeight: '600',
+      letterSpacing: 0.2,
     },
     promptItem: {
-      marginBottom: 20,
-      padding: 16,
-      backgroundColor: colors.background.secondary,
-      borderRadius: 12,
-      borderWidth: 1,
+      marginBottom: 16,
+      padding: 18,
+      backgroundColor: colors.background.primary,
+      borderRadius: 16,
+      borderWidth: 1.5,
       borderColor: colors.border.light,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.04,
+      shadowRadius: 6,
+      elevation: 2,
     },
     promptQuestion: {
       fontSize: 16,
-      fontWeight: '600',
+      fontWeight: '700',
       color: colors.text.primary,
-      marginBottom: 8,
+      marginBottom: 12,
+      lineHeight: 22,
     },
     removePromptButton: {
       flexDirection: 'row',
@@ -1447,18 +1618,19 @@ const createStyles = (colors: any) =>
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 8,
-      padding: 16,
-      backgroundColor: colors.background.secondary,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.primary,
+      gap: 10,
+      padding: 18,
+      backgroundColor: colors.primary + '08',
+      borderRadius: 16,
+      borderWidth: 2,
+      borderColor: colors.primary + '40',
       borderStyle: 'dashed',
     },
     addPromptText: {
-      fontSize: 14,
+      fontSize: 15,
       color: colors.primary,
-      fontWeight: '600',
+      fontWeight: '700',
+      letterSpacing: 0.3,
     },
     locationRow: {
       flexDirection: 'row',
@@ -1466,35 +1638,53 @@ const createStyles = (colors: any) =>
       alignItems: 'center',
     },
     locationButton: {
-      padding: 12,
-      backgroundColor: colors.background.secondary,
-      borderRadius: 12,
-      borderWidth: 1,
+      padding: 14,
+      backgroundColor: colors.background.primary,
+      borderRadius: 14,
+      borderWidth: 1.5,
       borderColor: colors.border.light,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 4,
+      elevation: 2,
     },
     tagsContainer: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: 8,
+      gap: 10,
+      marginTop: 8,
     },
     tag: {
-      paddingHorizontal: 16,
-      paddingVertical: 8,
-      borderRadius: 20,
-      backgroundColor: colors.background.secondary,
-      borderWidth: 1,
+      paddingHorizontal: 18,
+      paddingVertical: 10,
+      borderRadius: 24,
+      backgroundColor: colors.background.primary,
+      borderWidth: 1.5,
       borderColor: colors.border.light,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.05,
+      shadowRadius: 3,
+      elevation: 1,
     },
     tagSelected: {
       backgroundColor: colors.primary,
       borderColor: colors.primary,
+      shadowColor: colors.primary,
+      shadowOpacity: 0.3,
+      shadowRadius: 6,
+      elevation: 3,
     },
     tagText: {
       fontSize: 14,
       color: colors.text.primary,
+      fontWeight: '600',
+      letterSpacing: 0.2,
     },
     tagTextSelected: {
       color: '#fff',
+      fontWeight: '700',
     },
     tagIcon: {
       fontSize: 16,
@@ -1508,57 +1698,81 @@ const createStyles = (colors: any) =>
       gap: 8,
     },
     categoryChip: {
-      paddingHorizontal: 16,
-      paddingVertical: 8,
-      borderRadius: 20,
-      backgroundColor: colors.background.secondary,
-      borderWidth: 1,
+      paddingHorizontal: 18,
+      paddingVertical: 10,
+      borderRadius: 24,
+      backgroundColor: colors.background.primary,
+      borderWidth: 1.5,
       borderColor: colors.border.light,
-      marginRight: 8,
+      marginRight: 10,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.05,
+      shadowRadius: 3,
+      elevation: 1,
     },
     categoryChipActive: {
       backgroundColor: colors.primary,
       borderColor: colors.primary,
+      shadowColor: colors.primary,
+      shadowOpacity: 0.3,
+      shadowRadius: 6,
+      elevation: 3,
     },
     categoryText: {
       fontSize: 14,
       fontWeight: '600',
       color: colors.text.primary,
+      letterSpacing: 0.2,
     },
     categoryTextActive: {
       color: '#fff',
+      fontWeight: '700',
     },
     preferenceRow: {
-      marginBottom: 16,
+      marginBottom: 20,
+      paddingBottom: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border.light + '40',
     },
     preferenceLabel: {
       fontSize: 16,
       color: colors.text.primary,
-      marginBottom: 8,
+      marginBottom: 12,
+      fontWeight: '600',
+      letterSpacing: 0.2,
     },
     radioGroup: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       gap: 16,
     },
     radioOption: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 8,
+      gap: 10,
+      paddingVertical: 4,
     },
     radio: {
-      width: 20,
-      height: 20,
-      borderRadius: 10,
-      borderWidth: 2,
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      borderWidth: 2.5,
       borderColor: colors.border.light,
     },
     radioSelected: {
       borderColor: colors.primary,
       backgroundColor: colors.primary,
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.3,
+      shadowRadius: 4,
+      elevation: 3,
     },
     radioLabel: {
-      fontSize: 16,
+      fontSize: 15,
       color: colors.text.primary,
+      fontWeight: '500',
     },
     ageRangeRow: {
       flexDirection: 'row',
@@ -1567,14 +1781,15 @@ const createStyles = (colors: any) =>
     },
     ageInput: {
       flex: 1,
-      backgroundColor: colors.background.secondary,
-      borderRadius: 12,
-      padding: 12,
+      backgroundColor: colors.background.primary,
+      borderRadius: 14,
+      padding: 14,
       fontSize: 16,
       color: colors.text.primary,
-      borderWidth: 1,
+      borderWidth: 1.5,
       borderColor: colors.border.light,
       textAlign: 'center',
+      fontWeight: '600',
     },
     ageRangeSeparator: {
       fontSize: 18,
@@ -1583,23 +1798,34 @@ const createStyles = (colors: any) =>
     saveButtonsRow: {
       flexDirection: 'row',
       gap: 12,
-      marginTop: 8,
+      marginTop: 24,
       marginBottom: 40,
+      paddingHorizontal: 4,
     },
     saveButton: {
       flex: 1,
       backgroundColor: colors.primary,
-      paddingVertical: 16,
-      borderRadius: 12,
+      paddingVertical: 18,
+      borderRadius: 16,
       alignItems: 'center',
       flexDirection: 'row',
       justifyContent: 'center',
-      gap: 8,
+      gap: 10,
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 5,
     },
     previewButton: {
-      backgroundColor: colors.background.secondary,
-      borderWidth: 1,
+      backgroundColor: colors.background.primary,
+      borderWidth: 2,
       borderColor: colors.primary,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
     },
     saveButtonDisabled: {
       opacity: 0.6,
@@ -1607,23 +1833,30 @@ const createStyles = (colors: any) =>
     saveButtonText: {
       color: '#fff',
       fontSize: 16,
-      fontWeight: '600',
+      fontWeight: '700',
+      letterSpacing: 0.3,
+    },
+    dangerCard: {
+      borderColor: colors.danger + '30',
+      backgroundColor: colors.danger + '08',
     },
     deleteButton: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 8,
-      padding: 16,
+      gap: 10,
+      padding: 18,
       backgroundColor: colors.danger + '15',
-      borderRadius: 12,
-      borderWidth: 1,
+      borderRadius: 16,
+      borderWidth: 2,
       borderColor: colors.danger,
+      marginTop: 12,
     },
     deleteButtonText: {
       fontSize: 16,
-      fontWeight: '600',
+      fontWeight: '700',
       color: colors.danger,
+      letterSpacing: 0.3,
     },
   });
 

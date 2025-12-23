@@ -477,7 +477,7 @@ export async function getDatingMatches() {
       )
     `)
     .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
-    .order('created_at', { ascending: false });
+    .order('matched_at', { ascending: false });
 
   if (error) throw error;
 

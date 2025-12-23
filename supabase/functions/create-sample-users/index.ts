@@ -81,14 +81,14 @@ serve(async (req: Request) => {
 
     // Check if user is admin
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const { data: userData, error: userError } = await supabaseAdmin
+    const { data: profile } = await supabaseAdmin
       .from('users')
       .select('role')
       .eq('id', authUser.id)
       .single();
 
-    if (userError || !userData || (userData.role !== 'admin' && userData.role !== 'super_admin')) {
-      return json(403, { success: false, error: 'Admin access required' });
+    if (!profile || (profile.role !== 'admin' && profile.role !== 'super_admin')) {
+      return json(403, { success: false, error: 'Only admins can create sample users' });
     }
 
     // Create admin client for operations
@@ -136,10 +136,18 @@ serve(async (req: Request) => {
               throw new Error(`Auth user exists for ${userData.email} but not found in users table. Please run the database migration to sync auth users with users table.`);
             }
           } else {
-            throw new Error(`Auth error: ${authError.message || JSON.stringify(authError) || 'Failed to create auth user'}`);
+            // Log the full error for debugging - this might be a database/trigger error
+            console.error(`Auth error for ${userData.email}:`, JSON.stringify(authError, null, 2));
+            const errorMsg = authError.message || JSON.stringify(authError) || 'Failed to create auth user';
+            // Provide more helpful error message if it's a database error
+            if (errorMsg.includes('Database error') || errorMsg.includes('database')) {
+              throw new Error(`Database error creating auth user for ${userData.email}. This might be due to a failing database trigger. Check Supabase logs for details: ${errorMsg}`);
+            }
+            throw new Error(`Auth error: ${errorMsg}`);
           }
         } else if (newAuthUser?.user?.id) {
           authUserId = newAuthUser.user.id;
+          console.log(`Created new auth user: ${authUserId} for ${userData.email}`);
         } else {
           throw new Error('Failed to create auth user: No user returned');
         }
@@ -152,7 +160,10 @@ serve(async (req: Request) => {
         // authUserId is guaranteed to be defined here
         const userId = authUserId;
 
-        // Check if user record exists
+        // Wait a moment for the trigger to potentially create the user record
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Check if user record exists (may have been created by trigger)
         const { data: existingUser } = await adminClient
           .from('users')
           .select('id')
@@ -201,13 +212,13 @@ serve(async (req: Request) => {
               // Continue anyway - user is created successfully
             }
           } catch (profileErr: any) {
-            console.warn(`Warning: Exception creating dating profile for ${userData.email}: ${profileErr.message}`);
+            console.warn(`Warning: Exception creating/updating dating profile for ${userData.email}: ${profileErr.message}`);
             // Continue anyway - user is created successfully
           }
 
           results.push({ email: userData.email, status: 'updated', userId: userId });
         } else {
-          // Create user record
+          // Create new user record
           const { error: insertError } = await adminClient
             .from('users')
             .insert({
@@ -219,11 +230,13 @@ serve(async (req: Request) => {
               is_sample_user: true,
               phone_verified: true,
               email_verified: true,
+              id_verified: false,
             });
 
           if (insertError) {
+            // If it's a duplicate key error, the user was created by trigger in the meantime
             if (insertError.code === '23505') {
-              // User already exists, update it
+              console.log(`User record for ${userData.email} was created by trigger, updating...`);
               const { error: updateError } = await adminClient
                 .from('users')
                 .update({
@@ -234,10 +247,9 @@ serve(async (req: Request) => {
                   email_verified: true,
                 })
                 .eq('id', userId);
-
               if (updateError) throw updateError;
             } else {
-              throw new Error(insertError.message || 'Failed to create user record');
+              throw insertError;
             }
           }
 
@@ -324,4 +336,3 @@ serve(async (req: Request) => {
     });
   }
 });
-

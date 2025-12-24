@@ -483,7 +483,7 @@ export default function ProfileSetupScreen() {
         location_city: locationCity || undefined,
         relationship_goals: relationshipGoals,
         interests,
-        gender: gender || undefined,
+        gender: gender ? gender : undefined,
         looking_for: lookingFor,
         age_range_min: ageRangeMin ? parseInt(ageRangeMin) : undefined,
         age_range_max: ageRangeMax ? parseInt(ageRangeMax) : undefined,

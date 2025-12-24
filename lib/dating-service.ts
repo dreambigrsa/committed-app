@@ -123,9 +123,19 @@ export async function createOrUpdateDatingProfile(profileData: {
 
   if (existing) {
     // Update existing profile
+    // Filter out undefined values but keep null/empty string for explicit clearing
+    const updateData: any = {};
+    Object.keys(profileData).forEach((key) => {
+      const value = (profileData as any)[key];
+      // Include the field if it's not undefined (allow null, empty string, etc.)
+      if (value !== undefined) {
+        updateData[key] = value;
+      }
+    });
+    
     const { data, error } = await supabase
       .from('dating_profiles')
-      .update(profileData)
+      .update(updateData)
       .eq('user_id', user.id)
       .select()
       .single();

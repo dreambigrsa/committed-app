@@ -372,6 +372,16 @@ export default function DatingScreen() {
     );
   }
 
+  const handleResetPassedProfiles = async () => {
+    try {
+      await DatingService.clearPassedProfiles();
+      // Reload discovery with passed profiles included
+      await loadDatingData();
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to reset passed profiles');
+    }
+  };
+
   if (!discovery || discovery.length === 0 || currentIndex >= discovery.length) {
     return (
       <SafeAreaView style={styles.container}>
@@ -393,14 +403,23 @@ export default function DatingScreen() {
           <Sparkles size={64} color={colors.text.tertiary} />
           <Text style={styles.emptyTitle}>You're All Caught Up!</Text>
           <Text style={styles.emptyText}>
-            You've seen everyone in your area. Check back later for new people or adjust your preferences!
+            You've seen everyone in your area. Check back later for new people, adjust your preferences, or see passed profiles again!
           </Text>
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={() => router.push('/dating/filters')}
-          >
-            <Text style={styles.secondaryButtonText}>Adjust Filters</Text>
-          </TouchableOpacity>
+          <View style={styles.emptyActions}>
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={() => router.push('/dating/filters')}
+            >
+              <Text style={styles.secondaryButtonText}>Adjust Filters</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.secondaryButton, styles.resetPassedButton]}
+              onPress={handleResetPassedProfiles}
+            >
+              <RotateCcw size={18} color={colors.text.primary} />
+              <Text style={styles.secondaryButtonText}>See Passed Profiles</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </SafeAreaView>
     );

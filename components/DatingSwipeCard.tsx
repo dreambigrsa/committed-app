@@ -104,8 +104,14 @@ export default function DatingSwipeCard({
 
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => isTop && !isAnimatingRef.current,
-      onMoveShouldSetPanResponder: () => isTop && !isAnimatingRef.current,
+      // Don't capture on start - let taps pass through
+      onStartShouldSetPanResponder: () => false,
+      // Only capture when there's significant movement (swipe)
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        if (!isTop || isAnimatingRef.current) return false;
+        // Only capture if there's significant horizontal movement (swipe)
+        return Math.abs(gestureState.dx) > 10 || Math.abs(gestureState.dy) > 10;
+      },
       onPanResponderGrant: () => {
         if (isAnimatingRef.current) return;
         // Stop any ongoing animations before starting new gesture

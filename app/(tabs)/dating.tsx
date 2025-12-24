@@ -568,30 +568,32 @@ const createStyles = (colors: any) =>
       backgroundColor: colors.background.primary,
     },
     headerLeft: {
-      width: 50,
+      width: 44,
+      alignItems: 'flex-start',
     },
     headerCenter: {
       flex: 1,
       alignItems: 'center',
+      paddingHorizontal: 8, // Add padding to prevent overlap
     },
     headerRight: {
-      width: 100,
+      minWidth: 180, // Increased to fit all buttons
       alignItems: 'flex-end',
     },
     headerRightActions: {
       flexDirection: 'row',
-      gap: 8,
+      gap: 6, // Reduced gap to fit more buttons
     },
     headerTitle: {
-      fontSize: 32,
+      fontSize: 28, // Slightly smaller to fit better
       fontWeight: 'bold',
       color: colors.text.primary,
       letterSpacing: -0.5,
     },
     headerIconButton: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
+      width: 40, // Slightly smaller buttons
+      height: 40,
+      borderRadius: 20,
       backgroundColor: colors.background.secondary,
       justifyContent: 'center',
       alignItems: 'center',

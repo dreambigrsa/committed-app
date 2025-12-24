@@ -226,15 +226,28 @@ export default function DatingScreen() {
         return;
       }
 
-      setCurrentIndex((prev) => prev - 1);
-      // Remove from swiped set
-      if (discovery && discovery[currentIndex - 1]) {
+      // Calculate the previous index and get the profile before updating state
+      const previousIndex = currentIndex - 1;
+      const previousProfile = discovery?.[previousIndex];
+      
+      if (previousProfile) {
+        // Get the userId before updating state
+        const userId = previousProfile.user_id || previousProfile.user?.id || previousProfile.userId;
+        
+        // Update both state values
+        setCurrentIndex(previousIndex);
+        
+        // Remove from swiped set so it can be swiped again
         setSwipedProfiles((prev) => {
           const newSet = new Set(prev);
-          const userId = (discovery[currentIndex - 1] as any).user_id || discovery[currentIndex - 1].userId;
-          newSet.delete(userId);
+          if (userId) {
+            newSet.delete(userId);
+          }
           return newSet;
         });
+      } else {
+        // Fallback: just decrement the index
+        setCurrentIndex((prev) => prev - 1);
       }
     } else {
       Alert.alert('No More to Rewind', 'You\'re at the beginning!');
@@ -431,9 +444,11 @@ export default function DatingScreen() {
           {visibleProfiles.map((profile: any, index: number) => {
             const isTop = index === 0;
             const userId = profile.user_id || profile.userId;
+            // Use a key that includes both userId and currentIndex to force remount on rewind
+            const cardKey = `${userId}-${currentIndex + index}`;
             return (
               <DatingSwipeCard
-                key={userId}
+                key={cardKey}
                 profile={profile}
                 onSwipeLeft={() => handleSwipeLeft(profile)}
                 onSwipeRight={() => handleSwipeRight(profile)}

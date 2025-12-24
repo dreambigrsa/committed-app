@@ -272,10 +272,10 @@ export default function DatingSwipeCard({
     if (isAnimatingRef.current) return;
     isAnimatingRef.current = true;
     
-    // Call the callback immediately so the like action happens right away
-    onSwipeRight();
-    
     stopAllAnimations();
+    
+    // Call the callback to trigger the like action
+    onSwipeRight();
     
     // Use requestAnimationFrame for smoother animation start
     requestAnimationFrame(() => {
@@ -322,10 +322,10 @@ export default function DatingSwipeCard({
     if (isAnimatingRef.current) return;
     isAnimatingRef.current = true;
     
-    // Call the callback immediately so the pass action happens right away
-    onSwipeLeft();
-    
     stopAllAnimations();
+    
+    // Call the callback to trigger the pass action
+    onSwipeLeft();
     
     // Use requestAnimationFrame for smoother animation start
     requestAnimationFrame(() => {

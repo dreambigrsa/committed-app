@@ -136,8 +136,17 @@ export default function DatingScreen() {
       }
     } catch (error: any) {
       console.error('Error liking user:', error);
-      // Check if it's a database ambiguous column error
       const errorMessage = error?.message || '';
+      
+      // Handle duplicate like error gracefully
+      if (errorMessage.includes('duplicate key') || errorMessage.includes('unique_like') || error.code === '23505') {
+        // Like already exists - this is fine, just proceed
+        console.log('Like already exists, proceeding...');
+        handleSwipeComplete();
+        return;
+      }
+      
+      // Check if it's a database ambiguous column error
       if (errorMessage.includes('ambiguous') || errorMessage.includes('user1_id') || errorMessage.includes('user2_id')) {
         // This is a known database issue - the like was likely successful, just refresh
         console.log('Database ambiguous column error detected, refreshing data...');
@@ -147,6 +156,7 @@ export default function DatingScreen() {
           loadDatingData();
         }, 500);
       } else {
+        // Only show error for unexpected errors
         Alert.alert('Error', errorMessage || 'Failed to like user');
       }
     }

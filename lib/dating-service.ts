@@ -403,27 +403,57 @@ export async function likeUser(likedUserId: string, isSuperLike: boolean = false
   // Check if already liked
   const { data: existing } = await supabase
     .from('dating_likes')
-    .select('id')
+    .select('id, is_super_like')
     .eq('liker_id', user.id)
     .eq('liked_id', likedUserId)
     .single();
 
   if (existing) {
+    // If already liked, update to super like if needed
+    if (isSuperLike && !existing.is_super_like) {
+      const { data: updated, error: updateError } = await supabase
+        .from('dating_likes')
+        .update({ is_super_like: true })
+        .eq('id', existing.id)
+        .select()
+        .single();
+      
+      if (updateError) throw updateError;
+      return { isMatch: false, like: updated };
+    }
     return { isMatch: false, like: existing };
   }
 
-  // Create like
+  // Use upsert to handle race conditions gracefully
+  // If duplicate key error occurs, it will update instead of failing
   const { data: like, error } = await supabase
     .from('dating_likes')
-    .insert({
+    .upsert({
       liker_id: user.id,
       liked_id: likedUserId,
       is_super_like: isSuperLike,
+    }, {
+      onConflict: 'liker_id,liked_id',
     })
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    // If it's a duplicate key error, try to fetch the existing like
+    if (error.code === '23505' || error.message?.includes('unique_like') || error.message?.includes('duplicate key')) {
+      const { data: existingLike } = await supabase
+        .from('dating_likes')
+        .select('id, is_super_like')
+        .eq('liker_id', user.id)
+        .eq('liked_id', likedUserId)
+        .single();
+      
+      if (existingLike) {
+        return { isMatch: false, like: existingLike };
+      }
+    }
+    throw error;
+  }
 
   // Check for mutual like (match)
   const { data: mutualLike } = await supabase

@@ -139,23 +139,26 @@ export default function DatingSwipeCard({
       onPanResponderRelease: (_, gesture) => {
         if (!isTop || isAnimatingRef.current) return;
         
-        // Stop all animations first
-        stopAllAnimations();
-        
-        // Flatten offset after stopping animations
+        // Flatten offset first to get current position
         position.flattenOffset();
         
         if (Math.abs(gesture.dx) > SWIPE_THRESHOLD) {
-          // Swipe detected
+          // Swipe detected - call the action immediately
           if (gesture.dx > 0) {
             // Swipe right - Like
+            // Call the callback immediately so the action happens
+            onSwipeRight();
+            // Then animate the card out
             handleSwipeRight();
           } else {
             // Swipe left - Pass
+            // Call the callback immediately so the action happens
+            onSwipeLeft();
+            // Then animate the card out
             handleSwipeLeft();
           }
         } else {
-          // Return to center
+          // Return to center - no action needed
           resetToCenter();
         }
       },
@@ -210,35 +213,22 @@ export default function DatingSwipeCard({
     const currentY = (position.y as any)._value || 0;
     const currentRotate = (rotate as any)._value || 0;
     
-    // Reset values immediately - but don't use setValue on native-driven values
-    // that might have been moved to native
-    try {
-      position.setValue({ x: currentX, y: currentY });
-      // For native-driven values, we need to be more careful
-      // Reset them but don't animate if they're in native mode
-      rotate.setValue(currentRotate);
-      likeOpacity.setValue(0);
-      passOpacity.setValue(0);
-    } catch (error) {
-      console.warn('Error resetting animation values:', error);
-    }
-    
-    // Use setTimeout with longer delay to ensure animations are fully stopped
-    // and the native bridge is ready
-    setTimeout(() => {
+    // Use spring animation for smoother feel
+    requestAnimationFrame(() => {
       try {
-        // Create fresh animation instances to avoid conflicts
-        // Animate position (JS-driven only - ValueXY cannot use native driver)
-        positionAnimRef.current = Animated.timing(position, {
+        // Animate position with spring for smooth return (JS-driven)
+        positionAnimRef.current = Animated.spring(position, {
           toValue: { x: 0, y: 0 },
-          duration: 300,
+          tension: 50,
+          friction: 7,
           useNativeDriver: false,
         });
         
-        // Animate rotate (native-driven) - create fresh instance
-        rotateAnimRef.current = Animated.timing(rotate, {
+        // Animate rotate with spring (native-driven)
+        rotateAnimRef.current = Animated.spring(rotate, {
           toValue: 0,
-          duration: 300,
+          tension: 50,
+          friction: 7,
           useNativeDriver: true,
         });
         
@@ -246,17 +236,17 @@ export default function DatingSwipeCard({
         const opacityAnim = Animated.parallel([
           Animated.timing(likeOpacity, {
             toValue: 0,
-            duration: 200,
+            duration: 150,
             useNativeDriver: true,
           }),
           Animated.timing(passOpacity, {
             toValue: 0,
-            duration: 200,
+            duration: 150,
             useNativeDriver: true,
           }),
         ]);
         
-        // Start position animation separately (JS driver)
+        // Start position animation (JS driver)
         positionAnimRef.current.start((finished) => {
           if (finished) {
             positionAnimRef.current = null;
@@ -264,130 +254,118 @@ export default function DatingSwipeCard({
           }
         });
         
-        // Start rotate and opacity animations together (native driver)
-        // But with a small delay to ensure position animation started first
-        setTimeout(() => {
-          try {
-            rotateAnimRef.current?.start((finished) => {
-              if (finished) {
-                rotateAnimRef.current = null;
-              }
-            });
-            opacityAnim.start();
-          } catch (error) {
-            console.warn('Error starting native animations:', error);
-            isAnimatingRef.current = false;
+        // Start rotate and opacity animations (native driver)
+        rotateAnimRef.current.start((finished) => {
+          if (finished) {
+            rotateAnimRef.current = null;
           }
-        }, 10);
+        });
+        opacityAnim.start();
       } catch (error) {
-        console.warn('Error creating animations:', error);
+        console.warn('Error creating reset animations:', error);
         isAnimatingRef.current = false;
       }
-    }, 100); // Longer delay to ensure everything is stopped
+    });
   };
 
   const handleSwipeRight = () => {
     if (isAnimatingRef.current) return;
     isAnimatingRef.current = true;
     
+    // Call the callback immediately so the like action happens right away
+    onSwipeRight();
+    
     stopAllAnimations();
     
-    // Use setTimeout with delay to ensure animations are fully stopped
-    setTimeout(() => {
+    // Use requestAnimationFrame for smoother animation start
+    requestAnimationFrame(() => {
       try {
-        // Animate position (JS-driven only)
-        positionAnimRef.current = Animated.timing(position, {
+        // Use spring animation for smoother, more natural feel
+        positionAnimRef.current = Animated.spring(position, {
           toValue: { x: SCREEN_WIDTH + 100, y: 0 },
-          duration: 300,
+          tension: 50,
+          friction: 7,
           useNativeDriver: false,
         });
         
         // Animate rotate (native-driven)
-        rotateAnimRef.current = Animated.timing(rotate, {
+        rotateAnimRef.current = Animated.spring(rotate, {
           toValue: 30,
-          duration: 300,
+          tension: 50,
+          friction: 7,
           useNativeDriver: true,
         });
         
-        // Start position animation separately
+        // Start position animation
         positionAnimRef.current.start((finished) => {
           if (finished) {
             positionAnimRef.current = null;
-            onSwipeRight();
             resetCard();
             isAnimatingRef.current = false;
           }
         });
         
-        // Start rotate animation separately with small delay
-        setTimeout(() => {
-          try {
-            rotateAnimRef.current?.start((finished) => {
-              if (finished) {
-                rotateAnimRef.current = null;
-              }
-            });
-          } catch (error) {
-            console.warn('Error starting rotate animation:', error);
+        // Start rotate animation
+        rotateAnimRef.current.start((finished) => {
+          if (finished) {
+            rotateAnimRef.current = null;
           }
-        }, 10);
+        });
       } catch (error) {
         console.warn('Error creating swipe animations:', error);
         isAnimatingRef.current = false;
       }
-    }, 100); // Delay to ensure previous animations are stopped
+    });
   };
 
   const handleSwipeLeft = () => {
     if (isAnimatingRef.current) return;
     isAnimatingRef.current = true;
     
+    // Call the callback immediately so the pass action happens right away
+    onSwipeLeft();
+    
     stopAllAnimations();
     
-    // Use setTimeout with delay to ensure animations are fully stopped
-    setTimeout(() => {
+    // Use requestAnimationFrame for smoother animation start
+    requestAnimationFrame(() => {
       try {
-        // Animate position (JS-driven only)
-        positionAnimRef.current = Animated.timing(position, {
+        // Use spring animation for smoother, more natural feel
+        positionAnimRef.current = Animated.spring(position, {
           toValue: { x: -SCREEN_WIDTH - 100, y: 0 },
-          duration: 300,
+          tension: 50,
+          friction: 7,
           useNativeDriver: false,
         });
         
         // Animate rotate (native-driven)
-        rotateAnimRef.current = Animated.timing(rotate, {
+        rotateAnimRef.current = Animated.spring(rotate, {
           toValue: -30,
-          duration: 300,
+          tension: 50,
+          friction: 7,
           useNativeDriver: true,
         });
         
-        // Start position animation separately
+        // Start position animation
         positionAnimRef.current.start((finished) => {
           if (finished) {
             positionAnimRef.current = null;
-            onSwipeLeft();
             resetCard();
             isAnimatingRef.current = false;
           }
         });
         
-        // Start rotate animation separately with small delay
-        setTimeout(() => {
-          try {
-            rotateAnimRef.current?.start((finished) => {
-              if (finished) {
-                rotateAnimRef.current = null;
-              }
-            });
-          } catch (error) {
-            console.warn('Error starting rotate animation:', error);
+        // Start rotate animation
+        rotateAnimRef.current.start((finished) => {
+          if (finished) {
+            rotateAnimRef.current = null;
           }
-        }, 10);
+        });
       } catch (error) {
         console.warn('Error creating swipe animations:', error);
         isAnimatingRef.current = false;
       }
-    }, 100); // Delay to ensure previous animations are stopped
+    });
   };
 
   const resetCard = () => {

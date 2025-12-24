@@ -101,20 +101,44 @@ export async function saveUserAcceptance(
   context: 'signup' | 'relationship_registration' | 'update' | 'manual'
 ): Promise<boolean> {
   try {
-    const { error } = await supabase
+    // First check if acceptance already exists
+    const { data: existing } = await supabase
       .from('user_legal_acceptances')
-      .upsert({
-        user_id: userId,
-        document_id: documentId,
-        document_version: documentVersion,
-        context,
-      }, {
-        onConflict: 'user_id,document_id',
-      });
+      .select('id')
+      .eq('user_id', userId)
+      .eq('document_id', documentId)
+      .single();
 
-    if (error) {
-      console.error('Error saving acceptance:', error);
-      throw error;
+    if (existing) {
+      // Update existing acceptance
+      const { error } = await supabase
+        .from('user_legal_acceptances')
+        .update({
+          document_version: documentVersion,
+          context,
+          accepted_at: new Date().toISOString(),
+        })
+        .eq('id', existing.id);
+
+      if (error) {
+        console.error('Error updating acceptance:', error);
+        throw error;
+      }
+    } else {
+      // Insert new acceptance
+      const { error } = await supabase
+        .from('user_legal_acceptances')
+        .insert({
+          user_id: userId,
+          document_id: documentId,
+          document_version: documentVersion,
+          context,
+        });
+
+      if (error) {
+        console.error('Error inserting acceptance:', error);
+        throw error;
+      }
     }
     return true;
   } catch (error) {

@@ -876,7 +876,9 @@ export async function createDateRequest(requestData: {
       suggested_activities: requestData.suggestedActivities,
       dress_code: requestData.dressCode,
       budget_range: requestData.budgetRange,
-      expense_handling: requestData.expenseHandling || 'split',
+      expense_handling: (requestData.expenseHandling && ['split', 'initiator_pays', 'acceptor_pays'].includes(requestData.expenseHandling)) 
+        ? requestData.expenseHandling 
+        : 'split', // Ensure valid value
       number_of_people: requestData.numberOfPeople || 2,
       gender_preference: requestData.genderPreference || 'everyone',
       special_requests: requestData.specialRequests,

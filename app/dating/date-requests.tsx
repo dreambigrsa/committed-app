@@ -37,8 +37,25 @@ export default function DateRequestsScreen() {
       const data = await DatingService.getDateRequests();
       setDateRequests(data || []);
     } catch (error: any) {
-      console.error('Error loading date requests:', error);
+      // Extract proper error message
+      let errorMessage = 'Failed to load date requests';
+      if (error?.message) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error?.error?.message) {
+        errorMessage = error.error.message;
+      } else if (error?.details) {
+        errorMessage = error.details;
+      }
+      
+      console.error('Error loading date requests:', errorMessage, error);
       setDateRequests([]);
+      
+      // Optionally show user-friendly error (only if not a silent error)
+      if (errorMessage && !errorMessage.includes('not authenticated')) {
+        Alert.alert('Error', errorMessage);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -169,9 +186,9 @@ export default function DateRequestsScreen() {
   }) || [];
 
   const renderDateRequest = ({ item, index }: { item: any; index: number }) => {
-    const isReceived = item.recipient_id === currentUserId;
-    const isSent = item.initiator_id === currentUserId;
-    const otherUser = isReceived ? item.initiator : item.recipient;
+    const isReceived = item.to_user_id === currentUserId;
+    const isSent = item.from_user_id === currentUserId;
+    const otherUser = isReceived ? item.from_user : item.to_user;
     const photo = otherUser?.profile_picture;
 
     return (

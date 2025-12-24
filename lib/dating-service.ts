@@ -774,7 +774,7 @@ export async function getDateRequests() {
     .from('dating_date_requests')
     .select(`
       *,
-      initiator:users!dating_date_requests_initiator_id_fkey(
+      from_user:users!dating_date_requests_from_user_id_fkey(
         id,
         full_name,
         profile_picture,
@@ -782,7 +782,7 @@ export async function getDateRequests() {
         phone_verified,
         email_verified
       ),
-      recipient:users!dating_date_requests_recipient_id_fkey(
+      to_user:users!dating_date_requests_to_user_id_fkey(
         id,
         full_name,
         profile_picture,
@@ -791,10 +791,14 @@ export async function getDateRequests() {
         email_verified
       )
     `)
-    .or(`initiator_id.eq.${user.id},recipient_id.eq.${user.id}`)
+    .or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`)
     .order('created_at', { ascending: false });
 
-  if (error) throw error;
+  if (error) {
+    // Extract proper error message from Supabase error
+    const errorMessage = error.message || error.details || error.hint || 'Failed to load date requests';
+    throw new Error(errorMessage);
+  }
   return data || [];
 }
 
@@ -819,16 +823,46 @@ export async function createDateRequest(requestData: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('User not authenticated');
 
+  // Get match_id for the recipient
+  const { data: match } = await supabase
+    .from('dating_matches')
+    .select('id')
+    .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
+    .or(`user1_id.eq.${requestData.recipientId},user2_id.eq.${requestData.recipientId}`)
+    .single();
+
+  if (!match) {
+    throw new Error('Match not found. You can only send date requests to your matches.');
+  }
+
+  // Combine date and time
+  const dateTime = new Date(`${requestData.proposedDate}T${requestData.proposedTime}`);
+
   const { data, error } = await supabase
     .from('dating_date_requests')
     .insert({
-      initiator_id: user.id,
-      ...requestData,
+      match_id: match.id,
+      from_user_id: user.id,
+      to_user_id: requestData.recipientId,
+      date_title: requestData.title,
+      date_description: requestData.description,
+      date_location: requestData.locationName,
+      date_location_latitude: requestData.locationLatitude,
+      date_location_longitude: requestData.locationLongitude,
+      date_time: dateTime.toISOString(),
+      date_duration_hours: requestData.durationMinutes ? Math.ceil(requestData.durationMinutes / 60) : 2,
+      suggested_activities: requestData.suggestedActivities,
+      dress_code: requestData.dressCode,
+      budget_range: requestData.budgetRange,
+      expense_handling: requestData.expenseHandling || 'split',
+      number_of_people: requestData.numberOfPeople || 2,
+      gender_preference: requestData.genderPreference || 'everyone',
+      special_requests: requestData.specialRequests,
       status: 'pending',
     })
     .select(`
       *,
-      recipient:users!dating_date_requests_recipient_id_fkey(
+      to_user:users!dating_date_requests_to_user_id_fkey(
         id,
         full_name,
         profile_picture
@@ -836,7 +870,10 @@ export async function createDateRequest(requestData: {
     `)
     .single();
 
-  if (error) throw error;
+  if (error) {
+    const errorMessage = error.message || error.details || error.hint || 'Failed to create date request';
+    throw new Error(errorMessage);
+  }
 
   // Create notification
   await supabase.from('notifications').insert({
@@ -844,7 +881,7 @@ export async function createDateRequest(requestData: {
     type: 'dating_date_request',
     title: 'New Date Request',
     message: `${(await supabase.from('users').select('full_name').eq('id', user.id).single()).data?.full_name || 'Someone'} sent you a date request!`,
-    data: { date_request_id: data.id, initiator_id: user.id },
+    data: { date_request_id: data.id, from_user_id: user.id },
   });
 
   return data;
@@ -863,7 +900,7 @@ export async function respondToDateRequest(
     .eq('id', requestId)
     .single();
 
-  if (!request || request.recipient_id !== user.id) {
+  if (!request || request.to_user_id !== user.id) {
     throw new Error('Date request not found or unauthorized');
   }
 
@@ -885,7 +922,7 @@ export async function respondToDateRequest(
 
   // Create notification
   await supabase.from('notifications').insert({
-    user_id: request.initiator_id,
+    user_id: request.from_user_id,
     type: response === 'accepted' ? 'dating_date_accepted' : 'dating_date_declined',
     title: response === 'accepted' ? 'Date Request Accepted!' : 'Date Request Declined',
     message: `${(await supabase.from('users').select('full_name').eq('id', user.id).single()).data?.full_name || 'Someone'} ${response === 'accepted' ? 'accepted' : 'declined'} your date request.`,
@@ -924,7 +961,7 @@ export async function updateDateRequest(
     .eq('id', requestId)
     .single();
 
-  if (!request || request.initiator_id !== user.id) {
+  if (!request || request.from_user_id !== user.id) {
     throw new Error('Date request not found or unauthorized');
   }
 
@@ -932,14 +969,37 @@ export async function updateDateRequest(
     throw new Error('Can only update pending date requests');
   }
 
+  // Map field names from API to database columns
+  const dbUpdates: any = {};
+  if (updates.title !== undefined) dbUpdates.date_title = updates.title;
+  if (updates.description !== undefined) dbUpdates.date_description = updates.description;
+  if (updates.locationName !== undefined) dbUpdates.date_location = updates.locationName;
+  if (updates.locationLatitude !== undefined) dbUpdates.date_location_latitude = updates.locationLatitude;
+  if (updates.locationLongitude !== undefined) dbUpdates.date_location_longitude = updates.locationLongitude;
+  if (updates.proposedDate !== undefined && updates.proposedTime !== undefined) {
+    const dateTime = new Date(`${updates.proposedDate}T${updates.proposedTime}`);
+    dbUpdates.date_time = dateTime.toISOString();
+  }
+  if (updates.durationMinutes !== undefined) dbUpdates.date_duration_hours = Math.ceil(updates.durationMinutes / 60);
+  if (updates.suggestedActivities !== undefined) dbUpdates.suggested_activities = updates.suggestedActivities;
+  if (updates.dressCode !== undefined) dbUpdates.dress_code = updates.dressCode;
+  if (updates.budgetRange !== undefined) dbUpdates.budget_range = updates.budgetRange;
+  if (updates.expenseHandling !== undefined) dbUpdates.expense_handling = updates.expenseHandling;
+  if (updates.numberOfPeople !== undefined) dbUpdates.number_of_people = updates.numberOfPeople;
+  if (updates.genderPreference !== undefined) dbUpdates.gender_preference = updates.genderPreference;
+  if (updates.specialRequests !== undefined) dbUpdates.special_requests = updates.specialRequests;
+
   const { data, error } = await supabase
     .from('dating_date_requests')
-    .update(updates)
+    .update(dbUpdates)
     .eq('id', requestId)
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    const errorMessage = error.message || error.details || error.hint || 'Failed to update date request';
+    throw new Error(errorMessage);
+  }
   return data;
 }
 
@@ -953,7 +1013,7 @@ export async function cancelDateRequest(requestId: string) {
     .eq('id', requestId)
     .single();
 
-  if (!request || request.initiator_id !== user.id) {
+  if (!request || request.from_user_id !== user.id) {
     throw new Error('Date request not found or unauthorized');
   }
 

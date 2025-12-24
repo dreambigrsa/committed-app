@@ -15,7 +15,8 @@ import { useTheme } from '@/contexts/ThemeContext';
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH - 32;
 const CARD_HEIGHT = SCREEN_HEIGHT * 0.65; // Reduced from 0.75 to 0.65 to prevent content cutoff
-const SWIPE_THRESHOLD = 100;
+const SWIPE_THRESHOLD = 50; // Lower threshold for easier swiping
+const VELOCITY_THRESHOLD = 0.5; // Velocity threshold for quick swipes (pixels per ms)
 const ROTATION_MULTIPLIER = 0.1;
 
 interface DatingSwipeCardProps {
@@ -142,8 +143,17 @@ export default function DatingSwipeCard({
         // Flatten offset first to get current position
         position.flattenOffset();
         
-        if (Math.abs(gesture.dx) > SWIPE_THRESHOLD) {
-          // Swipe detected
+        // Calculate velocity (pixels per millisecond)
+        const velocityX = gesture.vx || (gesture.dx / (gesture.dt || 1));
+        const absVelocity = Math.abs(velocityX);
+        const absDx = Math.abs(gesture.dx);
+        
+        // Check if swipe meets threshold (distance OR velocity)
+        const meetsDistanceThreshold = absDx > SWIPE_THRESHOLD;
+        const meetsVelocityThreshold = absVelocity > VELOCITY_THRESHOLD && absDx > 20; // At least 20px movement with velocity
+        
+        if (meetsDistanceThreshold || meetsVelocityThreshold) {
+          // Swipe detected - trigger action immediately
           if (gesture.dx > 0) {
             // Swipe right - Like
             handleSwipeRight();
@@ -274,19 +284,19 @@ export default function DatingSwipeCard({
     // Use requestAnimationFrame for smoother animation start
     requestAnimationFrame(() => {
       try {
-        // Use spring animation for smoother, more natural feel
+        // Use faster spring animation for quick, smooth swipe
         positionAnimRef.current = Animated.spring(position, {
           toValue: { x: SCREEN_WIDTH + 100, y: 0 },
-          tension: 50,
-          friction: 7,
+          tension: 100, // Higher tension = faster animation
+          friction: 8, // Slightly higher friction for smoother stop
           useNativeDriver: false,
         });
         
-        // Animate rotate (native-driven)
+        // Animate rotate (native-driven) - faster
         rotateAnimRef.current = Animated.spring(rotate, {
           toValue: 30,
-          tension: 50,
-          friction: 7,
+          tension: 100,
+          friction: 8,
           useNativeDriver: true,
         });
         
@@ -324,19 +334,19 @@ export default function DatingSwipeCard({
     // Use requestAnimationFrame for smoother animation start
     requestAnimationFrame(() => {
       try {
-        // Use spring animation for smoother, more natural feel
+        // Use faster spring animation for quick, smooth swipe
         positionAnimRef.current = Animated.spring(position, {
           toValue: { x: -SCREEN_WIDTH - 100, y: 0 },
-          tension: 50,
-          friction: 7,
+          tension: 100, // Higher tension = faster animation
+          friction: 8, // Slightly higher friction for smoother stop
           useNativeDriver: false,
         });
         
-        // Animate rotate (native-driven)
+        // Animate rotate (native-driven) - faster
         rotateAnimRef.current = Animated.spring(rotate, {
           toValue: -30,
-          tension: 50,
-          friction: 7,
+          tension: 100,
+          friction: 8,
           useNativeDriver: true,
         });
         

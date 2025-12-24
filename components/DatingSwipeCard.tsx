@@ -59,6 +59,18 @@ export default function DatingSwipeCard({
 
   useEffect(() => {
     if (isTop) {
+      // When card becomes top, ensure it's fully reset and ready for swiping
+      stopAllAnimations();
+      isAnimatingRef.current = false;
+      
+      // Reset position and rotation
+      position.setValue({ x: 0, y: 0 });
+      position.setOffset({ x: 0, y: 0 });
+      rotate.setValue(0);
+      likeOpacity.setValue(0);
+      passOpacity.setValue(0);
+      
+      // Animate to top position
       Animated.parallel([
         Animated.spring(scale, {
           toValue: 1,
@@ -102,8 +114,12 @@ export default function DatingSwipeCard({
     };
   }, []);
 
-  const panResponder = useRef(
-    PanResponder.create({
+  // Recreate PanResponder when isTop changes to ensure it works for the new top card
+  const panResponder = useRef<ReturnType<typeof PanResponder.create> | null>(null);
+  
+  useEffect(() => {
+    // Recreate PanResponder when isTop changes
+    panResponder.current = PanResponder.create({
       // Don't capture on start - let taps pass through
       onStartShouldSetPanResponder: () => false,
       // Only capture when there's significant movement (swipe)
@@ -113,7 +129,7 @@ export default function DatingSwipeCard({
         return Math.abs(gestureState.dx) > 10 || Math.abs(gestureState.dy) > 10;
       },
       onPanResponderGrant: () => {
-        if (isAnimatingRef.current) return;
+        if (!isTop || isAnimatingRef.current) return;
         // Stop any ongoing animations before starting new gesture
         stopAllAnimations();
         position.setOffset({
@@ -181,8 +197,8 @@ export default function DatingSwipeCard({
           resetToCenter();
         }
       },
-    })
-  ).current;
+    });
+  }, [isTop]); // Recreate when isTop changes
 
   const stopAllAnimations = () => {
     try {
@@ -399,12 +415,13 @@ export default function DatingSwipeCard({
     setTimeout(() => {
       try {
         position.setValue({ x: 0, y: 0 });
-        // Only reset native-driven values if they're not in use
-        if (!isAnimatingRef.current) {
-          rotate.setValue(0);
-          likeOpacity.setValue(0);
-          passOpacity.setValue(0);
-        }
+        position.setOffset({ x: 0, y: 0 });
+        // Reset all animation values
+        rotate.setValue(0);
+        likeOpacity.setValue(0);
+        passOpacity.setValue(0);
+        opacity.setValue(isTop ? 1 : 0.9);
+        scale.setValue(isTop ? 1 : 0.95);
         isAnimatingRef.current = false;
       } catch (error) {
         console.warn('Error resetting card:', error);
@@ -446,7 +463,7 @@ export default function DatingSwipeCard({
           zIndex: isTop ? 1000 : 1000 - index,
         },
       ]}
-      {...panResponder.panHandlers}
+      {...(panResponder.current?.panHandlers || {})}
     >
       {/* Photo Gallery */}
       <TouchableOpacity

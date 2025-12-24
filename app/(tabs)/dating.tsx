@@ -206,6 +206,13 @@ export default function DatingScreen() {
     handleLike(userId, true);
   };
 
+  const handleRefresh = async () => {
+    // Reset state and reload discovery profiles
+    setCurrentIndex(0);
+    setSwipedProfiles(new Set());
+    await loadDatingData();
+  };
+
   const handleRewind = async () => {
     if (currentIndex > 0) {
       // Check premium for rewind
@@ -230,7 +237,8 @@ export default function DatingScreen() {
         });
       }
     } else {
-      Alert.alert('No More to Rewind', 'You\'re at the beginning!');
+      // If at the beginning, refresh instead
+      handleRefresh();
     }
   };
 

@@ -659,6 +659,28 @@ export default function ProfileSetupScreen() {
           />
         </View>
 
+        {/* Gender */}
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Gender</Text>
+            <Text style={styles.sectionSubtitle}>Select your gender</Text>
+          </View>
+          <View style={styles.radioGroup}>
+            {(['male', 'female', 'non_binary', 'prefer_not_to_say'] as const).map((option) => (
+              <TouchableOpacity
+                key={option}
+                style={styles.radioOption}
+                onPress={() => setGender(option)}
+              >
+                <View style={[styles.radio, gender === option && styles.radioSelected]} />
+                <Text style={styles.radioLabel}>
+                  {option === 'non_binary' ? 'Non-binary' : option === 'prefer_not_to_say' ? 'Prefer not to say' : option.charAt(0).toUpperCase() + option.slice(1)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
         {/* Location */}
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Location</Text>
@@ -1148,24 +1170,6 @@ export default function ProfileSetupScreen() {
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Preferences</Text>
             <Text style={styles.sectionSubtitle}>Who you want to meet</Text>
-          </View>
-          
-          <View style={styles.preferenceRow}>
-            <Text style={styles.preferenceLabel}>Gender:</Text>
-            <View style={styles.radioGroup}>
-              {(['male', 'female', 'non_binary', 'prefer_not_to_say'] as const).map((option) => (
-                <TouchableOpacity
-                  key={option}
-                  style={styles.radioOption}
-                  onPress={() => setGender(option)}
-                >
-                  <View style={[styles.radio, gender === option && styles.radioSelected]} />
-                  <Text style={styles.radioLabel}>
-                    {option === 'non_binary' ? 'Non-binary' : option === 'prefer_not_to_say' ? 'Prefer not to say' : option.charAt(0).toUpperCase() + option.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
           </View>
           
           <View style={styles.preferenceRow}>

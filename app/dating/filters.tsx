@@ -31,6 +31,7 @@ export default function DatingFiltersScreen() {
   const [useCurrentLocation, setUseCurrentLocation] = useState(true);
   const [latitude, setLatitude] = useState<number | undefined>();
   const [longitude, setLongitude] = useState<number | undefined>();
+  const [lookingFor, setLookingFor] = useState<'men' | 'women' | 'everyone'>('everyone');
   const [isLoading, setIsLoading] = useState(true);
 
   // Load saved filters from profile
@@ -68,6 +69,11 @@ export default function DatingFiltersScreen() {
           setLatitude(profile.location_latitude);
           setLongitude(profile.location_longitude);
           setUseCurrentLocation(false);
+        }
+        
+        // Load gender preference
+        if (profile.looking_for) {
+          setLookingFor(profile.looking_for);
         }
       }
     } catch (error: any) {
@@ -113,6 +119,7 @@ export default function DatingFiltersScreen() {
         location_country: locationCountry || undefined,
         location_latitude: latitude,
         location_longitude: longitude,
+        looking_for: lookingFor,
       });
 
       Alert.alert('Success', 'Filters applied successfully!', [
@@ -216,6 +223,36 @@ export default function DatingFiltersScreen() {
             />
             <Text style={styles.hint}>Show people within this distance</Text>
           </View>
+        </View>
+
+        {/* Gender Preference Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Show Me</Text>
+          </View>
+          
+          <View style={styles.optionsRow}>
+            {(['men', 'women', 'everyone'] as const).map((option) => (
+              <TouchableOpacity
+                key={option}
+                style={[
+                  styles.optionChip,
+                  lookingFor === option && styles.optionChipActive,
+                ]}
+                onPress={() => setLookingFor(option)}
+              >
+                <Text
+                  style={[
+                    styles.optionText,
+                    lookingFor === option && styles.optionTextActive,
+                  ]}
+                >
+                  {option.charAt(0).toUpperCase() + option.slice(1)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={styles.hint}>Who you want to see in discovery</Text>
         </View>
 
         {/* Age Range Section */}
@@ -379,6 +416,31 @@ const createStyles = (colors: any) =>
       marginTop: 16,
       fontSize: 16,
       color: colors.text.secondary,
+    },
+    optionsRow: {
+      flexDirection: 'row',
+      gap: 12,
+      flexWrap: 'wrap',
+    },
+    optionChip: {
+      paddingHorizontal: 20,
+      paddingVertical: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border.light,
+      backgroundColor: colors.background.secondary,
+    },
+    optionChipActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    optionText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.text.secondary,
+    },
+    optionTextActive: {
+      color: '#fff',
     },
   });
 

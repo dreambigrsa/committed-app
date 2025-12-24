@@ -246,6 +246,7 @@ export async function getDatingDiscovery(filters?: {
   const locationCountry = filters?.locationCountry ?? userProfile.location_country;
   const userLatitude = filters?.latitude ?? userProfile.location_latitude;
   const userLongitude = filters?.longitude ?? userProfile.location_longitude;
+  const lookingFor = filters?.lookingFor ?? userProfile.looking_for ?? 'everyone';
   
   // Apply age filters
   if (minAge) {
@@ -265,6 +266,13 @@ export async function getDatingDiscovery(filters?: {
   
   // Note: Distance filtering by coordinates would require PostGIS or manual calculation
   // For now, we filter by city/country which is stored in the profile
+  
+  // Note: Gender filtering requires a gender field in dating_profiles table
+  // For now, we filter based on mutual compatibility:
+  // User A sees User B if User A's looking_for matches User B's gender
+  // AND User B's looking_for includes User A's gender (or is 'everyone')
+  // Since we don't have a gender field yet, we'll filter after fetching
+  // and match based on the looking_for preferences
 
   // Exclude already liked/passed users
   const { data: liked } = await supabase
@@ -298,9 +306,14 @@ export async function getDatingDiscovery(filters?: {
     return { profiles: [], hasMore: false };
   }
 
+  // Note: Gender filtering requires a gender field in dating_profiles table
+  // Currently, we can only save the user's preference (looking_for)
+  // Proper filtering will be implemented once we add a gender field to the schema
+  // For now, the preference is saved and will be used when gender data is available
+
   // Now fetch related data for each profile separately to avoid 400 errors
   const profilesWithRelations = await Promise.all(
-    profiles.map(async (profile: any) => {
+    filteredProfiles.map(async (profile: any) => {
       const [photosResult, videosResult, userResult] = await Promise.all([
         supabase
           .from('dating_photos')

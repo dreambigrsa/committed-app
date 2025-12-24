@@ -163,23 +163,40 @@ export default function DatingSwipeCard({
   ).current;
 
   const stopAllAnimations = () => {
-    // Stop position animations (JS-driven)
-    if (positionAnimRef.current) {
-      positionAnimRef.current.stop();
-      positionAnimRef.current = null;
+    try {
+      // Stop position animations (JS-driven)
+      if (positionAnimRef.current) {
+        positionAnimRef.current.stop();
+        positionAnimRef.current = null;
+      }
+      position.stopAnimation(() => {
+        // Callback to ensure it's stopped
+      });
+      
+      // Stop rotate animations (native-driven)
+      if (rotateAnimRef.current) {
+        rotateAnimRef.current.stop();
+        rotateAnimRef.current = null;
+      }
+      rotate.stopAnimation(() => {
+        // Callback to ensure it's stopped
+      });
+      
+      // Stop opacity animations (native-driven)
+      likeOpacity.stopAnimation(() => {
+        // Callback to ensure it's stopped
+      });
+      passOpacity.stopAnimation(() => {
+        // Callback to ensure it's stopped
+      });
+      
+      // Also stop scale and opacity if they're animating
+      scale.stopAnimation();
+      opacity.stopAnimation();
+    } catch (error) {
+      console.warn('Error stopping animations:', error);
+      // Continue anyway
     }
-    position.stopAnimation();
-    
-    // Stop rotate animations (native-driven)
-    if (rotateAnimRef.current) {
-      rotateAnimRef.current.stop();
-      rotateAnimRef.current = null;
-    }
-    rotate.stopAnimation();
-    
-    // Stop opacity animations (native-driven)
-    likeOpacity.stopAnimation();
-    passOpacity.stopAnimation();
   };
 
   const resetToCenter = () => {
@@ -193,13 +210,24 @@ export default function DatingSwipeCard({
     const currentY = (position.y as any)._value || 0;
     const currentRotate = (rotate as any)._value || 0;
     
-    // Reset values immediately
-    position.setValue({ x: currentX, y: currentY });
-    rotate.setValue(currentRotate);
+    // Reset values immediately - but don't use setValue on native-driven values
+    // that might have been moved to native
+    try {
+      position.setValue({ x: currentX, y: currentY });
+      // For native-driven values, we need to be more careful
+      // Reset them but don't animate if they're in native mode
+      rotate.setValue(currentRotate);
+      likeOpacity.setValue(0);
+      passOpacity.setValue(0);
+    } catch (error) {
+      console.warn('Error resetting animation values:', error);
+    }
     
-    // Use double requestAnimationFrame to ensure animations are fully stopped
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
+    // Use setTimeout with longer delay to ensure animations are fully stopped
+    // and the native bridge is ready
+    setTimeout(() => {
+      try {
+        // Create fresh animation instances to avoid conflicts
         // Animate position (JS-driven only - ValueXY cannot use native driver)
         positionAnimRef.current = Animated.timing(position, {
           toValue: { x: 0, y: 0 },
@@ -207,7 +235,7 @@ export default function DatingSwipeCard({
           useNativeDriver: false,
         });
         
-        // Animate rotate (native-driven)
+        // Animate rotate (native-driven) - create fresh instance
         rotateAnimRef.current = Animated.timing(rotate, {
           toValue: 0,
           duration: 300,
@@ -237,14 +265,25 @@ export default function DatingSwipeCard({
         });
         
         // Start rotate and opacity animations together (native driver)
-        rotateAnimRef.current.start((finished) => {
-          if (finished) {
-            rotateAnimRef.current = null;
+        // But with a small delay to ensure position animation started first
+        setTimeout(() => {
+          try {
+            rotateAnimRef.current?.start((finished) => {
+              if (finished) {
+                rotateAnimRef.current = null;
+              }
+            });
+            opacityAnim.start();
+          } catch (error) {
+            console.warn('Error starting native animations:', error);
+            isAnimatingRef.current = false;
           }
-        });
-        opacityAnim.start();
-      });
-    });
+        }, 10);
+      } catch (error) {
+        console.warn('Error creating animations:', error);
+        isAnimatingRef.current = false;
+      }
+    }, 100); // Longer delay to ensure everything is stopped
   };
 
   const handleSwipeRight = () => {
@@ -253,9 +292,9 @@ export default function DatingSwipeCard({
     
     stopAllAnimations();
     
-    // Use double requestAnimationFrame to ensure animations are fully stopped
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
+    // Use setTimeout with delay to ensure animations are fully stopped
+    setTimeout(() => {
+      try {
         // Animate position (JS-driven only)
         positionAnimRef.current = Animated.timing(position, {
           toValue: { x: SCREEN_WIDTH + 100, y: 0 },
@@ -280,14 +319,23 @@ export default function DatingSwipeCard({
           }
         });
         
-        // Start rotate animation separately
-        rotateAnimRef.current.start((finished) => {
-          if (finished) {
-            rotateAnimRef.current = null;
+        // Start rotate animation separately with small delay
+        setTimeout(() => {
+          try {
+            rotateAnimRef.current?.start((finished) => {
+              if (finished) {
+                rotateAnimRef.current = null;
+              }
+            });
+          } catch (error) {
+            console.warn('Error starting rotate animation:', error);
           }
-        });
-      });
-    });
+        }, 10);
+      } catch (error) {
+        console.warn('Error creating swipe animations:', error);
+        isAnimatingRef.current = false;
+      }
+    }, 100); // Delay to ensure previous animations are stopped
   };
 
   const handleSwipeLeft = () => {
@@ -296,9 +344,9 @@ export default function DatingSwipeCard({
     
     stopAllAnimations();
     
-    // Use double requestAnimationFrame to ensure animations are fully stopped
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
+    // Use setTimeout with delay to ensure animations are fully stopped
+    setTimeout(() => {
+      try {
         // Animate position (JS-driven only)
         positionAnimRef.current = Animated.timing(position, {
           toValue: { x: -SCREEN_WIDTH - 100, y: 0 },
@@ -323,30 +371,45 @@ export default function DatingSwipeCard({
           }
         });
         
-        // Start rotate animation separately
-        rotateAnimRef.current.start((finished) => {
-          if (finished) {
-            rotateAnimRef.current = null;
+        // Start rotate animation separately with small delay
+        setTimeout(() => {
+          try {
+            rotateAnimRef.current?.start((finished) => {
+              if (finished) {
+                rotateAnimRef.current = null;
+              }
+            });
+          } catch (error) {
+            console.warn('Error starting rotate animation:', error);
           }
-        });
-      });
-    });
+        }, 10);
+      } catch (error) {
+        console.warn('Error creating swipe animations:', error);
+        isAnimatingRef.current = false;
+      }
+    }, 100); // Delay to ensure previous animations are stopped
   };
 
   const resetCard = () => {
     // Stop all animations before resetting to prevent conflicts
     stopAllAnimations();
     
-    // Use double requestAnimationFrame to ensure animations are fully stopped before resetting
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
+    // Use setTimeout to ensure animations are fully stopped before resetting
+    setTimeout(() => {
+      try {
         position.setValue({ x: 0, y: 0 });
-        rotate.setValue(0);
-        likeOpacity.setValue(0);
-        passOpacity.setValue(0);
+        // Only reset native-driven values if they're not in use
+        if (!isAnimatingRef.current) {
+          rotate.setValue(0);
+          likeOpacity.setValue(0);
+          passOpacity.setValue(0);
+        }
         isAnimatingRef.current = false;
-      });
-    });
+      } catch (error) {
+        console.warn('Error resetting card:', error);
+        isAnimatingRef.current = false;
+      }
+    }, 150); // Longer delay to ensure everything is stopped
   };
 
   const rotateInterpolate = rotate.interpolate({

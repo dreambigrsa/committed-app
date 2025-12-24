@@ -5508,21 +5508,34 @@ export const [AppContext, useApp] = createContextHook(() => {
 
   const createUserStatus = useCallback(async (status: UserStatus) => {
     try {
+      // Use upsert instead of insert to handle cases where status might already exist
+      // This also works better with RLS policies
       const { error } = await supabase
         .from('user_status')
-        .insert({
+        .upsert({
           user_id: status.userId,
           status_type: status.statusType,
           custom_status_text: status.customStatusText,
           last_active_at: status.lastActiveAt,
           status_visibility: status.statusVisibility,
           last_seen_visibility: status.lastSeenVisibility,
+          updated_at: new Date().toISOString(),
+        }, {
+          onConflict: 'user_id',
         });
 
-      if (error) throw error;
+      if (error) {
+        // If it's an RLS error, log it but don't throw - allow the app to continue
+        if (error.code === '42501') {
+          console.warn('RLS policy error when creating user status (may need to run migration):', error.message);
+          return false;
+        }
+        throw error;
+      }
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Create user status error:', error);
+      // Don't throw - allow app to continue even if status creation fails
       return false;
     }
   }, []);

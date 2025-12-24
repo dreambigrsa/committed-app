@@ -16,9 +16,13 @@ DROP POLICY IF EXISTS "Users can upsert own status" ON user_status;
 DROP POLICY IF EXISTS "Users can delete own status" ON user_status;
 
 -- 1. INSERT POLICY: Users can insert their own status
+-- Also allow inserts where user_id matches the authenticated user
 CREATE POLICY "Users can insert own status" ON user_status
   FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
+  WITH CHECK (
+    auth.uid() IS NOT NULL AND 
+    (auth.uid() = user_id OR auth.uid()::text = user_id::text)
+  );
 
 -- 2. SELECT POLICY: Users can view their own status
 CREATE POLICY "Users can view own status" ON user_status

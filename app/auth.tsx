@@ -17,6 +17,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import LegalAcceptanceCheckbox from '@/components/LegalAcceptanceCheckbox';
 import { LegalDocument } from '@/types';
+import { checkUserLegalAcceptances } from '@/lib/legal-enforcement';
 
 export default function AuthScreen() {
   const router = useRouter();
@@ -199,7 +200,6 @@ export default function AuthScreen() {
             await saveLegalAcceptances(user.id);
             
             // Verify the acceptances were saved by checking immediately
-            const { checkUserLegalAcceptances } = await import('@/lib/legal-enforcement');
             const acceptanceStatus = await checkUserLegalAcceptances(user.id);
             
             if (!acceptanceStatus.hasAllRequired) {

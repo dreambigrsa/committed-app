@@ -114,6 +114,84 @@ export default function DatingScreen() {
     }, [currentUser])
   );
 
+  // Listen for match notifications to show modal
+  useEffect(() => {
+    if (!currentUser?.id) return;
+
+    // Subscribe to notifications for match events
+    const channel = supabase
+      .channel(`dating_matches_${currentUser.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${currentUser.id}`,
+        },
+        async (payload: any) => {
+          const notification = payload.new;
+          
+          // Check if it's a match notification
+          if (notification.type === 'dating_match' && notification.data?.matched_user_id) {
+            const matchedUserId = notification.data.matched_user_id;
+            
+            try {
+              // Fetch the matched user's profile info
+              const { data: matchedUserData } = await supabase
+                .from('users')
+                .select('id, full_name, profile_picture')
+                .eq('id', matchedUserId)
+                .single();
+
+              // Get their dating profile photos
+              const { data: datingProfile } = await supabase
+                .from('dating_profiles')
+                .select('id')
+                .eq('user_id', matchedUserId)
+                .single();
+
+              let photo: string | undefined;
+              if (datingProfile) {
+                const { data: photos } = await supabase
+                  .from('dating_photos')
+                  .select('photo_url')
+                  .eq('dating_profile_id', datingProfile.id)
+                  .eq('is_primary', true)
+                  .single();
+                
+                photo = photos?.photo_url || matchedUserData?.profile_picture;
+              } else {
+                photo = matchedUserData?.profile_picture;
+              }
+
+              // Show match modal
+              setMatchedUser({
+                id: matchedUserId,
+                name: matchedUserData?.full_name || 'Someone',
+                photo: photo,
+              });
+              setShowMatchModal(true);
+            } catch (error) {
+              console.error('Error loading matched user info:', error);
+              // Still show modal with basic info
+              setMatchedUser({
+                id: matchedUserId,
+                name: 'Someone',
+                photo: undefined,
+              });
+              setShowMatchModal(true);
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUser?.id]);
+
   const handleLike = async (likedUserId: string, isSuperLike: boolean = false) => {
     try {
       const result = await DatingService.likeUser(likedUserId, isSuperLike);

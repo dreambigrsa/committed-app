@@ -120,11 +120,13 @@ export default function DatingScreen() {
         if (matchedProfile) {
           const photos = matchedProfile.photos || [];
           setMatchedUser({
+            id: likedUserId,
             name: matchedProfile.user?.full_name || matchedProfile.full_name || 'Someone',
             photo: photos[0]?.photo_url || matchedProfile.user?.profile_picture,
           });
         } else {
           setMatchedUser({
+            id: likedUserId,
             name: 'Someone',
             photo: undefined,
           });
@@ -492,6 +494,7 @@ export default function DatingScreen() {
       {/* Match Celebration Modal */}
       <MatchCelebrationModal
         visible={showMatchModal}
+        matchedUserId={matchedUser?.id || ''}
         matchedUserName={matchedUser?.name || 'Someone'}
         matchedUserPhoto={matchedUser?.photo}
         currentUserPhoto={currentUser?.profilePicture}
@@ -499,9 +502,9 @@ export default function DatingScreen() {
           setShowMatchModal(false);
           handleSwipeComplete();
         }}
-        onSendMessage={() => {
-          setShowMatchModal(false);
-          router.push('/dating/matches');
+        onMessageSent={() => {
+          // Optionally navigate to matches or conversation after sending message
+          // router.push('/dating/matches');
         }}
       />
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,34 +7,41 @@ import {
   TouchableOpacity,
   Animated,
   Dimensions,
-  Image,
+  TextInput,
+  Alert,
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
-import { MessageCircle, X } from 'lucide-react-native';
+import { X, Sparkles } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useApp } from '@/contexts/AppContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface MatchCelebrationModalProps {
   visible: boolean;
+  matchedUserId: string;
   matchedUserName: string;
   matchedUserPhoto?: string;
   currentUserPhoto?: string;
   onClose: () => void;
-  onSendMessage: () => void;
+  onMessageSent?: () => void;
 }
 
 export default function MatchCelebrationModal({
   visible,
+  matchedUserId,
   matchedUserName,
   matchedUserPhoto,
   currentUserPhoto,
   onClose,
-  onSendMessage,
+  onMessageSent,
 }: MatchCelebrationModalProps) {
   const { colors } = useTheme();
+  const { currentUser, createOrGetConversation, sendMessage } = useApp();
   const styles = createStyles(colors);
+  const [messageText, setMessageText] = useState('');
+  const [isSending, setIsSending] = useState(false);
 
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -43,11 +50,12 @@ export default function MatchCelebrationModal({
 
   useEffect(() => {
     if (visible) {
-      // Reset animations
+      // Reset animations and message text
       scaleAnim.setValue(0);
       fadeAnim.setValue(0);
       heartScaleAnim.setValue(0);
       heartRotateAnim.setValue(0);
+      setMessageText('');
 
       // Animate in
       Animated.parallel([
@@ -89,6 +97,52 @@ export default function MatchCelebrationModal({
     }
   }, [visible]);
 
+  const handleSendMessage = async (message?: string) => {
+    if (!currentUser || isSending) return;
+    
+    const finalMessage = message || messageText.trim();
+    if (!finalMessage && !message) return; // Only allow empty if it's a quick reaction
+
+    setIsSending(true);
+    try {
+      // Create or get conversation
+      const conversation = await createOrGetConversation(matchedUserId);
+      if (!conversation) {
+        Alert.alert('Error', 'Could not create conversation');
+        setIsSending(false);
+        return;
+      }
+
+      // Send message
+      await sendMessage(
+        conversation.id,
+        matchedUserId,
+        finalMessage,
+        undefined, // mediaUrl
+        undefined, // documentUrl
+        undefined, // documentName
+        'text', // messageType
+        undefined, // stickerId
+        undefined, // statusId
+        undefined // statusPreviewUrl
+      );
+
+      // Clear input and close modal
+      setMessageText('');
+      setIsSending(false);
+      onMessageSent?.();
+      onClose();
+    } catch (error: any) {
+      console.error('Error sending message:', error);
+      Alert.alert('Error', error.message || 'Failed to send message');
+      setIsSending(false);
+    }
+  };
+
+  const handleQuickReaction = (emoji: string) => {
+    handleSendMessage(emoji);
+  };
+
   const heartRotation = heartRotateAnim.interpolate({
     inputRange: [0, 1],
     outputRange: ['-5deg', '5deg'],
@@ -120,6 +174,12 @@ export default function MatchCelebrationModal({
           >
             <Text style={styles.heartEmoji}>💚</Text>
           </Animated.View>
+
+          {/* Sparkle Icons */}
+          <View style={styles.sparkleContainer}>
+            <Sparkles size={20} color="#fff" fill="#fff" />
+            <Sparkles size={20} color="#fff" fill="#fff" />
+          </View>
 
           {/* Close Button */}
           <TouchableOpacity style={styles.closeButton} onPress={onClose}>
@@ -176,16 +236,19 @@ export default function MatchCelebrationModal({
               },
             ]}
           >
-            <Text style={styles.matchText}>IT'S A MATCH</Text>
+            <View style={styles.matchTextContainer}>
+              <Text style={styles.matchTextSmall}>IT'S A</Text>
+              <Text style={styles.matchText}>Match</Text>
+            </View>
             <Text style={styles.matchSubtext}>
               You matched with {matchedUserName}
             </Text>
           </Animated.View>
 
-          {/* Action Buttons */}
+          {/* Message Input Section */}
           <Animated.View
             style={[
-              styles.actionsContainer,
+              styles.inputContainer,
               {
                 opacity: fadeAnim,
                 transform: [{ translateY: scaleAnim.interpolate({
@@ -195,26 +258,55 @@ export default function MatchCelebrationModal({
               },
             ]}
           >
-            <TouchableOpacity
-              style={styles.messageButton}
-              onPress={onSendMessage}
-            >
-              <MessageCircle size={20} color="#fff" />
-              <Text style={styles.messageButtonText}>Send a Message</Text>
-            </TouchableOpacity>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.messageInput}
+                placeholder="Say something nice"
+                placeholderTextColor="rgba(255, 255, 255, 0.6)"
+                value={messageText}
+                onChangeText={setMessageText}
+                multiline={false}
+                editable={!isSending}
+                autoFocus={false}
+              />
+              <TouchableOpacity
+                style={[styles.sendButton, (!messageText.trim() || isSending) && styles.sendButtonDisabled]}
+                onPress={() => handleSendMessage()}
+                disabled={!messageText.trim() || isSending}
+              >
+                <Text style={styles.sendButtonText}>SEND</Text>
+              </TouchableOpacity>
+            </View>
 
+            {/* Quick Reactions */}
             <View style={styles.quickReactions}>
-              <TouchableOpacity style={styles.reactionButton}>
+              <TouchableOpacity 
+                style={styles.reactionButton}
+                onPress={() => handleQuickReaction('👋')}
+                disabled={isSending}
+              >
                 <Text style={styles.reactionEmoji}>👋</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.reactionButton}>
-                <Text style={styles.reactionEmoji}>😊</Text>
+              <TouchableOpacity 
+                style={styles.reactionButton}
+                onPress={() => handleQuickReaction('😉')}
+                disabled={isSending}
+              >
+                <Text style={styles.reactionEmoji}>😉</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.reactionButton}>
+              <TouchableOpacity 
+                style={styles.reactionButton}
+                onPress={() => handleQuickReaction('❤️')}
+                disabled={isSending}
+              >
                 <Text style={styles.reactionEmoji}>❤️</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.reactionButton}>
-                <Text style={styles.reactionEmoji}>😉</Text>
+              <TouchableOpacity 
+                style={styles.reactionButton}
+                onPress={() => handleQuickReaction('😍')}
+                disabled={isSending}
+              >
+                <Text style={styles.reactionEmoji}>😍</Text>
               </TouchableOpacity>
             </View>
           </Animated.View>
@@ -244,6 +336,14 @@ const createStyles = (colors: any) =>
     heartEmoji: {
       fontSize: 120,
       opacity: 0.3,
+    },
+    sparkleContainer: {
+      position: 'absolute',
+      top: 50,
+      right: 70,
+      flexDirection: 'row',
+      gap: 8,
+      zIndex: 10,
     },
     closeButton: {
       position: 'absolute',
@@ -296,15 +396,27 @@ const createStyles = (colors: any) =>
       alignItems: 'center',
       marginBottom: 40,
     },
+    matchTextContainer: {
+      alignItems: 'center',
+      marginBottom: 8,
+    },
+    matchTextSmall: {
+      fontSize: 28,
+      fontWeight: '700',
+      color: '#fff',
+      letterSpacing: 2,
+      textShadowColor: 'rgba(0, 0, 0, 0.5)',
+      textShadowOffset: { width: 0, height: 2 },
+      textShadowRadius: 4,
+    },
     matchText: {
-      fontSize: 48,
+      fontSize: 56,
       fontWeight: '900',
       color: '#fff',
-      letterSpacing: 4,
+      letterSpacing: 2,
       textShadowColor: 'rgba(0, 0, 0, 0.5)',
       textShadowOffset: { width: 0, height: 4 },
       textShadowRadius: 8,
-      marginBottom: 12,
     },
     matchSubtext: {
       fontSize: 20,
@@ -314,30 +426,45 @@ const createStyles = (colors: any) =>
       textShadowOffset: { width: 0, height: 2 },
       textShadowRadius: 4,
     },
-    actionsContainer: {
+    inputContainer: {
       width: '100%',
       maxWidth: 400,
       gap: 20,
+      paddingHorizontal: 20,
     },
-    messageButton: {
+    inputWrapper: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
       gap: 12,
-      backgroundColor: '#fff',
-      paddingVertical: 16,
-      paddingHorizontal: 32,
+      backgroundColor: 'rgba(255, 255, 255, 0.95)',
       borderRadius: 30,
+      paddingHorizontal: 16,
+      paddingVertical: 4,
       shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 8,
-      elevation: 8,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.2,
+      shadowRadius: 4,
+      elevation: 4,
     },
-    messageButtonText: {
-      fontSize: 18,
+    messageInput: {
+      flex: 1,
+      fontSize: 16,
+      color: '#000',
+      paddingVertical: 12,
+      paddingHorizontal: 8,
+      minHeight: 44,
+    },
+    sendButton: {
+      paddingVertical: 8,
+      paddingHorizontal: 20,
+    },
+    sendButtonDisabled: {
+      opacity: 0.5,
+    },
+    sendButtonText: {
+      fontSize: 16,
       fontWeight: '700',
-      color: '#00E676',
+      color: '#007AFF',
     },
     quickReactions: {
       flexDirection: 'row',

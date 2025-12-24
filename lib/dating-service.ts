@@ -824,11 +824,11 @@ export async function createDateRequest(requestData: {
   if (!user) throw new Error('User not authenticated');
 
   // Get match_id for the recipient
+  // Match exists if (user1_id = user.id AND user2_id = recipientId) OR (user1_id = recipientId AND user2_id = user.id)
   const { data: match } = await supabase
     .from('dating_matches')
     .select('id')
-    .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
-    .or(`user1_id.eq.${requestData.recipientId},user2_id.eq.${requestData.recipientId}`)
+    .or(`and(user1_id.eq.${user.id},user2_id.eq.${requestData.recipientId}),and(user1_id.eq.${requestData.recipientId},user2_id.eq.${user.id})`)
     .single();
 
   if (!match) {

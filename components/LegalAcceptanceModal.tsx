@@ -39,6 +39,7 @@ export default function LegalAcceptanceModal({
   const [isSaving, setIsSaving] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
   const documentsRef = useRef<LegalDocument[]>([]);
+  const initializedRef = useRef<boolean>(false);
 
   const allDocuments = useMemo(() => [...missingDocuments, ...needsReAcceptance], [missingDocuments, needsReAcceptance]);
   const requiredDocs = useMemo(() => allDocuments.filter((doc) => doc.isRequired), [allDocuments]);
@@ -52,12 +53,19 @@ export default function LegalAcceptanceModal({
     documentsRef.current = allDocuments;
   }, [allDocuments]);
 
-  // Check existing acceptances when modal opens
+  // Check existing acceptances when modal opens (only once)
   useEffect(() => {
     if (!visible) {
-      // Reset acceptances when modal closes
+      // Reset acceptances and initialization flag when modal closes
       setAcceptances({});
+      initializedRef.current = false;
       return;
+    }
+
+    // Only initialize acceptances once when modal becomes visible
+    // Use ref to prevent re-initialization after user interactions
+    if (initializedRef.current) {
+      return; // Already initialized, don't reset
     }
 
     const allDocs = documentsRef.current;
@@ -66,6 +74,8 @@ export default function LegalAcceptanceModal({
 
     if (currentUser?.id && documentIds.length > 0) {
       setIsChecking(true);
+      initializedRef.current = true; // Mark as initialized
+      
       // Check which documents are already accepted
       supabase
         .from('user_legal_acceptances')

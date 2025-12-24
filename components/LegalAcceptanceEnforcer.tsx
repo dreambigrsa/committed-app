@@ -3,6 +3,7 @@ import { useRouter, usePathname } from 'expo-router';
 import { useApp } from '@/contexts/AppContext';
 import LegalAcceptanceModal from './LegalAcceptanceModal';
 import { LegalDocument } from '@/types';
+import { checkUserLegalAcceptances } from '@/lib/legal-enforcement';
 
 export default function LegalAcceptanceEnforcer() {
   const { currentUser, legalAcceptanceStatus, setLegalAcceptanceStatus } = useApp();
@@ -68,7 +69,6 @@ export default function LegalAcceptanceEnforcer() {
     // Refresh acceptance status
     if (currentUser?.id) {
       try {
-        const { checkUserLegalAcceptances } = await import('@/lib/legal-enforcement');
         const status = await checkUserLegalAcceptances(currentUser.id);
         setLegalAcceptanceStatus(status);
         

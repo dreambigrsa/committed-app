@@ -276,8 +276,8 @@ export async function getDatingDiscovery(filters?: {
     query = query.ilike('location_country', `%${locationCountry}%`);
   }
   
-  // Note: Distance filtering by coordinates would require PostGIS or manual calculation
-  // For now, we filter by city/country which is stored in the profile
+  // Note: Distance filtering by coordinates will be done after fetching
+  // since Supabase doesn't have built-in distance calculation without PostGIS
   
   // Note: Gender filtering requires a gender field in dating_profiles table
   // For now, we filter based on mutual compatibility:
@@ -323,11 +323,43 @@ export async function getDatingDiscovery(filters?: {
     return { profiles: [], hasMore: false };
   }
 
+  // Helper function to calculate distance between two coordinates (Haversine formula)
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371; // Earth's radius in kilometers
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
+  // Filter by distance if coordinates are available
+  let filteredProfiles = profiles;
+  if (userLatitude && userLongitude && maxDistance) {
+    filteredProfiles = profiles.filter((profile: any) => {
+      // If profile doesn't have coordinates, include it (can't filter by distance)
+      if (!profile.location_latitude || !profile.location_longitude) {
+        return true;
+      }
+      
+      const distance = calculateDistance(
+        userLatitude,
+        userLongitude,
+        profile.location_latitude,
+        profile.location_longitude
+      );
+      
+      return distance <= maxDistance;
+    });
+  }
+
   // Filter by gender preference (mutual compatibility)
   // User A sees User B if:
   // 1. User A's looking_for preference matches User B's gender
   // 2. User B's looking_for includes User A's gender (or is 'everyone')
-  let filteredProfiles = profiles;
   if (lookingFor !== 'everyone') {
     // Get current user's gender from their profile
     const currentUserGender = userProfile.gender;

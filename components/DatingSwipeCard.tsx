@@ -149,10 +149,19 @@ export default function DatingSwipeCard({
         // Flatten offset first to get current position
         position.flattenOffset();
         
+        // If it was just a small tap (no significant movement), don't handle it here
+        // Let the TouchableOpacity handle the tap
+        const absDx = Math.abs(gesture.dx);
+        const absDy = Math.abs(gesture.dy);
+        if (absDx < 10 && absDy < 10) {
+          // Very small movement - likely a tap, reset and let TouchableOpacity handle it
+          resetToCenter();
+          return;
+        }
+        
         // Calculate velocity (pixels per millisecond)
         const velocityX = gesture.vx || (gesture.dx / (gesture.dt || 1));
         const absVelocity = Math.abs(velocityX);
-        const absDx = Math.abs(gesture.dx);
         
         // Check if swipe meets threshold (distance OR velocity)
         const meetsDistanceThreshold = absDx > SWIPE_THRESHOLD;

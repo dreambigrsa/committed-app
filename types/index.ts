@@ -629,6 +629,7 @@ export interface DatingProfile {
   locationUpdatedAt?: string;
   relationshipGoals: string[];
   interests: string[];
+  gender?: 'male' | 'female' | 'non_binary' | 'prefer_not_to_say';
   lookingFor: 'men' | 'women' | 'everyone';
   ageRangeMin: number;
   ageRangeMax: number;

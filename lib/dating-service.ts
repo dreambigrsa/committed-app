@@ -83,6 +83,7 @@ export async function createOrUpdateDatingProfile(profileData: {
   location_longitude?: number;
   relationship_goals?: string[];
   interests?: string[];
+  gender?: 'male' | 'female' | 'non_binary' | 'prefer_not_to_say';
   looking_for?: 'men' | 'women' | 'everyone';
   age_range_min?: number;
   age_range_max?: number;
@@ -306,10 +307,61 @@ export async function getDatingDiscovery(filters?: {
     return { profiles: [], hasMore: false };
   }
 
-  // Note: Gender filtering requires a gender field in dating_profiles table
-  // Currently, we can only save the user's preference (looking_for)
-  // Proper filtering will be implemented once we add a gender field to the schema
-  // For now, the preference is saved and will be used when gender data is available
+  // Filter by gender preference (mutual compatibility)
+  // User A sees User B if:
+  // 1. User A's looking_for preference matches User B's gender
+  // 2. User B's looking_for includes User A's gender (or is 'everyone')
+  let filteredProfiles = profiles;
+  if (lookingFor !== 'everyone') {
+    // Get current user's gender from their profile
+    const currentUserGender = userProfile.gender;
+    
+    filteredProfiles = profiles.filter((profile: any) => {
+      const profileGender = profile.gender;
+      const profileLookingFor = profile.looking_for || 'everyone';
+      
+      // Skip profiles without gender (they'll be shown to everyone)
+      if (!profileGender || profileGender === 'prefer_not_to_say') {
+        return true; // Show profiles without gender to everyone
+      }
+      
+      // If current user wants to see 'men', show profiles where:
+      // - profile's gender is 'male' or 'non_binary'
+      // - AND profile's looking_for includes current user's gender (or is 'everyone')
+      if (lookingFor === 'men') {
+        const genderMatch = profileGender === 'male' || profileGender === 'non_binary';
+        if (!genderMatch) return false;
+        
+        // Check mutual compatibility
+        if (profileLookingFor === 'everyone') return true;
+        if (!currentUserGender) return true; // If current user hasn't set gender, show anyway
+        
+        const mutualMatch = 
+          (profileLookingFor === 'men' && (currentUserGender === 'male' || currentUserGender === 'non_binary')) ||
+          (profileLookingFor === 'women' && (currentUserGender === 'female' || currentUserGender === 'non_binary'));
+        return mutualMatch;
+      }
+      
+      // If current user wants to see 'women', show profiles where:
+      // - profile's gender is 'female' or 'non_binary'
+      // - AND profile's looking_for includes current user's gender (or is 'everyone')
+      if (lookingFor === 'women') {
+        const genderMatch = profileGender === 'female' || profileGender === 'non_binary';
+        if (!genderMatch) return false;
+        
+        // Check mutual compatibility
+        if (profileLookingFor === 'everyone') return true;
+        if (!currentUserGender) return true; // If current user hasn't set gender, show anyway
+        
+        const mutualMatch = 
+          (profileLookingFor === 'men' && (currentUserGender === 'male' || currentUserGender === 'non_binary')) ||
+          (profileLookingFor === 'women' && (currentUserGender === 'female' || currentUserGender === 'non_binary'));
+        return mutualMatch;
+      }
+      
+      return true;
+    });
+  }
 
   // Now fetch related data for each profile separately to avoid 400 errors
   const profilesWithRelations = await Promise.all(

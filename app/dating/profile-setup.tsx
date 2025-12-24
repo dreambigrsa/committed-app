@@ -71,6 +71,7 @@ export default function ProfileSetupScreen() {
   const [relationshipGoals, setRelationshipGoals] = useState<string[]>([]);
   const [interests, setInterests] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [gender, setGender] = useState<'male' | 'female' | 'non_binary' | 'prefer_not_to_say' | ''>('');
   const [lookingFor, setLookingFor] = useState<'men' | 'women' | 'everyone'>('everyone');
   const [ageRangeMin, setAgeRangeMin] = useState('18');
   const [ageRangeMax, setAgeRangeMax] = useState('99');
@@ -107,6 +108,7 @@ export default function ProfileSetupScreen() {
       setLocationCity(existingProfile.location_city || '');
       setRelationshipGoals(existingProfile.relationship_goals || []);
       setInterests(existingProfile.interests || []);
+      setGender(existingProfile.gender || '');
       setLookingFor(existingProfile.looking_for || 'everyone');
       setAgeRangeMin(existingProfile.age_range_min?.toString() || '18');
       setAgeRangeMax(existingProfile.age_range_max?.toString() || '99');
@@ -481,6 +483,7 @@ export default function ProfileSetupScreen() {
         location_city: locationCity || undefined,
         relationship_goals: relationshipGoals,
         interests,
+        gender: gender || undefined,
         looking_for: lookingFor,
         age_range_min: ageRangeMin ? parseInt(ageRangeMin) : undefined,
         age_range_max: ageRangeMax ? parseInt(ageRangeMax) : undefined,
@@ -1145,6 +1148,24 @@ export default function ProfileSetupScreen() {
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Preferences</Text>
             <Text style={styles.sectionSubtitle}>Who you want to meet</Text>
+          </View>
+          
+          <View style={styles.preferenceRow}>
+            <Text style={styles.preferenceLabel}>Gender:</Text>
+            <View style={styles.radioGroup}>
+              {(['male', 'female', 'non_binary', 'prefer_not_to_say'] as const).map((option) => (
+                <TouchableOpacity
+                  key={option}
+                  style={styles.radioOption}
+                  onPress={() => setGender(option)}
+                >
+                  <View style={[styles.radio, gender === option && styles.radioSelected]} />
+                  <Text style={styles.radioLabel}>
+                    {option === 'non_binary' ? 'Non-binary' : option === 'prefer_not_to_say' ? 'Prefer not to say' : option.charAt(0).toUpperCase() + option.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
           
           <View style={styles.preferenceRow}>

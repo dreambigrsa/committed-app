@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -60,30 +60,36 @@ export default function DatingSwipeCard({
   useEffect(() => {
     if (isTop) {
       // When card becomes top, ensure it's fully reset and ready for swiping
-      stopAllAnimations();
-      isAnimatingRef.current = false;
-      
-      // Reset position and rotation
-      position.setValue({ x: 0, y: 0 });
-      position.setOffset({ x: 0, y: 0 });
-      rotate.setValue(0);
-      likeOpacity.setValue(0);
-      passOpacity.setValue(0);
-      
-      // Animate to top position
-      Animated.parallel([
-        Animated.spring(scale, {
-          toValue: 1,
-          tension: 50,
-          friction: 7,
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacity, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      // Use a small delay to ensure previous animations are complete
+      setTimeout(() => {
+        stopAllAnimations();
+        isAnimatingRef.current = false;
+        
+        // Reset position and rotation
+        position.setValue({ x: 0, y: 0 });
+        position.setOffset({ x: 0, y: 0 });
+        rotate.setValue(0);
+        likeOpacity.setValue(0);
+        passOpacity.setValue(0);
+        
+        // Animate to top position
+        Animated.parallel([
+          Animated.spring(scale, {
+            toValue: 1,
+            tension: 50,
+            friction: 7,
+            useNativeDriver: true,
+          }),
+          Animated.timing(opacity, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+        ]).start(() => {
+          // Ensure animation state is cleared after animation completes
+          isAnimatingRef.current = false;
+        });
+      }, 50);
     } else {
       Animated.parallel([
         Animated.spring(scale, {
@@ -114,12 +120,9 @@ export default function DatingSwipeCard({
     };
   }, []);
 
-  // Recreate PanResponder when isTop changes to ensure it works for the new top card
-  const panResponder = useRef<ReturnType<typeof PanResponder.create> | null>(null);
-  
-  useEffect(() => {
-    // Recreate PanResponder when isTop changes
-    panResponder.current = PanResponder.create({
+  // Create PanResponder - use useMemo to recreate when isTop changes
+  const panResponder = useMemo(() => {
+    return PanResponder.create({
       // Don't capture on start - let taps pass through
       onStartShouldSetPanResponder: () => false,
       // Only capture when there's significant movement (swipe)
@@ -463,7 +466,7 @@ export default function DatingSwipeCard({
           zIndex: isTop ? 1000 : 1000 - index,
         },
       ]}
-      {...(panResponder.current?.panHandlers || {})}
+      {...panResponder.panHandlers}
     >
       {/* Photo Gallery */}
       <TouchableOpacity

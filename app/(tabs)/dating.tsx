@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Heart, X, Star, Settings, Users, Sparkles, Zap, RotateCcw, Crown, Sliders } from 'lucide-react-native';
+import { Heart, X, Star, Settings, Users, Sparkles, Zap, RotateCcw, Crown, Sliders, RefreshCw } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import * as DatingService from '@/lib/dating-service';
 import { supabase } from '@/lib/supabase';
@@ -237,8 +237,7 @@ export default function DatingScreen() {
         });
       }
     } else {
-      // If at the beginning, refresh instead
-      handleRefresh();
+      Alert.alert('No More to Rewind', 'You\'re at the beginning!');
     }
   };
 
@@ -405,6 +404,13 @@ export default function DatingScreen() {
           <View style={styles.headerRight}>
             <View style={styles.headerRightActions}>
               <TouchableOpacity 
+                onPress={handleRefresh}
+                style={styles.headerIconButton}
+                disabled={isLoading}
+              >
+                <RefreshCw size={24} color={isLoading ? colors.text.tertiary : colors.text.primary} />
+              </TouchableOpacity>
+              <TouchableOpacity 
                 onPress={() => router.push('/dating/likes-received')} 
                 style={styles.headerIconButton}
               >
@@ -442,14 +448,14 @@ export default function DatingScreen() {
 
         {/* Action Buttons */}
         <View style={styles.actionsContainer}>
-          {/* Refresh/Rewind Button */}
+          {/* Rewind (Premium) */}
           <TouchableOpacity
-            style={[styles.actionButton, styles.rewindButton]}
-            onPress={currentIndex === 0 ? handleRefresh : handleRewind}
-            disabled={isLoading}
+            style={[styles.actionButton, styles.rewindButton, currentIndex === 0 && styles.actionButtonDisabled]}
+            onPress={handleRewind}
+            disabled={currentIndex === 0 || isLoading}
           >
             <View style={styles.actionButtonInner}>
-              <RotateCcw size={24} color={isLoading ? colors.text.tertiary : colors.text.primary} />
+              <RotateCcw size={24} color={currentIndex === 0 ? colors.text.tertiary : colors.text.primary} />
             </View>
           </TouchableOpacity>
 

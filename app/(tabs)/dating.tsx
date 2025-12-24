@@ -442,14 +442,14 @@ export default function DatingScreen() {
 
         {/* Action Buttons */}
         <View style={styles.actionsContainer}>
-          {/* Rewind (Premium) */}
+          {/* Refresh/Rewind Button */}
           <TouchableOpacity
-            style={[styles.actionButton, styles.rewindButton, currentIndex === 0 && styles.actionButtonDisabled]}
-            onPress={handleRewind}
-            disabled={currentIndex === 0}
+            style={[styles.actionButton, styles.rewindButton]}
+            onPress={currentIndex === 0 ? handleRefresh : handleRewind}
+            disabled={isLoading}
           >
             <View style={styles.actionButtonInner}>
-              <RotateCcw size={24} color={currentIndex === 0 ? colors.text.tertiary : colors.text.primary} />
+              <RotateCcw size={24} color={isLoading ? colors.text.tertiary : colors.text.primary} />
             </View>
           </TouchableOpacity>
 

@@ -143,18 +143,12 @@ export default function DatingSwipeCard({
         position.flattenOffset();
         
         if (Math.abs(gesture.dx) > SWIPE_THRESHOLD) {
-          // Swipe detected - call the action immediately
+          // Swipe detected
           if (gesture.dx > 0) {
             // Swipe right - Like
-            // Call the callback immediately so the action happens
-            onSwipeRight();
-            // Then animate the card out
             handleSwipeRight();
           } else {
             // Swipe left - Pass
-            // Call the callback immediately so the action happens
-            onSwipeLeft();
-            // Then animate the card out
             handleSwipeLeft();
           }
         } else {

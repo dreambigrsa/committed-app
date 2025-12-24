@@ -293,48 +293,50 @@ export default function DatingSwipeCard({
     
     stopAllAnimations();
     
-    // Call the callback to trigger the like action
+    // Call the callback to trigger the like action immediately
     onSwipeRight();
     
-    // Use requestAnimationFrame for smoother animation start
-    requestAnimationFrame(() => {
-      try {
-        // Use faster spring animation for quick, smooth swipe
-        positionAnimRef.current = Animated.spring(position, {
-          toValue: { x: SCREEN_WIDTH + 100, y: 0 },
-          tension: 100, // Higher tension = faster animation
-          friction: 8, // Slightly higher friction for smoother stop
-          useNativeDriver: false,
-        });
-        
-        // Animate rotate (native-driven) - faster
-        rotateAnimRef.current = Animated.spring(rotate, {
-          toValue: 30,
-          tension: 100,
-          friction: 8,
-          useNativeDriver: true,
-        });
-        
-        // Start position animation
-        positionAnimRef.current.start((finished) => {
-          if (finished) {
-            positionAnimRef.current = null;
-            resetCard();
-            isAnimatingRef.current = false;
-          }
-        });
-        
-        // Start rotate animation
-        rotateAnimRef.current.start((finished) => {
-          if (finished) {
-            rotateAnimRef.current = null;
-          }
-        });
-      } catch (error) {
-        console.warn('Error creating swipe animations:', error);
-        isAnimatingRef.current = false;
-      }
-    });
+    try {
+      // Use fast timing animation for quick, smooth swipe (much faster than spring)
+      positionAnimRef.current = Animated.timing(position, {
+        toValue: { x: SCREEN_WIDTH + 100, y: 0 },
+        duration: 200, // Fast 200ms animation
+        useNativeDriver: false,
+      });
+      
+      // Animate rotate (native-driven) - fast
+      rotateAnimRef.current = Animated.timing(rotate, {
+        toValue: 30,
+        duration: 200,
+        useNativeDriver: true,
+      });
+      
+      // Animate opacity fade out for smooth exit
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+      
+      // Start position animation
+      positionAnimRef.current.start((finished) => {
+        if (finished) {
+          positionAnimRef.current = null;
+          resetCard();
+          isAnimatingRef.current = false;
+        }
+      });
+      
+      // Start rotate animation
+      rotateAnimRef.current.start((finished) => {
+        if (finished) {
+          rotateAnimRef.current = null;
+        }
+      });
+    } catch (error) {
+      console.warn('Error creating swipe animations:', error);
+      isAnimatingRef.current = false;
+    }
   };
 
   const handleSwipeLeft = () => {
@@ -343,48 +345,50 @@ export default function DatingSwipeCard({
     
     stopAllAnimations();
     
-    // Call the callback to trigger the pass action
+    // Call the callback to trigger the pass action immediately
     onSwipeLeft();
     
-    // Use requestAnimationFrame for smoother animation start
-    requestAnimationFrame(() => {
-      try {
-        // Use faster spring animation for quick, smooth swipe
-        positionAnimRef.current = Animated.spring(position, {
-          toValue: { x: -SCREEN_WIDTH - 100, y: 0 },
-          tension: 100, // Higher tension = faster animation
-          friction: 8, // Slightly higher friction for smoother stop
-          useNativeDriver: false,
-        });
-        
-        // Animate rotate (native-driven) - faster
-        rotateAnimRef.current = Animated.spring(rotate, {
-          toValue: -30,
-          tension: 100,
-          friction: 8,
-          useNativeDriver: true,
-        });
-        
-        // Start position animation
-        positionAnimRef.current.start((finished) => {
-          if (finished) {
-            positionAnimRef.current = null;
-            resetCard();
-            isAnimatingRef.current = false;
-          }
-        });
-        
-        // Start rotate animation
-        rotateAnimRef.current.start((finished) => {
-          if (finished) {
-            rotateAnimRef.current = null;
-          }
-        });
-      } catch (error) {
-        console.warn('Error creating swipe animations:', error);
-        isAnimatingRef.current = false;
-      }
-    });
+    try {
+      // Use fast timing animation for quick, smooth swipe (much faster than spring)
+      positionAnimRef.current = Animated.timing(position, {
+        toValue: { x: -SCREEN_WIDTH - 100, y: 0 },
+        duration: 200, // Fast 200ms animation
+        useNativeDriver: false,
+      });
+      
+      // Animate rotate (native-driven) - fast
+      rotateAnimRef.current = Animated.timing(rotate, {
+        toValue: -30,
+        duration: 200,
+        useNativeDriver: true,
+      });
+      
+      // Animate opacity fade out for smooth exit
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+      
+      // Start position animation
+      positionAnimRef.current.start((finished) => {
+        if (finished) {
+          positionAnimRef.current = null;
+          resetCard();
+          isAnimatingRef.current = false;
+        }
+      });
+      
+      // Start rotate animation
+      rotateAnimRef.current.start((finished) => {
+        if (finished) {
+          rotateAnimRef.current = null;
+        }
+      });
+    } catch (error) {
+      console.warn('Error creating swipe animations:', error);
+      isAnimatingRef.current = false;
+    }
   };
 
   const resetCard = () => {

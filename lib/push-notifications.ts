@@ -7,15 +7,22 @@ import { supabase } from '@/lib/supabase';
 import { getNotificationPreferences } from '@/lib/notification-preferences';
 
 // Ensure notifications show an alert even when the app is foregrounded.
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: getNotificationPreferences().soundEnabled,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+// Only set up notification handler on native platforms (not web)
+if (Platform.OS !== 'web') {
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: getNotificationPreferences().soundEnabled,
+        shouldSetBadge: false,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+  } catch (error) {
+    console.warn('Failed to set notification handler:', error);
+  }
+}
 
 function getExpoProjectId(): string | undefined {
   const anyConstants = Constants as any;
@@ -103,6 +110,12 @@ function isRunningInExpoGo(): boolean {
 
 export async function registerForPushNotificationsAsync(userId: string): Promise<string | null> {
   try {
+    // Push notifications are not available on web
+    if (Platform.OS === 'web') {
+      console.log('Push notifications are not available on web platform');
+      return null;
+    }
+
     // Skip push notification registration in Expo Go (not supported in SDK 53+)
     if (isRunningInExpoGo()) {
       console.log('Push notifications are not available in Expo Go. Use a development build for push notifications.');
@@ -174,7 +187,19 @@ export async function registerForPushNotificationsAsync(userId: string): Promise
 }
 
 export async function showLocalNotification(params: { title: string; body: string; data?: any }) {
+  // Local notifications are not available on web
+  if (Platform.OS === 'web') {
+    console.log('Local notifications are not available on web platform');
+    return;
+  }
+
   try {
+    // Check if the method is available (for safety)
+    if (!Notifications.scheduleNotificationAsync) {
+      console.warn('scheduleNotificationAsync is not available on this platform');
+      return;
+    }
+
     await Notifications.scheduleNotificationAsync({
       content: {
         title: params.title,
@@ -185,7 +210,13 @@ export async function showLocalNotification(params: { title: string; body: strin
       trigger: null,
     });
   } catch (e) {
-    console.error('Failed to show local notification:', e);
+    // Silently handle errors - don't crash the app
+    const errorMessage = e instanceof Error ? e.message : String(e);
+    if (errorMessage.includes('not available on web') || errorMessage.includes('native dependencies')) {
+      console.log('Local notifications are not available on this platform');
+    } else {
+      console.error('Failed to show local notification:', e);
+    }
   }
 }
 

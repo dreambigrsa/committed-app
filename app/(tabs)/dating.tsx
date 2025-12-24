@@ -63,7 +63,15 @@ export default function DatingScreen() {
       if (profile && profile.id) {
         // Only load discovery if profile exists
         try {
-          const discoveryData = await DatingService.getDatingDiscovery();
+          // First try without including passed profiles
+          let discoveryData = await DatingService.getDatingDiscovery();
+          
+          // If no profiles found, try including passed profiles
+          if (!discoveryData.profiles || discoveryData.profiles.length === 0) {
+            console.log('No new profiles found, loading passed profiles...');
+            discoveryData = await DatingService.getDatingDiscovery({ includePassed: true });
+          }
+          
           console.log('Discovery loaded:', discoveryData.profiles?.length || 0, 'profiles');
           // Normalize data structure for components
           const normalizedProfiles = (discoveryData.profiles || []).map((p: any) => ({
@@ -666,12 +674,24 @@ const createStyles = (colors: any) =>
       fontWeight: '700',
       letterSpacing: 0.5,
     },
+    emptyActions: {
+      flexDirection: 'row',
+      gap: 12,
+      marginTop: 8,
+      flexWrap: 'wrap',
+      justifyContent: 'center',
+    },
     secondaryButton: {
       backgroundColor: colors.background.secondary,
       paddingHorizontal: 32,
       paddingVertical: 14,
       borderRadius: 14,
-      marginTop: 8,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    resetPassedButton: {
+      backgroundColor: colors.background.secondary,
       borderWidth: 1,
       borderColor: colors.border.light,
     },

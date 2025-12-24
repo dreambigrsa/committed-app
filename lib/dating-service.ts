@@ -216,6 +216,7 @@ export async function getDatingDiscovery(filters?: {
   locationCountry?: string;
   latitude?: number;
   longitude?: number;
+  includePassed?: boolean; // Option to include previously passed profiles
 }) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('User not authenticated');
@@ -275,21 +276,26 @@ export async function getDatingDiscovery(filters?: {
   // Since we don't have a gender field yet, we'll filter after fetching
   // and match based on the looking_for preferences
 
-  // Exclude already liked/passed users
+  // Exclude already liked users (always exclude liked)
   const { data: liked } = await supabase
     .from('dating_likes')
     .select('liked_id')
     .eq('liker_id', user.id);
 
-  const { data: passed } = await supabase
-    .from('dating_passes')
-    .select('passed_id')
-    .eq('passer_id', user.id);
-
-  const excludedIds = [
-    ...(liked?.map((l: any) => l.liked_id) || []),
-    ...(passed?.map((p: any) => p.passed_id) || []),
-  ];
+  // Only exclude passed users if includePassed is not true
+  let excludedIds = [...(liked?.map((l: any) => l.liked_id) || [])];
+  
+  if (!filters?.includePassed) {
+    const { data: passed } = await supabase
+      .from('dating_passes')
+      .select('passed_id')
+      .eq('passer_id', user.id);
+    
+    excludedIds = [
+      ...excludedIds,
+      ...(passed?.map((p: any) => p.passed_id) || []),
+    ];
+  }
 
   if (excludedIds.length > 0) {
     query = query.not('user_id', 'in', `(${excludedIds.join(',')})`);
@@ -537,6 +543,22 @@ export async function passUser(passedUserId: string) {
       passer_id: user.id,
       passed_id: passedUserId,
     });
+
+  if (error) throw error;
+  return { success: true };
+}
+
+/**
+ * Clear all passed profiles to see them again in discovery
+ */
+export async function clearPassedProfiles() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('User not authenticated');
+
+  const { error } = await supabase
+    .from('dating_passes')
+    .delete()
+    .eq('passer_id', user.id);
 
   if (error) throw error;
   return { success: true };

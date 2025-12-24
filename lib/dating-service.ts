@@ -1008,7 +1008,14 @@ export async function updateDateRequest(
   if (updates.suggestedActivities !== undefined) dbUpdates.suggested_activities = updates.suggestedActivities;
   if (updates.dressCode !== undefined) dbUpdates.dress_code = updates.dressCode;
   if (updates.budgetRange !== undefined) dbUpdates.budget_range = updates.budgetRange;
-  if (updates.expenseHandling !== undefined) dbUpdates.expense_handling = updates.expenseHandling;
+  if (updates.expenseHandling !== undefined) {
+    // Ensure valid value for expense_handling
+    if (['split', 'initiator_pays', 'acceptor_pays'].includes(updates.expenseHandling)) {
+      dbUpdates.expense_handling = updates.expenseHandling;
+    } else {
+      dbUpdates.expense_handling = 'split'; // Default to split if invalid
+    }
+  }
   if (updates.numberOfPeople !== undefined) dbUpdates.number_of_people = updates.numberOfPeople;
   if (updates.genderPreference !== undefined) dbUpdates.gender_preference = updates.genderPreference;
   if (updates.specialRequests !== undefined) dbUpdates.special_requests = updates.specialRequests;

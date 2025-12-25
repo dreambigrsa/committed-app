@@ -81,6 +81,9 @@ export default function AdminDatingScreen() {
     try {
       setLoading(true);
       
+      console.log('Loading matches for admin...');
+      console.log('Current user role:', currentUser?.role);
+      
       // First, try to get matches with a simple query
       const { data: matchesData, error: matchesError } = await supabase
         .from('dating_matches')
@@ -91,10 +94,28 @@ export default function AdminDatingScreen() {
 
       if (matchesError) {
         console.error('Error loading matches:', matchesError);
-        throw matchesError;
+        console.error('Error code:', matchesError.code);
+        console.error('Error message:', matchesError.message);
+        console.error('Error details:', matchesError.details);
+        console.error('Error hint:', matchesError.hint);
+        
+        // If it's an RLS error, show a helpful message
+        if (matchesError.code === '42501' || matchesError.message?.includes('policy') || matchesError.message?.includes('permission')) {
+          Alert.alert(
+            'Permission Denied', 
+            'Admin access to matches is not enabled. Please run the migration: migrations/add-admin-dating-matches-access.sql in Supabase SQL Editor.'
+          );
+        } else {
+          throw matchesError;
+        }
+        setMatches([]);
+        return;
       }
 
+      console.log('Matches data received:', matchesData?.length || 0);
+      
       if (!matchesData || matchesData.length === 0) {
+        console.log('No matches found in database');
         setMatches([]);
         return;
       }
@@ -129,9 +150,35 @@ export default function AdminDatingScreen() {
 
       console.log('Loaded matches:', matchesWithUsers.length);
       setMatches(matchesWithUsers);
+      
+      // If no matches found, check if there are any matches at all (for debugging)
+      if (matchesWithUsers.length === 0) {
+        console.log('No matches displayed. Checking if any matches exist in database...');
+        // Try a count query to see if matches exist
+        const { count, error: countError } = await supabase
+          .from('dating_matches')
+          .select('*', { count: 'exact', head: true });
+        
+        if (!countError && count !== undefined) {
+          console.log('Total matches in database:', count);
+          if (count > 0) {
+            console.warn('Matches exist but are not being returned. This is likely an RLS policy issue.');
+          }
+        }
+      }
     } catch (error: any) {
       console.error('Error in loadMatches:', error);
-      Alert.alert('Error', error.message || 'Failed to load matches. Make sure you have run the admin access migration.');
+      const errorMessage = error?.message || 'Failed to load matches';
+      
+      // Check if it's an RLS/permission error
+      if (error?.code === '42501' || errorMessage.includes('policy') || errorMessage.includes('permission') || errorMessage.includes('row-level security')) {
+        Alert.alert(
+          'Permission Denied', 
+          'Admin access to matches is not enabled.\n\nPlease run the migration file:\nmigrations/add-admin-dating-matches-access.sql\n\nin your Supabase SQL Editor to enable admin access.'
+        );
+      } else {
+        Alert.alert('Error', errorMessage);
+      }
       setMatches([]);
     } finally {
       setLoading(false);
@@ -270,11 +317,21 @@ export default function AdminDatingScreen() {
         .eq('id', profile.id);
 
       if (error) throw error;
-      Alert.alert('Success', 'Profile suspended');
+      
+      // Close modal and clear selection first
       setShowActionModal(false);
-      loadProfiles();
+      setSelectedProfile(null);
+      setActionType(null);
+      setActionReason('');
+      
+      // Reload profiles after a short delay to ensure modal is closed
+      setTimeout(() => {
+        loadProfiles();
+      }, 100);
+      
+      Alert.alert('Success', 'Profile suspended');
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      Alert.alert('Error', error.message || 'Failed to suspend profile');
     }
   };
 
@@ -292,10 +349,21 @@ export default function AdminDatingScreen() {
         .eq('id', profile.id);
 
       if (error) throw error;
+      
+      // Close modal and clear selection first
+      setShowActionModal(false);
+      setSelectedProfile(null);
+      setActionType(null);
+      setActionReason('');
+      
+      // Reload profiles after a short delay to ensure modal is closed
+      setTimeout(() => {
+        loadProfiles();
+      }, 100);
+      
       Alert.alert('Success', 'Profile unsuspended');
-      loadProfiles();
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      Alert.alert('Error', error.message || 'Failed to unsuspend profile');
     }
   };
 
@@ -312,11 +380,21 @@ export default function AdminDatingScreen() {
         .eq('id', profile.id);
 
       if (error) throw error;
-      Alert.alert('Success', 'Profile limited');
+      
+      // Close modal and clear selection first
       setShowActionModal(false);
-      loadProfiles();
+      setSelectedProfile(null);
+      setActionType(null);
+      setActionReason('');
+      
+      // Reload profiles after a short delay to ensure modal is closed
+      setTimeout(() => {
+        loadProfiles();
+      }, 100);
+      
+      Alert.alert('Success', 'Profile limited');
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      Alert.alert('Error', error.message || 'Failed to limit profile');
     }
   };
 
@@ -417,9 +495,19 @@ export default function AdminDatingScreen() {
                 .eq('id', profile.id);
 
               if (error) throw error;
-              Alert.alert('Success', 'Profile deleted');
+              
+              // Close modal and clear selection first
               setShowActionModal(false);
-              loadProfiles();
+              setSelectedProfile(null);
+              setActionType(null);
+              setActionReason('');
+              
+              // Reload profiles after a short delay to ensure modal is closed
+              setTimeout(() => {
+                loadProfiles();
+              }, 100);
+              
+              Alert.alert('Success', 'Profile deleted');
             } catch (error: any) {
               Alert.alert('Error', error.message);
             }
@@ -444,11 +532,20 @@ export default function AdminDatingScreen() {
       });
 
       if (error) throw error;
-      Alert.alert('Success', `Premium trial granted for ${days} days`);
+      
+      // Close modal and clear selection first
       setShowActionModal(false);
+      setSelectedProfile(null);
+      setActionType(null);
       setActionReason('');
       setTrialDays('7');
-      loadProfiles();
+      
+      // Reload profiles after a short delay to ensure modal is closed
+      setTimeout(() => {
+        loadProfiles();
+      }, 100);
+      
+      Alert.alert('Success', `Premium trial granted for ${days} days`);
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to grant premium trial');
     }
@@ -473,10 +570,19 @@ export default function AdminDatingScreen() {
         });
 
       if (error) throw error;
-      Alert.alert('Success', `Badge "${badgeType.replace('_', ' ')}" granted`);
+      
+      // Close modal and clear selection first
       setShowActionModal(false);
+      setSelectedProfile(null);
+      setActionType(null);
       setBadgeType('verified');
-      loadProfiles();
+      
+      // Reload profiles after a short delay to ensure modal is closed
+      setTimeout(() => {
+        loadProfiles();
+      }, 100);
+      
+      Alert.alert('Success', `Badge "${badgeType.replace('_', ' ')}" granted`);
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to grant badge');
     }
@@ -679,10 +785,16 @@ export default function AdminDatingScreen() {
                       <TouchableOpacity
                         style={[styles.actionBtn, profile.admin_suspended && styles.actionBtnActive]}
                         onPress={() => {
-                          setSelectedProfile(profile);
-                          setActionType(profile.admin_suspended ? null : 'suspend');
-                          setActionReason('');
-                          setShowActionModal(true);
+                          if (profile.admin_suspended) {
+                            // Directly unsuspend without modal
+                            handleUnsuspendProfile(profile);
+                          } else {
+                            // Open modal to suspend with reason
+                            setSelectedProfile(profile);
+                            setActionType('suspend');
+                            setActionReason('');
+                            setShowActionModal(true);
+                          }
                         }}
                       >
                         <Ban size={18} color={profile.admin_suspended ? colors.success : colors.danger} />
@@ -693,10 +805,16 @@ export default function AdminDatingScreen() {
                       <TouchableOpacity
                         style={[styles.actionBtn, profile.admin_limited && styles.actionBtnActive]}
                         onPress={() => {
-                          setSelectedProfile(profile);
-                          setActionType(profile.admin_limited ? null : 'limit');
-                          setActionReason('');
-                          setShowActionModal(true);
+                          if (profile.admin_limited) {
+                            // Directly unlimit without modal
+                            handleUnlimitProfile(profile);
+                          } else {
+                            // Open modal to limit with reason
+                            setSelectedProfile(profile);
+                            setActionType('limit');
+                            setActionReason('');
+                            setShowActionModal(true);
+                          }
                         }}
                       >
                         <Shield size={18} color={profile.admin_limited ? colors.success : colors.warning || '#FFA500'} />
@@ -875,8 +993,8 @@ export default function AdminDatingScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
-              {actionType === 'suspend' && (selectedProfile?.admin_suspended ? 'Unsuspend Profile' : 'Suspend Profile')}
-              {actionType === 'limit' && (selectedProfile?.admin_limited ? 'Remove Limits' : 'Limit Profile')}
+              {actionType === 'suspend' && 'Suspend Profile'}
+              {actionType === 'limit' && 'Limit Profile'}
               {actionType === 'delete' && 'Delete Profile'}
               {actionType === 'premium' && 'Grant Premium Trial'}
               {actionType === 'badge' && 'Grant Badge'}
@@ -909,33 +1027,6 @@ export default function AdminDatingScreen() {
               </>
             )}
 
-            {actionType === 'suspend' && selectedProfile?.admin_suspended && (
-              <>
-                <Text style={styles.modalText}>
-                  Suspended by: {selectedProfile.admin_suspended_by || 'Unknown'}{'\n'}
-                  Reason: {selectedProfile.admin_suspended_reason || 'No reason provided'}{'\n'}
-                  Date: {selectedProfile.admin_suspended_at ? new Date(selectedProfile.admin_suspended_at).toLocaleString() : 'Unknown'}
-                </Text>
-                <View style={styles.modalButtons}>
-                  <TouchableOpacity
-                    style={[styles.modalButton, styles.modalButtonCancel]}
-                    onPress={() => setShowActionModal(false)}
-                  >
-                    <Text style={styles.modalButtonText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.modalButton, styles.modalButtonConfirm]}
-                    onPress={() => {
-                      handleUnsuspendProfile(selectedProfile);
-                      setShowActionModal(false);
-                    }}
-                  >
-                    <Text style={[styles.modalButtonText, { color: '#fff' }]}>Unsuspend</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-
             {actionType === 'limit' && !selectedProfile?.admin_limited && (
               <>
                 <Text style={styles.modalLabel}>Reason (optional):</Text>
@@ -958,30 +1049,6 @@ export default function AdminDatingScreen() {
                     onPress={() => handleLimitProfile(selectedProfile)}
                   >
                     <Text style={[styles.modalButtonText, { color: '#fff' }]}>Limit</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-
-            {actionType === 'limit' && selectedProfile?.admin_limited && (
-              <>
-                <Text style={styles.modalText}>
-                  Limited by: {selectedProfile.admin_limited_by || 'Unknown'}{'\n'}
-                  Reason: {selectedProfile.admin_limited_reason || 'No reason provided'}{'\n'}
-                  Date: {selectedProfile.admin_limited_at ? new Date(selectedProfile.admin_limited_at).toLocaleString() : 'Unknown'}
-                </Text>
-                <View style={styles.modalButtons}>
-                  <TouchableOpacity
-                    style={[styles.modalButton, styles.modalButtonCancel]}
-                    onPress={() => setShowActionModal(false)}
-                  >
-                    <Text style={styles.modalButtonText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.modalButton, styles.modalButtonConfirm]}
-                    onPress={() => handleUnlimitProfile(selectedProfile)}
-                  >
-                    <Text style={[styles.modalButtonText, { color: '#fff' }]}>Remove Limits</Text>
                   </TouchableOpacity>
                 </View>
               </>

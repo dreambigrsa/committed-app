@@ -52,19 +52,45 @@ export default function AdminDatingScreen() {
 
       if (profilesError) throw profilesError;
 
-      // Load badges for each profile
+      // Load badges and subscriptions for each profile
       if (profilesData && profilesData.length > 0) {
         const userIds = profilesData.map(p => p.user_id);
-        const { data: badgesData } = await supabase
-          .from('user_dating_badges')
-          .select('user_id, badge_type')
-          .in('user_id', userIds);
+        
+        const [badgesData, subscriptionsData] = await Promise.all([
+          supabase
+            .from('user_dating_badges')
+            .select('user_id, badge_type')
+            .in('user_id', userIds),
+          supabase
+            .from('user_subscriptions')
+            .select('user_id, status, expires_at, plan_id')
+            .in('user_id', userIds)
+            .in('status', ['active', 'trial'])
+        ]);
 
-        // Attach badges to profiles
-        const profilesWithBadges = profilesData.map(profile => ({
-          ...profile,
-          badges: badgesData?.filter(b => b.user_id === profile.user_id).map(b => b.badge_type) || [],
-        }));
+        // Attach badges and premium status to profiles
+        const profilesWithBadges = profilesData.map(profile => {
+          const userId = profile.user_id;
+          const badges = badgesData.data?.filter(b => b.user_id === userId).map(b => b.badge_type) || [];
+          
+          // Check if user has active premium subscription
+          const subscription = subscriptionsData.data?.find(s => s.user_id === userId);
+          const isPremium = subscription && (
+            subscription.status === 'active' || 
+            (subscription.status === 'trial' && subscription.expires_at && new Date(subscription.expires_at) >= new Date())
+          );
+          
+          // Also check premium_trial_ends_at from profile
+          const hasTrial = profile.premium_trial_ends_at && new Date(profile.premium_trial_ends_at) >= new Date();
+          
+          return {
+            ...profile,
+            badges,
+            isPremium: isPremium || hasTrial,
+            subscription,
+            premiumTrialEndsAt: profile.premium_trial_ends_at,
+          };
+        });
 
         setProfiles(profilesWithBadges);
       } else {
@@ -525,13 +551,40 @@ export default function AdminDatingScreen() {
         return;
       }
       
-      const { error } = await supabase.rpc('grant_trial_premium', {
-        p_user_id: profile.user_id || profile.users?.id,
+      const userId = profile.user_id || profile.users?.id;
+      if (!userId) {
+        Alert.alert('Error', 'Invalid user ID');
+        return;
+      }
+      
+      console.log('Granting premium trial:', { userId, days, grantedBy: currentUser.id });
+      
+      const { data, error } = await supabase.rpc('grant_trial_premium', {
+        p_user_id: userId,
         p_granted_by: currentUser.id,
         p_days: days,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error granting premium:', error);
+        throw error;
+      }
+      
+      console.log('Premium granted successfully:', data);
+      
+      // Verify the subscription was created
+      const { data: subscription, error: subError } = await supabase
+        .from('user_subscriptions')
+        .select('*')
+        .eq('user_id', userId)
+        .in('status', ['active', 'trial'])
+        .single();
+      
+      if (subError && subError.code !== 'PGRST116') { // PGRST116 = no rows returned
+        console.warn('Could not verify subscription:', subError);
+      } else if (subscription) {
+        console.log('Subscription verified:', subscription);
+      }
       
       // Close modal and clear selection first
       setShowActionModal(false);
@@ -547,7 +600,8 @@ export default function AdminDatingScreen() {
       
       Alert.alert('Success', `Premium trial granted for ${days} days`);
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to grant premium trial');
+      console.error('Error in handleGrantPremium:', error);
+      Alert.alert('Error', error.message || 'Failed to grant premium trial. Make sure the grant_trial_premium function exists in your database.');
     }
   };
 
@@ -734,6 +788,12 @@ export default function AdminDatingScreen() {
                               {profile.is_active ? 'Active' : 'Inactive'}
                             </Text>
                           </View>
+                          {profile.isPremium && (
+                            <View style={[styles.statusBadge, { backgroundColor: colors.primary + '20' }]}>
+                              <Sparkles size={12} color={colors.primary} />
+                              <Text style={[styles.statusText, { color: colors.primary }]}>Premium</Text>
+                            </View>
+                          )}
                           {profile.admin_suspended && (
                             <View style={[styles.statusBadge, styles.statusSuspended]}>
                               <Ban size={12} color={colors.danger} />
@@ -747,6 +807,11 @@ export default function AdminDatingScreen() {
                             </View>
                           )}
                         </View>
+                        {profile.isPremium && profile.premiumTrialEndsAt && (
+                          <Text style={[styles.profileEmail, { fontSize: 11, marginTop: 4 }]}>
+                            Premium expires: {new Date(profile.premiumTrialEndsAt).toLocaleDateString()}
+                          </Text>
+                        )}
                       </View>
                     </View>
                     

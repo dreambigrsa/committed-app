@@ -109,8 +109,33 @@ export default function AdminDatingScreen() {
       
       console.log('Loading matches for admin...');
       console.log('Current user role:', currentUser?.role);
+      console.log('Current user ID:', currentUser?.id);
       
-      // First, try to get matches with a simple query
+      // First, verify admin access by checking if we can query the table at all
+      const { count: totalCount, error: countError } = await supabase
+        .from('dating_matches')
+        .select('*', { count: 'exact', head: true });
+      
+      if (countError) {
+        console.error('Error checking matches count:', countError);
+        console.error('Error code:', countError.code);
+        console.error('Error message:', countError.message);
+        
+        // If it's an RLS/permission error, show a helpful message
+        if (countError.code === '42501' || countError.message?.includes('policy') || countError.message?.includes('permission') || countError.message?.includes('row-level security')) {
+          Alert.alert(
+            'Permission Denied', 
+            `Admin access to matches is not enabled.\n\nYour role: ${currentUser?.role || 'unknown'}\n\nPlease run the migration file:\nmigrations/add-admin-dating-matches-access.sql\n\nin your Supabase SQL Editor to enable admin access to view matches.`,
+            [{ text: 'OK' }]
+          );
+          setMatches([]);
+          return;
+        }
+      } else {
+        console.log('Total matches in database (accessible):', totalCount);
+      }
+      
+      // Now try to get matches with a simple query
       const { data: matchesData, error: matchesError } = await supabase
         .from('dating_matches')
         .select('*')
@@ -126,13 +151,14 @@ export default function AdminDatingScreen() {
         console.error('Error hint:', matchesError.hint);
         
         // If it's an RLS error, show a helpful message
-        if (matchesError.code === '42501' || matchesError.message?.includes('policy') || matchesError.message?.includes('permission')) {
+        if (matchesError.code === '42501' || matchesError.message?.includes('policy') || matchesError.message?.includes('permission') || matchesError.message?.includes('row-level security')) {
           Alert.alert(
             'Permission Denied', 
-            'Admin access to matches is not enabled. Please run the migration: migrations/add-admin-dating-matches-access.sql in Supabase SQL Editor.'
+            `Admin access to matches is not enabled.\n\nYour role: ${currentUser?.role || 'unknown'}\n\nPlease run the migration file:\nmigrations/add-admin-dating-matches-access.sql\n\nin your Supabase SQL Editor to enable admin access to view matches.`,
+            [{ text: 'OK' }]
           );
         } else {
-          throw matchesError;
+          Alert.alert('Error', matchesError.message || 'Failed to load matches');
         }
         setMatches([]);
         return;
@@ -141,7 +167,11 @@ export default function AdminDatingScreen() {
       console.log('Matches data received:', matchesData?.length || 0);
       
       if (!matchesData || matchesData.length === 0) {
-        console.log('No matches found in database');
+        console.log('No matches found in database (query returned empty)');
+        // Show a more informative message
+        if (totalCount !== undefined && totalCount > 0) {
+          console.warn(`Database has ${totalCount} matches but query returned 0. This might be an RLS filtering issue.`);
+        }
         setMatches([]);
         return;
       }

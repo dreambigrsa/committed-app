@@ -480,7 +480,8 @@ export const [AppContext, useApp] = createContextHook(() => {
         const deduplicatedConversations = Array.from(conversationMap.values());
 
         // Now format conversations with accurate last message from non-deleted messages
-        const formattedConversations: Conversation[] = await Promise.all(
+        // Filter out conversations with no messages
+        const formattedConversations: Conversation[] = (await Promise.all(
           deduplicatedConversations.map(async (conv: any) => {
             const participantIds = conv.participant_ids;
             const { data: participantsData } = await supabase
@@ -523,7 +524,11 @@ export const [AppContext, useApp] = createContextHook(() => {
               unreadCount: 0,
             };
           })
-        );
+        )).filter(conv => {
+          // Filter out conversations with no messages
+          const convMessages = messagesByConversation[conv.id] || [];
+          return convMessages.length > 0;
+        });
         setConversations(formattedConversations);
       }
 
@@ -2526,7 +2531,7 @@ export const [AppContext, useApp] = createContextHook(() => {
         });
       });
 
-      // Delete messages for all matching conversations
+      // Delete messages for all matching conversations FIRST
       if (conversationIdsToDelete.length > 0) {
         const { error: messagesError } = await supabase
           .from('messages')
@@ -2548,6 +2553,16 @@ export const [AppContext, useApp] = createContextHook(() => {
 
         if (conversationError) {
           console.error('Error deleting conversations:', conversationError);
+          console.error('Conversation IDs attempted:', conversationIdsToDelete);
+          // Still update local state to remove from UI even if DB deletion fails
+          setConversations(prev => prev.filter(c => !conversationIdsToDelete.includes(c.id)));
+          setMessages(prev => {
+            const updated = { ...prev };
+            conversationIdsToDelete.forEach(convId => {
+              delete updated[convId];
+            });
+            return updated;
+          });
           return false;
         }
       } else {
@@ -2559,6 +2574,13 @@ export const [AppContext, useApp] = createContextHook(() => {
 
         if (conversationError) {
           console.error('Error deleting conversation:', conversationError);
+          // Still update local state to remove from UI even if DB deletion fails
+          setConversations(prev => prev.filter(c => c.id !== conversationId));
+          setMessages(prev => {
+            const updated = { ...prev };
+            delete updated[conversationId];
+            return updated;
+          });
           return false;
         }
       }

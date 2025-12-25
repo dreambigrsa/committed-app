@@ -34,6 +34,15 @@ export default function MessagesScreen() {
 
   const styles = useMemo(() => createStyles(colors), [colors]);
 
+  // Filter out conversations with no messages (empty conversations)
+  const conversationsWithMessages = useMemo(() => {
+    return conversations.filter(conv => {
+      const messages = getMessages(conv.id);
+      // Only keep conversations that have messages
+      return messages && messages.length > 0;
+    });
+  }, [conversations, getMessages]);
+
   useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
@@ -81,15 +90,15 @@ export default function MessagesScreen() {
   // Load statuses for all participants and refresh periodically
   // This hook MUST be called before any early return to maintain hook consistency
   useEffect(() => {
-    if (!currentUser || !getUserStatus || conversations.length === 0) return;
+    if (!currentUser || !getUserStatus || conversationsWithMessages.length === 0) return;
 
     let isMounted = true;
 
     const loadStatuses = async () => {
       if (!isMounted) return;
       
-      // Get unique participant IDs
-      const participantIds = conversations
+      // Get unique participant IDs from conversations with messages
+      const participantIds = conversationsWithMessages
         .map(conv => {
           const other = getOtherParticipant(conv);
           return other.id;
@@ -137,7 +146,7 @@ export default function MessagesScreen() {
       isMounted = false;
       clearInterval(refreshInterval);
     };
-  }, [conversations, currentUser, getUserStatus]);
+  }, [conversationsWithMessages, currentUser, getUserStatus]);
 
   // Return empty view instead of null to maintain hook count consistency
   // This early return happens AFTER all hooks are called
@@ -409,7 +418,7 @@ export default function MessagesScreen() {
       >
         {/* Status Stories Bar - Inside ScrollView (static, scrolls with content) */}
         <StatusStoriesBar context="messenger" />
-        {conversations.length === 0 ? (
+        {conversationsWithMessages.length === 0 ? (
           <Animated.View style={[styles.emptyState, { opacity: fadeAnim }]}>
             <MessageCircle size={80} color={colors.text.tertiary} strokeWidth={1.5} />
             <Text style={styles.emptyStateTitle}>No Messages Yet</Text>
@@ -418,7 +427,7 @@ export default function MessagesScreen() {
             </Text>
           </Animated.View>
         ) : (
-          conversations.map((conversation: any) => {
+          conversationsWithMessages.map((conversation: any) => {
             const otherParticipant = getOtherParticipant(conversation);
             const isDeleting = deletingId === conversation.id;
             

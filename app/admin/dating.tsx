@@ -80,21 +80,59 @@ export default function AdminDatingScreen() {
   const loadMatches = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      
+      // First, try to get matches with a simple query
+      const { data: matchesData, error: matchesError } = await supabase
         .from('dating_matches')
-        .select(`
-          *,
-          user1:users!dating_matches_user1_id_fkey(id, full_name, profile_picture),
-          user2:users!dating_matches_user2_id_fkey(id, full_name, profile_picture)
-        `)
+        .select('*')
         .eq('is_unmatched', false)
         .order('matched_at', { ascending: false })
         .limit(100);
 
-      if (error) throw error;
-      setMatches(data || []);
+      if (matchesError) {
+        console.error('Error loading matches:', matchesError);
+        throw matchesError;
+      }
+
+      if (!matchesData || matchesData.length === 0) {
+        setMatches([]);
+        return;
+      }
+
+      // Get all unique user IDs from matches
+      const userIds = new Set<string>();
+      matchesData.forEach((match: any) => {
+        if (match.user1_id) userIds.add(match.user1_id);
+        if (match.user2_id) userIds.add(match.user2_id);
+      });
+
+      // Fetch user data for all matched users
+      const { data: usersData, error: usersError } = await supabase
+        .from('users')
+        .select('id, full_name, profile_picture')
+        .in('id', Array.from(userIds));
+
+      if (usersError) {
+        console.error('Error loading users for matches:', usersError);
+        // Continue with matches even if user data fails
+      }
+
+      // Create a map of user data
+      const usersMap = new Map((usersData || []).map((u: any) => [u.id, u]));
+
+      // Combine match data with user data
+      const matchesWithUsers = matchesData.map((match: any) => ({
+        ...match,
+        user1: usersMap.get(match.user1_id) || { id: match.user1_id, full_name: 'Unknown', profile_picture: null },
+        user2: usersMap.get(match.user2_id) || { id: match.user2_id, full_name: 'Unknown', profile_picture: null },
+      }));
+
+      console.log('Loaded matches:', matchesWithUsers.length);
+      setMatches(matchesWithUsers);
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      console.error('Error in loadMatches:', error);
+      Alert.alert('Error', error.message || 'Failed to load matches. Make sure you have run the admin access migration.');
+      setMatches([]);
     } finally {
       setLoading(false);
     }
@@ -103,20 +141,58 @@ export default function AdminDatingScreen() {
   const loadLikes = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      
+      // First, get all likes
+      const { data: likesData, error: likesError } = await supabase
         .from('dating_likes')
-        .select(`
-          *,
-          liker:users!dating_likes_liker_id_fkey(id, full_name, profile_picture),
-          liked:users!dating_likes_liked_id_fkey(id, full_name, profile_picture)
-        `)
+        .select('*')
         .order('created_at', { ascending: false })
         .limit(200);
 
-      if (error) throw error;
-      setLikes(data || []);
+      if (likesError) {
+        console.error('Error loading likes:', likesError);
+        throw likesError;
+      }
+
+      if (!likesData || likesData.length === 0) {
+        setLikes([]);
+        return;
+      }
+
+      // Get all unique user IDs from likes
+      const userIds = new Set<string>();
+      likesData.forEach((like: any) => {
+        if (like.liker_id) userIds.add(like.liker_id);
+        if (like.liked_id) userIds.add(like.liked_id);
+      });
+
+      // Fetch user data for all users
+      const { data: usersData, error: usersError } = await supabase
+        .from('users')
+        .select('id, full_name, profile_picture')
+        .in('id', Array.from(userIds));
+
+      if (usersError) {
+        console.error('Error loading users for likes:', usersError);
+        // Continue with likes even if user data fails
+      }
+
+      // Create a map of user data
+      const usersMap = new Map((usersData || []).map((u: any) => [u.id, u]));
+
+      // Combine like data with user data
+      const likesWithUsers = likesData.map((like: any) => ({
+        ...like,
+        liker: usersMap.get(like.liker_id) || { id: like.liker_id, full_name: 'Unknown', profile_picture: null },
+        liked: usersMap.get(like.liked_id) || { id: like.liked_id, full_name: 'Unknown', profile_picture: null },
+      }));
+
+      console.log('Loaded likes:', likesWithUsers.length);
+      setLikes(likesWithUsers);
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      console.error('Error in loadLikes:', error);
+      Alert.alert('Error', error.message || 'Failed to load likes. Make sure you have run the admin access migration.');
+      setLikes([]);
     } finally {
       setLoading(false);
     }
@@ -257,8 +333,19 @@ export default function AdminDatingScreen() {
         .eq('id', profile.id);
 
       if (error) throw error;
+      
+      // Close modal and clear selection first
+      setShowActionModal(false);
+      setSelectedProfile(null);
+      setActionType(null);
+      setActionReason('');
+      
+      // Reload profiles after a short delay to ensure modal is closed
+      setTimeout(() => {
+        loadProfiles();
+      }, 100);
+      
       Alert.alert('Success', 'Profile limits removed');
-      loadProfiles();
     } catch (error: any) {
       Alert.alert('Error', error.message);
     }
@@ -892,10 +979,7 @@ export default function AdminDatingScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.modalButton, styles.modalButtonConfirm]}
-                    onPress={() => {
-                      handleUnlimitProfile(selectedProfile);
-                      setShowActionModal(false);
-                    }}
+                    onPress={() => handleUnlimitProfile(selectedProfile)}
                   >
                     <Text style={[styles.modalButtonText, { color: '#fff' }]}>Remove Limits</Text>
                   </TouchableOpacity>

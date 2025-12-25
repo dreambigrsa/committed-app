@@ -19,7 +19,7 @@
         "EXPO_PUBLIC_COMMITTED_API_BASE_URL": "https://committed-5mxf.onrender.com"
       },
       "android": {
-        "buildType": "apk"
+        "buildType": "app-bundle"
       }
     }
   },

@@ -248,6 +248,8 @@ export async function getDatingDiscovery(filters?: {
     .select('*')
     .eq('is_active', true)
     .neq('user_id', user.id)
+    .eq('admin_limited', false) // Exclude admin-limited profiles
+    .eq('admin_suspended', false) // Exclude admin-suspended profiles
     .limit(20);
 
   // Apply filters - use provided filters or fall back to saved profile preferences

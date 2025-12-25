@@ -31,10 +31,12 @@ export const [AppContext, useApp] = createContextHook(() => {
   const [reelComments, setReelComments] = useState<Record<string, ReelComment[]>>({});
   const [blockedUsers, setBlockedUsers] = useState<string[]>([]); // Array of blocked user IDs
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [, setSubscriptions] = useState<RealtimeChannel[]>([]);
+  const subscriptionsRef = useRef<RealtimeChannel[]>([]);
+  const notificationPollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [userStatuses, setUserStatuses] = useState<Record<string, UserStatus>>({}); // userId -> UserStatus
   const statusUpdateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [statusRealtimeChannels, setStatusRealtimeChannels] = useState<RealtimeChannel[]>([]);
+  const isLoggingOutRef = useRef<boolean>(false); // Track if logout is in progress
   
   // Ban modal state
   const [banModalVisible, setBanModalVisible] = useState(false);
@@ -916,7 +918,112 @@ export const [AppContext, useApp] = createContextHook(() => {
     try {
       console.log('Starting logout process...');
       
-      // Clear local state first
+      // Set logout flag to prevent subscription callbacks from updating state
+      isLoggingOutRef.current = true;
+      
+      // Step 1: Clean up all real-time subscriptions FIRST (before clearing state)
+      console.log('Cleaning up real-time subscriptions...');
+      try {
+        // Remove all message/notification/post/reel subscriptions
+        subscriptionsRef.current.forEach(channel => {
+          try {
+            supabase.removeChannel(channel);
+          } catch (err) {
+            console.warn('Error removing subscription channel:', err);
+          }
+        });
+        subscriptionsRef.current = [];
+        
+        // Remove status update channels
+        statusRealtimeChannels.forEach(channel => {
+          try {
+            supabase.removeChannel(channel);
+          } catch (err) {
+            console.warn('Error removing status channel:', err);
+          }
+        });
+        setStatusRealtimeChannels([]);
+        
+        // Clear notification polling interval
+        if (notificationPollIntervalRef.current) {
+          clearInterval(notificationPollIntervalRef.current);
+          notificationPollIntervalRef.current = null;
+        }
+        
+        // Clear status update interval
+        if (statusUpdateIntervalRef.current) {
+          clearInterval(statusUpdateIntervalRef.current);
+          statusUpdateIntervalRef.current = null;
+        }
+        
+        console.log('All subscriptions cleaned up');
+      } catch (cleanupError) {
+        console.error('Error during subscription cleanup:', cleanupError);
+      }
+      
+      // Step 2: Sign out from Supabase (this properly clears the session)
+      try {
+        const { error: signOutError } = await supabase.auth.signOut();
+        if (signOutError) {
+          console.error('Supabase signOut error:', signOutError);
+        } else {
+          console.log('Supabase session cleared successfully');
+        }
+      } catch (signOutErr) {
+        console.error('Error during Supabase signOut:', signOutErr);
+      }
+      
+      // Step 3: Clear local AsyncStorage session (comprehensive cleanup)
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const storageKeys = await AsyncStorage.getAllKeys();
+        
+        // More comprehensive key matching for Supabase
+        const supabaseKeys = storageKeys.filter((key: string) => 
+          key.startsWith('sb-') || 
+          key.includes('supabase') || 
+          key.includes('supabase.auth') ||
+          key.startsWith('@supabase')
+        );
+        
+        console.log(`Found ${supabaseKeys.length} Supabase keys to clear:`, supabaseKeys);
+        
+        await Promise.all(supabaseKeys.map((key: string) => AsyncStorage.removeItem(key)));
+        
+        // Also try to clear by the known Supabase storage key pattern
+        const supabaseAuth = supabase.auth as any;
+        const supabaseUrl = supabaseAuth._storageKey || 'supabase.auth.token';
+        try {
+          await AsyncStorage.removeItem(supabaseUrl);
+        } catch (e) {
+          // Ignore if key doesn't exist
+        }
+        
+        console.log('AsyncStorage cleared successfully');
+      } catch (storageError) {
+        console.error('Error clearing AsyncStorage:', storageError);
+      }
+      
+      // Step 4: Set user status to offline BEFORE clearing state
+      try {
+        const userId = currentUser?.id;
+        if (userId) {
+          const now = new Date().toISOString();
+          await supabase
+            .from('user_status')
+            .update({
+              status_type: 'offline',
+              last_active_at: now,
+              updated_at: now,
+            })
+            .eq('user_id', userId);
+        }
+      } catch (statusError) {
+        console.error('Error setting offline status:', statusError);
+      }
+      
+      // Step 5: Clear local state AFTER all cleanup is done
+      // This prevents components from trying to access subscriptions that are being cleaned up
       setCurrentUser(null);
       setSession(null);
       setRelationships([]);
@@ -935,56 +1042,39 @@ export const [AppContext, useApp] = createContextHook(() => {
       setReelComments({});
       setLegalAcceptanceStatus(null);
       setHasCompletedOnboarding(null);
+      setUserStatuses({});
       
-      // Sign out from Supabase (this properly clears the session)
-      // This ensures the session is completely removed
-      try {
-        const { error: signOutError } = await supabase.auth.signOut();
-        if (signOutError) {
-          console.error('Supabase signOut error:', signOutError);
-        } else {
-          console.log('Supabase session cleared successfully');
-        }
-      } catch (signOutErr) {
-        console.error('Error during Supabase signOut:', signOutErr);
-      }
-      
-      // Clear local AsyncStorage session (comprehensive cleanup)
-      // This removes all Supabase-related keys from this device
-      try {
-        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-        const storageKeys = await AsyncStorage.getAllKeys();
-        
-        // More comprehensive key matching for Supabase
-        const supabaseKeys = storageKeys.filter((key: string) => 
-          key.startsWith('sb-') || 
-          key.includes('supabase') || 
-          key.includes('supabase.auth') ||
-          key.startsWith('@supabase')
-        );
-        
-        console.log(`Found ${supabaseKeys.length} Supabase keys to clear:`, supabaseKeys);
-        
-        await Promise.all(supabaseKeys.map((key: string) => AsyncStorage.removeItem(key)));
-        
-        // Also try to clear by the known Supabase storage key pattern
-        // Use type assertion since _storageKey is an internal property
-        const supabaseAuth = supabase.auth as any;
-        const supabaseUrl = supabaseAuth._storageKey || 'supabase.auth.token';
-        try {
-          await AsyncStorage.removeItem(supabaseUrl);
-        } catch (e) {
-          // Ignore if key doesn't exist
-        }
-        
-        console.log('AsyncStorage cleared successfully');
-      } catch (storageError) {
-        console.error('Error clearing AsyncStorage:', storageError);
-      }
+      // Reset logout flag after cleanup
+      isLoggingOutRef.current = false;
       
       console.log('Logout completed successfully');
     } catch (error) {
       console.error('Logout error:', error);
+      
+      // Ensure cleanup happens even on error
+      try {
+        subscriptionsRef.current.forEach(channel => {
+          try {
+            supabase.removeChannel(channel);
+          } catch (err) {
+            // Ignore cleanup errors
+          }
+        });
+        subscriptionsRef.current = [];
+        
+        if (notificationPollIntervalRef.current) {
+          clearInterval(notificationPollIntervalRef.current);
+          notificationPollIntervalRef.current = null;
+        }
+        
+        if (statusUpdateIntervalRef.current) {
+          clearInterval(statusUpdateIntervalRef.current);
+          statusUpdateIntervalRef.current = null;
+        }
+      } catch (cleanupErr) {
+        // Ignore cleanup errors
+      }
+      
       // Ensure we still clear state even if there's an error
       setCurrentUser(null);
       setSession(null);
@@ -995,8 +1085,11 @@ export const [AppContext, useApp] = createContextHook(() => {
       } catch (fallbackError) {
         console.error('Fallback logout error:', fallbackError);
       }
+      
+      // Reset logout flag even on error
+      isLoggingOutRef.current = false;
     }
-  }, []);
+  }, [statusRealtimeChannels]);
 
   const deleteAccount = useCallback(async () => {
     if (!currentUser) {
@@ -3213,6 +3306,9 @@ export const [AppContext, useApp] = createContextHook(() => {
           filter: `receiver_id=eq.${userId}`,
         },
         (payload: any) => {
+          // Don't update state if logout is in progress
+          if (isLoggingOutRef.current) return;
+          
           const isSender = payload.new.sender_id === userId;
           const isReceiver = payload.new.receiver_id === userId;
           const deletedForMe = (isSender && payload.new.deleted_for_sender) || (isReceiver && payload.new.deleted_for_receiver);
@@ -3250,6 +3346,9 @@ export const [AppContext, useApp] = createContextHook(() => {
           table: 'messages',
         },
         (payload: any) => {
+          // Don't update state if logout is in progress
+          if (isLoggingOutRef.current) return;
+          
           // Handle message updates (including deletions)
           const isSender = payload.new.sender_id === userId;
           const isReceiver = payload.new.receiver_id === userId;
@@ -3295,13 +3394,14 @@ export const [AppContext, useApp] = createContextHook(() => {
     subs.push(messagesChannel);
 
     // Setup notifications channel with polling fallback
-    let notificationPollInterval: ReturnType<typeof setInterval> | null = null;
-    
     const startNotificationPolling = (pollUserId: string) => {
-      if (notificationPollInterval) return; // Already polling
+      if (notificationPollIntervalRef.current) return; // Already polling
       
       console.log('🔄 Starting notification polling fallback...');
-      notificationPollInterval = setInterval(async () => {
+      notificationPollIntervalRef.current = setInterval(async () => {
+        // Don't poll if logout is in progress
+        if (isLoggingOutRef.current) return;
+        
         try {
           const { data: newNotifications, error } = await supabase
             .from('notifications')
@@ -3345,6 +3445,9 @@ export const [AppContext, useApp] = createContextHook(() => {
       
       // Poll immediately when starting
       (async () => {
+        // Don't poll if logout is in progress
+        if (isLoggingOutRef.current) return;
+        
         try {
           const { data: newNotifications, error } = await supabase
             .from('notifications')
@@ -3395,6 +3498,9 @@ export const [AppContext, useApp] = createContextHook(() => {
           table: 'notifications',
         },
         (payload: any) => {
+          // Don't update state if logout is in progress
+          if (isLoggingOutRef.current) return;
+          
           // Only process notifications for this user (filter in handler)
           if (!payload.new || payload.new.user_id !== userId) {
             return; // Not for this user, ignore silently
@@ -3452,19 +3558,19 @@ export const [AppContext, useApp] = createContextHook(() => {
         if (status === 'SUBSCRIBED') {
           console.log('✅ Notifications subscription: SUBSCRIBED');
           // Stop polling if real-time is working
-          if (notificationPollInterval) {
-            clearInterval(notificationPollInterval);
-            notificationPollInterval = null;
+          if (notificationPollIntervalRef.current) {
+            clearInterval(notificationPollIntervalRef.current);
+            notificationPollIntervalRef.current = null;
             console.log('🛑 Stopped notification polling (real-time is working)');
           }
         } else if (status === 'CLOSED') {
           console.log('❌ Notifications subscription: CLOSED - Starting polling fallback');
-          if (!notificationPollInterval) {
+          if (!notificationPollIntervalRef.current) {
             startNotificationPolling(userId);
           }
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           console.warn('⚠️ Notifications subscription error:', status, err ? (err.message || String(err)) : '');
-          if (!notificationPollInterval) {
+          if (!notificationPollIntervalRef.current) {
             console.log('⚠️ Starting notification polling fallback');
             startNotificationPolling(userId);
           }
@@ -3483,6 +3589,9 @@ export const [AppContext, useApp] = createContextHook(() => {
           table: 'conversations',
         },
         (payload: any) => {
+          // Don't update state if logout is in progress
+          if (isLoggingOutRef.current) return;
+          
           const updatedConv = payload.new;
           // Check if this conversation involves the current user
           const participantIds = updatedConv.participant_ids || [];
@@ -3517,6 +3626,9 @@ export const [AppContext, useApp] = createContextHook(() => {
           table: 'conversations',
         },
         (payload: any) => {
+          // Don't update state if logout is in progress
+          if (isLoggingOutRef.current) return;
+          
           // Remove deleted conversation from local state
           const deletedConvId = payload.old.id;
           setConversations(prev => prev.filter(c => c.id !== deletedConvId));
@@ -3541,6 +3653,9 @@ export const [AppContext, useApp] = createContextHook(() => {
           filter: `to_user_id=eq.${userId}`,
         },
         async () => {
+          // Don't update state if logout is in progress
+          if (isLoggingOutRef.current) return;
+          
           const { data: requestsData } = await supabase
             .from('relationship_requests')
             .select('*')
@@ -3576,6 +3691,9 @@ export const [AppContext, useApp] = createContextHook(() => {
           table: 'posts',
         },
         async (payload: any) => {
+          // Don't update state if logout is in progress
+          if (isLoggingOutRef.current) return;
+          
           if (payload.eventType === 'INSERT' && payload.new.moderation_status === 'approved') {
             const { data: userData } = await supabase
               .from('users')
@@ -3666,6 +3784,9 @@ export const [AppContext, useApp] = createContextHook(() => {
           table: 'reels',
         },
         async (payload: any) => {
+          // Don't update state if logout is in progress
+          if (isLoggingOutRef.current) return;
+          
           if (payload.eventType === 'INSERT' && payload.new.moderation_status === 'approved') {
             const { data: userData } = await supabase
               .from('users')
@@ -3733,16 +3854,16 @@ export const [AppContext, useApp] = createContextHook(() => {
       .subscribe();
     subs.push(reelsChannel);
 
-    setSubscriptions(subs);
+    subscriptionsRef.current = subs;
 
     return () => {
       subs.forEach(sub => {
         supabase.removeChannel(sub);
       });
       // Clear polling interval if it exists
-      if (notificationPollInterval) {
-        clearInterval(notificationPollInterval);
-        notificationPollInterval = null;
+      if (notificationPollIntervalRef.current) {
+        clearInterval(notificationPollIntervalRef.current);
+        notificationPollIntervalRef.current = null;
       }
     };
   }, []);
@@ -5947,38 +6068,48 @@ export const [AppContext, useApp] = createContextHook(() => {
   }, [currentUser, conversations, follows]);
 
   // Set status to offline on logout
+  // Note: Status is now set in the logout function itself before clearing state
+  // This useEffect is kept for edge cases but should rarely trigger
   useEffect(() => {
+    // Only run if we have no session but still have a currentUser (edge case)
+    // The main logout flow handles status update in the logout function
     if (!session && currentUser) {
-      // Update status to offline AND update last_active_at to NOW when logging out
+      const userId = currentUser.id;
+      
+      // Update status to offline
       const setOfflineOnLogout = async () => {
         const now = new Date().toISOString();
-        console.log('User logged out - setting status to offline');
+        console.log('User logged out - setting status to offline (edge case)');
         
-        await supabase
-          .from('user_status')
-          .update({
-            status_type: 'offline',
-            last_active_at: now, // Update last_active_at to actual logout time
-            updated_at: now,
-          })
-          .eq('user_id', currentUser.id);
-        
-        // Update local state
-        setUserStatuses(prev => {
-          const existing = prev[currentUser.id];
-          if (existing) {
-            return {
-              ...prev,
-              [currentUser.id]: {
-                ...existing,
-                statusType: 'offline',
-                lastActiveAt: now, // Actual logout time
-                updatedAt: now,
-              },
-            };
-          }
-          return prev;
-        });
+        try {
+          await supabase
+            .from('user_status')
+            .update({
+              status_type: 'offline',
+              last_active_at: now,
+              updated_at: now,
+            })
+            .eq('user_id', userId);
+          
+          // Update local state
+          setUserStatuses(prev => {
+            const existing = prev[userId];
+            if (existing) {
+              return {
+                ...prev,
+                [userId]: {
+                  ...existing,
+                  statusType: 'offline',
+                  lastActiveAt: now,
+                  updatedAt: now,
+                },
+              };
+            }
+            return prev;
+          });
+        } catch (error) {
+          console.error('Error setting offline status on logout:', error);
+        }
       };
       
       setOfflineOnLogout();

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter, usePathname } from 'expo-router';
+import { InteractionManager } from 'react-native';
 import { useApp } from '@/contexts/AppContext';
 import LegalAcceptanceModal from './LegalAcceptanceModal';
 import { LegalDocument } from '@/types';
@@ -49,17 +50,48 @@ export default function LegalAcceptanceEnforcer() {
   }, [pathname, isViewingDocument, currentUser, legalAcceptanceStatus]);
 
   const handleViewDocument = (document: LegalDocument) => {
+    if (!document || !document.slug) {
+      console.error('Invalid document or missing slug:', document);
+      return;
+    }
+
+    console.log('Viewing legal document:', document.slug);
+    
     // Hide modal first to allow navigation
     setModalVisible(false);
     setIsViewingDocument(true);
-    // Small delay to ensure modal closes before navigation
+    
+    // Clear any existing timeout
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
-    timeoutRef.current = setTimeout(() => {
-      router.push(`/legal/${document.slug}` as any);
-      timeoutRef.current = null;
-    }, 100);
+    
+    // Use InteractionManager to ensure navigation happens after modal animation completes
+    // This ensures the modal is fully dismissed before navigation
+    InteractionManager.runAfterInteractions(() => {
+      // Additional small delay to ensure modal is completely closed
+      timeoutRef.current = setTimeout(() => {
+        const route = `/legal/${document.slug}`;
+        console.log('Navigating to:', route);
+        
+        try {
+          router.push(route as any);
+        } catch (error) {
+          console.error('Error navigating to legal document:', error);
+          // Fallback: try replace if push fails
+          try {
+            console.log('Trying replace instead of push...');
+            router.replace(route as any);
+          } catch (replaceError) {
+            console.error('Error replacing to legal document:', replaceError);
+            // Reset state if navigation completely fails
+            setIsViewingDocument(false);
+            setModalVisible(true);
+          }
+        }
+        timeoutRef.current = null;
+      }, 300); // Increased delay to ensure modal is completely closed
+    });
   };
 
   const handleComplete = async () => {

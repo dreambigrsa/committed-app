@@ -164,9 +164,12 @@ export default function LikesReceivedScreen() {
             if (isBlurred) {
               // Show premium modal instead of navigating
               setShowPremiumModal(true);
-            } else {
-              // Navigate to their profile or like them back
-              router.push('/(tabs)/dating' as any);
+            } else if (isPremium && liker?.id) {
+              // Navigate to their profile (only if premium)
+              router.push({
+                pathname: '/dating/user-profile',
+                params: { userId: liker.id },
+              } as any);
             }
           }}
           activeOpacity={isBlurred ? 0.7 : 0.9}

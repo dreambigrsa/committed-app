@@ -174,12 +174,28 @@ export default function ProfileScreen() {
             style: 'destructive',
             onPress: async () => {
               try {
+                // Perform logout (this cleans up subscriptions and clears state)
                 await logout();
-                // Use replace to avoid navigation stack issues
-                // Small delay to ensure state is cleared
-                setTimeout(() => {
+                
+                // Wait longer to ensure all cleanup is complete before navigation
+                // This prevents crashes from components trying to access cleared state
+                // Increased delay to 500ms to ensure all async operations complete
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                try {
+                  // Use replace to avoid navigation stack issues
                   router.replace('/' as any);
-                }, 100);
+                } catch (navError) {
+                  console.error('Navigation error after logout:', navError);
+                  // Fallback: try push if replace fails
+                  try {
+                    router.push('/' as any);
+                  } catch (pushError) {
+                    console.error('Push also failed:', pushError);
+                    // If navigation completely fails, the app might need to restart
+                    // But we've already logged out, so state is cleared
+                  }
+                }
               } catch (error) {
                 console.error('Logout failed:', error);
                 Alert.alert('Error', 'Failed to log out. Please try again.');

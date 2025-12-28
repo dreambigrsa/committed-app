@@ -104,7 +104,8 @@ GRANT EXECUTE ON FUNCTION public.create_notification(UUID, TEXT, TEXT, TEXT, JSO
 -- ============================================
 -- Add missing notification types to the check constraint
 -- This includes relationship_end_request and false_relationship_resolved which are used in the app
-DROP CONSTRAINT IF EXISTS notifications_type_check ON notifications;
+ALTER TABLE notifications
+DROP CONSTRAINT IF EXISTS notifications_type_check;
 
 ALTER TABLE notifications
 ADD CONSTRAINT notifications_type_check 

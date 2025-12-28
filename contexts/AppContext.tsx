@@ -1338,11 +1338,8 @@ export const [AppContext, useApp] = createContextHook(() => {
         return;
       }
 
-      // Try using the database function first (bypasses RLS), fallback to direct insert
-      let notificationData: any = null;
-      let notificationError: any = null;
-
-      // First, try using the database function (if it exists)
+      // ALWAYS use the database function (SECURITY DEFINER bypasses RLS)
+      // This is the only reliable way to create notifications for other users
       const { data: functionData, error: functionError } = await supabase.rpc('create_notification', {
         p_user_id: userId,
         p_type: type,
@@ -1351,65 +1348,44 @@ export const [AppContext, useApp] = createContextHook(() => {
         p_data: data || null
       });
 
-      if (!functionError && functionData) {
-        // Function worked and returned the notification ID
-        // Construct notification object from what we know (we can't SELECT due to RLS)
-        notificationData = {
-          id: functionData,
-          user_id: userId,
-          type: type,
-          title: title,
-          message: message,
-          data: data || null,
-          read: false,
-          created_at: new Date().toISOString()
-        };
-      } else {
-        // Function doesn't exist or failed, try direct insert
-        // Don't use .single() because RLS SELECT policy prevents User A from reading User B's notifications
-        const { data: directData, error: directError } = await supabase
-          .from('notifications')
-          .insert({
-            user_id: userId,
-            type,
-            title,
-            message,
-            data,
-            read: false,
-          })
-          .select();
-        
-        if (directError) {
-          // Check if it's the PGRST116 error (insert succeeded but SELECT blocked)
-          if (directError.code === 'PGRST116') {
-            // Insert succeeded but SELECT was blocked by RLS - this is okay
-            // The notification was created, real-time subscription will handle it
-            console.log('✅ Notification inserted successfully but SELECT blocked by RLS - real-time subscription will add it for user:', userId);
-            // The notification was inserted, real-time will handle it
-            return; // Exit early, real-time subscription will add the notification to state
-          }
-          notificationError = directError;
-        } else if (directData && directData.length > 0) {
-          // Got the data back (shouldn't happen when inserting for another user, but handle it)
-          notificationData = directData[0];
-        } else {
-          // Empty result but no error - insert succeeded, RLS blocked SELECT
-          // Real-time subscription will handle it
-          console.log('✅ Notification inserted successfully - real-time subscription will add it for user:', userId);
-          return;
+      if (functionError) {
+        // Check if function doesn't exist (42883 = function does not exist)
+        if (functionError.code === '42883' || functionError.message?.includes('function') || functionError.message?.includes('does not exist')) {
+          const errorMessage = `Database function 'create_notification' not found. Please run the migration: migrations/add-notifications-insert-policy.sql in Supabase SQL Editor.`;
+          console.error('❌', errorMessage);
+          throw new Error(errorMessage);
         }
+        
+        // Check if it's an RLS error (42501)
+        if (functionError.code === '42501') {
+          const errorMessage = `RLS policy error. The create_notification function exists but is blocked. Please ensure the migration migrations/add-notifications-insert-policy.sql has been run correctly in Supabase SQL Editor.`;
+          console.error('❌', errorMessage);
+          throw new Error(errorMessage);
+        }
+        
+        // Other errors
+        console.error('❌ Failed to create notification via RPC function:', JSON.stringify(functionError, null, 2));
+        throw functionError;
       }
 
-      if (notificationError) {
-        console.error('Failed to create notification:', JSON.stringify(notificationError, null, 2));
-        console.error('Error details:', {
-          code: notificationError.code,
-          message: notificationError.message,
-          details: notificationError.details,
-          hint: notificationError.hint
-        });
-        throw notificationError;
+      if (!functionData) {
+        // Function returned null/undefined - this shouldn't happen but handle it
+        console.warn('⚠️ create_notification function returned no data, but no error. Notification may not have been created.');
+        return;
       }
+
+      // Function worked and returned the notification ID
+      // Construct notification object from what we know (we can't SELECT due to RLS)
+      const notificationData = {
+        id: functionData,
+        user_id: userId,
+        type: type,
+        title: title,
+        message: message,
+        data: data || null,
+        read: false,
+        created_at: new Date().toISOString()
+      };
 
       // Only add to local state if this notification is for the current user
       // Otherwise, let the real-time subscription handle it for the correct recipient

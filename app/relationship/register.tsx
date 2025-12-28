@@ -244,16 +244,27 @@ export default function RegisterRelationshipScreen() {
         const fileName = `partner-face-${Date.now()}.${fileExt}`;
         const filePath = `partner-photos/${fileName}`;
 
-        // Convert URI to Uint8Array using legacy API (no deprecation warnings)
-        const base64 = await FileSystem.readAsStringAsync(result.assets[0].uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        
-        // Convert base64 to Uint8Array
-        const binaryString = atob(base64);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
+        let bytes: Uint8Array;
+
+        // Handle web vs native platforms differently
+        if (Platform.OS === 'web') {
+          // For web, use fetch to read the file
+          const response = await fetch(result.assets[0].uri);
+          const blob = await response.blob();
+          const arrayBuffer = await blob.arrayBuffer();
+          bytes = new Uint8Array(arrayBuffer);
+        } else {
+          // For native platforms, use FileSystem
+          const base64 = await FileSystem.readAsStringAsync(result.assets[0].uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          
+          // Convert base64 to Uint8Array
+          const binaryString = atob(base64);
+          bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
         }
 
         const { data, error } = await supabase.storage

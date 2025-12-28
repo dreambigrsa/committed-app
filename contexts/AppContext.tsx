@@ -1374,18 +1374,18 @@ export const [AppContext, useApp] = createContextHook(() => {
         return;
       }
 
-      // Function worked and returned the notification ID
-      // Construct notification object from what we know (we can't SELECT due to RLS)
+        // Function worked and returned the notification ID
+        // Construct notification object from what we know (we can't SELECT due to RLS)
       const notificationData = {
-        id: functionData,
-        user_id: userId,
-        type: type,
-        title: title,
-        message: message,
-        data: data || null,
-        read: false,
-        created_at: new Date().toISOString()
-      };
+          id: functionData,
+          user_id: userId,
+          type: type,
+          title: title,
+          message: message,
+          data: data || null,
+          read: false,
+          created_at: new Date().toISOString()
+        };
 
       // Only add to local state if this notification is for the current user
       // Otherwise, let the real-time subscription handle it for the correct recipient
@@ -1706,7 +1706,7 @@ export const [AppContext, useApp] = createContextHook(() => {
           if (!comparePhoneNumbers(normalizedUserPhone, normalizedPartnerPhone)) {
             throw new Error(`Phone number mismatch: The selected user's phone number (${data.phone_number}) does not match the provided phone number (${partnerPhone}). Please verify you selected the correct person.`);
           }
-          partnerData = data;
+        partnerData = data;
         }
       } else {
         // Search by phone number - search for both normalized and original format
@@ -1772,17 +1772,17 @@ export const [AppContext, useApp] = createContextHook(() => {
       }
 
       const relationshipPayload = {
-        user_id: currentUser.id,
-        partner_name: partnerName,
+          user_id: currentUser.id,
+          partner_name: partnerName,
         partner_phone: normalizedPartnerPhone, // Store normalized phone number
-        partner_user_id: partnerData?.id,
-        type,
-        status: 'pending',
-        privacy_level: 'public',
-        partner_face_photo: partnerFacePhoto,
-        partner_date_of_birth_month: partnerDateOfBirthMonth,
-        partner_date_of_birth_year: partnerDateOfBirthYear,
-        partner_city: partnerCity,
+          partner_user_id: partnerData?.id,
+          type,
+          status: 'pending',
+          privacy_level: 'public',
+          partner_face_photo: partnerFacePhoto,
+          partner_date_of_birth_month: partnerDateOfBirthMonth,
+          partner_date_of_birth_year: partnerDateOfBirthYear,
+          partner_city: partnerCity,
       };
 
       const { data: relationshipData, error: relError } = await supabase
@@ -1911,14 +1911,14 @@ export const [AppContext, useApp] = createContextHook(() => {
           const verifiedDate = new Date().toISOString();
 
           // Update the requester's relationship record
-          await supabase
-            .from('relationships')
-            .update({
-              status: 'verified',
+        await supabase
+          .from('relationships')
+          .update({
+            status: 'verified',
               verified_date: verifiedDate,
-              partner_user_id: currentUser.id,
-            })
-            .eq('user_id', request.from_user_id);
+            partner_user_id: currentUser.id,
+          })
+          .eq('user_id', request.from_user_id);
 
           // Check if accepter already has a relationship record
           const { data: existingAccepterRelationship } = await supabase
@@ -1964,14 +1964,14 @@ export const [AppContext, useApp] = createContextHook(() => {
               });
           }
 
-          // Send notification to the requester that the relationship was verified
-          await createNotification(
-            request.from_user_id,
-            'relationship_verified',
-            'Relationship Verified',
-            `${currentUser.fullName} accepted your ${request.relationship_type} relationship request`,
-            { relationshipId: request.id }
-          );
+        // Send notification to the requester that the relationship was verified
+        await createNotification(
+          request.from_user_id,
+          'relationship_verified',
+          'Relationship Verified',
+          `${currentUser.fullName} accepted your ${request.relationship_type} relationship request`,
+          { relationshipId: request.id }
+        );
         }
       }
 
@@ -5097,12 +5097,12 @@ export const [AppContext, useApp] = createContextHook(() => {
       if (!relationship) return null;
 
       const disputePayload = {
-        relationship_id: relationshipId,
-        initiated_by: currentUser.id,
-        dispute_type: 'end_relationship',
-        description: reason || 'Request to end relationship',
-        status: 'pending',
-        auto_resolve_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          relationship_id: relationshipId,
+          initiated_by: currentUser.id,
+          dispute_type: 'end_relationship',
+          description: reason || 'Request to end relationship',
+          status: 'pending',
+          auto_resolve_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       };
 
       const { data: dispute, error } = await supabase
@@ -5129,13 +5129,13 @@ export const [AppContext, useApp] = createContextHook(() => {
       let notificationError: any = null;
       if (partnerId) {
         try {
-          await createNotification(
-            partnerId,
-            'relationship_end_request',
-            'End Relationship Request',
-            `${currentUser.fullName} has requested to end your relationship. Please confirm or it will auto-resolve in 7 days.`,
-            { relationshipId, disputeId: dispute.id }
-          );
+        await createNotification(
+          partnerId,
+          'relationship_end_request',
+          'End Relationship Request',
+          `${currentUser.fullName} has requested to end your relationship. Please confirm or it will auto-resolve in 7 days.`,
+          { relationshipId, disputeId: dispute.id }
+        );
         } catch (err: any) {
           // Log notification error but don't fail the entire operation
           // The dispute was created successfully, which is the main action
@@ -5197,12 +5197,12 @@ export const [AppContext, useApp] = createContextHook(() => {
         
         // Update the first relationship record (the one from the dispute)
         const { error: updateError1 } = await supabase
-          .from('relationships')
-          .update({
-            status: 'ended',
+        .from('relationships')
+        .update({
+          status: 'ended',
             end_date: endDate,
-          })
-          .eq('id', dispute.relationship_id);
+        })
+        .eq('id', dispute.relationship_id);
 
         if (updateError1) {
           console.error('Error updating relationship:', updateError1);
@@ -5211,7 +5211,7 @@ export const [AppContext, useApp] = createContextHook(() => {
         // Find and update the partner's relationship record (swapped user_id and partner_user_id)
         // This is the record where user_id is the partner and partner_user_id is the requester
         const { data: partnerRelationships } = await supabase
-          .from('relationships')
+        .from('relationships')
           .select('id')
           .eq('user_id', userId2)
           .eq('partner_user_id', userId1)
@@ -6678,31 +6678,31 @@ export const [AppContext, useApp] = createContextHook(() => {
         console.log('User logged out - setting status to offline (edge case)');
         
         try {
-          await supabase
-            .from('user_status')
-            .update({
-              status_type: 'offline',
+        await supabase
+          .from('user_status')
+          .update({
+            status_type: 'offline',
               last_active_at: now,
-              updated_at: now,
-            })
+            updated_at: now,
+          })
             .eq('user_id', userId);
-          
-          // Update local state
-          setUserStatuses(prev => {
+        
+        // Update local state
+        setUserStatuses(prev => {
             const existing = prev[userId];
-            if (existing) {
-              return {
-                ...prev,
+          if (existing) {
+            return {
+              ...prev,
                 [userId]: {
-                  ...existing,
-                  statusType: 'offline',
+                ...existing,
+                statusType: 'offline',
                   lastActiveAt: now,
-                  updatedAt: now,
-                },
-              };
-            }
-            return prev;
-          });
+                updatedAt: now,
+              },
+            };
+          }
+          return prev;
+        });
         } catch (error) {
           console.error('Error setting offline status on logout:', error);
         }

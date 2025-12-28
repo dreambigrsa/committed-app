@@ -327,7 +327,7 @@ export default function DatingScreen() {
         setSwipedProfiles((prev) => {
           const newSet = new Set(prev);
           if (userId) {
-            newSet.delete(userId);
+          newSet.delete(userId);
           }
           return newSet;
         });
@@ -484,12 +484,12 @@ export default function DatingScreen() {
             You've seen everyone in your area. Check back later for new people, adjust your preferences, or see passed profiles again!
           </Text>
           <View style={styles.emptyActions}>
-            <TouchableOpacity
-              style={styles.secondaryButton}
-              onPress={() => router.push('/dating/filters')}
-            >
-              <Text style={styles.secondaryButtonText}>Adjust Filters</Text>
-            </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => router.push('/dating/filters')}
+          >
+            <Text style={styles.secondaryButtonText}>Adjust Filters</Text>
+          </TouchableOpacity>
             <TouchableOpacity
               style={[styles.secondaryButton, styles.resetPassedButton]}
               onPress={handleResetPassedProfiles}

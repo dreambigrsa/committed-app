@@ -215,311 +215,6 @@ export default function ConversationDetailScreen() {
   const attachmentButtonsOpacity = useRef(new Animated.Value(1)).current;
   const attachmentButtonsScale = useRef(new Animated.Value(1)).current;
 
-  // Define handleDeleteMessage as useCallback BEFORE all useEffect hooks to ensure hooks order consistency
-  const handleDeleteMessage = useCallback(async (messageId: string, isSender: boolean) => {
-    const message = localMessages.find(m => m.id === messageId);
-    if (!message) return;
-
-    if (isSender) {
-      // Sender can delete for everyone or just for themselves
-      Alert.alert(
-        'Delete Message',
-        'How would you like to delete this message?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Delete for me',
-            style: 'default',
-            onPress: async () => {
-              const success = await deleteMessage(messageId, conversationId, false);
-              if (success) {
-                setLocalMessages(prev => prev.filter(m => m.id !== messageId));
-              } else {
-                Alert.alert('Error', 'Failed to delete message');
-              }
-            },
-          },
-          {
-            text: 'Delete for everyone',
-            style: 'destructive',
-            onPress: async () => {
-              const success = await deleteMessage(messageId, conversationId, true);
-              if (success) {
-                // Update message to show deleted state
-                setLocalMessages(prev => prev.map(m => 
-                  m.id === messageId 
-                    ? { ...m, content: 'This message was deleted', deletedForSender: true, deletedForReceiver: true }
-                    : m
-                ));
-                // Real-time update will also handle this
-              } else {
-                Alert.alert('Error', 'Failed to delete message');
-              }
-            },
-          },
-        ]
-      );
-    } else {
-      // Receiver can only delete for themselves
-      Alert.alert(
-        'Delete Message',
-        'Delete this message for yourself?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: async () => {
-              const success = await deleteMessage(messageId, conversationId, false);
-              if (success) {
-                setLocalMessages(prev => prev.filter(m => m.id !== messageId));
-              } else {
-                Alert.alert('Error', 'Failed to delete message');
-              }
-            },
-          },
-        ]
-      );
-    }
-  }, [localMessages, conversationId, deleteMessage]); // setLocalMessages is stable (setState function) and doesn't need to be in deps
-
-  // Define renderMessage callback BEFORE all useEffect hooks to ensure hooks are always called in same order
-  const renderMessage = useCallback(({ item }: { item: any }) => {
-    if (!item || !item.id) return null;
-
-    // Render AI typing indicator without warnings/actions
-    if (typeof item.id === 'string' && item.id.startsWith('ai_typing_')) {
-      return (
-        <View style={[styles.messageContainer, styles.theirMessageContainer]}>
-          <View style={[styles.messageBubble, styles.theirMessage]}>
-            <View style={styles.aiThinkingRow}>
-              <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={[styles.messageText, styles.theirMessageText]}>{item.content}</Text>
-            </View>
-          </View>
-        </View>
-      );
-    }
-    
-    if (!currentUser) return null;
-    
-    const isMe = item.senderId === currentUser.id;
-    const isDeleted = (isMe && item.deletedForSender) || (!isMe && item.deletedForReceiver);
-    const messageTime = new Date(item.createdAt).toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-    });
-
-    // Check if this message has a warning
-    const messageWarning = warnings.find(w => w.messageId === item.id && !w.acknowledged);
-
-    // Don't render deleted messages at all - they should be filtered out
-    if (isDeleted) {
-      return null;
-    }
-
-    // Check if sender is a professional (not AI, not user)
-    const isProfessional = professionalSession && 
-      professionalSession.status === 'active' && 
-      !isMe && 
-      item.senderId !== aiUserId &&
-      item.senderId === (professionalSession.professional?.userId || '');
-    
-    const isAI = !isMe && item.senderId === aiUserId;
-
-    return (
-      <>
-        {messageWarning && (
-          <View style={styles.warningBanner}>
-            <View style={[
-              styles.warningContent,
-              messageWarning.severity === 'high' ? styles.warningHigh : 
-              messageWarning.severity === 'medium' ? styles.warningMedium : 
-              styles.warningLow
-            ]}>
-              <Text style={styles.warningIcon}>⚠️</Text>
-              <View style={styles.warningTextContainer}>
-                <Text style={styles.warningTitle}>
-                  {messageWarning.severity === 'high' ? 'High Risk Warning' :
-                   messageWarning.severity === 'medium' ? 'Medium Risk Warning' :
-                   'Low Risk Warning'}
-                </Text>
-                <Text style={styles.warningMessage}>
-                  {(() => {
-                    const template = warningTemplates.find(t => t.severity === messageWarning.severity);
-                    if (template) {
-                      return template.in_chat_warning_template
-                        .replace('{trigger_words}', messageWarning.triggerWords.join(', '))
-                        .replace('{severity}', messageWarning.severity);
-                    }
-                    return `This message contains potentially inappropriate content. Trigger words detected: ${messageWarning.triggerWords.join(', ')}`;
-                  })()}
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={styles.acknowledgeButton}
-                onPress={async () => {
-                  const success = await acknowledgeWarning(messageWarning.id);
-                  if (success) {
-                    setWarnings(prev => prev.map(w => 
-                      w.id === messageWarning.id ? { ...w, acknowledged: true } : w
-                    ));
-                  }
-                }}
-              >
-                <Text style={styles.acknowledgeButtonText}>Dismiss</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-        <TouchableOpacity
-          style={[
-            styles.messageContainer,
-            isMe ? styles.myMessageContainer : styles.theirMessageContainer,
-          ]}
-          onLongPress={() => handleDeleteMessage(item.id, isMe)}
-          activeOpacity={0.9}
-        >
-          {/* Professional/AI Name and Role Header */}
-          {!isMe && (isProfessional || isAI) && (
-            <View style={styles.messageSenderHeader}>
-              <Text style={styles.messageSenderName}>
-                {isProfessional 
-                  ? (professionalSession.professional?.fullName || 'Professional')
-                  : 'Committed AI'
-                }
-              </Text>
-              {isProfessional && professionalSession.professional?.role && (
-                <View style={styles.messageSenderRoleBadge}>
-                  <Shield size={12} color={colors.secondary} />
-                  <Text style={styles.messageSenderRole}>
-                    {professionalSession.professional.role.name}
-                  </Text>
-                </View>
-              )}
-            </View>
-          )}
-          
-          <View style={[
-            styles.messageBubble, 
-            isMe 
-              ? styles.myMessage 
-              : isProfessional 
-                ? styles.professionalMessage 
-                : styles.theirMessage
-          ]}>
-          {item.messageType === 'image' && item.mediaUrl ? (
-            <TouchableOpacity
-              onPress={() => setViewingImage(item.mediaUrl)}
-              activeOpacity={0.9}
-            >
-              <Image
-                source={{ uri: item.mediaUrl }}
-                style={styles.messageImage}
-                contentFit="cover"
-              />
-            </TouchableOpacity>
-          ) : null}
-          
-          {item.messageType === 'document' && item.documentUrl ? (
-            <TouchableOpacity
-              style={styles.documentContainer}
-              onPress={() => {
-                if (item.documentUrl) {
-                  Linking.openURL(item.documentUrl);
-                }
-              }}
-            >
-              <FileText size={24} color={isMe ? colors.text.white : colors.primary} />
-              <Text style={[
-                styles.documentName, 
-                isMe 
-                  ? styles.myMessageText 
-                  : isProfessional 
-                    ? styles.professionalMessageText 
-                    : styles.theirMessageText
-              ]}>
-                {item.documentName || 'Document'}
-              </Text>
-            </TouchableOpacity>
-          ) : null}
-
-          {item.messageType === 'sticker' && item.mediaUrl ? (
-            <View style={styles.stickerContainer}>
-              <Image
-                source={{ uri: item.mediaUrl }}
-                style={styles.stickerImage}
-                contentFit="contain"
-              />
-            </View>
-          ) : null}
-
-          {/* Status Attachment - Highlighted */}
-          {item.statusId && item.statusPreviewUrl && conversation ? (
-            <StatusPreviewAttachment
-              mediaPath={item.statusPreviewUrl}
-              isMe={isMe}
-              onPress={() => {
-                // Get status owner from conversation
-                const otherParticipantId = conversation.participants.find(id => id !== currentUser.id);
-                if (otherParticipantId) {
-                  router.push(`/status/${otherParticipantId}` as any);
-                }
-              }}
-            />
-          ) : null}
-
-          {item.content && typeof item.content === 'string' && item.content.trim() && item.messageType !== 'sticker' ? (
-            <Text style={[
-              styles.messageText, 
-              isMe 
-                ? styles.myMessageText 
-                : isProfessional 
-                  ? styles.professionalMessageText 
-                  : styles.theirMessageText
-            ]}>
-              {item.content}
-            </Text>
-          ) : null}
-
-          {/* AI Feedback Buttons - Only show on AI messages */}
-          {isAI && !isMe && aiUserId && (
-            <View style={styles.aiFeedbackContainer}>
-              <TouchableOpacity
-                style={[
-                  styles.aiFeedbackButton,
-                  aiFeedback[item.id] === 1 && styles.aiFeedbackButtonActive
-                ]}
-                onPress={() => submitAiFeedback(item.id, 1)}
-                disabled={aiIsThinking}
-              >
-                <Text style={styles.aiFeedbackButtonText}>👍</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.aiFeedbackButton,
-                  aiFeedback[item.id] === -1 && styles.aiFeedbackButtonActive
-                ]}
-                onPress={() => submitAiFeedback(item.id, -1)}
-                disabled={aiIsThinking}
-              >
-                <Text style={styles.aiFeedbackButtonText}>👎</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          <Text style={[
-            styles.messageTime,
-            isMe ? styles.myMessageTime : styles.theirMessageTime
-          ]}>
-            {messageTime}
-          </Text>
-        </View>
-        </TouchableOpacity>
-      </>
-    );
-  }, [currentUser, warnings, warningTemplates, professionalSession, aiUserId, aiFeedback, aiIsThinking, conversation, router, acknowledgeWarning, submitAiFeedback, handleDeleteMessage, setViewingImage]);
-
   // Reset recorded impressions when ads change
   useEffect(() => {
     recordedImpressions.current.clear();
@@ -1739,6 +1434,243 @@ export default function ConversationDetailScreen() {
     };
   };
 
+  // Define renderMessage callback BEFORE early return to ensure hooks are always called in same order
+  const renderMessage = useCallback(({ item }: { item: any }) => {
+    if (!item || !item.id) return null;
+
+    // Render AI typing indicator without warnings/actions
+    if (typeof item.id === 'string' && item.id.startsWith('ai_typing_')) {
+      return (
+        <View style={[styles.messageContainer, styles.theirMessageContainer]}>
+          <View style={[styles.messageBubble, styles.theirMessage]}>
+            <View style={styles.aiThinkingRow}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={[styles.messageText, styles.theirMessageText]}>{item.content}</Text>
+            </View>
+          </View>
+        </View>
+      );
+    }
+    
+    if (!currentUser) return null;
+    
+    const isMe = item.senderId === currentUser.id;
+    const isDeleted = (isMe && item.deletedForSender) || (!isMe && item.deletedForReceiver);
+    const messageTime = new Date(item.createdAt).toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+
+    // Check if this message has a warning
+    const messageWarning = warnings.find(w => w.messageId === item.id && !w.acknowledged);
+
+    // Don't render deleted messages at all - they should be filtered out
+    if (isDeleted) {
+      return null;
+    }
+
+    // Check if sender is a professional (not AI, not user)
+    const isProfessional = professionalSession && 
+      professionalSession.status === 'active' && 
+      !isMe && 
+      item.senderId !== aiUserId &&
+      item.senderId === (professionalSession.professional?.userId || '');
+    
+    const isAI = !isMe && item.senderId === aiUserId;
+
+    return (
+      <>
+        {messageWarning && (
+          <View style={styles.warningBanner}>
+            <View style={[
+              styles.warningContent,
+              messageWarning.severity === 'high' ? styles.warningHigh : 
+              messageWarning.severity === 'medium' ? styles.warningMedium : 
+              styles.warningLow
+            ]}>
+              <Text style={styles.warningIcon}>⚠️</Text>
+              <View style={styles.warningTextContainer}>
+                <Text style={styles.warningTitle}>
+                  {messageWarning.severity === 'high' ? 'High Risk Warning' :
+                   messageWarning.severity === 'medium' ? 'Medium Risk Warning' :
+                   'Low Risk Warning'}
+                </Text>
+                <Text style={styles.warningMessage}>
+                  {(() => {
+                    const template = warningTemplates.find(t => t.severity === messageWarning.severity);
+                    if (template) {
+                      return template.in_chat_warning_template
+                        .replace('{trigger_words}', messageWarning.triggerWords.join(', '))
+                        .replace('{severity}', messageWarning.severity);
+                    }
+                    return `This message contains potentially inappropriate content. Trigger words detected: ${messageWarning.triggerWords.join(', ')}`;
+                  })()}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.acknowledgeButton}
+                onPress={async () => {
+                  const success = await acknowledgeWarning(messageWarning.id);
+                  if (success) {
+                    setWarnings(prev => prev.map(w => 
+                      w.id === messageWarning.id ? { ...w, acknowledged: true } : w
+                    ));
+                  }
+                }}
+              >
+                <Text style={styles.acknowledgeButtonText}>Dismiss</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+        <TouchableOpacity
+          style={[
+            styles.messageContainer,
+            isMe ? styles.myMessageContainer : styles.theirMessageContainer,
+          ]}
+          onLongPress={() => handleDeleteMessage(item.id, isMe)}
+          activeOpacity={0.9}
+        >
+          {/* Professional/AI Name and Role Header */}
+          {!isMe && (isProfessional || isAI) && (
+            <View style={styles.messageSenderHeader}>
+              <Text style={styles.messageSenderName}>
+                {isProfessional 
+                  ? (professionalSession.professional?.fullName || 'Professional')
+                  : 'Committed AI'
+                }
+              </Text>
+              {isProfessional && professionalSession.professional?.role && (
+                <View style={styles.messageSenderRoleBadge}>
+                  <Shield size={12} color={colors.secondary} />
+                  <Text style={styles.messageSenderRole}>
+                    {professionalSession.professional.role.name}
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+          
+          <View style={[
+            styles.messageBubble, 
+            isMe 
+              ? styles.myMessage 
+              : isProfessional 
+                ? styles.professionalMessage 
+                : styles.theirMessage
+          ]}>
+          {item.messageType === 'image' && item.mediaUrl ? (
+            <TouchableOpacity
+              onPress={() => setViewingImage(item.mediaUrl)}
+              activeOpacity={0.9}
+            >
+              <Image
+                source={{ uri: item.mediaUrl }}
+                style={styles.messageImage}
+                contentFit="cover"
+              />
+            </TouchableOpacity>
+          ) : null}
+          
+          {item.messageType === 'document' && item.documentUrl ? (
+            <TouchableOpacity
+              style={styles.documentContainer}
+              onPress={() => {
+                if (item.documentUrl) {
+                  Linking.openURL(item.documentUrl);
+                }
+              }}
+            >
+              <FileText size={24} color={isMe ? colors.text.white : colors.primary} />
+              <Text style={[
+                styles.documentName, 
+                isMe 
+                  ? styles.myMessageText 
+                  : isProfessional 
+                    ? styles.professionalMessageText 
+                    : styles.theirMessageText
+              ]}>
+                {item.documentName || 'Document'}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
+          {item.messageType === 'sticker' && item.mediaUrl ? (
+            <View style={styles.stickerContainer}>
+              <Image
+                source={{ uri: item.mediaUrl }}
+                style={styles.stickerImage}
+                contentFit="contain"
+              />
+            </View>
+          ) : null}
+
+          {/* Status Attachment - Highlighted */}
+          {item.statusId && item.statusPreviewUrl && conversation ? (
+            <StatusPreviewAttachment
+              mediaPath={item.statusPreviewUrl}
+              isMe={isMe}
+              onPress={() => {
+                // Get status owner from conversation
+                const otherParticipantId = conversation.participants.find(id => id !== currentUser.id);
+                if (otherParticipantId) {
+                  router.push(`/status/${otherParticipantId}` as any);
+                }
+              }}
+            />
+          ) : null}
+
+          {item.content && typeof item.content === 'string' && item.content.trim() && item.messageType !== 'sticker' ? (
+            <Text style={[
+              styles.messageText, 
+              isMe 
+                ? styles.myMessageText 
+                : isProfessional 
+                  ? styles.professionalMessageText 
+                  : styles.theirMessageText
+            ]}>
+              {item.content}
+            </Text>
+          ) : null}
+
+          {/* AI Feedback Buttons - Only show on AI messages */}
+          {isAI && !isMe && aiUserId && (
+            <View style={styles.aiFeedbackContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.aiFeedbackButton,
+                  aiFeedback[item.id] === 1 && styles.aiFeedbackButtonActive
+                ]}
+                onPress={() => submitAiFeedback(item.id, 1)}
+                disabled={aiIsThinking}
+              >
+                <Text style={styles.aiFeedbackButtonText}>👍</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.aiFeedbackButton,
+                  aiFeedback[item.id] === -1 && styles.aiFeedbackButtonActive
+                ]}
+                onPress={() => submitAiFeedback(item.id, -1)}
+                disabled={aiIsThinking}
+              >
+                <Text style={styles.aiFeedbackButtonText}>👎</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <Text style={[
+            styles.messageTime,
+            isMe ? styles.myMessageTime : styles.theirMessageTime
+          ]}>
+            {messageTime}
+          </Text>
+        </View>
+        </TouchableOpacity>
+      </>
+    );
+  }, [currentUser, warnings, warningTemplates, professionalSession, aiUserId, aiFeedback, aiIsThinking, conversation, router, acknowledgeWarning, submitAiFeedback, handleDeleteMessage, setViewingImage]);
+
   // Early return guard - must be after all hooks
   if (!currentUser || !conversationId) {
     return null;
@@ -1755,6 +1687,73 @@ export default function ConversationDetailScreen() {
       </SafeAreaView>
     );
   }
+
+  const handleDeleteMessage = async (messageId: string, isSender: boolean) => {
+    const message = localMessages.find(m => m.id === messageId);
+    if (!message) return;
+
+    if (isSender) {
+      // Sender can delete for everyone or just for themselves
+      Alert.alert(
+        'Delete Message',
+        'How would you like to delete this message?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete for me',
+            style: 'default',
+            onPress: async () => {
+              const success = await deleteMessage(messageId, conversationId, false);
+              if (success) {
+                setLocalMessages(prev => prev.filter(m => m.id !== messageId));
+              } else {
+                Alert.alert('Error', 'Failed to delete message');
+              }
+            },
+          },
+          {
+            text: 'Delete for everyone',
+            style: 'destructive',
+            onPress: async () => {
+              const success = await deleteMessage(messageId, conversationId, true);
+              if (success) {
+                // Update message to show deleted state
+                setLocalMessages(prev => prev.map(m => 
+                  m.id === messageId 
+                    ? { ...m, content: 'This message was deleted', deletedForSender: true, deletedForReceiver: true }
+                    : m
+                ));
+                // Real-time update will also handle this
+              } else {
+                Alert.alert('Error', 'Failed to delete message');
+              }
+            },
+          },
+        ]
+      );
+    } else {
+      // Receiver can only delete for themselves
+      Alert.alert(
+        'Delete Message',
+        'Delete this message for yourself?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              const success = await deleteMessage(messageId, conversationId, false);
+              if (success) {
+                setLocalMessages(prev => prev.filter(m => m.id !== messageId));
+              } else {
+                Alert.alert('Error', 'Failed to delete message');
+              }
+            },
+          },
+        ]
+      );
+    }
+  };
 
   const getBackgroundStyle = () => {
     if (!chatBackground) {
@@ -2021,6 +2020,601 @@ export default function ConversationDetailScreen() {
         return renderCardAd(ad);
     }
   };
+
+  // Early return guard - must be after all hooks
+  if (!currentUser || !conversationId) {
+    return null;
+  }
+
+  const otherParticipant = getOtherParticipant();
+
+  // Show loading state while conversation is being loaded
+  if (isLoadingConversation || !conversation || !otherParticipant) {
+    return (
+      <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={{ marginTop: 16, color: colors.text.secondary }}>Loading conversation...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  const handleDeleteMessage = async (messageId: string, isSender: boolean) => {
+    const message = localMessages.find(m => m.id === messageId);
+    if (!message) return;
+
+    if (isSender) {
+      // Sender can delete for everyone or just for themselves
+      Alert.alert(
+        'Delete Message',
+        'How would you like to delete this message?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete for me',
+            style: 'default',
+            onPress: async () => {
+              const success = await deleteMessage(messageId, conversationId, false);
+              if (success) {
+                setLocalMessages(prev => prev.filter(m => m.id !== messageId));
+              } else {
+                Alert.alert('Error', 'Failed to delete message');
+              }
+            },
+          },
+          {
+            text: 'Delete for everyone',
+            style: 'destructive',
+            onPress: async () => {
+              const success = await deleteMessage(messageId, conversationId, true);
+              if (success) {
+                // Update message to show deleted state
+                setLocalMessages(prev => prev.map(m => 
+                  m.id === messageId 
+                    ? { ...m, content: 'This message was deleted', deletedForSender: true, deletedForReceiver: true }
+                    : m
+                ));
+                // Real-time update will also handle this
+              } else {
+                Alert.alert('Error', 'Failed to delete message');
+              }
+            },
+          },
+        ]
+      );
+    } else {
+      // Receiver can only delete for themselves
+      Alert.alert(
+        'Delete Message',
+        'Delete this message for yourself?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              const success = await deleteMessage(messageId, conversationId, false);
+              if (success) {
+                setLocalMessages(prev => prev.filter(m => m.id !== messageId));
+              } else {
+                Alert.alert('Error', 'Failed to delete message');
+              }
+            },
+          },
+        ]
+      );
+    }
+  };
+
+  const getBackgroundStyle = () => {
+    if (!chatBackground) {
+      return { backgroundColor: colors.background.secondary };
+    }
+
+    switch (chatBackground.background_type) {
+      case 'color':
+        return { backgroundColor: chatBackground.background_value };
+      case 'image':
+        return { backgroundColor: colors.background.secondary };
+      case 'gradient':
+        return { backgroundColor: colors.background.secondary };
+      default:
+        return { backgroundColor: colors.background.secondary };
+    }
+  };
+
+  const renderBackgroundImage = () => {
+    if (!chatBackground || chatBackground.background_type !== 'image' || !chatBackground.background_value) {
+      return null;
+    }
+
+    const opacity = chatBackground.opacity || 0;
+    const overlayOpacity = opacity / 10; // Convert 0-10 to 0-1
+    const overlayColorValue = chatBackground.overlay_color || '#000000';
+    
+    // Convert hex color to rgba
+    const hexToRgba = (hex: string, alpha: number) => {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    };
+
+    return (
+      <ImageBackground
+        source={{ uri: chatBackground.background_value }}
+        style={StyleSheet.absoluteFill}
+        resizeMode="cover"
+      >
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: hexToRgba(overlayColorValue, overlayOpacity) }]} />
+      </ImageBackground>
+    );
+  };
+
+  const handlePickBackgroundImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Please grant camera roll permissions');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: false,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setSelectedBackgroundImage(result.assets[0].uri);
+    }
+  };
+
+  const getLastSeenText = (lastActiveAt: string, statusType?: string, userId?: string) => {
+    // Check if this is the AI user - always show as online
+    const other = getOtherParticipant();
+    if (other && other.name === 'Committed AI') {
+      return 'Online';
+    }
+
+    // Also check by userId if available (AI user email is 'ai@committed.app')
+    // For now, we rely on the name check above, and getUserStatus will handle it
+
+    const lastActive = new Date(lastActiveAt);
+    const now = new Date();
+    const diffMs = now.getTime() - lastActive.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+    const diffSeconds = Math.floor(diffMs / 1000);
+
+    // If user is online, show "Online"
+    if (statusType === 'online') {
+      return 'Online';
+    }
+
+    // If user is away, show "Away"
+    if (statusType === 'away') {
+      return 'Away';
+    }
+
+    // If user is busy, show "Busy"
+    if (statusType === 'busy') {
+      return 'Busy';
+    }
+
+    // For offline users, show last seen time
+    // If just went offline (within last 2 minutes), show "Just now"
+    if (statusType === 'offline' && diffSeconds < 120) {
+      return 'Just now';
+    }
+
+    // Show relative time
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `Last seen ${diffMins}m ago`;
+    if (diffHours < 24) return `Last seen ${diffHours}h ago`;
+    if (diffDays < 7) return `Last seen ${diffDays}d ago`;
+    return `Last seen ${lastActive.toLocaleDateString()}`;
+  };
+
+  const handleAdPress = async (ad: Advertisement) => {
+    await recordAdClick(ad.id);
+    if (ad.linkUrl) {
+      await WebBrowser.openBrowserAsync(ad.linkUrl);
+    }
+  };
+
+  const renderBannerAd = (ad: Advertisement) => {
+    // Prevent duplicate impressions
+    if (!recordedImpressions.current.has(ad.id)) {
+      recordAdImpression(ad.id);
+      recordedImpressions.current.add(ad.id);
+    }
+    return (
+      <View key={`ad-banner-${ad.id}`} style={styles.bannerAdContainer}>
+        <TouchableOpacity
+          style={styles.bannerAdCard}
+          onPress={() => handleAdPress(ad)}
+          activeOpacity={0.9}
+        >
+          <View style={styles.adBadge}>
+            <Text style={styles.adBadgeText}>Sponsored</Text>
+          </View>
+          {!failedAdImages.current.has(ad.id) ? (
+            <Image 
+              source={{ uri: ad.imageUrl }} 
+              style={styles.bannerAdImage} 
+              contentFit="cover"
+              onError={() => {
+                failedAdImages.current.add(ad.id);
+                console.warn('Failed to load banner ad image:', ad.id);
+              }}
+            />
+          ) : (
+            <View style={[styles.bannerAdImage, { backgroundColor: colors.background?.secondary || '#f0f0f0', justifyContent: 'center', alignItems: 'center' }]}>
+              <ImageIcon size={32} color={colors.text?.tertiary || '#999'} />
+            </View>
+          )}
+          <View style={styles.bannerAdContent}>
+            <Text style={styles.bannerAdTitle}>{ad.title}</Text>
+            {ad.linkUrl && (
+              <View style={styles.bannerAdLinkButton}>
+                <Text style={styles.bannerAdLinkText}>Learn More</Text>
+                <ExternalLink size={14} color={colors.primary} />
+              </View>
+            )}
+          </View>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const renderCardAd = (ad: Advertisement) => {
+    // Prevent duplicate impressions
+    if (!recordedImpressions.current.has(ad.id)) {
+      recordAdImpression(ad.id);
+      recordedImpressions.current.add(ad.id);
+    }
+    return (
+      <View key={`ad-card-${ad.id}`} style={styles.adContainer}>
+        <TouchableOpacity
+          style={styles.adCard}
+          onPress={() => handleAdPress(ad)}
+          activeOpacity={0.9}
+        >
+          <View style={styles.adBadge}>
+            <Text style={styles.adBadgeText}>Sponsored</Text>
+          </View>
+          {!failedAdImages.current.has(ad.id) ? (
+            <Image 
+              source={{ uri: ad.imageUrl }} 
+              style={styles.adImage} 
+              contentFit="cover"
+              onError={() => {
+                failedAdImages.current.add(ad.id);
+                console.warn('Failed to load card ad image:', ad.id);
+              }}
+            />
+          ) : (
+            <View style={[styles.adImage, { backgroundColor: colors.background?.secondary || '#f0f0f0', justifyContent: 'center', alignItems: 'center' }]}>
+              <ImageIcon size={32} color={colors.text?.tertiary || '#999'} />
+            </View>
+          )}
+          <View style={styles.adContent}>
+            <Text style={styles.adTitle}>{ad.title}</Text>
+            <Text style={styles.adDescription} numberOfLines={2}>
+              {ad.description}
+            </Text>
+            {ad.linkUrl && (
+              <View style={styles.adLinkButton}>
+                <Text style={styles.adLinkText}>Learn More</Text>
+                <ExternalLink size={16} color={colors.primary} />
+              </View>
+            )}
+          </View>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const renderVideoAd = (ad: Advertisement) => {
+    // Prevent duplicate impressions
+    if (!recordedImpressions.current.has(ad.id)) {
+      recordAdImpression(ad.id);
+      recordedImpressions.current.add(ad.id);
+    }
+    return (
+      <View key={`ad-video-${ad.id}`} style={styles.adContainer}>
+        <View style={styles.videoAdCard}>
+          <View style={styles.adBadge}>
+            <Text style={styles.adBadgeText}>Sponsored</Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => handleAdPress(ad)}
+            activeOpacity={0.9}
+          >
+          <Video
+            source={{ uri: ad.imageUrl }}
+            style={styles.videoAdImage}
+            useNativeControls
+            resizeMode={ResizeMode.COVER}
+            shouldPlay={false}
+            onError={(error) => {
+              console.error('Failed to load video ad:', ad.id, error);
+            }}
+          />
+          </TouchableOpacity>
+          <View style={styles.adContent}>
+            <Text style={styles.adTitle}>{ad.title}</Text>
+            <Text style={styles.adDescription} numberOfLines={2}>
+              {ad.description}
+            </Text>
+            {ad.linkUrl && (
+              <View style={styles.adLinkButton}>
+                <Text style={styles.adLinkText}>Learn More</Text>
+                <ExternalLink size={16} color={colors.primary} />
+              </View>
+            )}
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  const renderAd = (ad: Advertisement) => {
+    switch (ad.type) {
+      case 'banner':
+        return renderBannerAd(ad);
+      case 'video':
+        return renderVideoAd(ad);
+      case 'card':
+      default:
+        return renderCardAd(ad);
+    }
+  };
+
+  const renderImageViewer = () => {
+      return (
+        <View style={[styles.messageContainer, styles.theirMessageContainer]}>
+          <View style={[styles.messageBubble, styles.theirMessage]}>
+            <View style={styles.aiThinkingRow}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={[styles.messageText, styles.theirMessageText]}>{item.content}</Text>
+            </View>
+          </View>
+        </View>
+      );
+    }
+    
+    const isMe = item.senderId === currentUser.id;
+    const isDeleted = (isMe && item.deletedForSender) || (!isMe && item.deletedForReceiver);
+    const messageTime = new Date(item.createdAt).toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+
+    // Check if this message has a warning
+    const messageWarning = warnings.find(w => w.messageId === item.id && !w.acknowledged);
+
+    // Don't render deleted messages at all - they should be filtered out
+    if (isDeleted) {
+      return null;
+    }
+
+    // Check if sender is a professional (not AI, not user)
+    const isProfessional = professionalSession && 
+      professionalSession.status === 'active' && 
+      !isMe && 
+      item.senderId !== aiUserId &&
+      item.senderId === (professionalSession.professional?.userId || '');
+    
+    const isAI = !isMe && item.senderId === aiUserId;
+
+    return (
+      <>
+        {messageWarning && (
+          <View style={styles.warningBanner}>
+            <View style={[
+              styles.warningContent,
+              messageWarning.severity === 'high' ? styles.warningHigh : 
+              messageWarning.severity === 'medium' ? styles.warningMedium : 
+              styles.warningLow
+            ]}>
+              <Text style={styles.warningIcon}>⚠️</Text>
+              <View style={styles.warningTextContainer}>
+                <Text style={styles.warningTitle}>
+                  {messageWarning.severity === 'high' ? 'High Risk Warning' :
+                   messageWarning.severity === 'medium' ? 'Medium Risk Warning' :
+                   'Low Risk Warning'}
+                </Text>
+                <Text style={styles.warningMessage}>
+                  {(() => {
+                    const template = warningTemplates.find(t => t.severity === messageWarning.severity);
+                    if (template) {
+                      return template.in_chat_warning_template
+                        .replace('{trigger_words}', messageWarning.triggerWords.join(', '))
+                        .replace('{severity}', messageWarning.severity);
+                    }
+                    return `This message contains potentially inappropriate content. Trigger words detected: ${messageWarning.triggerWords.join(', ')}`;
+                  })()}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.acknowledgeButton}
+                onPress={async () => {
+                  const success = await acknowledgeWarning(messageWarning.id);
+                  if (success) {
+                    setWarnings(prev => prev.map(w => 
+                      w.id === messageWarning.id ? { ...w, acknowledged: true } : w
+                    ));
+                  }
+                }}
+              >
+                <Text style={styles.acknowledgeButtonText}>Dismiss</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+        <TouchableOpacity
+          style={[
+            styles.messageContainer,
+            isMe ? styles.myMessageContainer : styles.theirMessageContainer,
+          ]}
+          onLongPress={() => handleDeleteMessage(item.id, isMe)}
+          activeOpacity={0.9}
+        >
+          {/* Professional/AI Name and Role Header */}
+          {!isMe && (isProfessional || isAI) && (
+            <View style={styles.messageSenderHeader}>
+              <Text style={styles.messageSenderName}>
+                {isProfessional 
+                  ? (professionalSession.professional?.fullName || 'Professional')
+                  : 'Committed AI'
+                }
+              </Text>
+              {isProfessional && professionalSession.professional?.role && (
+                <View style={styles.messageSenderRoleBadge}>
+                  <Shield size={12} color={colors.secondary} />
+                  <Text style={styles.messageSenderRole}>
+                    {professionalSession.professional.role.name}
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+          
+          <View style={[
+            styles.messageBubble, 
+            isMe 
+              ? styles.myMessage 
+              : isProfessional 
+                ? styles.professionalMessage 
+                : styles.theirMessage
+          ]}>
+          {item.messageType === 'image' && item.mediaUrl ? (
+            <TouchableOpacity
+              onPress={() => setViewingImage(item.mediaUrl)}
+              activeOpacity={0.9}
+            >
+              <Image
+                source={{ uri: item.mediaUrl }}
+                style={styles.messageImage}
+                contentFit="cover"
+              />
+            </TouchableOpacity>
+          ) : null}
+          
+          {item.messageType === 'document' && item.documentUrl ? (
+            <TouchableOpacity
+              style={styles.documentContainer}
+              onPress={() => {
+                if (item.documentUrl) {
+                  Linking.openURL(item.documentUrl);
+                }
+              }}
+            >
+              <FileText size={24} color={isMe ? colors.text.white : colors.primary} />
+              <Text style={[
+                styles.documentName, 
+                isMe 
+                  ? styles.myMessageText 
+                  : isProfessional 
+                    ? styles.professionalMessageText 
+                    : styles.theirMessageText
+              ]}>
+                {item.documentName || 'Document'}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
+          {item.messageType === 'sticker' && item.mediaUrl ? (
+            <View style={styles.stickerContainer}>
+              <Image
+                source={{ uri: item.mediaUrl }}
+                style={styles.stickerImage}
+                contentFit="contain"
+              />
+            </View>
+          ) : null}
+
+          {/* Status Attachment - Highlighted */}
+          {item.statusId && item.statusPreviewUrl ? (
+            <StatusPreviewAttachment
+              mediaPath={item.statusPreviewUrl}
+              isMe={isMe}
+              onPress={() => {
+                // Get status owner from conversation
+                const otherParticipantId = conversation?.participants.find(id => id !== currentUser.id);
+                if (otherParticipantId) {
+                  router.push(`/status/${otherParticipantId}` as any);
+                }
+              }}
+            />
+          ) : null}
+
+          {item.content && typeof item.content === 'string' && item.content.trim() && item.messageType !== 'sticker' ? (
+            <Text style={[
+              styles.messageText, 
+              isMe 
+                ? styles.myMessageText 
+                : isProfessional 
+                  ? styles.professionalMessageText 
+                  : styles.theirMessageText
+            ]}>
+              {item.content}
+            </Text>
+          ) : null}
+
+          {/* AI feedback (thumbs up/down) */}
+          {!isMe && aiUserId && item.senderId === aiUserId && item.messageType === 'text' ? (
+            <View style={styles.aiFeedbackRow}>
+              <TouchableOpacity
+                onPress={() => submitAiFeedback(item.id, 1)}
+                style={[
+                  styles.aiFeedbackButton,
+                  aiFeedback[String(item.id)] === 1 && styles.aiFeedbackSelected,
+                ]}
+              >
+                <Text style={styles.aiFeedbackText}>👍</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => submitAiFeedback(item.id, -1)}
+                style={[
+                  styles.aiFeedbackButton,
+                  aiFeedback[String(item.id)] === -1 && styles.aiFeedbackSelected,
+                ]}
+              >
+                <Text style={styles.aiFeedbackText}>👎</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
+          <View style={styles.messageFooter}>
+            <Text style={[styles.messageTime, isMe ? styles.myMessageTime : styles.theirMessageTime]}>
+              {messageTime}
+            </Text>
+            <View style={styles.messageActions}>
+              {!isMe && (
+                <TouchableOpacity
+                  onPress={() => setReportingMessage({ id: item.id, senderId: item.senderId })}
+                  style={styles.reportMessageButton}
+                  hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
+                >
+                  <Flag size={14} color={colors.danger} />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                onPress={() => handleDeleteMessage(item.id, isMe)}
+                style={styles.deleteMessageButton}
+                hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
+              >
+                <Trash2 size={14} color={isMe ? 'rgba(255, 255, 255, 0.7)' : colors.text.tertiary} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </TouchableOpacity>
+      </>
+    );
+  }, [currentUser, aiUserId, professionalSession, warnings, colors, styles, handleDeleteMessage, setReportingMessage, setViewingImage, submitAiFeedback, aiFeedback]);
 
   const renderImageViewer = () => {
     return (

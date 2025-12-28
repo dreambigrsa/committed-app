@@ -207,6 +207,7 @@ export default function ConversationDetailScreen() {
   const conversation = getConversation(conversationId);
   const recordedImpressions = useRef<Set<string>>(new Set());
   const failedAdImages = useRef<Set<string>>(new Set());
+  const handleDeleteMessageRef = useRef<((messageId: string, isSender: boolean) => Promise<void>) | null>(null);
   
   // Check if this is an AI conversation
   const isAIConversation = conversation?.participants?.some((p: string) => p === aiUserId);
@@ -1502,6 +1503,11 @@ export default function ConversationDetailScreen() {
     }
   }, [localMessages, conversationId, deleteMessage]);
 
+  // Update ref whenever handleDeleteMessage changes
+  useEffect(() => {
+    handleDeleteMessageRef.current = handleDeleteMessage;
+  }, [handleDeleteMessage]);
+
   // Define renderMessage callback BEFORE early return to ensure hooks are always called in same order
   const renderMessage = useCallback(({ item }: { item: any }) => {
     if (!item || !item.id) return null;
@@ -1596,7 +1602,7 @@ export default function ConversationDetailScreen() {
             styles.messageContainer,
             isMe ? styles.myMessageContainer : styles.theirMessageContainer,
           ]}
-          onLongPress={() => handleDeleteMessage(item.id, isMe)}
+          onLongPress={() => handleDeleteMessageRef.current?.(item.id, isMe)}
           activeOpacity={0.9}
         >
           {/* Professional/AI Name and Role Header */}
@@ -1737,7 +1743,7 @@ export default function ConversationDetailScreen() {
         </TouchableOpacity>
       </>
     );
-  }, [currentUser, warnings, warningTemplates, professionalSession, aiUserId, aiFeedback, aiIsThinking, conversation, router, acknowledgeWarning, submitAiFeedback, handleDeleteMessage, setViewingImage]);
+  }, [currentUser, warnings, warningTemplates, professionalSession, aiUserId, aiFeedback, aiIsThinking, conversation, router, acknowledgeWarning, submitAiFeedback, setViewingImage]);
 
   // Early return guard - must be after all hooks
   if (!currentUser || !conversationId) {

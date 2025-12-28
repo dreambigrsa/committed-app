@@ -5074,7 +5074,8 @@ export const [AppContext, useApp] = createContextHook(() => {
       await logActivity('end_relationship_request', 'relationship', relationshipId);
 
       // Return dispute with notification error info if it failed
-      return { ...dispute, _notificationError: notificationError };
+      // Ensure dispute is properly typed and includes error info
+      return dispute ? { ...dispute, _notificationError: notificationError } : null;
     } catch (error: any) {
       console.error('End relationship error:', error);
       // Re-throw the error so the UI can display it

@@ -114,12 +114,34 @@ export async function createOrUpdateDatingProfile(profileData: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('User not authenticated');
 
-  // Check if profile exists
+  // Check if profile exists and get current values
   const { data: existing } = await supabase
     .from('dating_profiles')
-    .select('id')
+    .select('id, gender, looking_for')
     .eq('user_id', user.id)
     .single();
+
+  // Determine the final gender and looking_for values
+  const finalGender = profileData.gender !== undefined ? profileData.gender : existing?.gender;
+  const providedLookingFor = profileData.looking_for;
+  
+  // Set default looking_for based on gender if not provided
+  let finalLookingFor = providedLookingFor;
+  if (finalLookingFor === undefined) {
+    // If updating and looking_for is not provided, check existing value
+    if (existing?.looking_for) {
+      finalLookingFor = existing.looking_for;
+    } else if (finalGender === 'male') {
+      // Male users see women by default
+      finalLookingFor = 'women';
+    } else if (finalGender === 'female') {
+      // Female users see men by default
+      finalLookingFor = 'men';
+    } else {
+      // Non-binary or prefer_not_to_say defaults to everyone
+      finalLookingFor = 'everyone';
+    }
+  }
 
   if (existing) {
     // Update existing profile
@@ -133,6 +155,11 @@ export async function createOrUpdateDatingProfile(profileData: {
       }
     });
     
+    // Add default looking_for if gender is set but looking_for is not
+    if (finalGender && !providedLookingFor && !existing.looking_for) {
+      updateData.looking_for = finalLookingFor;
+    }
+    
     const { data, error } = await supabase
       .from('dating_profiles')
       .update(updateData)
@@ -144,13 +171,20 @@ export async function createOrUpdateDatingProfile(profileData: {
     return data;
   } else {
     // Create new profile
+    const insertData: any = {
+      user_id: user.id,
+      ...profileData,
+      is_active: profileData.is_active ?? true,
+    };
+    
+    // Set default looking_for if gender is set but looking_for is not provided
+    if (finalGender && !providedLookingFor) {
+      insertData.looking_for = finalLookingFor;
+    }
+    
     const { data, error } = await supabase
       .from('dating_profiles')
-      .insert({
-        user_id: user.id,
-        ...profileData,
-        is_active: profileData.is_active ?? true,
-      })
+      .insert(insertData)
       .select()
       .single();
 
@@ -361,52 +395,73 @@ export async function getDatingDiscovery(filters?: {
   // Filter by gender preference (mutual compatibility)
   // User A sees User B if:
   // 1. User A's looking_for preference matches User B's gender
-  // 2. User B's looking_for includes User A's gender (or is 'everyone')
+  // 2. User B's looking_for preference includes User A's gender (or is 'everyone')
   if (lookingFor !== 'everyone') {
     // Get current user's gender from their profile
     const currentUserGender = userProfile.gender;
+    
+    console.log(`[Dating Discovery] Filtering by gender: lookingFor=${lookingFor}, currentUserGender=${currentUserGender}`);
     
     filteredProfiles = profiles.filter((profile: any) => {
       const profileGender = profile.gender;
       const profileLookingFor = profile.looking_for || 'everyone';
       
-      // Skip profiles without gender (they'll be shown to everyone)
+      // STRICT: Don't show profiles without gender when filtering by gender
+      // This ensures users only see profiles that match their preference
       if (!profileGender || profileGender === 'prefer_not_to_say') {
-        return true; // Show profiles without gender to everyone
+        return false; // Don't show profiles without gender when filtering
       }
       
       // If current user wants to see 'men', show profiles where:
-      // - profile's gender is 'male' or 'non_binary'
+      // - profile's gender is 'male' (matches "men")
       // - AND profile's looking_for includes current user's gender (or is 'everyone')
       if (lookingFor === 'men') {
-        const genderMatch = profileGender === 'male' || profileGender === 'non_binary';
-        if (!genderMatch) return false;
+        // Profile must be male - STRICT CHECK
+        if (profileGender !== 'male') {
+          console.log(`[Dating Discovery] Filtered out profile ${profile.user_id}: gender=${profileGender} (expected male)`);
+          return false; // Don't show women or non-binary when looking for men
+        }
         
-        // Check mutual compatibility
+        // Check mutual compatibility: Does this profile want to see the current user?
         if (profileLookingFor === 'everyone') return true;
-        if (!currentUserGender) return true; // If current user hasn't set gender, show anyway
         
-        const mutualMatch = 
-          (profileLookingFor === 'men' && (currentUserGender === 'male' || currentUserGender === 'non_binary')) ||
-          (profileLookingFor === 'women' && (currentUserGender === 'female' || currentUserGender === 'non_binary'));
-        return mutualMatch;
+        // If current user hasn't set gender, show anyway (can't check mutual compatibility)
+        if (!currentUserGender || currentUserGender === 'prefer_not_to_say') return true;
+        
+        // Profile wants 'men' - show if current user is male or non-binary
+        if (profileLookingFor === 'men' && (currentUserGender === 'male' || currentUserGender === 'non_binary')) return true;
+        
+        // Profile wants 'women' - show if current user is female or non-binary (mutual interest)
+        if (profileLookingFor === 'women' && (currentUserGender === 'female' || currentUserGender === 'non_binary')) return true;
+        
+        console.log(`[Dating Discovery] Filtered out profile ${profile.user_id}: no mutual compatibility (profile wants ${profileLookingFor}, user is ${currentUserGender})`);
+        return false;
       }
       
       // If current user wants to see 'women', show profiles where:
-      // - profile's gender is 'female' or 'non_binary'
+      // - profile's gender is 'female' (matches "women")
       // - AND profile's looking_for includes current user's gender (or is 'everyone')
       if (lookingFor === 'women') {
-        const genderMatch = profileGender === 'female' || profileGender === 'non_binary';
-        if (!genderMatch) return false;
+        // Profile must be female - STRICT CHECK
+        if (profileGender !== 'female') {
+          console.log(`[Dating Discovery] Filtered out profile ${profile.user_id}: gender=${profileGender} (expected female)`);
+          return false; // Don't show men or non-binary when looking for women
+        }
         
-        // Check mutual compatibility
+        // Check mutual compatibility: Does this profile want to see the current user?
         if (profileLookingFor === 'everyone') return true;
-        if (!currentUserGender) return true; // If current user hasn't set gender, show anyway
         
-        const mutualMatch = 
-          (profileLookingFor === 'men' && (currentUserGender === 'male' || currentUserGender === 'non_binary')) ||
-          (profileLookingFor === 'women' && (currentUserGender === 'female' || currentUserGender === 'non_binary'));
-        return mutualMatch;
+        // If current user hasn't set gender, show anyway (can't check mutual compatibility)
+        if (!currentUserGender || currentUserGender === 'prefer_not_to_say') return true;
+        
+        // Profile wants 'women' - show if current user is female or non-binary
+        if (profileLookingFor === 'women' && (currentUserGender === 'female' || currentUserGender === 'non_binary')) return true;
+        
+        // Profile wants 'men' - show if current user is male or non-binary (mutual interest)
+        if (profileLookingFor === 'men' && (currentUserGender === 'male' || currentUserGender === 'non_binary')) return true;
+        
+        console.log(`[Dating Discovery] Filtered out profile ${profile.user_id}: no mutual compatibility (profile wants ${profileLookingFor}, user is ${currentUserGender})`);
+        return false;
       }
       
       return true;

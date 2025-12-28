@@ -7,6 +7,8 @@ import { Session, RealtimeChannel } from '@supabase/supabase-js';
 import { checkUserLegalAcceptances } from '@/lib/legal-enforcement';
 import { registerForPushNotificationsAsync, showLocalNotification } from '@/lib/push-notifications';
 import { setNotificationPreferences } from '@/lib/notification-preferences';
+import { normalizePhoneNumber, comparePhoneNumbers } from '@/lib/phone-normalization';
+import { queueRelationshipChange, syncOfflineQueue, getOfflineQueue, RelationshipConflict } from '@/lib/relationship-sync';
 
 export const [AppContext, useApp] = createContextHook(() => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -225,6 +227,18 @@ export const [AppContext, useApp] = createContextHook(() => {
         // Check and link any relationships where this user's phone number was registered
         // This handles cases where user was created via trigger or if linking failed during signup
         await checkAndLinkRelationships(user.id, user.phoneNumber);
+
+        // Sync any pending offline relationship changes
+        try {
+          const queue = await getOfflineQueue();
+          if (queue.length > 0) {
+            console.log(`Syncing ${queue.length} pending relationship changes...`);
+            const result = await syncOfflineQueue();
+            console.log(`Sync complete: ${result.synced} synced, ${result.conflicts} conflicts, ${result.errors} errors`);
+          }
+        } catch (syncError) {
+          console.error('Error syncing offline queue:', syncError);
+        }
       }
 
       const { data: postsData } = await supabase
@@ -1755,25 +1769,38 @@ export const [AppContext, useApp] = createContextHook(() => {
         }
       }
 
+      const relationshipPayload = {
+        user_id: currentUser.id,
+        partner_name: partnerName,
+        partner_phone: normalizedPartnerPhone, // Store normalized phone number
+        partner_user_id: partnerData?.id,
+        type,
+        status: 'pending',
+        privacy_level: 'public',
+        partner_face_photo: partnerFacePhoto,
+        partner_date_of_birth_month: partnerDateOfBirthMonth,
+        partner_date_of_birth_year: partnerDateOfBirthYear,
+        partner_city: partnerCity,
+      };
+
       const { data: relationshipData, error: relError } = await supabase
         .from('relationships')
-        .insert({
-          user_id: currentUser.id,
-          partner_name: partnerName,
-          partner_phone: normalizedPartnerPhone, // Store normalized phone number
-          partner_user_id: partnerData?.id,
-          type,
-          status: 'pending',
-          privacy_level: 'public',
-          partner_face_photo: partnerFacePhoto,
-          partner_date_of_birth_month: partnerDateOfBirthMonth,
-          partner_date_of_birth_year: partnerDateOfBirthYear,
-          partner_city: partnerCity,
-        })
+        .insert(relationshipPayload)
         .select()
         .single();
 
-      if (relError) throw relError;
+      if (relError) {
+        // If offline or network error, queue for later sync
+        if (relError.message?.includes('network') || relError.message?.includes('fetch')) {
+          await queueRelationshipChange({
+            type: 'create',
+            relationshipId: undefined,
+            data: relationshipPayload,
+          });
+          throw new Error('Relationship queued for sync. Will be created when connection is restored.');
+        }
+        throw relError;
+      }
 
       if (partnerData) {
         const { error: requestError } = await supabase
@@ -1838,10 +1865,23 @@ export const [AppContext, useApp] = createContextHook(() => {
     if (!currentUser) return;
     
     try {
-      await supabase
+      const { error } = await supabase
         .from('relationship_requests')
         .update({ status: 'accepted' })
         .eq('id', requestId);
+
+      if (error) {
+        // If offline, queue for later sync
+        if (error.message?.includes('network') || error.message?.includes('fetch')) {
+          await queueRelationshipChange({
+            type: 'accept',
+            relationshipId: requestId,
+            data: { status: 'accepted' },
+          });
+          throw new Error('Request acceptance queued for sync. Will be processed when connection is restored.');
+        }
+        throw error;
+      }
 
       const { data: request } = await supabase
         .from('relationship_requests')
@@ -3985,6 +4025,45 @@ export const [AppContext, useApp] = createContextHook(() => {
       .subscribe();
     subs.push(requestsChannel);
 
+    // Real-time subscription for relationships
+    // This ensures both partners see updates immediately across all devices
+    const relationshipsChannel = supabase
+      .channel('relationships_realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'relationships',
+          filter: `user_id=eq.${userId}`,
+        },
+        async (payload: any) => {
+          // Don't update state if logout is in progress
+          if (isLoggingOutRef.current) return;
+          
+          console.log('Relationship updated (user_id):', payload);
+          await refreshRelationships();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'relationships',
+          filter: `partner_user_id=eq.${userId}`,
+        },
+        async (payload: any) => {
+          // Don't update state if logout is in progress
+          if (isLoggingOutRef.current) return;
+          
+          console.log('Relationship updated (partner_user_id):', payload);
+          await refreshRelationships();
+        }
+      )
+      .subscribe();
+    subs.push(relationshipsChannel);
+
     // Real-time subscription for posts
     const postsChannel = supabase
       .channel('posts_realtime')
@@ -4940,20 +5019,33 @@ export const [AppContext, useApp] = createContextHook(() => {
       const relationship = relationships.find(r => r.id === relationshipId);
       if (!relationship) return null;
 
+      const disputePayload = {
+        relationship_id: relationshipId,
+        initiated_by: currentUser.id,
+        dispute_type: 'end_relationship',
+        description: reason || 'Request to end relationship',
+        status: 'pending',
+        auto_resolve_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      };
+
       const { data: dispute, error } = await supabase
         .from('disputes')
-        .insert({
-          relationship_id: relationshipId,
-          initiated_by: currentUser.id,
-          dispute_type: 'end_relationship',
-          description: reason || 'Request to end relationship',
-          status: 'pending',
-          auto_resolve_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        })
+        .insert(disputePayload)
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        // If offline, queue for later sync
+        if (error.message?.includes('network') || error.message?.includes('fetch')) {
+          await queueRelationshipChange({
+            type: 'end',
+            relationshipId,
+            data: { status: 'ended', end_date: new Date().toISOString() },
+          });
+          throw new Error('Relationship end request queued for sync. Will be processed when connection is restored.');
+        }
+        throw error;
+      }
 
       const partnerId = relationship.userId === currentUser.id ? relationship.partnerUserId : relationship.userId;
       

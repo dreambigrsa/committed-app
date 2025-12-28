@@ -1707,38 +1707,46 @@ export default function ConversationDetailScreen() {
             </Text>
           ) : null}
 
-          {/* AI Feedback Buttons - Only show on AI messages */}
-          {isAI && !isMe && aiUserId && (
-            <View style={styles.aiFeedbackContainer}>
-              <TouchableOpacity
-                style={[
-                  styles.aiFeedbackButton,
-                  aiFeedback[item.id] === 1 && styles.aiFeedbackButtonActive
-                ]}
-                onPress={() => submitAiFeedback(item.id, 1)}
-                disabled={aiIsThinking}
-              >
-                <Text style={styles.aiFeedbackButtonText}>👍</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.aiFeedbackButton,
-                  aiFeedback[item.id] === -1 && styles.aiFeedbackButtonActive
-                ]}
-                onPress={() => submitAiFeedback(item.id, -1)}
-                disabled={aiIsThinking}
-              >
-                <Text style={styles.aiFeedbackButtonText}>👎</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          <Text style={[
-            styles.messageTime,
-            isMe ? styles.myMessageTime : styles.theirMessageTime
+          {/* Message Footer: Time and AI Feedback Buttons (inline) */}
+          <View style={[
+            styles.messageFooter,
+            isMe ? styles.myMessageFooter : styles.theirMessageFooter
           ]}>
-            {messageTime}
-          </Text>
+            <Text style={[
+              styles.messageTime,
+              isMe ? styles.myMessageTime : styles.theirMessageTime
+            ]}>
+              {messageTime}
+            </Text>
+            
+            {/* AI Feedback Buttons - Only show on AI messages, inline with timestamp */}
+            {isAI && !isMe && aiUserId && (
+              <View style={styles.aiFeedbackContainer}>
+                <TouchableOpacity
+                  style={[
+                    styles.aiFeedbackButton,
+                    aiFeedback[item.id] === 1 && styles.aiFeedbackButtonActive
+                  ]}
+                  onPress={() => submitAiFeedback(item.id, 1)}
+                  disabled={aiIsThinking}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={styles.aiFeedbackButtonText}>👍</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.aiFeedbackButton,
+                    aiFeedback[item.id] === -1 && styles.aiFeedbackButtonActive
+                  ]}
+                  onPress={() => submitAiFeedback(item.id, -1)}
+                  disabled={aiIsThinking}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={styles.aiFeedbackButtonText}>👎</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
         </View>
         </TouchableOpacity>
       </>
@@ -2806,13 +2814,13 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   messagesList: {
-    paddingHorizontal: 16,
-    paddingVertical: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 16,
     paddingBottom: 100,
   },
   messageContainer: {
-    marginBottom: 12,
-    maxWidth: '80%',
+    marginBottom: 8,
+    maxWidth: '85%',
   },
   myMessageContainer: {
     alignSelf: 'flex-end',
@@ -2821,24 +2829,40 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   messageBubble: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: 20,
+    paddingBottom: 8,
+    borderRadius: 18,
     overflow: 'hidden',
   },
   myMessage: {
     backgroundColor: colors.primary,
     borderBottomRightRadius: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   theirMessage: {
     backgroundColor: colors.background.primary,
     borderBottomLeftRadius: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   professionalMessage: {
     backgroundColor: colors.secondary + '15',
     borderBottomLeftRadius: 4,
     borderLeftWidth: 3,
     borderLeftColor: colors.secondary,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   messageImage: {
     width: 250,
@@ -2864,7 +2888,7 @@ const styles = StyleSheet.create({
   messageText: {
     fontSize: 15,
     lineHeight: 20,
-    marginBottom: 4,
+    marginBottom: 6,
   },
   myMessageText: {
     color: colors.text.white,
@@ -2943,11 +2967,18 @@ const styles = StyleSheet.create({
   messageFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginTop: 2,
+    gap: 8,
+    marginTop: 4,
+  },
+  myMessageFooter: {
+    justifyContent: 'flex-end',
+  },
+  theirMessageFooter: {
+    justifyContent: 'flex-start',
   },
   messageTime: {
     fontSize: 11,
+    fontWeight: '400',
   },
   messageActions: {
     flexDirection: 'row',
@@ -2960,16 +2991,31 @@ const styles = StyleSheet.create({
   deleteMessageButton: {
     padding: 2,
   },
+  aiFeedbackContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginLeft: 4,
+  },
+  aiFeedbackButton: {
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: 'transparent',
+    opacity: 0.6,
+  },
+  aiFeedbackButtonActive: {
+    opacity: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  aiFeedbackButtonText: {
+    fontSize: 16,
+    lineHeight: 18,
+  },
   aiFeedbackRow: {
     flexDirection: 'row',
     gap: 10,
     marginTop: 10,
-  },
-  aiFeedbackButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.12)',
   },
   aiFeedbackSelected: {
     backgroundColor: 'rgba(255,255,255,0.25)',

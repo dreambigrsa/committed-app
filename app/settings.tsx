@@ -119,6 +119,7 @@ export default function SettingsScreen() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [pendingEndRequest, setPendingEndRequest] = useState<any>(null);
 
   // App Preferences - Now managed by contexts (LanguageContext and ThemeContext)
 
@@ -129,6 +130,42 @@ export default function SettingsScreen() {
       useNativeDriver: true,
     }).start();
   }, []);
+
+  // Check for pending end relationship disputes
+  useEffect(() => {
+    const checkPendingEndRequest = async () => {
+      if (!relationship || !currentUser) return;
+      
+      try {
+        const { data: disputes } = await supabase
+          .from('disputes')
+          .select('*')
+          .eq('relationship_id', relationship.id)
+          .eq('dispute_type', 'end_relationship')
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false })
+          .limit(1);
+        
+        if (disputes && disputes.length > 0) {
+          // Check if this user initiated the dispute
+          const dispute = disputes[0];
+          if (dispute.initiated_by === currentUser.id) {
+            setPendingEndRequest(dispute);
+          } else {
+            setPendingEndRequest(null);
+          }
+        } else {
+          setPendingEndRequest(null);
+        }
+      } catch (error) {
+        console.error('Error checking pending end request:', error);
+      }
+    };
+
+    if (relationship && relationship.status === 'verified') {
+      checkPendingEndRequest();
+    }
+  }, [relationship, currentUser]);
 
   useEffect(() => {
     if (currentUser) {
@@ -1536,11 +1573,13 @@ export default function SettingsScreen() {
                 <View style={styles.dangerContent}>
                   <Text style={styles.dangerTitle}>End Relationship</Text>
                   <Text style={styles.dangerText}>
-                    This will send a request to your partner. The relationship
-                    will end once they confirm or after 7 days.
+                    {pendingEndRequest 
+                      ? 'You have already sent a request to end this relationship. Your partner will be notified and the relationship will end once they confirm or after 7 days.'
+                      : 'This will send a request to your partner. The relationship will end once they confirm or after 7 days.'}
                   </Text>
                   <TouchableOpacity
-                    style={styles.dangerButton}
+                    style={[styles.dangerButton, pendingEndRequest && styles.dangerButtonDisabled]}
+                    disabled={!!pendingEndRequest}
                     onPress={async () => {
                       Alert.alert(
                         'End Relationship',
@@ -1552,10 +1591,16 @@ export default function SettingsScreen() {
                             style: 'destructive',
                             onPress: async () => {
                               try {
-                                await endRelationship(relationship.id, 'User requested to end relationship');
-                                Alert.alert('Request Sent', 'Your partner will receive a request to confirm ending the relationship.');
-                              } catch (error) {
-                                Alert.alert('Error', 'Failed to send end relationship request');
+                                const dispute = await endRelationship(relationship.id, 'User requested to end relationship');
+                                if (dispute) {
+                                  setPendingEndRequest(dispute);
+                                  Alert.alert('Request Sent', 'Your partner will receive a request to confirm ending the relationship.');
+                                } else {
+                                  Alert.alert('Error', 'Failed to send end relationship request');
+                                }
+                              } catch (error: any) {
+                                console.error('End relationship error:', error);
+                                Alert.alert('Error', error?.message || 'Failed to send end relationship request');
                               }
                             },
                           },
@@ -1563,7 +1608,9 @@ export default function SettingsScreen() {
                       );
                     }}
                   >
-                    <Text style={styles.dangerButtonText}>End Relationship</Text>
+                    <Text style={styles.dangerButtonText}>
+                      {pendingEndRequest ? 'End Relationship Request Sent' : 'End Relationship'}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -2138,6 +2185,10 @@ const createStyles = (colors: any) => StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 3,
+  },
+  dangerButtonDisabled: {
+    backgroundColor: colors.text.tertiary,
+    opacity: 0.6,
   },
   dangerButtonText: {
     fontSize: 15,

@@ -5050,21 +5050,32 @@ export const [AppContext, useApp] = createContextHook(() => {
       const partnerId = relationship.userId === currentUser.id ? relationship.partnerUserId : relationship.userId;
       
       if (partnerId) {
-        await createNotification(
-          partnerId,
-          'relationship_end_request',
-          'End Relationship Request',
-          `${currentUser.fullName} has requested to end your relationship. Please confirm or it will auto-resolve in 7 days.`,
-          { relationshipId, disputeId: dispute.id }
-        );
+        try {
+          await createNotification(
+            partnerId,
+            'relationship_end_request',
+            'End Relationship Request',
+            `${currentUser.fullName} has requested to end your relationship. Please confirm or it will auto-resolve in 7 days.`,
+            { relationshipId, disputeId: dispute.id }
+          );
+        } catch (notificationError: any) {
+          // Log notification error but don't fail the entire operation
+          // The dispute was created successfully, which is the main action
+          console.error('Failed to create notification:', notificationError);
+          // If it's an RLS error, provide helpful message
+          if (notificationError?.code === '42501') {
+            console.error('RLS policy error. Please run migrations/add-notifications-insert-policy.sql in Supabase SQL Editor.');
+          }
+        }
       }
 
       await logActivity('end_relationship_request', 'relationship', relationshipId);
 
       return dispute;
-    } catch (error) {
+    } catch (error: any) {
       console.error('End relationship error:', error);
-      return null;
+      // Re-throw the error so the UI can display it
+      throw error;
     }
   }, [currentUser, relationships, createNotification, logActivity]);
 

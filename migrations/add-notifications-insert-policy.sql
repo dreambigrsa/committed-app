@@ -66,3 +66,29 @@ BEGIN
 END;
 $$;
 
+-- ============================================
+-- DISPUTES UPDATE POLICY
+-- ============================================
+-- Allow partners to update disputes (confirm/reject end relationship requests)
+DROP POLICY IF EXISTS "Users can update disputes" ON disputes;
+
+CREATE POLICY "Users can update disputes" ON disputes FOR UPDATE
+  USING (
+    -- User initiated the dispute OR user is a partner in the relationship
+    initiated_by = auth.uid() OR 
+    EXISTS (
+      SELECT 1 FROM relationships 
+      WHERE id = disputes.relationship_id 
+      AND (user_id = auth.uid() OR partner_user_id = auth.uid())
+    )
+  )
+  WITH CHECK (
+    -- Same check for WITH CHECK clause
+    initiated_by = auth.uid() OR 
+    EXISTS (
+      SELECT 1 FROM relationships 
+      WHERE id = disputes.relationship_id 
+      AND (user_id = auth.uid() OR partner_user_id = auth.uid())
+    )
+  );
+

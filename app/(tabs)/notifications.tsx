@@ -22,6 +22,7 @@ export default function NotificationsScreen() {
     getPendingRequests, 
     acceptRelationshipRequest, 
     rejectRelationshipRequest,
+    confirmEndRelationship,
     notifications,
     cheatingAlerts,
     markNotificationAsRead,
@@ -63,6 +64,53 @@ export default function NotificationsScreen() {
 
   const handleReject = async (requestId: string) => {
     await rejectRelationshipRequest(requestId);
+  };
+
+  const handleEndRelationshipAccept = async (disputeId: string, notificationId: string) => {
+    try {
+      await confirmEndRelationship(disputeId);
+      await markNotificationAsRead(notificationId);
+      Alert.alert('Relationship Ended', 'The relationship has been ended successfully.');
+    } catch (error: any) {
+      console.error('Error confirming end relationship:', error);
+      Alert.alert('Error', error?.message || 'Failed to end relationship');
+    }
+  };
+
+  const handleEndRelationshipReject = async (disputeId: string, notificationId: string) => {
+    Alert.alert(
+      'Reject End Request',
+      'Are you sure you want to reject this end relationship request? The relationship will continue.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reject',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Update dispute status to rejected
+              const { error } = await supabase
+                .from('disputes')
+                .update({
+                  status: 'resolved',
+                  resolution: 'rejected',
+                  resolved_at: new Date().toISOString(),
+                  resolved_by: currentUser?.id,
+                })
+                .eq('id', disputeId);
+
+              if (error) throw error;
+              
+              await markNotificationAsRead(notificationId);
+              Alert.alert('Request Rejected', 'The end relationship request has been rejected. Your relationship continues.');
+            } catch (error: any) {
+              console.error('Error rejecting end relationship:', error);
+              Alert.alert('Error', error?.message || 'Failed to reject request');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const getNotificationIcon = (type: NotificationType) => {
@@ -365,32 +413,57 @@ export default function NotificationsScreen() {
     );
   };
 
-  const renderNotificationItem = ({ item }: { item: Notification & { source: 'notification' | 'alert' } }) => (
-    <View style={[styles.notificationCard, !item.read && styles.unreadNotification]}>
-      <TouchableOpacity
-        style={styles.notificationContentWrapper}
-        onPress={() => handleNotificationPress(item)}
-        activeOpacity={0.7}
-      >
-        <View style={[styles.iconContainer, !item.read && styles.unreadIconContainer]}>
-          {getNotificationIcon(item.type)}
-        </View>
-        <View style={styles.notificationContent}>
-          <Text style={styles.notificationTitle}>{item.title}</Text>
-          <NotificationMessage message={item.message} notification={item} />
-          <Text style={styles.notificationTime}>{formatTimeAgo(item.createdAt)}</Text>
-        </View>
-        {!item.read && <View style={styles.unreadDot} />}
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={styles.deleteButton}
-        onPress={() => handleDeleteNotification(item.id)}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-      >
-        <Trash2 size={18} color={colors.text.tertiary} />
-      </TouchableOpacity>
-    </View>
-  );
+  const renderNotificationItem = ({ item }: { item: Notification & { source: 'notification' | 'alert' } }) => {
+    const isEndRelationshipRequest = item.type === 'relationship_end_request';
+    const disputeId = item.data?.disputeId;
+
+    return (
+      <View style={[styles.notificationCard, !item.read && styles.unreadNotification]}>
+        <TouchableOpacity
+          style={styles.notificationContentWrapper}
+          onPress={() => !isEndRelationshipRequest && handleNotificationPress(item)}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.iconContainer, !item.read && styles.unreadIconContainer]}>
+            {getNotificationIcon(item.type)}
+          </View>
+          <View style={styles.notificationContent}>
+            <Text style={styles.notificationTitle}>{item.title}</Text>
+            <NotificationMessage message={item.message} notification={item} />
+            <Text style={styles.notificationTime}>{formatTimeAgo(item.createdAt)}</Text>
+          </View>
+          {!item.read && <View style={styles.unreadDot} />}
+        </TouchableOpacity>
+        
+        {isEndRelationshipRequest && disputeId ? (
+          <View style={styles.endRelationshipActions}>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.rejectButton]}
+              onPress={() => handleEndRelationshipReject(disputeId, item.id)}
+            >
+              <X size={18} color={colors.text.white} />
+              <Text style={styles.rejectButtonText}>Reject</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.acceptButton]}
+              onPress={() => handleEndRelationshipAccept(disputeId, item.id)}
+            >
+              <Check size={18} color={colors.text.white} />
+              <Text style={styles.acceptButtonText}>Accept</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.deleteButton}
+            onPress={() => handleDeleteNotification(item.id)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Trash2 size={18} color={colors.text.tertiary} />
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
 
   const renderRequestItem = ({ item }: { item: any }) => (
     <View style={styles.requestCard}>
@@ -640,6 +713,11 @@ const createStyles = (colors: any) => StyleSheet.create({
   requestActions: {
     flexDirection: 'row',
     gap: 12,
+  },
+  endRelationshipActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginLeft: 8,
   },
   actionButton: {
     flex: 1,

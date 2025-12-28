@@ -5190,15 +5190,50 @@ export const [AppContext, useApp] = createContextHook(() => {
         .eq('id', dispute.relationship_id)
         .single();
 
-      if (relationship) {
-        // Update the relationship status
-        await supabase
+      if (relationship && relationship.partner_user_id) {
+        const endDate = new Date().toISOString();
+        const userId1 = relationship.user_id;
+        const userId2 = relationship.partner_user_id;
+        
+        // Update the first relationship record (the one from the dispute)
+        const { error: updateError1 } = await supabase
           .from('relationships')
           .update({
             status: 'ended',
-            end_date: new Date().toISOString(),
+            end_date: endDate,
           })
           .eq('id', dispute.relationship_id);
+
+        if (updateError1) {
+          console.error('Error updating relationship:', updateError1);
+        }
+
+        // Find and update the partner's relationship record (swapped user_id and partner_user_id)
+        // This is the record where user_id is the partner and partner_user_id is the requester
+        const { data: partnerRelationships } = await supabase
+          .from('relationships')
+          .select('id')
+          .eq('user_id', userId2)
+          .eq('partner_user_id', userId1)
+          .eq('status', 'verified');
+
+        if (partnerRelationships && partnerRelationships.length > 0) {
+          const partnerRelId = partnerRelationships[0].id;
+          // Only update if it's a different record
+          if (partnerRelId !== dispute.relationship_id) {
+            const { error: updateError2 } = await supabase
+              .from('relationships')
+              .update({
+                status: 'ended',
+                end_date: endDate,
+              })
+              .eq('id', partnerRelId);
+
+            if (updateError2) {
+              console.error('Error updating partner relationship:', updateError2);
+            }
+          }
+        }
 
         // Get the other partner to send notification
         const otherPartnerId = relationship.user_id === currentUser.id 

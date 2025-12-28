@@ -203,6 +203,7 @@ export default function ConversationDetailScreen() {
   const [hasReview, setHasReview] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [premiumFeature, setPremiumFeature] = useState<{ name?: string; description?: string }>({});
+  const [isLoadingConversation, setIsLoadingConversation] = useState(true);
   const conversation = getConversation(conversationId);
   const recordedImpressions = useRef<Set<string>>(new Set());
   const failedAdImages = useRef<Set<string>>(new Set());
@@ -379,8 +380,34 @@ export default function ConversationDetailScreen() {
     }
   }, [getSmartAds, getActiveAds, currentUser]);
 
+  // Wait for conversation to be available
   useEffect(() => {
     if (conversationId && currentUser) {
+      // Check if conversation exists, if not wait a bit and try again
+      const checkConversation = () => {
+        const conv = getConversation(conversationId);
+        if (conv) {
+          setIsLoadingConversation(false);
+        } else {
+          // Wait a bit and try again (conversation might be loading)
+          setTimeout(() => {
+            const conv2 = getConversation(conversationId);
+            if (conv2) {
+              setIsLoadingConversation(false);
+            } else {
+              // If still not found after 1 second, stop loading (might be an error)
+              setIsLoadingConversation(false);
+            }
+          }, 500);
+        }
+      };
+      
+      checkConversation();
+    }
+  }, [conversationId, currentUser, conversation]);
+
+  useEffect(() => {
+    if (conversationId && currentUser && conversation) {
       let isMounted = true;
 
       loadMessages();
@@ -1414,8 +1441,14 @@ export default function ConversationDetailScreen() {
 
   const otherParticipant = getOtherParticipant();
 
-  if (!conversation || !otherParticipant) {
-    return null;
+  // Show loading state while conversation is being loaded
+  if (isLoadingConversation || !conversation || !otherParticipant) {
+    return (
+      <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={{ marginTop: 16, color: colors.text.secondary }}>Loading conversation...</Text>
+      </SafeAreaView>
+    );
   }
 
   const handleDeleteMessage = async (messageId: string, isSender: boolean) => {

@@ -10,10 +10,12 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { MessageSquare, Sparkles, Heart, ArrowLeft, Calendar } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useApp } from '@/contexts/AppContext';
 import * as DatingService from '@/lib/dating-service';
 import { Image as ExpoImage } from 'expo-image';
 import { Stack } from 'expo-router';
@@ -23,11 +25,13 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 export default function MatchesScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const { currentUser, createOrGetConversation } = useApp();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   const [matches, setMatches] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [openingChat, setOpeningChat] = useState<string | null>(null);
 
   const loadMatches = async () => {
     try {
@@ -139,10 +143,29 @@ export default function MatchesScreen() {
       >
         <TouchableOpacity
           style={styles.matchContent}
-          onPress={() => {
-            router.push(`/messages/${item.id}` as any);
+          onPress={async () => {
+            if (!currentUser || !matchedUser?.id || openingChat === item.id) return;
+            
+            try {
+              setOpeningChat(item.id);
+              // Create or get conversation with the matched user
+              const conversation = await createOrGetConversation(matchedUser.id);
+              if (conversation) {
+                // Small delay to ensure conversation is loaded in context
+                await new Promise(resolve => setTimeout(resolve, 100));
+                router.push(`/messages/${conversation.id}` as any);
+              } else {
+                Alert.alert('Error', 'Could not create conversation');
+              }
+            } catch (error: any) {
+              console.error('Error opening chat:', error);
+              Alert.alert('Error', error.message || 'Failed to open chat');
+            } finally {
+              setOpeningChat(null);
+            }
           }}
           activeOpacity={0.9}
+          disabled={openingChat === item.id}
         >
           <View style={styles.matchPhotoContainer}>
             <ExpoImage
@@ -196,12 +219,35 @@ export default function MatchesScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.actionButton}
-              onPress={(e) => {
+              onPress={async (e) => {
                 e.stopPropagation();
-                router.push(`/messages/${item.id}` as any);
+                if (!currentUser || !matchedUser?.id || openingChat === item.id) return;
+                
+                try {
+                  setOpeningChat(item.id);
+                  // Create or get conversation with the matched user
+                  const conversation = await createOrGetConversation(matchedUser.id);
+                  if (conversation) {
+                    // Small delay to ensure conversation is loaded in context
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    router.push(`/messages/${conversation.id}` as any);
+                  } else {
+                    Alert.alert('Error', 'Could not create conversation');
+                  }
+                } catch (error: any) {
+                  console.error('Error opening chat:', error);
+                  Alert.alert('Error', error.message || 'Failed to open chat');
+                } finally {
+                  setOpeningChat(null);
+                }
               }}
+              disabled={openingChat === item.id}
             >
-              <MessageSquare size={20} color={colors.primary} fill={colors.primary} />
+              {openingChat === item.id ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <MessageSquare size={20} color={colors.primary} fill={colors.primary} />
+              )}
             </TouchableOpacity>
           </View>
         </TouchableOpacity>

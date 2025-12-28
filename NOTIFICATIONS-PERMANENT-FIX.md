@@ -1,10 +1,20 @@
-# Permanent Fix for Notification RLS Errors
+# Permanent Fix for Notification Errors
 
-## Problem
-Users are getting RLS (Row Level Security) policy errors (code 42501) when trying to end relationships. The error message is:
+## Problems Fixed
+
+### 1. RLS Policy Errors (Code 42501)
+Users were getting RLS (Row Level Security) policy errors when trying to end relationships:
 ```
 "new row violates row-level security policy for table \"notifications\""
 ```
+
+### 2. CHECK CONSTRAINT Violations (Code 23514)
+Users were getting CHECK CONSTRAINT violations when trying to create notifications:
+```
+"new row for relation \"notifications\" violates check constraint \"notifications_type_check\""
+```
+
+This happened because notification types like `relationship_end_request` and `false_relationship_resolved` were not included in the database constraint.
 
 ## Root Cause
 The code was falling back to direct INSERT when the RPC function failed, which always fails due to RLS policies. The RPC function (`create_notification`) must exist and be used exclusively.
@@ -16,12 +26,16 @@ The code was falling back to direct INSERT when the RPC function failed, which a
 - **Adds GRANT permissions** to authenticated role
 - **Validates all parameters** before inserting
 - **Uses SECURITY DEFINER** to bypass RLS safely
+- **Updates CHECK CONSTRAINT** to include ALL notification types used in the app:
+  - `relationship_end_request` (for end relationship feature)
+  - `false_relationship_resolved` (for false relationship reports)
+  - All other notification types from the TypeScript definition
 
 ### 2. Updated Code (`contexts/AppContext.tsx`)
 - **Removed fallback to direct INSERT** - this was causing the RLS errors
 - **Always uses RPC function** - the only reliable way to create notifications
 - **Better error messages** - tells users exactly what to do if migration isn't run
-- **Proper error handling** - distinguishes between function missing vs RLS errors
+- **Proper error handling** - distinguishes between function missing vs RLS errors vs CHECK constraint errors
 
 ## How to Fix (ONE TIME SETUP)
 

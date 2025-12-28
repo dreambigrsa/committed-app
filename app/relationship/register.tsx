@@ -799,7 +799,61 @@ export default function RegisterRelationshipScreen() {
               </View>
             )}
 
-
+            {step === 4 && (
+              <View style={styles.inputGroup}>
+                <View style={styles.labelRow}>
+                  <Text style={styles.label}>What type of relationship is this?</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowTips({ ...showTips, 4: !showTips[4] })}
+                    style={styles.tipButton}
+                  >
+                    <Info size={18} color={colors.primary} />
+                  </TouchableOpacity>
+                </View>
+                {showTips[4] && (
+                  <View style={styles.tipBox}>
+                    <View style={styles.tipHeader}>
+                      <Info size={18} color={colors.primary} />
+                      <Text style={styles.tipTitle}>Relationship Types</Text>
+                    </View>
+                    <Text style={styles.tipText}>
+                      • <Text style={styles.tipBold}>Married:</Text> Legally married couples{'\n'}
+                      • <Text style={styles.tipBold}>Engaged:</Text> Couples who are engaged to be married{'\n'}
+                      • <Text style={styles.tipBold}>Serious Relationship:</Text> Committed, long-term relationships{'\n'}
+                      • <Text style={styles.tipBold}>Dating:</Text> Couples who are dating but not yet serious{'\n'}
+                      {'\n'}
+                      Choose the type that best describes your relationship status. This helps others understand your commitment level.
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.typeOptions}>
+                  {RELATIONSHIP_TYPES.map((type) => (
+                    <TouchableOpacity
+                      key={type.value}
+                      style={[
+                        styles.typeOption,
+                        formData.type === type.value && styles.typeOptionActive,
+                      ]}
+                      onPress={() => setFormData({ ...formData, type: type.value })}
+                    >
+                      <Text
+                        style={[
+                          styles.typeOptionText,
+                          formData.type === type.value && styles.typeOptionTextActive,
+                        ]}
+                      >
+                        {type.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <View style={styles.infoBox}>
+                  <Text style={styles.infoText}>
+                    Your relationship type will be visible to others once verified. Make sure to select the type that accurately represents your relationship status.
+                  </Text>
+                </View>
+              </View>
+            )}
 
             {step === 5 && (
               <View style={styles.inputGroup}>

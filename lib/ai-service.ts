@@ -24,22 +24,64 @@ const OPENAI_SETTINGS_KEY = 'openai_api_key';
 const COMMITTED_APP_KNOWLEDGE = `
 ABOUT THE APP (COMMITTED)
 
-- Committed is a relationship-focused social app: profiles, relationship registration, verification, posts, reels, messages, notifications, and admin tools.
+- Committed is a relationship-focused social app: profiles, relationship registration, verification, posts, reels, messages, notifications, dating features, and admin tools.
 
 MAIN NAVIGATION (TABS)
 - Home: overview of your relationship and status.
 - Feed: posts from users (like/comment).
 - Reels: short vertical videos.
-- Messages: conversations and Committed AI chat.
+- Messages: conversations and Committed AI chat (with inline feedback buttons for AI messages).
+- Dating: discover potential matches, swipe through profiles, view matches.
 - Search: find users and check relationship status.
-- Notifications: alerts, requests, system notices.
+- Notifications: alerts, requests, system notices (relationship requests, end relationship requests, dating matches, date requests).
 - Profile/Settings: your profile and account settings.
 
 KEY FLOWS (SHORT)
-- Relationship: Relationship → Register.
-- Verification: Settings → Verification.
+- Relationship: Relationship → Register → Select relationship type → Verification.
+- End Relationship: Settings → End Relationship → Partner confirms or auto-resolves in 7 days.
+- Verification: Settings → Verification (phone, email, ID).
 - Post/Reel: Post → Create, Reel → Create.
 - Status: Status → Create (photo/video/text).
+- Dating: Dating → Create Profile → Set Preferences → Discover → Like/Pass → Match → Chat.
+- Date Requests: Matches → Create Date Request → Partner accepts/declines → Payment (if required).
+
+DATING FEATURES (NEW)
+- Dating Discovery: Swipe-style interface to discover potential matches based on preferences.
+- Dating Profiles: Create profile with bio, photos (up to 9), videos, age, location, interests, relationship goals.
+- Filters: Age range, distance (km), gender preference (men/women/everyone), location-based matching.
+- Default Preferences: Male users default to seeing "women", female users default to seeing "men", non-binary defaults to "everyone" (can be changed).
+- Matching: Mutual likes create matches automatically. Users can see all their matches.
+- Interests: Pre-defined interests (sports, music, food, travel, arts, tech, lifestyle, hobbies) that users can add to their profile.
+- Date Requests: Matched users can create date requests with details, location, time. Partner can accept/decline.
+- Payment System: Date requests may require payment submission, approval, or rejection.
+- Premium Features: Enhanced dating features available for premium users.
+- Privacy: Users with active relationships are excluded from discovery. Only active profiles shown.
+
+RELATIONSHIP MANAGEMENT
+- Relationship Registration: Multi-step process including partner invitation, relationship type selection, verification.
+- Relationship Types: Various types available (marriage, dating, etc.) selected during registration.
+- End Relationship: Users can request to end relationship, partner must confirm or it auto-resolves after 7 days.
+- End Relationship Requests: Appear in notifications, can be accepted/rejected by partner.
+- Disputes System: Handles relationship end requests with auto-resolve after 7 days if not confirmed.
+- False Relationship Reports: Users can report false relationships, admins review and resolve.
+
+NOTIFICATIONS SYSTEM
+- Relationship Requests: Partner requests to register relationship, can accept/reject.
+- End Relationship Requests: Partner requests to end relationship, can accept/reject.
+- Dating Matches: Notification when mutual match is created.
+- Dating Likes: Notification when someone likes your profile (if premium).
+- Date Requests: Notification when matched user creates date request.
+- Date Accepted/Declined: Notification when partner responds to date request.
+- Payment Notifications: Payment submission, approval, rejection notifications.
+- False Relationship Reports: Notifications about report status and resolution.
+- All notifications can be deleted (except active relationship requests which require action).
+
+MESSAGES & AI CHAT
+- Messages: Chat with other users, send text, images, documents, stickers.
+- Committed AI: Built-in AI assistant accessible via Messages tab.
+- AI Feedback: Thumbs up/down buttons appear inline with AI message timestamps for feedback.
+- Message Features: Delete messages (for me or everyone), view images, download documents, long-press for options.
+- Chat Backgrounds: Customizable chat backgrounds (colors, images, gradients).
 
 PROFESSIONAL CONNECTIONS SYSTEM (IMPORTANT)
 - The app has a built-in professional connection system that allows users to connect with verified professionals in real-time.
@@ -54,12 +96,18 @@ COMMON TROUBLESHOOTING
 - Photos/Gallery not working: grant photo/media permissions in phone settings; on Android 13+ allow Photos and Videos permissions. After changing plugins/permissions, rebuild/reinstall the app.
 - Camera not working: grant camera permission.
 - Notifications not showing: enable notifications permission; on Android ensure notifications are allowed and the channel isn't muted.
+- Dating filters not working: Check gender preferences in dating profile settings. Default preferences apply (male→women, female→men).
+- Chat button on matches opens blank: This was fixed - conversation is now created automatically before opening chat.
+- End relationship errors: Ensure migrations are run (add-notifications-insert-policy.sql). Partner must confirm to end relationship.
 - If something errors: ask what screen they're on, what they tapped, and the exact error text or a screenshot.
 
 ADMIN CAPABILITIES
 - Super Admin can access Admin dashboard and settings.
 - Admin Settings includes OpenAI key management (save/test) for Committed AI.
 - Admins can manage professional roles, approve/reject professional applications, and configure the professional system.
+- Admins can view and manage all relationships, end relationships, and view relationship disputes.
+- Admins can manage dating interests (add/edit/delete interests with emojis and categories).
+- Admins can view and resolve false relationship reports.
 `;
 
 let cachedOpenAIKey: string | null | undefined = undefined; // undefined = not loaded

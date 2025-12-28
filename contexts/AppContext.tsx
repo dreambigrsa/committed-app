@@ -1410,14 +1410,40 @@ export const [AppContext, useApp] = createContextHook(() => {
           return [newNotification, ...prev];
         });
       } else if (notificationData) {
-        console.log('📤 Notification created for another user, waiting for real-time subscription:', {
+        console.log('✅ Notification created successfully for user:', {
           notificationId: notificationData.id,
           recipientUserId: notificationData.user_id,
-          currentUserId: currentUser.id
+          currentUserId: currentUser.id,
+          type: notificationData.type
         });
+        // Real-time subscription will handle adding it to the recipient's notification list
       }
-    } catch (error) {
-      console.error('Create notification error:', error);
+    } catch (error: any) {
+      // Re-throw with better error message for RLS issues
+      console.error('❌ Create notification error:', error);
+      
+      // Provide helpful error message for common issues
+      if (error?.code === '42501' || error?.message?.includes('row-level security')) {
+        const helpfulError = new Error(
+          'Failed to create notification due to database security policy. ' +
+          'Please ensure the migration "migrations/add-notifications-insert-policy.sql" has been run in Supabase SQL Editor. ' +
+          'This migration creates the create_notification function that bypasses security policies.'
+        );
+        helpfulError.name = 'NotificationRLSError';
+        throw helpfulError;
+      }
+      
+      if (error?.code === '42883' || error?.message?.includes('function') || error?.message?.includes('does not exist')) {
+        const helpfulError = new Error(
+          'The create_notification database function is missing. ' +
+          'Please run the migration "migrations/add-notifications-insert-policy.sql" in Supabase SQL Editor.'
+        );
+        helpfulError.name = 'NotificationFunctionMissing';
+        throw helpfulError;
+      }
+      
+      // Re-throw original error
+      throw error;
     }
   }, [currentUser, isNotificationEnabled]);
 

@@ -10,7 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Heart, Check, X, AlertTriangle, MessageCircle, Bell, UserPlus, CheckCircle2, Trash2, Sparkles, Star, DollarSign, CreditCard } from 'lucide-react-native';
+import { Heart, Check, X, AlertTriangle, MessageCircle, Bell, UserPlus, CheckCircle2, Trash2, Sparkles, Star, DollarSign, CreditCard, HeartBreak } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Notification, NotificationType } from '@/types';
@@ -20,6 +20,7 @@ export default function NotificationsScreen() {
   const router = useRouter();
   const { 
     getPendingRequests, 
+    getPendingEndRelationshipRequests,
     acceptRelationshipRequest, 
     rejectRelationshipRequest,
     confirmEndRelationship,
@@ -37,6 +38,7 @@ export default function NotificationsScreen() {
   const [activeTab, setActiveTab] = useState<'all' | 'requests'>('all');
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [userCache, setUserCache] = useState<Record<string, string>>({});
+  const [pendingEndRequests, setPendingEndRequests] = useState<any[]>([]);
 
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -47,6 +49,16 @@ export default function NotificationsScreen() {
       useNativeDriver: true,
     }).start();
   }, [fadeAnim]);
+
+  useEffect(() => {
+    const loadEndRequests = async () => {
+      if (activeTab === 'requests') {
+        const requests = await getPendingEndRelationshipRequests();
+        setPendingEndRequests(requests);
+      }
+    };
+    loadEndRequests();
+  }, [activeTab, getPendingEndRelationshipRequests]);
 
   const getRelationshipTypeLabel = (type: string) => {
     const labels = {
@@ -66,10 +78,15 @@ export default function NotificationsScreen() {
     await rejectRelationshipRequest(requestId);
   };
 
-  const handleEndRelationshipAccept = async (disputeId: string, notificationId: string) => {
+  const handleEndRelationshipAccept = async (disputeId: string, notificationId?: string) => {
     try {
       await confirmEndRelationship(disputeId);
-      await markNotificationAsRead(notificationId);
+      if (notificationId) {
+        await markNotificationAsRead(notificationId);
+      }
+      // Reload end requests
+      const requests = await getPendingEndRelationshipRequests();
+      setPendingEndRequests(requests);
       Alert.alert('Relationship Ended', 'The relationship has been ended successfully.');
     } catch (error: any) {
       console.error('Error confirming end relationship:', error);
@@ -77,7 +94,7 @@ export default function NotificationsScreen() {
     }
   };
 
-  const handleEndRelationshipReject = async (disputeId: string, notificationId: string) => {
+  const handleEndRelationshipReject = async (disputeId: string, notificationId?: string) => {
     Alert.alert(
       'Reject End Request',
       'Are you sure you want to reject this end relationship request? The relationship will continue.',
@@ -101,7 +118,14 @@ export default function NotificationsScreen() {
 
               if (error) throw error;
               
-              await markNotificationAsRead(notificationId);
+              if (notificationId) {
+                await markNotificationAsRead(notificationId);
+              }
+              
+              // Reload end requests
+              const requests = await getPendingEndRelationshipRequests();
+              setPendingEndRequests(requests);
+              
               Alert.alert('Request Rejected', 'The end relationship request has been rejected. Your relationship continues.');
             } catch (error: any) {
               console.error('Error rejecting end relationship:', error);
@@ -143,6 +167,8 @@ export default function NotificationsScreen() {
         return <CheckCircle2 size={24} color={colors.success} />;
       case 'payment_rejected':
         return <X size={24} color={colors.danger} />;
+      case 'relationship_end_request':
+        return <HeartBreak size={24} color={colors.danger} />;
       default:
         return <Bell size={24} color={colors.text.secondary} />;
     }
@@ -228,6 +254,9 @@ export default function NotificationsScreen() {
         }
         break;
       case 'relationship_request':
+        setActiveTab('requests');
+        break;
+      case 'relationship_end_request':
         setActiveTab('requests');
         break;
       case 'dating_match':
@@ -510,6 +539,50 @@ export default function NotificationsScreen() {
     </View>
   );
 
+  const renderEndRelationshipRequestItem = ({ item }: { item: any }) => (
+    <View style={styles.requestCard}>
+      <View style={styles.requestHeader}>
+        <View style={styles.requestHeaderLeft}>
+          <View style={[styles.requestIconContainer, { backgroundColor: colors.danger + '20' }]}>
+            <HeartBreak size={28} color={colors.danger} />
+          </View>
+          <View style={styles.requestInfo}>
+            <Text style={styles.requestTitle}>End Relationship Request</Text>
+            <Text style={styles.requestText}>
+              <Text style={styles.requestName}>{item.initiatedByName}</Text> wants to
+              end your {getRelationshipTypeLabel(item.relationshipType).toLowerCase()}
+            </Text>
+            <Text style={styles.requestDate}>
+              {new Date(item.createdAt).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+              })}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.requestActions}>
+        <TouchableOpacity
+          style={[styles.actionButton, styles.rejectButton]}
+          onPress={() => handleEndRelationshipReject(item.disputeId)}
+        >
+          <X size={20} color={colors.text.white} />
+          <Text style={styles.rejectButtonText}>Reject</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.actionButton, styles.acceptButton]}
+          onPress={() => handleEndRelationshipAccept(item.disputeId)}
+        >
+          <Check size={20} color={colors.text.white} />
+          <Text style={styles.acceptButtonText}>Accept</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background.secondary }]}>
       <View style={styles.header}>
@@ -538,7 +611,7 @@ export default function NotificationsScreen() {
             onPress={() => setActiveTab('requests')}
           >
             <Text style={[styles.tabText, activeTab === 'requests' && styles.activeTabText]}>
-              Requests {pendingRequests.length > 0 && `(${pendingRequests.length})`}
+              Requests {pendingRequests.length + pendingEndRequests.length > 0 && `(${pendingRequests.length + pendingEndRequests.length})`}
             </Text>
           </TouchableOpacity>
         </Animated.View>
@@ -563,19 +636,26 @@ export default function NotificationsScreen() {
           />
         )
       ) : (
-        pendingRequests.length === 0 ? (
+        pendingRequests.length === 0 && pendingEndRequests.length === 0 ? (
           <Animated.View style={[styles.emptyContainer, { opacity: fadeAnim }]}>
             <Heart size={80} color={colors.text.tertiary} strokeWidth={1.5} />
             <Text style={styles.emptyTitle}>No Pending Requests</Text>
             <Text style={styles.emptyText}>
-              You&apos;ll be notified when someone sends you a relationship request
+              You&apos;ll be notified when someone sends you a relationship request or end relationship request
             </Text>
           </Animated.View>
         ) : (
           <FlatList
-            data={pendingRequests}
-            renderItem={renderRequestItem}
-            keyExtractor={(item) => item.id}
+            data={[
+              ...pendingRequests.map(r => ({ ...r, requestType: 'relationship' as const })),
+              ...pendingEndRequests.map(r => ({ ...r, requestType: 'end_relationship' as const }))
+            ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())}
+            renderItem={({ item }) => 
+              item.requestType === 'end_relationship' 
+                ? renderEndRelationshipRequestItem({ item })
+                : renderRequestItem({ item })
+            }
+            keyExtractor={(item) => `${item.requestType}-${item.id}`}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
           />

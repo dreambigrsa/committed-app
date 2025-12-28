@@ -2211,6 +2211,81 @@ export const [AppContext, useApp] = createContextHook(() => {
     );
   }, [currentUser, relationshipRequests]);
 
+  const getPendingEndRelationshipRequests = useCallback(async () => {
+    if (!currentUser) return [];
+    
+    try {
+      // Get all relationships where current user is a partner
+      const { data: userRelationships } = await supabase
+        .from('relationships')
+        .select('id, user_id, partner_user_id, partner_name, type')
+        .or(`user_id.eq.${currentUser.id},partner_user_id.eq.${currentUser.id}`)
+        .eq('status', 'verified');
+
+      if (!userRelationships || userRelationships.length === 0) return [];
+
+      const relationshipIds = userRelationships.map(r => r.id);
+
+      // Get pending end relationship disputes for these relationships
+      const { data: disputesData } = await supabase
+        .from('disputes')
+        .select('*')
+        .in('relationship_id', relationshipIds)
+        .eq('dispute_type', 'end_relationship')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false });
+
+      if (!disputesData) return [];
+
+      // Format the disputes with partner information
+      const formattedRequests = await Promise.all(disputesData.map(async (d: any) => {
+        const relationship = userRelationships.find(r => r.id === d.relationship_id);
+        if (!relationship) return null;
+
+        const isInitiator = d.initiated_by === currentUser.id;
+        const partnerId = relationship.user_id === currentUser.id 
+          ? relationship.partner_user_id 
+          : relationship.user_id;
+        
+        // Get partner name - if current user is user_id, partner_name is the partner
+        // If current user is partner_user_id, we need to fetch the user's name
+        let partnerName = 'Your partner';
+        if (relationship.user_id === currentUser.id) {
+          // Current user is the user_id, so partner_name is the partner
+          partnerName = relationship.partner_name || 'Your partner';
+        } else {
+          // Current user is the partner_user_id, need to get the user's name from users table
+          if (relationship.user_id) {
+            const { data: userData } = await supabase
+              .from('users')
+              .select('full_name')
+              .eq('id', relationship.user_id)
+              .single();
+            partnerName = userData?.full_name || 'Your partner';
+          }
+        }
+
+        return {
+          id: d.id,
+          disputeId: d.id,
+          relationshipId: d.relationship_id,
+          initiatedBy: d.initiated_by,
+          initiatedByName: isInitiator ? currentUser.fullName : partnerName,
+          partnerName: isInitiator ? partnerName : currentUser.fullName,
+          relationshipType: relationship.type,
+          description: d.description,
+          createdAt: d.created_at,
+          type: 'end_relationship' as const,
+        };
+      }));
+
+      return formattedRequests.filter((r): r is NonNullable<typeof r> => r !== null);
+    } catch (error) {
+      console.error('Error getting pending end relationship requests:', error);
+      return [];
+    }
+  }, [currentUser]);
+
   // Helper function to check if user is restricted from a feature
   const checkUserRestriction = useCallback(async (userId: string, feature: string): Promise<{ 
     restricted: boolean; 
@@ -5097,6 +5172,7 @@ export const [AppContext, useApp] = createContextHook(() => {
 
       if (!dispute) return;
 
+      // Update dispute status
       await supabase
         .from('disputes')
         .update({
@@ -5107,15 +5183,7 @@ export const [AppContext, useApp] = createContextHook(() => {
         })
         .eq('id', disputeId);
 
-      await supabase
-        .from('relationships')
-        .update({
-          status: 'ended',
-          end_date: new Date().toISOString(),
-        })
-        .eq('id', dispute.relationship_id);
-
-      // Get the other partner to send notification
+      // End the relationship - update both partners' relationship records
       const { data: relationship } = await supabase
         .from('relationships')
         .select('user_id, partner_user_id')
@@ -5123,6 +5191,16 @@ export const [AppContext, useApp] = createContextHook(() => {
         .single();
 
       if (relationship) {
+        // Update the relationship status
+        await supabase
+          .from('relationships')
+          .update({
+            status: 'ended',
+            end_date: new Date().toISOString(),
+          })
+          .eq('id', dispute.relationship_id);
+
+        // Get the other partner to send notification
         const otherPartnerId = relationship.user_id === currentUser.id 
           ? relationship.partner_user_id 
           : relationship.user_id;
@@ -5140,12 +5218,13 @@ export const [AppContext, useApp] = createContextHook(() => {
 
       await logActivity('end_relationship_confirmed', 'relationship', dispute.relationship_id);
 
-      const updatedRelationships = relationships.filter(r => r.id !== dispute.relationship_id);
-      setRelationships(updatedRelationships);
+      // Refresh relationships to update both partners' views
+      await refreshRelationships();
     } catch (error) {
       console.error('Confirm end relationship error:', error);
+      throw error;
     }
-  }, [currentUser, relationships, createNotification, logActivity]);
+  }, [currentUser, createNotification, logActivity, refreshRelationships]);
 
   const editPost = useCallback(async (postId: string, content: string, mediaUrls: string[], mediaType: Post['mediaType']) => {
     if (!currentUser) return null;
@@ -6625,6 +6704,7 @@ export const [AppContext, useApp] = createContextHook(() => {
     searchUsers,
     searchByFace,
     getPendingRequests,
+    getPendingEndRelationshipRequests,
     posts,
     reels,
     conversations,

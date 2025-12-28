@@ -1644,23 +1644,87 @@ export const [AppContext, useApp] = createContextHook(() => {
         .single();
 
       if (request) {
-        await supabase
+        // Get the requester's relationship record to get all details
+        const { data: requesterRelationship } = await supabase
           .from('relationships')
-          .update({
-            status: 'verified',
-            verified_date: new Date().toISOString(),
-            partner_user_id: currentUser.id,
-          })
-          .eq('user_id', request.from_user_id);
+          .select('*')
+          .eq('user_id', request.from_user_id)
+          .in('status', ['pending', 'verified'])
+          .single();
 
-        // Send notification to the requester that the relationship was verified
-        await createNotification(
-          request.from_user_id,
-          'relationship_verified',
-          'Relationship Verified',
-          `${currentUser.fullName} accepted your ${request.relationship_type} relationship request`,
-          { relationshipId: request.id }
-        );
+        // Get the requester's user info (name, phone)
+        const { data: requesterUser } = await supabase
+          .from('users')
+          .select('id, full_name, phone_number')
+          .eq('id', request.from_user_id)
+          .single();
+
+        if (requesterRelationship && requesterUser) {
+          const verifiedDate = new Date().toISOString();
+
+          // Update the requester's relationship record
+          await supabase
+            .from('relationships')
+            .update({
+              status: 'verified',
+              verified_date: verifiedDate,
+              partner_user_id: currentUser.id,
+            })
+            .eq('user_id', request.from_user_id);
+
+          // Check if accepter already has a relationship record
+          const { data: existingAccepterRelationship } = await supabase
+            .from('relationships')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .in('status', ['pending', 'verified'])
+            .single();
+
+          if (existingAccepterRelationship) {
+            // Update existing relationship record for accepter
+            await supabase
+              .from('relationships')
+              .update({
+                status: 'verified',
+                verified_date: verifiedDate,
+                partner_user_id: request.from_user_id,
+                partner_name: requesterUser.full_name,
+                partner_phone: requesterUser.phone_number,
+                type: request.relationship_type,
+                start_date: requesterRelationship.start_date,
+                privacy_level: requesterRelationship.privacy_level,
+              })
+              .eq('user_id', currentUser.id);
+          } else {
+            // Create new relationship record for accepter
+            await supabase
+              .from('relationships')
+              .insert({
+                user_id: currentUser.id,
+                partner_name: requesterUser.full_name,
+                partner_phone: requesterUser.phone_number,
+                partner_user_id: request.from_user_id,
+                type: request.relationship_type,
+                status: 'verified',
+                verified_date: verifiedDate,
+                start_date: requesterRelationship.start_date,
+                privacy_level: requesterRelationship.privacy_level,
+                partner_face_photo: requesterRelationship.partner_face_photo,
+                partner_date_of_birth_month: requesterRelationship.partner_date_of_birth_month,
+                partner_date_of_birth_year: requesterRelationship.partner_date_of_birth_year,
+                partner_city: requesterRelationship.partner_city,
+              });
+          }
+
+          // Send notification to the requester that the relationship was verified
+          await createNotification(
+            request.from_user_id,
+            'relationship_verified',
+            'Relationship Verified',
+            `${currentUser.fullName} accepted your ${request.relationship_type} relationship request`,
+            { relationshipId: request.id }
+          );
+        }
       }
 
       // Refresh relationships to get updated status

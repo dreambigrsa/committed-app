@@ -10,14 +10,14 @@ import {
   Alert,
 } from 'react-native';
 import { Stack } from 'expo-router';
-import { Heart, CheckCircle, XCircle, Calendar } from 'lucide-react-native';
+import { Heart, CheckCircle, XCircle, Calendar, AlertTriangle } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
 import colors from '@/constants/colors';
 import { Relationship } from '@/types';
 
 export default function AdminRelationshipsScreen() {
-  const { currentUser } = useApp();
+  const { currentUser, endRelationship } = useApp();
   const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -116,10 +116,93 @@ export default function AdminRelationshipsScreen() {
     );
   };
 
+  const handleEndRelationship = async (relationshipId: string) => {
+    Alert.alert(
+      'End Relationship',
+      'This will send an end relationship request to both partners. The relationship will end once they confirm or after 7 days. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'End Relationship',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Fetch relationship to get partner IDs
+              const { data: relationship, error: relError } = await supabase
+                .from('relationships')
+                .select('user_id, partner_user_id')
+                .eq('id', relationshipId)
+                .single();
+
+              if (relError || !relationship) {
+                throw new Error('Relationship not found');
+              }
+
+              // Create dispute for ending relationship
+              const autoResolveDate = new Date();
+              autoResolveDate.setDate(autoResolveDate.getDate() + 7);
+
+              const { data: dispute, error: disputeError } = await supabase
+                .from('disputes')
+                .insert({
+                  relationship_id: relationshipId,
+                  initiated_by: currentUser!.id,
+                  dispute_type: 'end_relationship',
+                  description: 'Admin ended relationship',
+                  status: 'pending',
+                  auto_resolve_at: autoResolveDate.toISOString(),
+                })
+                .select()
+                .single();
+
+              if (disputeError) throw disputeError;
+
+              // Notify both partners
+              const partnerIds = [relationship.user_id, relationship.partner_user_id].filter(Boolean);
+              let notificationErrors = 0;
+
+              for (const partnerId of partnerIds) {
+                try {
+                  await supabase.from('notifications').insert({
+                    user_id: partnerId,
+                    type: 'relationship_end_request',
+                    title: 'End Relationship Request',
+                    message: 'An administrator has requested to end your relationship. Please confirm or it will auto-resolve in 7 days.',
+                    data: { relationshipId, disputeId: dispute.id, adminInitiated: true },
+                  });
+                } catch (notifError) {
+                  console.error('Failed to notify partner:', notifError);
+                  notificationErrors++;
+                }
+              }
+
+              if (notificationErrors > 0) {
+                Alert.alert(
+                  'Request Created',
+                  'End relationship request created, but some notifications may have failed. Partners can still see the request in their disputes section.',
+                  [{ text: 'OK', onPress: () => loadRelationships() }]
+                );
+              } else {
+                Alert.alert(
+                  'Success',
+                  'End relationship request created. Both partners will be notified.',
+                  [{ text: 'OK', onPress: () => loadRelationships() }]
+                );
+              }
+            } catch (error: any) {
+              console.error('End relationship error:', error);
+              Alert.alert('Error', error?.message || 'Failed to end relationship');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleDeleteRelationship = async (relationshipId: string) => {
     Alert.alert(
       'Delete Relationship',
-      'Are you sure you want to permanently delete this relationship?',
+      'Are you sure you want to permanently delete this relationship? This action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -257,12 +340,24 @@ export default function AdminRelationshipsScreen() {
                   )}
                 </View>
                 {(currentUser.role === 'admin' || currentUser.role === 'super_admin') && (
-                  <TouchableOpacity
-                    style={styles.deleteButtonFull}
-                    onPress={() => handleDeleteRelationship(relationship.id)}
-                  >
-                    <Text style={styles.deleteButtonText}>Delete</Text>
-                  </TouchableOpacity>
+                  <View style={styles.adminActions}>
+                    {relationship.status === 'verified' && (
+                      <TouchableOpacity
+                        style={[styles.adminButton, styles.endButton]}
+                        onPress={() => handleEndRelationship(relationship.id)}
+                      >
+                        <AlertTriangle size={16} color={colors.text.white} />
+                        <Text style={styles.adminButtonText}>End Relationship</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                      style={[styles.adminButton, styles.deleteButton]}
+                      onPress={() => handleDeleteRelationship(relationship.id)}
+                    >
+                      <XCircle size={16} color={colors.text.white} />
+                      <Text style={styles.adminButtonText}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
                 )}
               </View>
             ))}
@@ -435,6 +530,30 @@ const styles = StyleSheet.create({
     color: colors.text.white,
   },
   actionButtonText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: colors.text.white,
+  },
+  adminActions: {
+    marginTop: 8,
+    gap: 8,
+  },
+  adminButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 8,
+    width: '100%',
+  },
+  endButton: {
+    backgroundColor: colors.danger,
+  },
+  deleteButton: {
+    backgroundColor: '#8B0000',
+  },
+  adminButtonText: {
     fontSize: 14,
     fontWeight: '600' as const,
     color: colors.text.white,

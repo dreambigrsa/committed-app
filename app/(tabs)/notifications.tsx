@@ -10,7 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Heart, Check, X, AlertTriangle, MessageCircle, Bell, UserPlus, CheckCircle2, Trash2, Sparkles, Star, DollarSign, CreditCard, HeartBreak } from 'lucide-react-native';
+import { Heart, Check, X, AlertTriangle, MessageCircle, Bell, UserPlus, CheckCircle2, Trash2, Sparkles, Star, DollarSign, CreditCard, HeartOff } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Notification, NotificationType } from '@/types';
@@ -168,7 +168,7 @@ export default function NotificationsScreen() {
       case 'payment_rejected':
         return <X size={24} color={colors.danger} />;
       case 'relationship_end_request':
-        return <HeartBreak size={24} color={colors.danger} />;
+        return <HeartOff size={24} color={colors.danger} />;
       default:
         return <Bell size={24} color={colors.text.secondary} />;
     }
@@ -544,7 +544,7 @@ export default function NotificationsScreen() {
       <View style={styles.requestHeader}>
         <View style={styles.requestHeaderLeft}>
           <View style={[styles.requestIconContainer, { backgroundColor: colors.danger + '20' }]}>
-            <HeartBreak size={28} color={colors.danger} />
+            <HeartOff size={28} color={colors.danger} />
           </View>
           <View style={styles.requestInfo}>
             <Text style={styles.requestTitle}>End Relationship Request</Text>

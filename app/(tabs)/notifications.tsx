@@ -52,13 +52,11 @@ export default function NotificationsScreen() {
 
   useEffect(() => {
     const loadEndRequests = async () => {
-      if (activeTab === 'requests') {
-        const requests = await getPendingEndRelationshipRequests();
-        setPendingEndRequests(requests);
-      }
+      const requests = await getPendingEndRelationshipRequests();
+      setPendingEndRequests(requests);
     };
     loadEndRequests();
-  }, [activeTab, getPendingEndRelationshipRequests]);
+  }, [getPendingEndRelationshipRequests, notifications]);
 
   const getRelationshipTypeLabel = (type: string) => {
     const labels = {
@@ -444,13 +442,13 @@ export default function NotificationsScreen() {
 
   const renderNotificationItem = ({ item }: { item: Notification & { source: 'notification' | 'alert' } }) => {
     const isEndRelationshipRequest = item.type === 'relationship_end_request';
-    const disputeId = item.data?.disputeId;
+    const isRelationshipRequest = item.type === 'relationship_request';
 
     return (
       <View style={[styles.notificationCard, !item.read && styles.unreadNotification]}>
         <TouchableOpacity
           style={styles.notificationContentWrapper}
-          onPress={() => !isEndRelationshipRequest && handleNotificationPress(item)}
+          onPress={() => handleNotificationPress(item)}
           activeOpacity={0.7}
         >
           <View style={[styles.iconContainer, !item.read && styles.unreadIconContainer]}>
@@ -464,24 +462,8 @@ export default function NotificationsScreen() {
           {!item.read && <View style={styles.unreadDot} />}
         </TouchableOpacity>
         
-        {isEndRelationshipRequest && disputeId ? (
-          <View style={styles.endRelationshipActions}>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.rejectButton]}
-              onPress={() => handleEndRelationshipReject(disputeId, item.id)}
-            >
-              <X size={18} color={colors.text.white} />
-              <Text style={styles.rejectButtonText}>Reject</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.acceptButton]}
-              onPress={() => handleEndRelationshipAccept(disputeId, item.id)}
-            >
-              <Check size={18} color={colors.text.white} />
-              <Text style={styles.acceptButtonText}>Accept</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
+        {/* Only show delete button for non-request notifications */}
+        {!isEndRelationshipRequest && !isRelationshipRequest && (
           <TouchableOpacity
             style={styles.deleteButton}
             onPress={() => handleDeleteNotification(item.id)}

@@ -100,6 +100,50 @@ $$;
 GRANT EXECUTE ON FUNCTION public.create_notification(UUID, TEXT, TEXT, TEXT, JSONB) TO authenticated;
 
 -- ============================================
+-- UPDATE NOTIFICATION TYPE CHECK CONSTRAINT
+-- ============================================
+-- Add missing notification types to the check constraint
+-- This includes relationship_end_request and false_relationship_resolved which are used in the app
+DROP CONSTRAINT IF EXISTS notifications_type_check ON notifications;
+
+ALTER TABLE notifications
+ADD CONSTRAINT notifications_type_check 
+CHECK (type IN (
+  -- Relationship types
+  'relationship_request', 
+  'relationship_verified', 
+  'relationship_ended', 
+  'relationship_end_request',
+  -- Cheating alerts
+  'cheating_alert',
+  -- Social interactions
+  'post_like', 
+  'post_comment', 
+  'message', 
+  'follow',
+  -- Anniversary
+  'anniversary_reminder',
+  -- Verification
+  'verification_attempt',
+  -- Status
+  'status_reaction',
+  -- Dating
+  'dating_match', 
+  'dating_like', 
+  'dating_super_like',
+  'dating_date_request',
+  'dating_date_accepted',
+  'dating_date_declined',
+  -- Payments
+  'payment_submission',
+  'payment_approved',
+  'payment_rejected',
+  -- False relationship reports
+  'false_relationship_dual_report',
+  'false_relationship_resolved'
+));
+
+-- ============================================
 -- DISPUTES UPDATE POLICY
 -- ============================================
 -- Allow partners to update disputes (confirm/reject end relationship requests)

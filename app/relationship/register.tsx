@@ -10,7 +10,6 @@ import {
   Platform,
   ActivityIndicator,
   Animated,
-  FlatList,
   Alert,
   Modal,
 } from 'react-native';
@@ -413,49 +412,45 @@ export default function RegisterRelationshipScreen() {
 
                 {searchResults.length > 0 && (
                   <View style={styles.searchResults}>
-                    <FlatList
-                      data={searchResults}
-                      keyExtractor={(item) => item.id}
-                      renderItem={({ item }) => (
-                        <TouchableOpacity
-                          style={styles.searchResultItem}
-                          onPress={() => handleSelectUser(item)}
-                        >
-                          {item.profilePicture ? (
-                            <Image source={{ uri: item.profilePicture }} style={styles.resultAvatar} />
-                          ) : (
-                            <View style={styles.resultAvatarPlaceholder}>
-                              <Text style={styles.resultAvatarText}>{item.fullName.charAt(0)}</Text>
-                            </View>
-                          )}
-                          <View style={styles.resultInfo}>
-                            <View style={styles.resultNameRow}>
-                              <Text style={styles.resultName}>{item.fullName}</Text>
-                              {item.username && (
-                                <Text style={styles.resultUsername}>@{item.username}</Text>
-                              )}
-                              {!item.isRegisteredUser && (
-                                <View style={styles.nonRegisteredBadge}>
-                                  <Text style={styles.nonRegisteredText}>Not Registered</Text>
-                                </View>
-                              )}
-                              {item.verifications?.phone && (
-                                <CheckCircle2 size={16} color={colors.secondary} />
-                              )}
-                            </View>
-                            {item.phoneNumber && (
-                              <Text style={styles.resultPhone}>{item.phoneNumber}</Text>
+                    {searchResults.map((item) => (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={styles.searchResultItem}
+                        onPress={() => handleSelectUser(item)}
+                      >
+                        {item.profilePicture ? (
+                          <Image source={{ uri: item.profilePicture }} style={styles.resultAvatar} />
+                        ) : (
+                          <View style={styles.resultAvatarPlaceholder}>
+                            <Text style={styles.resultAvatarText}>{item.fullName.charAt(0)}</Text>
+                          </View>
+                        )}
+                        <View style={styles.resultInfo}>
+                          <View style={styles.resultNameRow}>
+                            <Text style={styles.resultName}>{item.fullName}</Text>
+                            {item.username && (
+                              <Text style={styles.resultUsername}>@{item.username}</Text>
                             )}
-                            {!item.isRegisteredUser && item.relationshipType && (
-                              <Text style={styles.resultRelationship}>
-                                Partner in {item.relationshipType} relationship
-                              </Text>
+                            {!item.isRegisteredUser && (
+                              <View style={styles.nonRegisteredBadge}>
+                                <Text style={styles.nonRegisteredText}>Not Registered</Text>
+                              </View>
+                            )}
+                            {item.verifications?.phone && (
+                              <CheckCircle2 size={16} color={colors.secondary} />
                             )}
                           </View>
-                        </TouchableOpacity>
-                      )}
-                      style={styles.searchResultsList}
-                    />
+                          {item.phoneNumber && (
+                            <Text style={styles.resultPhone}>{item.phoneNumber}</Text>
+                          )}
+                          {!item.isRegisteredUser && item.relationshipType && (
+                            <Text style={styles.resultRelationship}>
+                              Partner in {item.relationshipType} relationship
+                            </Text>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    ))}
                   </View>
                 )}
 
@@ -943,9 +938,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border.light,
     marginBottom: 12,
-  },
-  searchResultsList: {
-    maxHeight: 300,
   },
   searchResultItem: {
     flexDirection: 'row',

@@ -846,7 +846,13 @@ export const [AppContext, useApp] = createContextHook(() => {
 
   const signup = useCallback(async (fullName: string, email: string, phoneNumber: string, password: string) => {
     try {
-      console.log('Signing up user:', { fullName, email, phoneNumber });
+      // Normalize phone number before storing
+      const normalizedPhone = normalizePhoneNumber(phoneNumber);
+      if (!normalizedPhone) {
+        throw new Error('Invalid phone number format. Please enter a valid phone number.');
+      }
+
+      console.log('Signing up user:', { fullName, email, phoneNumber: normalizedPhone });
       
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
@@ -854,7 +860,7 @@ export const [AppContext, useApp] = createContextHook(() => {
         options: {
           data: {
             full_name: fullName,
-            phone_number: phoneNumber,
+            phone_number: normalizedPhone,
           }
         }
       });
@@ -888,7 +894,7 @@ export const [AppContext, useApp] = createContextHook(() => {
               id: authData.user.id,
               full_name: fullName,
               email,
-              phone_number: phoneNumber,
+              phone_number: normalizedPhone,
               role: email === 'nashiezw@gmail.com' ? 'super_admin' : 'user',
               phone_verified: false,
               email_verified: false,
@@ -914,13 +920,13 @@ export const [AppContext, useApp] = createContextHook(() => {
         }
 
         // Check and link any relationships where this user's phone number was registered
-        await checkAndLinkRelationships(authData.user.id, phoneNumber);
+        await checkAndLinkRelationships(authData.user.id, normalizedPhone);
       } catch (profileError: any) {
         console.log('Profile check/creation error (may be handled by trigger):', profileError);
         // Still try to link relationships even if profile creation had issues
         // (it might have been created by trigger)
         try {
-          await checkAndLinkRelationships(authData.user.id, phoneNumber);
+          await checkAndLinkRelationships(authData.user.id, normalizedPhone);
         } catch (linkError) {
           console.error('Error linking relationships after signup:', linkError);
         }
@@ -1171,11 +1177,17 @@ export const [AppContext, useApp] = createContextHook(() => {
     if (!currentUser) return;
     
     try {
+      // Normalize phone number if provided
+      const normalizedPhone = updates.phoneNumber ? normalizePhoneNumber(updates.phoneNumber) : undefined;
+      if (updates.phoneNumber && !normalizedPhone) {
+        throw new Error('Invalid phone number format. Please enter a valid phone number.');
+      }
+
       const { error } = await supabase
         .from('users')
         .update({
           full_name: updates.fullName,
-          phone_number: updates.phoneNumber,
+          phone_number: normalizedPhone || updates.phoneNumber,
           profile_picture: updates.profilePicture,
           phone_verified: updates.verifications?.phone,
           email_verified: updates.verifications?.email,
@@ -1479,11 +1491,19 @@ export const [AppContext, useApp] = createContextHook(() => {
   // This must be defined after refreshRelationships and createNotification
   const checkAndLinkRelationships = useCallback(async (userId: string, phoneNumber: string) => {
     try {
+      // Normalize phone number for searching
+      const normalizedPhone = normalizePhoneNumber(phoneNumber);
+      if (!normalizedPhone) {
+        console.warn('Invalid phone number format, skipping relationship linking:', phoneNumber);
+        return;
+      }
+
       // Find relationships where this phone number is listed as partner_phone
+      // Search for both normalized and original format to catch existing records
       const { data: relationships } = await supabase
         .from('relationships')
         .select('*')
-        .eq('partner_phone', phoneNumber)
+        .or(`partner_phone.eq.${normalizedPhone},partner_phone.eq.${phoneNumber}`)
         .in('status', ['pending', 'verified'])
         .is('partner_user_id', null); // Only link if not already linked
 
@@ -1621,6 +1641,12 @@ export const [AppContext, useApp] = createContextHook(() => {
     if (!currentUser) return null;
     
     try {
+      // Normalize partner phone number
+      const normalizedPartnerPhone = normalizePhoneNumber(partnerPhone);
+      if (!normalizedPartnerPhone) {
+        throw new Error('Invalid phone number format. Please enter a valid phone number.');
+      }
+
       const { data: existingRelationships } = await supabase
         .from('relationships')
         .select('*')
@@ -1659,18 +1685,19 @@ export const [AppContext, useApp] = createContextHook(() => {
           .single();
         
         if (data) {
-          // Verify phone number matches exactly to prevent name collisions
-          if (data.phone_number !== partnerPhone) {
+          // Verify phone number matches (using normalized comparison)
+          const normalizedUserPhone = normalizePhoneNumber(data.phone_number);
+          if (!comparePhoneNumbers(normalizedUserPhone, normalizedPartnerPhone)) {
             throw new Error(`Phone number mismatch: The selected user's phone number (${data.phone_number}) does not match the provided phone number (${partnerPhone}). Please verify you selected the correct person.`);
           }
           partnerData = data;
         }
       } else {
-        // Search by phone number - this should be unique
+        // Search by phone number - search for both normalized and original format
         const { data: usersByPhone } = await supabase
           .from('users')
           .select('id, phone_number, full_name')
-          .eq('phone_number', partnerPhone);
+          .or(`phone_number.eq.${normalizedPartnerPhone},phone_number.eq.${partnerPhone}`);
         
         if (usersByPhone && usersByPhone.length > 0) {
           if (usersByPhone.length > 1) {
@@ -1733,7 +1760,7 @@ export const [AppContext, useApp] = createContextHook(() => {
         .insert({
           user_id: currentUser.id,
           partner_name: partnerName,
-          partner_phone: partnerPhone,
+          partner_phone: normalizedPartnerPhone, // Store normalized phone number
           partner_user_id: partnerData?.id,
           type,
           status: 'pending',
@@ -1941,9 +1968,13 @@ export const [AppContext, useApp] = createContextHook(() => {
     if (!lowerQuery) return [];
     
     try {
+      // Normalize query if it looks like a phone number
+      const normalizedQuery = normalizePhoneNumber(query) || lowerQuery;
+      const searchQuery = normalizedQuery !== lowerQuery ? normalizedQuery : lowerQuery;
+      
       // Search registered users
       const { data: usersData, error: usersError } = await supabase.rpc('search_users', {
-        search_query: lowerQuery,
+        search_query: searchQuery,
       });
 
       if (usersError) throw usersError;
@@ -1985,6 +2016,7 @@ export const [AppContext, useApp] = createContextHook(() => {
       );
 
       // Search non-registered partners (people listed as partners but not registered)
+      // Search for both normalized and original query to catch all matches
       const { data: partnerData, error: partnerError } = await supabase
         .from('relationships')
         .select(`
@@ -1997,7 +2029,7 @@ export const [AppContext, useApp] = createContextHook(() => {
           user_id,
           users!relationships_user_id_fkey(full_name, phone_number, profile_picture)
         `)
-        .or(`partner_name.ilike.%${lowerQuery}%,partner_phone.ilike.%${lowerQuery}%`)
+        .or(`partner_name.ilike.%${lowerQuery}%,partner_phone.ilike.%${lowerQuery}%,partner_phone.ilike.%${searchQuery}%`)
         .is('partner_user_id', null)
         .in('status', ['pending', 'verified'])
         .limit(20);
@@ -2026,7 +2058,8 @@ export const [AppContext, useApp] = createContextHook(() => {
         // Prefer entries with relationship info (partnerName) and verified status
         const partnerMap = new Map<string, any>();
         for (const partner of nonRegisteredPartners) {
-          const normalizedPhone = partner.phoneNumber?.toLowerCase().trim().replace(/\D/g, '') || '';
+          // Use proper normalization for phone numbers
+          const normalizedPhone = normalizePhoneNumber(partner.phoneNumber) || partner.phoneNumber?.toLowerCase().trim().replace(/\D/g, '') || '';
           const normalizedName = partner.fullName?.toLowerCase().trim() || '';
           const key = normalizedPhone || normalizedName;
           
@@ -2059,7 +2092,10 @@ export const [AppContext, useApp] = createContextHook(() => {
         // Now deduplicate: if a person appears in both registered users and non-registered partners,
         // prefer the non-registered partner entry (as it shows relationship info)
         const nonRegisteredPhoneNumbers = new Set(
-          uniqueNonRegisteredPartners.map((p: any) => p.phoneNumber?.toLowerCase().trim().replace(/\D/g, '')).filter(Boolean)
+          uniqueNonRegisteredPartners.map((p: any) => {
+            const normalized = normalizePhoneNumber(p.phoneNumber);
+            return normalized || p.phoneNumber?.toLowerCase().trim().replace(/\D/g, '');
+          }).filter(Boolean)
         );
         const nonRegisteredNames = new Set(
           uniqueNonRegisteredPartners.map((p: any) => p.fullName?.toLowerCase().trim()).filter(Boolean)
@@ -2068,12 +2104,16 @@ export const [AppContext, useApp] = createContextHook(() => {
         // Filter out registered users that match non-registered partners by phone or name
         // (prefer non-registered partner entries as they show relationship info)
         const uniqueRegisteredUsers = usersWithRelationships.filter((user: any) => {
-          const userPhone = user.phoneNumber?.toLowerCase().trim().replace(/\D/g, '');
+          const normalizedUserPhone = normalizePhoneNumber(user.phoneNumber) || user.phoneNumber?.toLowerCase().trim().replace(/\D/g, '');
           const userName = user.fullName?.toLowerCase().trim();
           
+          // Check if normalized phone matches any non-registered partner
+          const phoneMatch = normalizedUserPhone && Array.from(nonRegisteredPhoneNumbers).some((np: any) => 
+            comparePhoneNumbers(normalizedUserPhone, np)
+          );
+          
           // Keep registered user only if they don't match any non-registered partner
-          return !(userPhone && nonRegisteredPhoneNumbers.has(userPhone)) &&
-                 !(userName && nonRegisteredNames.has(userName));
+          return !phoneMatch && !(userName && nonRegisteredNames.has(userName));
         });
 
         return [...uniqueRegisteredUsers, ...uniqueNonRegisteredPartners];

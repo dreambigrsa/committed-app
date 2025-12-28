@@ -23,7 +23,7 @@ export default function HomeScreen() {
   const relationship = getCurrentUserRelationship();
   const pendingRequests = getPendingRequests();
   const [isProfessional, setIsProfessional] = useState(false);
-  const [isCheckingProfessional, setIsCheckingProfessional] = useState(true);
+  const [isCheckingProfessional, setIsCheckingProfessional] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
@@ -33,24 +33,38 @@ export default function HomeScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   useEffect(() => {
-    checkProfessionalStatus();
+    if (currentUser) {
+      setIsCheckingProfessional(true);
+      checkProfessionalStatus();
+    } else {
+      setIsCheckingProfessional(false);
+      setIsProfessional(false);
+    }
   }, [currentUser]);
 
   const checkProfessionalStatus = async () => {
     if (!currentUser) {
       setIsCheckingProfessional(false);
+      setIsProfessional(false);
       return;
     }
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('professional_profiles')
         .select('id, approval_status')
         .eq('user_id', currentUser.id)
         .eq('approval_status', 'approved')
         .maybeSingle();
-      setIsProfessional(!!data);
+      
+      if (error) {
+        console.error('Error checking professional status:', error);
+        setIsProfessional(false);
+      } else {
+        setIsProfessional(!!data);
+      }
     } catch (error) {
       console.error('Error checking professional status:', error);
+      setIsProfessional(false);
     } finally {
       setIsCheckingProfessional(false);
     }

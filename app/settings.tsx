@@ -1591,10 +1591,31 @@ export default function SettingsScreen() {
                             style: 'destructive',
                             onPress: async () => {
                               try {
-                                const dispute = await endRelationship(relationship.id, 'User requested to end relationship');
-                                if (dispute) {
-                                  setPendingEndRequest(dispute);
-                                  Alert.alert('Request Sent', 'Your partner will receive a request to confirm ending the relationship.');
+                                const result = await endRelationship(relationship.id, 'User requested to end relationship');
+                                if (result) {
+                                  setPendingEndRequest(result);
+                                  // Check if notification failed
+                                  if ((result as any)._notificationError) {
+                                    const error = (result as any)._notificationError;
+                                    if (error?.code === '42501') {
+                                      Alert.alert(
+                                        'Request Created (Notification Issue)',
+                                        'Your relationship end request was created successfully, but your partner may not receive a notification due to a configuration issue.\n\nPlease contact support or ask an administrator to run the migration: migrations/add-notifications-insert-policy.sql\n\nYour partner can still see the request in their disputes section.',
+                                        [{ text: 'OK' }]
+                                      );
+                                    } else {
+                                      Alert.alert(
+                                        'Request Created',
+                                        'Your relationship end request was created, but there was an issue sending the notification. Your partner may not be notified immediately.',
+                                        [{ text: 'OK' }]
+                                      );
+                                    }
+                                  } else {
+                                    Alert.alert(
+                                      'Request Sent', 
+                                      'Your partner will receive a request to confirm ending the relationship.'
+                                    );
+                                  }
                                 } else {
                                   Alert.alert('Error', 'Failed to send end relationship request');
                                 }

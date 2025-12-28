@@ -14,7 +14,7 @@ import {
   Modal,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
-import { Heart, X, Search, CheckCircle2, Camera, Upload, Calendar } from 'lucide-react-native';
+import { Heart, X, Search, CheckCircle2, Camera, Upload, Calendar, Info, AlertCircle, CheckCircle, Eye, EyeOff } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useApp } from '@/contexts/AppContext';
@@ -76,6 +76,8 @@ export default function RegisterRelationshipScreen() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [relationshipConsentAccepted, setRelationshipConsentAccepted] = useState(false);
   const [relationshipConsentDoc, setRelationshipConsentDoc] = useState<LegalDocument | null>(null);
+  const [showTips, setShowTips] = useState<{ [key: number]: boolean }>({});
+  const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
     loadRelationshipConsentDocument();
@@ -169,19 +171,37 @@ export default function RegisterRelationshipScreen() {
   };
 
   const handleNext = () => {
+    // Validation for each step
     if (step === 1 && !formData.partnerName && !selectedUser) {
-      alert('Please search and select a partner or enter partner\'s name');
+      Alert.alert(
+        'Partner Name Required',
+        'Please search and select your partner from the list, or enter their full name manually.',
+        [{ text: 'OK' }]
+      );
       return;
     }
     if (step === 2 && !formData.partnerPhone && !selectedUser) {
-      alert('Please enter partner\'s phone number');
+      Alert.alert(
+        'Phone Number Required',
+        'Please enter your partner\'s phone number. This helps us verify the relationship and notify your partner.',
+        [{ text: 'OK' }]
+      );
       return;
     }
     if (step === 3 && !formData.partnerFacePhoto) {
-      alert('Please upload a clear face photo of your partner');
+      Alert.alert(
+        'Face Photo Required',
+        'A clear face photo of your partner is required for verification. This helps prevent false relationship registrations.',
+        [{ text: 'OK' }]
+      );
       return;
     }
-    if (step < 4) {
+    if (step === 4) {
+      // Show preview before final submission
+      setShowPreview(true);
+      return;
+    }
+    if (step < 5) {
       setStep(step + 1);
       fadeAnim.setValue(0);
       slideAnim.setValue(30);
@@ -290,15 +310,37 @@ export default function RegisterRelationshipScreen() {
 
   const handleRegister = async () => {
     if (!formData.partnerFacePhoto) {
-      alert('Please upload a clear face photo of your partner');
+      Alert.alert('Photo Required', 'Please upload a clear face photo of your partner');
       return;
     }
 
-    // Check relationship consent if document exists
-    if (relationshipConsentDoc && relationshipConsentDoc.isRequired && !relationshipConsentAccepted) {
-      alert('Please confirm that you have your partner\'s consent and understand this information may become publicly visible once verified.');
+    if (!relationshipConsentAccepted) {
+      Alert.alert(
+        'Consent Required',
+        'Please confirm that you have your partner\'s consent and understand the implications of registering this relationship.',
+        [{ text: 'OK' }]
+      );
       return;
     }
+
+    // Final confirmation
+    Alert.alert(
+      'Confirm Registration',
+      'Are you sure you want to register this relationship? Your partner will receive a notification to confirm.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Register',
+          style: 'default',
+          onPress: async () => {
+            await submitRelationship();
+          },
+        },
+      ]
+    );
+  };
+
+  const submitRelationship = async () => {
 
     setIsLoading(true);
     try {
@@ -328,10 +370,23 @@ export default function RegisterRelationshipScreen() {
         await saveRelationshipConsent(currentUser.id);
       }
       
-      router.back();
-    } catch (error) {
+      Alert.alert(
+        'Success!',
+        'Your relationship has been registered. Your partner will receive a notification to confirm.',
+        [
+          {
+            text: 'OK',
+            onPress: () => router.back(),
+          },
+        ]
+      );
+    } catch (error: any) {
       console.error('Failed to register relationship:', error);
-      alert('Failed to register relationship. Please try again.');
+      Alert.alert(
+        'Registration Failed',
+        error.message || 'Failed to register relationship. Please try again.',
+        [{ text: 'OK' }]
+      );
     } finally {
       setIsLoading(false);
     }
@@ -363,9 +418,9 @@ export default function RegisterRelationshipScreen() {
           <View style={styles.header}>
             <View style={styles.progressContainer}>
               <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: `${(step / 4) * 100}%` }]} />
+                <View style={[styles.progressFill, { width: `${(step / 5) * 100}%` }]} />
               </View>
-              <Text style={styles.stepText}>Step {step} of 4</Text>
+              <Text style={styles.stepText}>Step {step} of 5</Text>
             </View>
             <View style={styles.iconContainer}>
               <Heart size={40} color={colors.danger} fill={colors.danger} />
@@ -376,6 +431,7 @@ export default function RegisterRelationshipScreen() {
               {step === 2 && "How can we reach your partner?"}
               {step === 3 && "Upload a clear face photo of your partner"}
               {step === 4 && "What type of relationship is this?"}
+              {step === 5 && "Review and confirm your relationship registration"}
             </Text>
           </View>
 
@@ -390,7 +446,30 @@ export default function RegisterRelationshipScreen() {
           >
             {step === 1 && (
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Search Partner by Username, Name, or Phone</Text>
+                <View style={styles.labelRow}>
+                  <Text style={styles.label}>Search Partner by Username, Name, or Phone</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowTips({ ...showTips, 1: !showTips[1] })}
+                    style={styles.tipButton}
+                  >
+                    <Info size={18} color={colors.primary} />
+                  </TouchableOpacity>
+                </View>
+                {showTips[1] && (
+                  <View style={styles.tipBox}>
+                    <View style={styles.tipHeader}>
+                      <Info size={18} color={colors.primary} />
+                      <Text style={styles.tipTitle}>Tips for Finding Your Partner</Text>
+                    </View>
+                    <Text style={styles.tipText}>
+                      • Search by their full name, username, or phone number{'\n'}
+                      • If they're registered, select them from the search results{'\n'}
+                      • If they're not registered, enter their name manually{'\n'}
+                      • Make sure you have their consent before registering{'\n'}
+                      • Use their legal name for accurate verification
+                    </Text>
+                  </View>
+                )}
                 <View style={styles.searchContainer}>
                   <Search size={20} color={colors.text.tertiary} />
                   <TextInput
@@ -507,7 +586,30 @@ export default function RegisterRelationshipScreen() {
 
             {step === 2 && !selectedUser && (
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Partner&apos;s Phone Number</Text>
+                <View style={styles.labelRow}>
+                  <Text style={styles.label}>Partner&apos;s Phone Number</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowTips({ ...showTips, 2: !showTips[2] })}
+                    style={styles.tipButton}
+                  >
+                    <Info size={18} color={colors.primary} />
+                  </TouchableOpacity>
+                </View>
+                {showTips[2] && (
+                  <View style={styles.tipBox}>
+                    <View style={styles.tipHeader}>
+                      <Info size={18} color={colors.primary} />
+                      <Text style={styles.tipTitle}>Why We Need Phone Number</Text>
+                    </View>
+                    <Text style={styles.tipText}>
+                      • We'll send a notification to your partner to verify the relationship{'\n'}
+                      • Phone numbers are normalized automatically (format: +1234567890){'\n'}
+                      • Include country code for international numbers{'\n'}
+                      • Your partner must confirm before the relationship is verified{'\n'}
+                      • This prevents false relationship registrations
+                    </Text>
+                  </View>
+                )}
                 <TextInput
                   style={styles.input}
                   placeholder="+1 (555) 000-0000"
@@ -524,7 +626,30 @@ export default function RegisterRelationshipScreen() {
 
             {step === 3 && (
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Partner&apos;s Clear Face Photo *</Text>
+                <View style={styles.labelRow}>
+                  <Text style={styles.label}>Partner&apos;s Clear Face Photo *</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowTips({ ...showTips, 3: !showTips[3] })}
+                    style={styles.tipButton}
+                  >
+                    <Info size={18} color={colors.primary} />
+                  </TouchableOpacity>
+                </View>
+                {showTips[3] && (
+                  <View style={styles.tipBox}>
+                    <View style={styles.tipHeader}>
+                      <Info size={18} color={colors.primary} />
+                      <Text style={styles.tipTitle}>Photo Requirements</Text>
+                    </View>
+                    <Text style={styles.tipText}>
+                      • Use a clear, front-facing photo of your partner{'\n'}
+                      • Face should be clearly visible (no sunglasses, masks, or filters){'\n'}
+                      • Good lighting and quality image{'\n'}
+                      • This photo helps verify the relationship and prevent fraud{'\n'}
+                      • The photo may be used for face matching verification
+                    </Text>
+                  </View>
+                )}
                 <Text style={styles.helperText}>
                   Required: Upload a clear, front-facing photo of your partner for verification
                 </Text>
@@ -674,40 +799,16 @@ export default function RegisterRelationshipScreen() {
               </View>
             )}
 
-            {step === 4 && (
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Relationship Type</Text>
-                <View style={styles.typeOptions}>
-                  {RELATIONSHIP_TYPES.map((type) => (
-                    <TouchableOpacity
-                      key={type.value}
-                      style={[
-                        styles.typeOption,
-                        formData.type === type.value && styles.typeOptionActive,
-                      ]}
-                      onPress={() =>
-                        setFormData({ ...formData, type: type.value })
-                      }
-                    >
-                      <Text
-                        style={[
-                          styles.typeOptionText,
-                          formData.type === type.value &&
-                            styles.typeOptionTextActive,
-                        ]}
-                      >
-                        {type.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            )}
 
-            {step === 4 && (
-              <>
-                {relationshipConsentDoc && (
-                  <View style={styles.consentSection}>
+
+            {step === 5 && (
+              <View style={styles.inputGroup}>
+                <View style={styles.consentSection}>
+                  <View style={styles.consentHeader}>
+                    <AlertCircle size={24} color={colors.primary} />
+                    <Text style={styles.consentTitle}>Final Confirmation: Consent & Privacy</Text>
+                  </View>
+                  {relationshipConsentDoc && (
                     <LegalAcceptanceCheckbox
                       document={relationshipConsentDoc}
                       isAccepted={relationshipConsentAccepted}
@@ -715,22 +816,54 @@ export default function RegisterRelationshipScreen() {
                       onViewDocument={handleViewConsentDocument}
                       required={relationshipConsentDoc.isRequired}
                     />
-                    <Text style={styles.consentHelperText}>
-                      I confirm that I have my partner's consent and understand this information may become publicly visible once verified.
-                    </Text>
+                  )}
+                  <View style={styles.consentPoints}>
+                    <View style={styles.consentPoint}>
+                      <CheckCircle size={20} color={colors.secondary} />
+                      <Text style={styles.consentPointText}>
+                        I have my partner's explicit consent to register this relationship
+                      </Text>
+                    </View>
+                    <View style={styles.consentPoint}>
+                      <CheckCircle size={20} color={colors.secondary} />
+                      <Text style={styles.consentPointText}>
+                        I understand this information may become publicly visible once verified
+                      </Text>
+                    </View>
+                    <View style={styles.consentPoint}>
+                      <CheckCircle size={20} color={colors.secondary} />
+                      <Text style={styles.consentPointText}>
+                        My partner will receive a notification to confirm this relationship
+                      </Text>
+                    </View>
+                    <View style={styles.consentPoint}>
+                      <CheckCircle size={20} color={colors.secondary} />
+                      <Text style={styles.consentPointText}>
+                        False relationship registrations may result in account restrictions
+                      </Text>
+                    </View>
                   </View>
-                )}
+                  <TouchableOpacity
+                    style={[styles.consentCheckbox, relationshipConsentAccepted && styles.consentCheckboxChecked]}
+                    onPress={() => setRelationshipConsentAccepted(!relationshipConsentAccepted)}
+                  >
+                    {relationshipConsentAccepted && <CheckCircle size={24} color={colors.primary} />}
+                    <Text style={[styles.consentCheckboxText, relationshipConsentAccepted && styles.consentCheckboxTextChecked]}>
+                      I confirm all of the above and agree to register this relationship
+                    </Text>
+                  </TouchableOpacity>
+                </View>
                 <View style={styles.infoBox}>
                   <Text style={styles.infoText}>
                     Your partner will receive a notification to confirm this relationship.
-                    Once confirmed, your relationship status will be verified and publicly
-                    visible.
+                    Once confirmed, your relationship status will be verified and may become
+                    publicly visible based on your privacy settings.
                   </Text>
                 </View>
-              </>
+              </View>
             )}
 
-            {step < 4 ? (
+            {step < 5 ? (
               <TouchableOpacity
                 style={styles.button}
                 onPress={handleNext}
@@ -739,9 +872,9 @@ export default function RegisterRelationshipScreen() {
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
-                style={[styles.button, isLoading && styles.buttonDisabled]}
+                style={[styles.button, (isLoading || !relationshipConsentAccepted) && styles.buttonDisabled]}
                 onPress={handleRegister}
-                disabled={isLoading}
+                disabled={isLoading || !relationshipConsentAccepted}
               >
                 {isLoading ? (
                   <ActivityIndicator color={colors.text.white} />
@@ -751,6 +884,114 @@ export default function RegisterRelationshipScreen() {
               </TouchableOpacity>
             )}
           </Animated.View>
+
+          {/* Preview Modal */}
+          <Modal
+            visible={showPreview}
+            transparent={true}
+            animationType="slide"
+            onRequestClose={() => setShowPreview(false)}
+          >
+            <View style={styles.previewModal}>
+              <View style={styles.previewCard}>
+                <View style={styles.previewHeader}>
+                  <Text style={styles.previewTitle}>Review Your Relationship Registration</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowPreview(false)}
+                    style={styles.previewCloseButton}
+                  >
+                    <X size={24} color={colors.text.secondary} />
+                  </TouchableOpacity>
+                </View>
+                <ScrollView style={styles.previewContent} showsVerticalScrollIndicator={false}>
+                  <View style={styles.previewSection}>
+                    <Text style={styles.previewSectionTitle}>Partner Information</Text>
+                    <View style={styles.previewRow}>
+                      <Text style={styles.previewLabel}>Name:</Text>
+                      <Text style={styles.previewValue}>{formData.partnerName || selectedUser?.fullName || 'Not provided'}</Text>
+                    </View>
+                    <View style={styles.previewRow}>
+                      <Text style={styles.previewLabel}>Phone:</Text>
+                      <Text style={styles.previewValue}>{formData.partnerPhone || selectedUser?.phoneNumber || 'Not provided'}</Text>
+                    </View>
+                    {formData.partnerCity && (
+                      <View style={styles.previewRow}>
+                        <Text style={styles.previewLabel}>City:</Text>
+                        <Text style={styles.previewValue}>{formData.partnerCity}</Text>
+                      </View>
+                    )}
+                    {(formData.partnerDateOfBirthDay || formData.partnerDateOfBirthMonth || formData.partnerDateOfBirthYear) && (
+                      <View style={styles.previewRow}>
+                        <Text style={styles.previewLabel}>Date of Birth:</Text>
+                        <Text style={styles.previewValue}>
+                          {formData.partnerDateOfBirthDay && formData.partnerDateOfBirthMonth && formData.partnerDateOfBirthYear
+                            ? `${formData.partnerDateOfBirthDay}/${formData.partnerDateOfBirthMonth}/${formData.partnerDateOfBirthYear}`
+                            : 'Partial date provided'}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  
+                  <View style={styles.previewSection}>
+                    <Text style={styles.previewSectionTitle}>Relationship Type</Text>
+                    <View style={styles.previewRow}>
+                      <Text style={styles.previewValue}>
+                        {RELATIONSHIP_TYPES.find(t => t.value === formData.type)?.label || formData.type}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {formData.partnerFacePhoto && (
+                    <View style={styles.previewSection}>
+                      <Text style={styles.previewSectionTitle}>Partner Photo</Text>
+                      <Image 
+                        source={{ uri: formData.partnerFacePhoto }} 
+                        style={styles.previewPhoto}
+                      />
+                    </View>
+                  )}
+
+                  <View style={styles.previewWarning}>
+                    <AlertCircle size={20} color={colors.danger} />
+                    <Text style={styles.previewWarningText}>
+                      Please review all information carefully. Once submitted, your partner will receive a notification to confirm this relationship.
+                    </Text>
+                  </View>
+                </ScrollView>
+                <View style={styles.previewActions}>
+                  <TouchableOpacity
+                    style={styles.previewCancelButton}
+                    onPress={() => setShowPreview(false)}
+                  >
+                    <Text style={styles.previewCancelText}>Edit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.previewConfirmButton}
+                    onPress={() => {
+                      setShowPreview(false);
+                      setStep(5);
+                      fadeAnim.setValue(0);
+                      slideAnim.setValue(30);
+                      Animated.parallel([
+                        Animated.timing(fadeAnim, {
+                          toValue: 1,
+                          duration: 500,
+                          useNativeDriver: true,
+                        }),
+                        Animated.timing(slideAnim, {
+                          toValue: 0,
+                          duration: 400,
+                          useNativeDriver: true,
+                        }),
+                      ]).start();
+                    }}
+                  >
+                    <Text style={styles.previewConfirmText}>Looks Good, Continue</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
 
           {/* Date Picker Modal */}
           <Modal
@@ -1337,5 +1578,207 @@ const styles = StyleSheet.create({
     marginTop: 8,
     lineHeight: 18,
     fontStyle: 'italic',
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  tipButton: {
+    padding: 4,
+  },
+  tipBox: {
+    backgroundColor: colors.primary + '10',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+  },
+  tipHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  tipTitle: {
+    fontSize: 15,
+    fontWeight: '700' as const,
+    color: colors.primary,
+  },
+  tipText: {
+    fontSize: 13,
+    color: colors.text.secondary,
+    lineHeight: 20,
+  },
+  tipBold: {
+    fontWeight: '700' as const,
+    color: colors.text.primary,
+  },
+  consentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  consentTitle: {
+    fontSize: 18,
+    fontWeight: '700' as const,
+    color: colors.text.primary,
+  },
+  consentPoints: {
+    gap: 12,
+    marginVertical: 16,
+  },
+  consentPoint: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  consentPointText: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.text.secondary,
+    lineHeight: 20,
+  },
+  consentCheckbox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    backgroundColor: colors.background.primary,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.border.light,
+    marginTop: 8,
+  },
+  consentCheckboxChecked: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary + '10',
+  },
+  consentCheckboxText: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.text.secondary,
+    lineHeight: 20,
+  },
+  consentCheckboxTextChecked: {
+    color: colors.text.primary,
+    fontWeight: '600' as const,
+  },
+  previewModal: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  previewCard: {
+    backgroundColor: colors.background.primary,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '90%',
+    paddingBottom: Platform.OS === 'ios' ? 40 : 20,
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.light,
+  },
+  previewTitle: {
+    fontSize: 20,
+    fontWeight: '700' as const,
+    color: colors.text.primary,
+  },
+  previewCloseButton: {
+    padding: 4,
+  },
+  previewContent: {
+    padding: 20,
+  },
+  previewSection: {
+    marginBottom: 24,
+  },
+  previewSectionTitle: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+    color: colors.text.primary,
+    marginBottom: 12,
+  },
+  previewRow: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
+  previewLabel: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: colors.text.secondary,
+    width: 100,
+  },
+  previewValue: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.text.primary,
+  },
+  previewPhoto: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  previewWarning: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    backgroundColor: colors.danger + '10',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: colors.danger + '30',
+  },
+  previewWarningText: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.danger,
+    lineHeight: 18,
+  },
+  previewActions: {
+    flexDirection: 'row',
+    gap: 12,
+    padding: 20,
+    paddingTop: 0,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.light,
+  },
+  previewCancelButton: {
+    flex: 1,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    backgroundColor: colors.background.primary,
+    borderWidth: 2,
+    borderColor: colors.border.light,
+    alignItems: 'center',
+  },
+  previewCancelText: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: colors.text.secondary,
+  },
+  previewConfirmButton: {
+    flex: 1,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+  },
+  previewConfirmText: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+    color: colors.text.white,
   },
 });

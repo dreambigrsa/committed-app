@@ -1745,6 +1745,9 @@ export default function ConversationDetailScreen() {
     );
   }, [currentUser, warnings, warningTemplates, professionalSession, aiUserId, aiFeedback, aiIsThinking, conversation, router, acknowledgeWarning, submitAiFeedback, setViewingImage]);
 
+  // Define keyExtractor BEFORE early return to ensure hooks are always called in same order
+  const keyExtractor = useMemo(() => (item: any) => String(item.id), []);
+
   // Early return guard - must be after all hooks
   if (!currentUser || !conversationId) {
     return null;
@@ -2390,7 +2393,7 @@ export default function ConversationDetailScreen() {
             ref={flatListRef}
             data={localMessages}
             renderItem={renderMessage}
-            keyExtractor={useMemo(() => (item: any) => String(item.id), [])}
+            keyExtractor={keyExtractor}
             contentContainerStyle={styles.messagesList}
             onContentSizeChange={() => {
               // Only auto-scroll if user is near bottom and not manually scrolling

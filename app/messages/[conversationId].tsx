@@ -1434,6 +1434,74 @@ export default function ConversationDetailScreen() {
     };
   };
 
+  // Define handleDeleteMessage BEFORE renderMessage since renderMessage depends on it
+  const handleDeleteMessage = useCallback(async (messageId: string, isSender: boolean) => {
+    const message = localMessages.find(m => m.id === messageId);
+    if (!message) return;
+
+    if (isSender) {
+      // Sender can delete for everyone or just for themselves
+      Alert.alert(
+        'Delete Message',
+        'How would you like to delete this message?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete for me',
+            style: 'default',
+            onPress: async () => {
+              const success = await deleteMessage(messageId, conversationId, false);
+              if (success) {
+                setLocalMessages(prev => prev.filter(m => m.id !== messageId));
+              } else {
+                Alert.alert('Error', 'Failed to delete message');
+              }
+            },
+          },
+          {
+            text: 'Delete for everyone',
+            style: 'destructive',
+            onPress: async () => {
+              const success = await deleteMessage(messageId, conversationId, true);
+              if (success) {
+                // Update message to show deleted state
+                setLocalMessages(prev => prev.map(m => 
+                  m.id === messageId 
+                    ? { ...m, content: 'This message was deleted', deletedForSender: true, deletedForReceiver: true }
+                    : m
+                ));
+                // Real-time update will also handle this
+              } else {
+                Alert.alert('Error', 'Failed to delete message');
+              }
+            },
+          },
+        ]
+      );
+    } else {
+      // Receiver can only delete for themselves
+      Alert.alert(
+        'Delete Message',
+        'Delete this message for yourself?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              const success = await deleteMessage(messageId, conversationId, false);
+              if (success) {
+                setLocalMessages(prev => prev.filter(m => m.id !== messageId));
+              } else {
+                Alert.alert('Error', 'Failed to delete message');
+              }
+            },
+          },
+        ]
+      );
+    }
+  }, [localMessages, conversationId, deleteMessage]);
+
   // Define renderMessage callback BEFORE early return to ensure hooks are always called in same order
   const renderMessage = useCallback(({ item }: { item: any }) => {
     if (!item || !item.id) return null;
@@ -1687,73 +1755,6 @@ export default function ConversationDetailScreen() {
       </SafeAreaView>
     );
   }
-
-  const handleDeleteMessage = async (messageId: string, isSender: boolean) => {
-    const message = localMessages.find(m => m.id === messageId);
-    if (!message) return;
-
-    if (isSender) {
-      // Sender can delete for everyone or just for themselves
-      Alert.alert(
-        'Delete Message',
-        'How would you like to delete this message?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Delete for me',
-            style: 'default',
-            onPress: async () => {
-              const success = await deleteMessage(messageId, conversationId, false);
-              if (success) {
-                setLocalMessages(prev => prev.filter(m => m.id !== messageId));
-              } else {
-                Alert.alert('Error', 'Failed to delete message');
-              }
-            },
-          },
-          {
-            text: 'Delete for everyone',
-            style: 'destructive',
-            onPress: async () => {
-              const success = await deleteMessage(messageId, conversationId, true);
-              if (success) {
-                // Update message to show deleted state
-                setLocalMessages(prev => prev.map(m => 
-                  m.id === messageId 
-                    ? { ...m, content: 'This message was deleted', deletedForSender: true, deletedForReceiver: true }
-                    : m
-                ));
-                // Real-time update will also handle this
-              } else {
-                Alert.alert('Error', 'Failed to delete message');
-              }
-            },
-          },
-        ]
-      );
-    } else {
-      // Receiver can only delete for themselves
-      Alert.alert(
-        'Delete Message',
-        'Delete this message for yourself?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: async () => {
-              const success = await deleteMessage(messageId, conversationId, false);
-              if (success) {
-                setLocalMessages(prev => prev.filter(m => m.id !== messageId));
-              } else {
-                Alert.alert('Error', 'Failed to delete message');
-              }
-            },
-          },
-        ]
-      );
-    }
-  };
 
   const getBackgroundStyle = () => {
     if (!chatBackground) {

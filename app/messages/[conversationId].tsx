@@ -281,7 +281,7 @@ export default function ConversationDetailScreen() {
         ]
       );
     }
-  }, [localMessages, conversationId, deleteMessage, setLocalMessages]);
+  }, [localMessages, conversationId, deleteMessage]); // setLocalMessages is stable (setState function) and doesn't need to be in deps
 
   // Define renderMessage callback BEFORE all useEffect hooks to ensure hooks are always called in same order
   const renderMessage = useCallback(({ item }: { item: any }) => {

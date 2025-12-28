@@ -4,6 +4,8 @@
  */
 
 import { supabase } from './supabase';
+// Import app metadata for dynamic discovery
+import { getAppMetadata, searchRoutes, searchFunctions, getFeatureByName } from './app-metadata';
 
 // Import Constants with proper typing
 let Constants: any;
@@ -20,6 +22,7 @@ const OPENAI_SETTINGS_KEY = 'openai_api_key';
 
 // High-signal product knowledge injected into the AI system prompt so the assistant
 // can help users with app-specific questions and troubleshooting.
+// This is now supplemented with dynamic app metadata queries.
 // Keep this compact; it runs on every AI turn and affects latency/cost.
 const COMMITTED_APP_KNOWLEDGE = `
 ABOUT THE APP (COMMITTED)
@@ -752,18 +755,45 @@ export async function updateUserLearnings(
 
 /**
  * Generate personalized system prompt based on learnings
+ * Now includes dynamic app metadata queried from the actual codebase
  */
-function buildPersonalizedSystemPrompt(
+async function buildPersonalizedSystemPrompt(
   userName: string,
   userUsername?: string,
   learnings?: UserLearnings | null
-): string {
+): Promise<string> {
   const userDisplayName = userName || userUsername || 'the user';
+  
+  // Get dynamic app metadata from actual codebase structure
+  let appMetadataSummary = '';
+  try {
+    const metadata = await getAppMetadata();
+    appMetadataSummary = `\n\nDYNAMIC APP STRUCTURE (QUERIED FROM CODEBASE IN REAL-TIME):
+${metadata.summary}
+
+KEY ROUTES (${metadata.routes.length} total):
+${metadata.routes.slice(0, 25).map(r => `- ${r.path}: ${r.name}${r.description ? ` - ${r.description}` : ''}`).join('\n')}
+${metadata.routes.length > 25 ? `... and ${metadata.routes.length - 25} more routes` : ''}
+
+KEY FUNCTIONS (${metadata.functions.length} total):
+${metadata.functions.slice(0, 40).map(f => `- ${f.name}: ${f.description} (${f.category})`).join('\n')}
+${metadata.functions.length > 40 ? `... and ${metadata.functions.length - 40} more functions` : ''}
+
+KEY FEATURES:
+${metadata.features.map(f => `- ${f.name}: ${f.description}\n  Routes: ${f.routes.join(', ')}\n  Functions: ${f.functions.slice(0, 6).join(', ')}${f.functions.length > 6 ? '...' : ''}`).join('\n\n')}
+
+IMPORTANT: This app structure is dynamically discovered from the actual codebase, not hardcoded. The information above reflects the current state of the app. Always use this real-time information when users ask about features, routes, or functions.`;
+  } catch (error) {
+    console.error('Error getting app metadata:', error);
+    // Continue with static knowledge if metadata fails
+    appMetadataSummary = '\n\nNote: Dynamic app structure query failed, using static knowledge base.';
+  }
+  
   let prompt = `You are Committed AI, the in-app assistant for the Committed mobile application.
 Your job is to (1) answer normal questions, and (2) provide Committed app-specific help: guidance, troubleshooting, and step-by-step instructions.
 
 APP KNOWLEDGE (SOURCE OF TRUTH):
-${COMMITTED_APP_KNOWLEDGE}
+${COMMITTED_APP_KNOWLEDGE}${appMetadataSummary}
 
 You are having a natural conversation with ${userDisplayName}${userName && userUsername ? ` (also known as @${userUsername})` : userUsername ? ` (@${userUsername})` : ''}.
 
@@ -1002,7 +1032,7 @@ export async function getAIResponse(
 
     // Default path (including production builds): Call Supabase Edge Function (server-side OpenAI).
     // The edge function now handles AI-based professional help detection internally
-    const systemPrompt = buildPersonalizedSystemPrompt(userName || '', userUsername, userLearnings);
+    const systemPrompt = await buildPersonalizedSystemPrompt(userName || '', userUsername, userLearnings);
     const fnResponse = await getOpenAIResponseViaSupabaseFunction({
       userMessage,
       conversationHistory,
@@ -1051,7 +1081,7 @@ async function getOpenAIResponse(
     }
 
     // Build personalized system prompt with learnings
-    const systemPrompt = buildPersonalizedSystemPrompt(userName || '', userUsername, learnings);
+    const systemPrompt = await buildPersonalizedSystemPrompt(userName || '', userUsername, learnings);
 
     const messages = [
       { role: 'system', content: systemPrompt },

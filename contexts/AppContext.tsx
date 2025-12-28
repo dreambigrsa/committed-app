@@ -1397,7 +1397,7 @@ export const [AppContext, useApp] = createContextHook(() => {
           type: notificationData.type,
           title: notificationData.title,
           message: notificationData.message,
-          data: notificationData.data,
+          data: notificationData.data ?? undefined, // Convert null to undefined
           read: notificationData.read,
           createdAt: notificationData.created_at,
         };

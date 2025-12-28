@@ -73,7 +73,7 @@ export interface SearchResult {
   };
 }
 
-export type NotificationType = 'relationship_request' | 'cheating_alert' | 'relationship_verified' | 'relationship_ended' | 'relationship_end_request' | 'post_like' | 'post_comment' | 'message' | 'follow' | 'anniversary_reminder' | 'verification_attempt' | 'status_reaction' | 'dating_match' | 'dating_like' | 'dating_super_like' | 'dating_date_request' | 'dating_date_accepted' | 'dating_date_declined' | 'payment_submission' | 'payment_approved' | 'payment_rejected' | 'false_relationship_dual_report' | 'false_relationship_resolved';
+export type NotificationType = 'relationship_request' | 'cheating_alert' | 'relationship_verified' | 'relationship_ended' | 'relationship_end_request' | 'relationship_linked' | 'partner_registered' | 'post_like' | 'post_comment' | 'message' | 'follow' | 'anniversary_reminder' | 'verification_attempt' | 'status_reaction' | 'dating_match' | 'dating_like' | 'dating_super_like' | 'dating_date_request' | 'dating_date_accepted' | 'dating_date_declined' | 'payment_submission' | 'payment_approved' | 'payment_rejected' | 'false_relationship_dual_report' | 'false_relationship_resolved' | 'false_relationship_report';
 
 export interface Notification {
   id: string;

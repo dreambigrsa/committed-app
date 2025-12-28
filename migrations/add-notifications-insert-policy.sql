@@ -115,6 +115,8 @@ CHECK (type IN (
   'relationship_verified', 
   'relationship_ended', 
   'relationship_end_request',
+  'relationship_linked',
+  'partner_registered',
   -- Cheating alerts
   'cheating_alert',
   -- Social interactions
@@ -141,7 +143,8 @@ CHECK (type IN (
   'payment_rejected',
   -- False relationship reports
   'false_relationship_dual_report',
-  'false_relationship_resolved'
+  'false_relationship_resolved',
+  'false_relationship_report'
 ));
 
 -- ============================================

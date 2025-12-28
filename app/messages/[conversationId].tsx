@@ -2022,23 +2022,6 @@ export default function ConversationDetailScreen() {
     }
   };
 
-  // Early return guard - must be after all hooks
-  if (!currentUser || !conversationId) {
-    return null;
-  }
-
-  const otherParticipant = getOtherParticipant();
-
-  // Show loading state while conversation is being loaded
-  if (isLoadingConversation || !conversation || !otherParticipant) {
-    return (
-      <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={{ marginTop: 16, color: colors.text.secondary }}>Loading conversation...</Text>
-      </SafeAreaView>
-    );
-  }
-
   const getBackgroundStyle = () => {
     if (!chatBackground) {
       return { backgroundColor: colors.background.secondary };

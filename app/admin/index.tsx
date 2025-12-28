@@ -102,6 +102,15 @@ export default function AdminDashboardScreen() {
           visible: true,
         },
         {
+          title: 'False Relationship Reports',
+          icon: AlertTriangle,
+          description: 'Review false relationship reports',
+          route: '/admin/false-relationship-reports',
+          color: '#F39C12',
+          gradient: ['#F39C12', '#E67E22'],
+          visible: true,
+        },
+        {
           title: 'Admins & Moderators',
           icon: UserCog,
           description: 'Manage admin roles',

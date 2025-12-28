@@ -221,6 +221,10 @@ export const [AppContext, useApp] = createContextHook(() => {
           console.error('Failed to check onboarding status:', error);
           setHasCompletedOnboarding(false);
         }
+
+        // Check and link any relationships where this user's phone number was registered
+        // This handles cases where user was created via trigger or if linking failed during signup
+        await checkAndLinkRelationships(user.id, user.phoneNumber);
       }
 
       const { data: postsData } = await supabase
@@ -908,8 +912,18 @@ export const [AppContext, useApp] = createContextHook(() => {
         } else {
           console.log('User profile already exists');
         }
+
+        // Check and link any relationships where this user's phone number was registered
+        await checkAndLinkRelationships(authData.user.id, phoneNumber);
       } catch (profileError: any) {
         console.log('Profile check/creation error (may be handled by trigger):', profileError);
+        // Still try to link relationships even if profile creation had issues
+        // (it might have been created by trigger)
+        try {
+          await checkAndLinkRelationships(authData.user.id, phoneNumber);
+        } catch (linkError) {
+          console.error('Error linking relationships after signup:', linkError);
+        }
       }
 
       return authData.user;
@@ -1461,6 +1475,139 @@ export const [AppContext, useApp] = createContextHook(() => {
     }
   }, [currentUser]);
 
+  // Check and link relationships when a new user signs up
+  // This must be defined after refreshRelationships and createNotification
+  const checkAndLinkRelationships = useCallback(async (userId: string, phoneNumber: string) => {
+    try {
+      // Find relationships where this phone number is listed as partner_phone
+      const { data: relationships } = await supabase
+        .from('relationships')
+        .select('*')
+        .eq('partner_phone', phoneNumber)
+        .in('status', ['pending', 'verified'])
+        .is('partner_user_id', null); // Only link if not already linked
+
+      if (!relationships || relationships.length === 0) {
+        return;
+      }
+
+      console.log(`Found ${relationships.length} relationship(s) to link for user ${userId}`);
+
+      for (const relationship of relationships) {
+        // Update the relationship to link the partner_user_id
+        const { error: updateError } = await supabase
+          .from('relationships')
+          .update({ partner_user_id: userId })
+          .eq('id', relationship.id);
+
+        if (updateError) {
+          console.error('Error linking relationship:', updateError);
+          continue;
+        }
+
+        // Get the requester's user info
+        const { data: requesterUser } = await supabase
+          .from('users')
+          .select('id, full_name, phone_number')
+          .eq('id', relationship.user_id)
+          .single();
+
+        if (!requesterUser) {
+          console.error('Requester user not found for relationship:', relationship.id);
+          continue;
+        }
+
+        // If relationship is already verified, create the reverse relationship record
+        if (relationship.status === 'verified') {
+          // Check if reverse relationship already exists
+          const { data: existingReverse } = await supabase
+            .from('relationships')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('partner_user_id', relationship.user_id)
+            .in('status', ['pending', 'verified'])
+            .maybeSingle();
+
+          if (!existingReverse) {
+            // Create reverse relationship record
+            await supabase
+              .from('relationships')
+              .insert({
+                user_id: userId,
+                partner_name: requesterUser.full_name,
+                partner_phone: requesterUser.phone_number,
+                partner_user_id: relationship.user_id,
+                type: relationship.type,
+                status: 'verified',
+                verified_date: relationship.verified_date,
+                start_date: relationship.start_date,
+                privacy_level: relationship.privacy_level,
+                partner_face_photo: relationship.partner_face_photo,
+                partner_date_of_birth_month: relationship.partner_date_of_birth_month,
+                partner_date_of_birth_year: relationship.partner_date_of_birth_year,
+                partner_city: relationship.partner_city,
+              });
+
+            // Send notification to the new user
+            await createNotification(
+              userId,
+              'relationship_linked',
+              'Relationship Linked',
+              `You've been linked to a verified ${relationship.type} relationship with ${requesterUser.full_name}`,
+              { relationshipId: relationship.id }
+            );
+          }
+        } else {
+          // Relationship is pending - create a relationship request
+          const { data: existingRequest } = await supabase
+            .from('relationship_requests')
+            .select('*')
+            .eq('from_user_id', relationship.user_id)
+            .eq('to_user_id', userId)
+            .eq('status', 'pending')
+            .maybeSingle();
+
+          if (!existingRequest) {
+            await supabase
+              .from('relationship_requests')
+              .insert({
+                from_user_id: relationship.user_id,
+                from_user_name: requesterUser.full_name,
+                to_user_id: userId,
+                relationship_type: relationship.type,
+                status: 'pending',
+              });
+
+            // Send notification to the new user
+            await createNotification(
+              userId,
+              'relationship_request',
+              'New Relationship Request',
+              `${requesterUser.full_name} sent you a ${relationship.type} relationship request`,
+              { relationshipId: relationship.id, fromUserId: relationship.user_id }
+            );
+          }
+        }
+
+        // Send notification to the requester that their partner has joined
+        await createNotification(
+          relationship.user_id,
+          'partner_registered',
+          'Partner Registered',
+          `Your partner has registered and the relationship has been linked`,
+          { relationshipId: relationship.id, partnerUserId: userId }
+        );
+      }
+
+      // Refresh relationships if current user is loaded
+      if (currentUser && currentUser.id === userId) {
+        await refreshRelationships();
+      }
+    } catch (error) {
+      console.error('Error checking and linking relationships:', error);
+    }
+  }, [currentUser, refreshRelationships, createNotification]);
+
   const createRelationship = useCallback(async (
     partnerName: string,
     partnerPhone: string,
@@ -1504,19 +1651,51 @@ export const [AppContext, useApp] = createContextHook(() => {
 
       let partnerData = null;
       if (partnerUserId) {
+        // If partnerUserId is provided, verify the phone number matches
         const { data } = await supabase
           .from('users')
-          .select('id, phone_number')
+          .select('id, phone_number, full_name')
           .eq('id', partnerUserId)
           .single();
-        partnerData = data;
+        
+        if (data) {
+          // Verify phone number matches exactly to prevent name collisions
+          if (data.phone_number !== partnerPhone) {
+            throw new Error(`Phone number mismatch: The selected user's phone number (${data.phone_number}) does not match the provided phone number (${partnerPhone}). Please verify you selected the correct person.`);
+          }
+          partnerData = data;
+        }
       } else {
-        const { data } = await supabase
+        // Search by phone number - this should be unique
+        const { data: usersByPhone } = await supabase
           .from('users')
-          .select('id')
-          .eq('phone_number', partnerPhone)
-          .single();
-        partnerData = data;
+          .select('id, phone_number, full_name')
+          .eq('phone_number', partnerPhone);
+        
+        if (usersByPhone && usersByPhone.length > 0) {
+          if (usersByPhone.length > 1) {
+            // Multiple users with same phone - this shouldn't happen but handle it
+            console.warn(`Multiple users found with phone number ${partnerPhone}`);
+          }
+          
+          // Check if any user matches the name (additional verification)
+          const nameMatch = usersByPhone.find(u => 
+            u.full_name.toLowerCase().trim() === partnerName.toLowerCase().trim()
+          );
+          
+          if (nameMatch) {
+            partnerData = nameMatch;
+          } else if (usersByPhone.length === 1) {
+            // Only one user with this phone, use it but warn if name doesn't match
+            partnerData = usersByPhone[0];
+            if (partnerData.full_name.toLowerCase().trim() !== partnerName.toLowerCase().trim()) {
+              console.warn(`Name mismatch: Found user "${partnerData.full_name}" with phone ${partnerPhone}, but relationship registered with name "${partnerName}"`);
+            }
+          } else {
+            // Multiple users with same phone and none match the name - this is a problem
+            throw new Error(`Multiple users found with phone number ${partnerPhone} but none match the name "${partnerName}". Please verify the phone number and name are correct.`);
+          }
+        }
       }
 
       if (partnerData) {
@@ -4567,6 +4746,74 @@ export const [AppContext, useApp] = createContextHook(() => {
     }
   }, [currentUser]);
 
+  const reportFalseRelationship = useCallback(async (
+    relationshipId: string,
+    reason?: string,
+    evidenceUrls?: string[]
+  ) => {
+    if (!currentUser) return null;
+    
+    try {
+      // Check if user has already reported this relationship
+      const { data: existingReport } = await supabase
+        .from('false_relationship_reports')
+        .select('*')
+        .eq('relationship_id', relationshipId)
+        .eq('reported_by', currentUser.id)
+        .maybeSingle();
+
+      if (existingReport) {
+        throw new Error('You have already reported this relationship');
+      }
+
+      const { data, error } = await supabase
+        .from('false_relationship_reports')
+        .insert({
+          relationship_id: relationshipId,
+          reported_by: currentUser.id,
+          reason,
+          evidence_urls: evidenceUrls,
+          status: 'pending',
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Get relationship details for notification
+      const { data: relationship } = await supabase
+        .from('relationships')
+        .select('user_id, partner_user_id, partner_name')
+        .eq('id', relationshipId)
+        .single();
+
+      if (relationship) {
+        // Notify admins
+        const { data: admins } = await supabase
+          .from('users')
+          .select('id')
+          .in('role', ['admin', 'super_admin', 'moderator']);
+
+        if (admins) {
+          for (const admin of admins) {
+            await createNotification(
+              admin.id,
+              'false_relationship_report',
+              'False Relationship Reported',
+              `${currentUser.fullName} reported relationship with ${relationship.partner_name} as false`,
+              { relationshipId, reportId: data.id }
+            );
+          }
+        }
+      }
+
+      return data;
+    } catch (error: any) {
+      console.error('Report false relationship error:', error);
+      throw error;
+    }
+  }, [currentUser, createNotification]);
+
   const markNotificationAsRead = useCallback(async (notificationId: string) => {
     try {
       await supabase
@@ -6269,6 +6516,7 @@ export const [AppContext, useApp] = createContextHook(() => {
     deleteReelComment,
     toggleReelCommentLike,
     reportContent,
+    reportFalseRelationship,
     createNotification,
     markNotificationAsRead,
     getUnreadNotificationsCount,

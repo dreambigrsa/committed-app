@@ -73,7 +73,7 @@ export interface SearchResult {
   };
 }
 
-export type NotificationType = 'relationship_request' | 'cheating_alert' | 'relationship_verified' | 'relationship_ended' | 'relationship_end_request' | 'post_like' | 'post_comment' | 'message' | 'follow' | 'anniversary_reminder' | 'verification_attempt' | 'status_reaction' | 'dating_match' | 'dating_like' | 'dating_super_like' | 'dating_date_request' | 'dating_date_accepted' | 'dating_date_declined' | 'payment_submission' | 'payment_approved' | 'payment_rejected';
+export type NotificationType = 'relationship_request' | 'cheating_alert' | 'relationship_verified' | 'relationship_ended' | 'relationship_end_request' | 'post_like' | 'post_comment' | 'message' | 'follow' | 'anniversary_reminder' | 'verification_attempt' | 'status_reaction' | 'dating_match' | 'dating_like' | 'dating_super_like' | 'dating_date_request' | 'dating_date_accepted' | 'dating_date_declined' | 'payment_submission' | 'payment_approved' | 'payment_rejected' | 'false_relationship_dual_report' | 'false_relationship_resolved';
 
 export interface Notification {
   id: string;
@@ -262,6 +262,20 @@ export interface Dispute {
   resolvedAt?: string;
   resolvedBy?: string;
   createdAt: string;
+}
+
+export interface FalseRelationshipReport {
+  id: string;
+  relationshipId: string;
+  reportedBy: string;
+  reason?: string;
+  evidenceUrls?: string[];
+  status: 'pending' | 'reviewing' | 'resolved' | 'dismissed';
+  resolution?: string;
+  resolvedBy?: string;
+  resolvedAt?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface CoupleCertificate {

@@ -27,6 +27,7 @@ import {
   MessageSquare,
   Calendar,
   Star,
+  AlertTriangle,
 } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -36,7 +37,7 @@ import { supabase } from '@/lib/supabase';
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { currentUser, logout, getCurrentUserRelationship, updateUserProfile } = useApp();
+  const { currentUser, logout, getCurrentUserRelationship, updateUserProfile, reportFalseRelationship } = useApp();
   const { colors } = useTheme();
   const relationship = getCurrentUserRelationship();
   const [isUploading, setIsUploading] = useState(false);
@@ -99,6 +100,36 @@ export default function ProfileScreen() {
       dating: 'Dating',
     };
     return labels[type as keyof typeof labels] || type;
+  };
+
+  const handleReportFalseRelationship = async (relationshipId: string) => {
+    Alert.alert(
+      'Report False Relationship',
+      'Are you sure this relationship is incorrect? This will notify administrators for review.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Report',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await reportFalseRelationship(relationshipId);
+              Alert.alert(
+                'Report Submitted',
+                'Your report has been submitted. Administrators will review it shortly.',
+                [{ text: 'OK' }]
+              );
+            } catch (error: any) {
+              Alert.alert(
+                'Error',
+                error?.message || 'Failed to submit report. Please try again.',
+                [{ text: 'OK' }]
+              );
+            }
+          },
+        },
+      ]
+    );
   };
 
   const uploadProfilePicture = async () => {
@@ -352,6 +383,15 @@ export default function ProfileScreen() {
                   })}
                 </Text>
               </View>
+              <TouchableOpacity
+                style={styles.reportButton}
+                onPress={() => handleReportFalseRelationship(relationship.id)}
+              >
+                <AlertTriangle size={16} color={colors.danger} />
+                <Text style={styles.reportButtonText}>
+                  Report False Relationship
+                </Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.noRelationshipContainer}>
@@ -703,6 +743,24 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontSize: 14,
     fontWeight: '600' as const,
     color: colors.primary,
+  },
+  reportButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.background.secondary,
+    borderWidth: 1,
+    borderColor: colors.danger,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    marginTop: 8,
+  },
+  reportButtonText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: colors.danger,
   },
   section: {
     paddingHorizontal: 20,

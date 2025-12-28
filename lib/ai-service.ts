@@ -57,6 +57,24 @@ DATING FEATURES (NEW)
 - Premium Features: Enhanced dating features available for premium users.
 - Privacy: Users with active relationships are excluded from discovery. Only active profiles shown.
 
+HOW TO CREATE A DATING PROFILE (STEP-BY-STEP)
+1. Open the app and tap the "Dating" tab (sparkles icon) in the bottom navigation.
+2. If you don't have a profile yet, you'll see a screen saying "Create Your Dating Profile" with a button.
+3. Tap the "Create Your Dating Profile" button (or tap the settings icon if you're on the discovery screen).
+4. This will take you to the Profile Setup screen where you can:
+   - Add photos: Tap the photo area to upload up to 9 photos from your gallery or take new ones with camera.
+   - Write your bio: Enter a description about yourself in the bio field.
+   - Set your age: Enter your age.
+   - Add location: Enter your city or use location services to automatically detect your location.
+   - Select gender: Choose your gender (male, female, non-binary, or prefer not to say).
+   - Set preferences: Choose who you're looking for (men, women, or everyone), set age range, and max distance.
+   - Add relationship goals: Select up to 5 goals like "Marriage", "Long-term", "Casual", "Friendship", "Short-term".
+   - Add interests: Browse and select interests from categories (sports, music, food, travel, arts, tech, lifestyle, hobbies).
+   - Optional fields: You can also add headline, values, mood, what makes you different, weekend style, kids preference, work, smoking/drinking preferences, and more.
+5. Once you've filled in your information, tap "Save" at the bottom of the screen.
+6. After saving, you'll be taken back to the Dating discovery screen where you can start swiping through potential matches.
+- To edit your profile later: Go to Dating tab → Tap the settings icon (gear) in the top right → Make changes → Save.
+
 RELATIONSHIP MANAGEMENT
 - Relationship Registration: Multi-step process including partner invitation, relationship type selection, verification.
 - Relationship Types: Various types available (marriage, dating, etc.) selected during registration.

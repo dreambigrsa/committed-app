@@ -462,8 +462,8 @@ export default function NotificationsScreen() {
           {!item.read && <View style={styles.unreadDot} />}
         </TouchableOpacity>
         
-        {/* Only show delete button for non-request notifications */}
-        {!isEndRelationshipRequest && !isRelationshipRequest && (
+        {/* Show delete button for all notifications except relationship requests (which are handled in Requests tab) */}
+        {!isRelationshipRequest && (
           <TouchableOpacity
             style={styles.deleteButton}
             onPress={() => handleDeleteNotification(item.id)}

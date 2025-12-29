@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Shield, Heart, ArrowLeft, FileText } from 'lucide-react-native';
+import { Shield, Heart, ArrowLeft, FileText, Eye, EyeOff } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
@@ -26,6 +26,7 @@ export default function AuthScreen() {
   const [isSignUp, setIsSignUp] = useState<boolean>(true);
   const [showForgotPassword, setShowForgotPassword] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [showPassword, setShowPassword] = useState<boolean>(false);
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
@@ -385,15 +386,28 @@ export default function AuthScreen() {
           {!showForgotPassword && (
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Password</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="Enter your password"
-                placeholderTextColor={colors.text.tertiary}
-                value={formData.password}
-                onChangeText={(text) => setFormData({ ...formData, password: text })}
-                secureTextEntry
-                autoCapitalize="none"
-              />
+              <View style={styles.passwordInputContainer}>
+                <TextInput
+                  style={styles.passwordInput}
+                  placeholder="Enter your password"
+                  placeholderTextColor={colors.text.tertiary}
+                  value={formData.password}
+                  onChangeText={(text) => setFormData({ ...formData, password: text })}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                />
+                <TouchableOpacity
+                  style={styles.passwordToggle}
+                  onPress={() => setShowPassword(!showPassword)}
+                  activeOpacity={0.7}
+                >
+                  {showPassword ? (
+                    <EyeOff size={20} color={colors.text.secondary} />
+                  ) : (
+                    <Eye size={20} color={colors.text.secondary} />
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
           )}
 
@@ -562,6 +576,26 @@ const createStyles = (colors: typeof import('@/constants/colors').default) => St
     fontWeight: '600' as const,
     color: colors.text.primary,
     marginBottom: 8,
+  },
+  passwordInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background.secondary,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    paddingHorizontal: 16,
+  },
+  passwordInput: {
+    flex: 1,
+    fontSize: 16,
+    color: colors.text.primary,
+    paddingVertical: 14,
+    paddingRight: 8,
+  },
+  passwordToggle: {
+    padding: 4,
+    marginLeft: 8,
   },
   textInput: {
     backgroundColor: colors.background.secondary,

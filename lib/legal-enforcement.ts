@@ -101,22 +101,22 @@ export async function saveUserAcceptance(
   context: 'signup' | 'relationship_registration' | 'update' | 'manual'
 ): Promise<boolean> {
   try {
-    // Verify session is active (fixes 401 errors)
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    // Refresh session to ensure it's active
+    const { data: { session }, error: sessionError } = await supabase.auth.refreshSession();
     
     if (sessionError) {
       console.error('Session error when saving acceptance:', sessionError);
-      return false;
+      throw new Error('Session error. Please log in again.');
     }
     
     if (!session || !session.user) {
       console.error('No active session when trying to save legal acceptance');
-      return false;
+      throw new Error('No active session. Please log in again.');
     }
     
     if (session.user.id !== userId) {
       console.error(`Session user ID (${session.user.id}) doesn't match provided userId (${userId})`);
-      return false;
+      throw new Error('User session mismatch. Please log in again.');
     }
 
     // First check if acceptance already exists
@@ -173,7 +173,8 @@ export async function saveUserAcceptance(
     return true;
   } catch (error: any) {
     console.error('Error saving acceptance:', error);
-    return false;
+    // Re-throw the error so the caller can handle it properly
+    throw error;
   }
 }
 

@@ -42,3 +42,6 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 .vercel
+
+.rork
+rork-eslint.config.js

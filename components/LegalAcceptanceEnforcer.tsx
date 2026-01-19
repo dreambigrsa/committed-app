@@ -5,6 +5,7 @@ import { useApp } from '@/contexts/AppContext';
 import LegalAcceptanceModal from './LegalAcceptanceModal';
 import { LegalDocument } from '@/types';
 import { checkUserLegalAcceptances } from '@/lib/legal-enforcement';
+import { supabase } from '@/lib/supabase';
 
 export default function LegalAcceptanceEnforcer() {
   const { currentUser, legalAcceptanceStatus, setLegalAcceptanceStatus } = useApp();
@@ -12,7 +13,7 @@ export default function LegalAcceptanceEnforcer() {
   const pathname = usePathname();
   const [modalVisible, setModalVisible] = useState(false);
   const [isViewingDocument, setIsViewingDocument] = useState(false);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Hide modal when viewing a legal document, show it again when back
   useEffect(() => {
@@ -36,7 +37,7 @@ export default function LegalAcceptanceEnforcer() {
           !legalAcceptanceStatus.hasAllRequired &&
           (legalAcceptanceStatus.missingDocuments.length > 0 ||
             legalAcceptanceStatus.needsReAcceptance.length > 0);
-        setModalVisible(shouldShow);
+        setModalVisible(!!shouldShow);
         timeoutRef.current = null;
       }, 300);
     }
@@ -145,17 +146,18 @@ export default function LegalAcceptanceEnforcer() {
         !legalAcceptanceStatus.hasAllRequired &&
         (legalAcceptanceStatus.missingDocuments.length > 0 ||
           legalAcceptanceStatus.needsReAcceptance.length > 0);
-      setModalVisible(shouldShow);
+      setModalVisible(!!shouldShow);
     }
   }, [currentUser, legalAcceptanceStatus, isViewingDocument]);
 
-  const showModal =
+  const showModal = Boolean(
     !isViewingDocument &&
     currentUser &&
     legalAcceptanceStatus !== null &&
     !legalAcceptanceStatus.hasAllRequired &&
     (legalAcceptanceStatus.missingDocuments.length > 0 ||
-      legalAcceptanceStatus.needsReAcceptance.length > 0);
+      legalAcceptanceStatus.needsReAcceptance.length > 0)
+  );
 
   return (
     <LegalAcceptanceModal

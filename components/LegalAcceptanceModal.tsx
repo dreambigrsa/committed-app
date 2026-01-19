@@ -12,7 +12,7 @@ import { AlertTriangle, Shield, CheckCircle2, RefreshCw } from 'lucide-react-nat
 import { useTheme } from '@/contexts/ThemeContext';
 import { LegalDocument } from '@/types';
 import LegalAcceptanceCheckbox from './LegalAcceptanceCheckbox';
-import { saveUserAcceptance, checkUserLegalAcceptances } from '@/lib/legal-enforcement';
+import { saveUserAcceptance } from '@/lib/legal-enforcement';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
 
@@ -37,7 +37,6 @@ export default function LegalAcceptanceModal({
 
   const [acceptances, setAcceptances] = useState<Record<string, boolean>>({});
   const [isSaving, setIsSaving] = useState(false);
-  const [isChecking, setIsChecking] = useState(false);
   const documentsRef = useRef<LegalDocument[]>([]);
   const initializedRef = useRef<boolean>(false);
 
@@ -73,16 +72,17 @@ export default function LegalAcceptanceModal({
     const requiredDocIds = allDocs.filter(d => d.isRequired).map(d => d.id);
 
     if (currentUser?.id && documentIds.length > 0) {
-      setIsChecking(true);
       initializedRef.current = true; // Mark as initialized
       
       // Check which documents are already accepted
-      supabase
-        .from('user_legal_acceptances')
-        .select('document_id, document_version')
-        .eq('user_id', currentUser.id)
-        .in('document_id', documentIds)
-        .then(({ data, error }) => {
+      (async () => {
+        try {
+          const { data, error } = await supabase
+            .from('user_legal_acceptances')
+            .select('document_id, document_version')
+            .eq('user_id', currentUser.id)
+            .in('document_id', documentIds);
+          
           if (!error && data) {
             const existingAcceptances: Record<string, boolean> = {};
             // Check if each document is already accepted with the correct version
@@ -105,12 +105,10 @@ export default function LegalAcceptanceModal({
               }, 300);
             }
           }
-          setIsChecking(false);
-        })
-        .catch((error) => {
+        } catch (error) {
           console.error('Error checking existing acceptances:', error);
-          setIsChecking(false);
-        });
+        }
+      })();
     } else if (documentIds.length === 0) {
       // If modal is visible but no documents, call onComplete to close it
       onComplete();
@@ -147,31 +145,22 @@ export default function LegalAcceptanceModal({
           };
         });
 
-      // Save all acceptances and track failures
-      const saveResults = await Promise.all(
-        acceptancesToSave.map(({ documentId, version }) =>
-          saveUserAcceptance(
-            currentUser.id,
-            documentId,
-            version,
-            needsReAcceptance.find((d) => d.id === documentId) ? 'update' : 'manual'
-          )
-        )
-      );
-
-      // Check if all saves succeeded
-      const allSucceeded = saveResults.every((result) => result === true);
-      
-      if (!allSucceeded) {
-        alert('Failed to save some acceptances. Please try again.');
-        return;
+      // Save all acceptances sequentially to better handle errors
+      for (const { documentId, version } of acceptancesToSave) {
+        await saveUserAcceptance(
+          currentUser.id,
+          documentId,
+          version,
+          needsReAcceptance.find((d) => d.id === documentId) ? 'update' : 'manual'
+        );
       }
 
-      // Only call onComplete if all saves succeeded
+      // All saves succeeded - call onComplete
       onComplete();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to save acceptances:', error);
-      alert('Failed to save acceptances. Please try again.');
+      const errorMessage = error?.message || 'Failed to save acceptances. Please try again.';
+      alert(errorMessage);
     } finally {
       setIsSaving(false);
     }

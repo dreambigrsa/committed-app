@@ -24,18 +24,39 @@ The migration file has been created, but it needs to be executed in your Supabas
 
 ### Step 1: Run the Migration
 
+**Option A: Quick Fix (Recommended)**
 1. **Go to your Supabase project dashboard** (https://supabase.com/dashboard)
 2. Select your project
 3. Navigate to **SQL Editor** in the left sidebar
 4. Click **New Query**
-5. **Copy and paste the ENTIRE contents** of `migrations/add-legal-acceptances-rls-policy.sql` into the editor
-6. Click **Run** (or press `Ctrl+Enter` / `Cmd+Enter`)
+5. **Open the file:** `migrations/fix-legal-acceptances-rls-quick.sql`
+6. **Copy ALL the SQL** (from `-- ============================================` to the end)
+7. **Paste into Supabase SQL Editor**
+8. Click **Run** (or press `Ctrl+Enter` / `Cmd+Enter`)
+9. You should see a table with 3 policies listed
 
-**You should see "Success. No rows returned" or similar confirmation message.**
+**Option B: Full Migration**
+1. Follow the same steps but use `migrations/add-legal-acceptances-rls-policy.sql` instead
 
-If you see any errors, please check:
-- The table `user_legal_acceptances` exists in your database
-- You have the correct permissions in Supabase
+### Step 2: Verify It Worked
+
+Run this in Supabase SQL Editor to verify:
+
+```sql
+SELECT policyname, cmd 
+FROM pg_policies 
+WHERE tablename = 'user_legal_acceptances';
+```
+
+You should see 3 policies:
+- `Users can view own legal acceptances` (SELECT)
+- `Users can insert own legal acceptances` (INSERT) 
+- `Users can update own legal acceptances` (UPDATE)
+
+If you see any errors when running the migration:
+- Make sure you copied the ENTIRE SQL (all lines)
+- Check that the table `user_legal_acceptances` exists
+- Try the quick fix version first
 
 ### Step 2: Verify the Policies
 

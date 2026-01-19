@@ -31,8 +31,12 @@ CREATE POLICY "Users can view own legal acceptances" ON public.user_legal_accept
   USING (auth.uid() = user_id);
 
 -- Users can insert their own legal acceptances (for signup, relationship registration, etc.)
+-- Note: This policy allows authenticated users to insert acceptances where user_id matches their auth.uid()
 CREATE POLICY "Users can insert own legal acceptances" ON public.user_legal_acceptances FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
+  WITH CHECK (
+    auth.uid() IS NOT NULL 
+    AND auth.uid() = user_id
+  );
 
 -- Users can update their own legal acceptances (for re-acceptance when documents are updated)
 CREATE POLICY "Users can update own legal acceptances" ON public.user_legal_acceptances FOR UPDATE

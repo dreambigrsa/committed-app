@@ -68,33 +68,45 @@ export default function VerifyEmailScreen() {
         if (emailConfirmed) {
           // Email is verified, reload user data and redirect directly
           // The AppContext will handle loading user data via onAuthStateChange
-          // Wait a moment for data to load, then redirect directly based on onboarding status
-          setTimeout(() => {
-            // Check onboarding status from context or directly
-            if (hasCompletedOnboarding === false) {
-              router.replace('/onboarding');
-            } else if (hasCompletedOnboarding === true) {
-              router.replace('/(tabs)/home');
-            } else {
-              // If onboarding status not loaded yet, check directly
-              supabase
-                .from('user_onboarding_data')
-                .select('has_completed_onboarding')
-                .eq('user_id', currentSession.user.id)
-                .maybeSingle()
-                .then(({ data: onboardingData }) => {
+          // Wait a moment for data to load, then check legal acceptances and onboarding
+          setTimeout(async () => {
+            try {
+              // First check legal acceptances - if not all accepted, user will see modal
+              const { checkUserLegalAcceptances } = await import('@/lib/legal-enforcement');
+              const acceptanceStatus = await checkUserLegalAcceptances(currentSession.user.id);
+              
+              // If legal documents not accepted, let the LegalAcceptanceEnforcer handle it
+              // Otherwise, check onboarding status
+              if (acceptanceStatus.hasAllRequired) {
+                // Check onboarding status from context or directly
+                if (hasCompletedOnboarding === false) {
+                  router.replace('/onboarding');
+                } else if (hasCompletedOnboarding === true) {
+                  router.replace('/(tabs)/home');
+                } else {
+                  // If onboarding status not loaded yet, check directly
+                  const { data: onboardingData } = await supabase
+                    .from('user_onboarding_data')
+                    .select('has_completed_onboarding')
+                    .eq('user_id', currentSession.user.id)
+                    .maybeSingle();
+                  
                   if (onboardingData?.has_completed_onboarding === false) {
                     router.replace('/onboarding');
                   } else {
                     router.replace('/(tabs)/home');
                   }
-                })
-                .catch(() => {
-                  // Default to home if error
-                  router.replace('/(tabs)/home');
-                });
+                }
+              } else {
+                // Legal documents not accepted - go to home, LegalAcceptanceEnforcer will show modal
+                router.replace('/(tabs)/home');
+              }
+            } catch (error) {
+              console.error('Error checking status after email verification:', error);
+              // Default to home if error
+              router.replace('/(tabs)/home');
             }
-          }, 800);
+          }, 1000);
         } else {
           // Email not verified yet
           if (showMessage) {

@@ -28,6 +28,12 @@ BEGIN
     v_phone_number := '+0000000' || SUBSTRING(uuid_str, LENGTH(uuid_str) - 3);
   END IF;
 
+  -- Check for duplicate phone number and generate unique if needed
+  WHILE EXISTS (SELECT 1 FROM public.users WHERE phone_number = v_phone_number) LOOP
+    uuid_str := REPLACE(NEW.id::TEXT, '-', '');
+    v_phone_number := '+0000000' || SUBSTRING(uuid_str || random()::TEXT, 1, 15);
+  END LOOP;
+
   BEGIN
     INSERT INTO public.users (
       id,
@@ -42,8 +48,9 @@ BEGIN
     VALUES (
       NEW.id,
       COALESCE(
-        NULLIF(NEW.raw_user_meta_data->>'full_name', ''),
-        SPLIT_PART(NEW.email, '@', 1)
+        NULLIF(TRIM(NEW.raw_user_meta_data->>'full_name'), ''),
+        SPLIT_PART(NEW.email, '@', 1),
+        'User'
       ),
       NEW.email,
       v_phone_number,
@@ -55,13 +62,34 @@ BEGIN
       CASE WHEN NEW.email_confirmed_at IS NOT NULL THEN true ELSE false END,
       false
     )
-    ON CONFLICT (id) DO NOTHING;
-  EXCEPTION WHEN OTHERS THEN
-    -- Log the error but don't fail the auth user creation
-    -- The user record can be created manually if needed
-    RAISE WARNING 'Failed to create user record for %: % (SQLSTATE: %)', 
-      NEW.email, SQLERRM, SQLSTATE;
-    -- Return NEW anyway so auth user creation succeeds
+    ON CONFLICT (id) DO NOTHING
+    ON CONFLICT (email) DO NOTHING
+    ON CONFLICT (phone_number) DO UPDATE SET
+      -- If phone conflict, update the existing record to use this user's ID
+      id = NEW.id,
+      email = NEW.email,
+      full_name = COALESCE(
+        NULLIF(TRIM(NEW.raw_user_meta_data->>'full_name'), ''),
+        SPLIT_PART(NEW.email, '@', 1),
+        'User'
+      );
+  EXCEPTION 
+    WHEN unique_violation THEN
+      -- Handle unique constraint violations gracefully
+      RAISE WARNING 'Unique constraint violation for user %: % (SQLSTATE: %)', 
+        NEW.email, SQLERRM, SQLSTATE;
+    WHEN foreign_key_violation THEN
+      -- Handle foreign key violations
+      RAISE WARNING 'Foreign key violation for user %: % (SQLSTATE: %)', 
+        NEW.email, SQLERRM, SQLSTATE;
+    WHEN check_violation THEN
+      -- Handle check constraint violations
+      RAISE WARNING 'Check constraint violation for user %: % (SQLSTATE: %)', 
+        NEW.email, SQLERRM, SQLSTATE;
+    WHEN OTHERS THEN
+      -- Log any other error but don't fail the auth user creation
+      RAISE WARNING 'Failed to create user record for %: % (SQLSTATE: %)', 
+        NEW.email, SQLERRM, SQLSTATE;
   END;
   
   RETURN NEW;

@@ -195,19 +195,43 @@ export default function AuthScreen() {
         if (user?.id) {
           try {
             // Wait a moment for user record to be fully created
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 1000));
             
-            // Save legal acceptances
-            await saveLegalAcceptances(user.id);
+            // Save legal acceptances with retry logic
+            let saved = false;
+            let retries = 0;
+            const maxRetries = 3;
             
-            // Verify the acceptances were saved by checking immediately
-            const acceptanceStatus = await checkUserLegalAcceptances(user.id);
+            while (!saved && retries < maxRetries) {
+              try {
+                await saveLegalAcceptances(user.id);
+                
+                // Verify the acceptances were saved
+                await new Promise(resolve => setTimeout(resolve, 500));
+                const acceptanceStatus = await checkUserLegalAcceptances(user.id);
+                
+                if (acceptanceStatus.hasAllRequired) {
+                  saved = true;
+                  console.log('Legal acceptances successfully saved and verified');
+                } else {
+                  console.warn(`Legal acceptances not fully saved (attempt ${retries + 1}/${maxRetries}):`, acceptanceStatus);
+                  retries++;
+                  if (retries < maxRetries) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                  }
+                }
+              } catch (error) {
+                console.error(`Failed to save legal acceptances (attempt ${retries + 1}/${maxRetries}):`, error);
+                retries++;
+                if (retries < maxRetries) {
+                  await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+              }
+            }
             
-            if (!acceptanceStatus.hasAllRequired) {
-              console.warn('Legal acceptances may not have been saved properly:', acceptanceStatus);
-              // Try saving again after a short delay
-              await new Promise(resolve => setTimeout(resolve, 500));
-              await saveLegalAcceptances(user.id);
+            if (!saved) {
+              console.error('Failed to save legal acceptances after all retries');
+              // Still continue with signup - user can accept documents later
             }
           } catch (error) {
             console.error('Failed to save legal acceptances:', error);

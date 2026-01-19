@@ -64,33 +64,26 @@ export default function LegalAcceptanceEnforcer() {
     // Clear any existing timeout
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
     }
     
     // Use InteractionManager to ensure navigation happens after modal animation completes
-    // This ensures the modal is fully dismissed before navigation
     InteractionManager.runAfterInteractions(() => {
-      // Additional small delay to ensure modal is completely closed
-      timeoutRef.current = setTimeout(() => {
+      // Small delay to ensure modal is completely closed
+      setTimeout(() => {
         const route = `/legal/${document.slug}`;
         console.log('Navigating to:', route);
         
         try {
+          // Use push to allow back navigation
           router.push(route as any);
         } catch (error) {
           console.error('Error navigating to legal document:', error);
-          // Fallback: try replace if push fails
-          try {
-            console.log('Trying replace instead of push...');
-            router.replace(route as any);
-          } catch (replaceError) {
-            console.error('Error replacing to legal document:', replaceError);
-            // Reset state if navigation completely fails
-            setIsViewingDocument(false);
-            setModalVisible(true);
-          }
+          // Reset state if navigation fails
+          setIsViewingDocument(false);
+          // Don't show modal again immediately - let the pathname effect handle it
         }
-        timeoutRef.current = null;
-      }, 300); // Increased delay to ensure modal is completely closed
+      }, 200);
     });
   };
 
@@ -101,12 +94,36 @@ export default function LegalAcceptanceEnforcer() {
     // Refresh acceptance status
     if (currentUser?.id) {
       try {
+        // Wait a moment for database to update
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
         const status = await checkUserLegalAcceptances(currentUser.id);
         setLegalAcceptanceStatus(status);
         
         // If status shows all required are accepted, ensure modal stays closed
         if (status.hasAllRequired) {
           setModalVisible(false);
+          
+          // After accepting documents, check if onboarding is needed
+          // This ensures the onboarding flow happens after document acceptance
+          try {
+            const { data: onboardingData } = await supabase
+              .from('user_onboarding_data')
+              .select('has_completed_onboarding')
+              .eq('user_id', currentUser.id)
+              .maybeSingle();
+            
+            if (!onboardingData?.has_completed_onboarding) {
+              // User hasn't completed onboarding, redirect to onboarding
+              setTimeout(() => {
+                router.replace('/onboarding');
+              }, 300);
+              return;
+            }
+          } catch (error) {
+            console.error('Error checking onboarding status:', error);
+            // Continue normally if check fails
+          }
         }
       } catch (error) {
         console.error('Error refreshing legal acceptance status:', error);

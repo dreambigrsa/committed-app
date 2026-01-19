@@ -99,10 +99,10 @@ export default function LegalAcceptanceModal({
               requiredDocIds.every(docId => existingAcceptances[docId] === true);
             
             if (allRequiredAlreadyAccepted) {
-              // Small delay to show the checkmarks, then close
+              // All documents already accepted - close modal and let onComplete handle next steps
               setTimeout(() => {
                 onComplete();
-              }, 500);
+              }, 300);
             }
           }
           setIsChecking(false);

@@ -208,6 +208,8 @@ export const [AppContext, useApp] = createContextHook(() => {
           setLegalAcceptanceStatus(acceptanceStatus);
         } catch (error) {
           console.error('Failed to check legal acceptances:', error);
+          // Set to null so enforcer knows status hasn't been checked yet
+          setLegalAcceptanceStatus(null);
         }
 
         // Check onboarding status

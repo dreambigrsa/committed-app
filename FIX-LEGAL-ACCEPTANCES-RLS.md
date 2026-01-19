@@ -18,14 +18,24 @@ The `user_legal_acceptances` table has Row-Level Security (RLS) enabled, but the
 
 ## Solution
 
-Apply the migration file that adds the necessary RLS policies:
+**⚠️ IMPORTANT: You MUST run the SQL migration in Supabase to fix this error.**
+
+The migration file has been created, but it needs to be executed in your Supabase database. The error will continue until you run the SQL commands below.
 
 ### Step 1: Run the Migration
 
-1. Go to your Supabase project dashboard
-2. Navigate to **SQL Editor**
-3. Copy and paste the contents of `migrations/add-legal-acceptances-rls-policy.sql`
-4. Click **Run** or press `Ctrl+Enter`
+1. **Go to your Supabase project dashboard** (https://supabase.com/dashboard)
+2. Select your project
+3. Navigate to **SQL Editor** in the left sidebar
+4. Click **New Query**
+5. **Copy and paste the ENTIRE contents** of `migrations/add-legal-acceptances-rls-policy.sql` into the editor
+6. Click **Run** (or press `Ctrl+Enter` / `Cmd+Enter`)
+
+**You should see "Success. No rows returned" or similar confirmation message.**
+
+If you see any errors, please check:
+- The table `user_legal_acceptances` exists in your database
+- You have the correct permissions in Supabase
 
 ### Step 2: Verify the Policies
 

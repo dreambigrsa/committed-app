@@ -273,16 +273,33 @@ export default function AuthScreen() {
           }
         }
         
-        // Check if email confirmation is required
-        const { data: { session } } = await supabase.auth.getSession();
-        const emailConfirmed = !!session?.user?.email_confirmed_at;
-        
-        if (!emailConfirmed) {
-          // Redirect to email verification screen
-          router.replace('/verify-email');
-        } else {
-          // Email already confirmed, redirect to index which will check onboarding
-          router.replace('/');
+        // Always redirect, even if there were errors above
+        // Check if email confirmation is required and redirect immediately
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const emailConfirmed = !!session?.user?.email_confirmed_at;
+          
+          // Clear loading state before redirect to prevent blank screen
+          setIsLoading(false);
+          
+          // Use setTimeout to ensure state update completes before redirect
+          setTimeout(() => {
+            if (!emailConfirmed) {
+              // Redirect to email verification screen
+              router.replace('/verify-email');
+            } else {
+              // Email already confirmed, redirect to index which will check onboarding
+              router.replace('/');
+            }
+          }, 100);
+        } catch (redirectError) {
+          console.error('Error during redirect after signup:', redirectError);
+          // Clear loading state
+          setIsLoading(false);
+          // Fallback: always go to verify-email if we can't check status
+          setTimeout(() => {
+            router.replace('/verify-email');
+          }, 100);
         }
       } else {
         if (!formData.email || !formData.password) {

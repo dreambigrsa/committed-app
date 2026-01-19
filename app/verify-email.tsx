@@ -72,19 +72,43 @@ export default function VerifyEmailScreen() {
           setTimeout(async () => {
             try {
               // First check legal acceptances - if not all accepted, user will see modal
-              const { checkUserLegalAcceptances } = await import('@/lib/legal-enforcement');
-              const acceptanceStatus = await checkUserLegalAcceptances(currentSession.user.id);
-              
-              // If legal documents not accepted, let the LegalAcceptanceEnforcer handle it
-              // Otherwise, check onboarding status
-              if (acceptanceStatus.hasAllRequired) {
-                // Check onboarding status from context or directly
-                if (hasCompletedOnboarding === false) {
-                  router.replace('/onboarding');
-                } else if (hasCompletedOnboarding === true) {
-                  router.replace('/(tabs)/home');
+              // Handle case where user record might not exist yet
+              try {
+                const { checkUserLegalAcceptances } = await import('@/lib/legal-enforcement');
+                const acceptanceStatus = await checkUserLegalAcceptances(currentSession.user.id);
+                
+                // If legal documents not accepted, let the LegalAcceptanceEnforcer handle it
+                // Otherwise, check onboarding status
+                if (acceptanceStatus.hasAllRequired) {
+                  // Check onboarding status from context or directly
+                  if (hasCompletedOnboarding === false) {
+                    router.replace('/onboarding');
+                  } else if (hasCompletedOnboarding === true) {
+                    router.replace('/(tabs)/home');
+                  } else {
+                    // If onboarding status not loaded yet, check directly
+                    const { data: onboardingData } = await supabase
+                      .from('user_onboarding_data')
+                      .select('has_completed_onboarding')
+                      .eq('user_id', currentSession.user.id)
+                      .maybeSingle();
+                    
+                    if (onboardingData?.has_completed_onboarding === false) {
+                      router.replace('/onboarding');
+                    } else {
+                      router.replace('/(tabs)/home');
+                    }
+                  }
                 } else {
-                  // If onboarding status not loaded yet, check directly
+                  // Legal documents not accepted - go to home, LegalAcceptanceEnforcer will show modal
+                  router.replace('/(tabs)/home');
+                }
+              } catch (legalError: any) {
+                // If user record doesn't exist yet, just redirect to home
+                // The user record will be created by the trigger, and legal acceptances can be saved later
+                console.warn('Error checking legal acceptances (user record may not exist yet):', legalError?.message);
+                // Check onboarding status directly
+                try {
                   const { data: onboardingData } = await supabase
                     .from('user_onboarding_data')
                     .select('has_completed_onboarding')
@@ -96,10 +120,10 @@ export default function VerifyEmailScreen() {
                   } else {
                     router.replace('/(tabs)/home');
                   }
+                } catch (onboardingError) {
+                  // Default to home if error
+                  router.replace('/(tabs)/home');
                 }
-              } else {
-                // Legal documents not accepted - go to home, LegalAcceptanceEnforcer will show modal
-                router.replace('/(tabs)/home');
               }
             } catch (error) {
               console.error('Error checking status after email verification:', error);

@@ -311,7 +311,7 @@ export default function AuthScreen() {
             }
             
             if (!saved) {
-              console.error('Failed to save legal acceptances after all retries');
+              console.warn('Failed to save legal acceptances after all retries. User can accept documents later when they log in.');
               // Still continue with signup - user can accept documents later
             }
             }

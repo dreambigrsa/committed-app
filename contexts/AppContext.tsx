@@ -893,32 +893,10 @@ export const [AppContext, useApp] = createContextHook(() => {
 
       console.log('Auth user created:', authData.user.id);
 
-      // Wait for auth user to be fully committed and verify it exists
-      let authUserExists = false;
-      let authCheckRetries = 0;
-      const maxAuthCheckRetries = 10;
-      
-      while (!authUserExists && authCheckRetries < maxAuthCheckRetries) {
-        // Verify auth user exists by checking session
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user?.id === authData.user.id) {
-          authUserExists = true;
-          console.log('Auth user confirmed in session');
-          break;
-        }
-        
-        authCheckRetries++;
-        if (authCheckRetries < maxAuthCheckRetries) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
-      }
-      
-      if (!authUserExists) {
-        console.warn('Auth user not found in session after checks, but continuing...');
-      }
-
-      // Wait a bit more for trigger to potentially create user record
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Wait for trigger to potentially create user record
+      // Don't check session - it's not reliable immediately after signup
+      // Instead, just wait and then check if user record exists
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
       try {
         // Poll for user record with retries (trigger might create it)
@@ -956,10 +934,23 @@ export const [AppContext, useApp] = createContextHook(() => {
           // Retry creating user record with better error handling
           let created = false;
           let createRetries = 0;
-          const maxCreateRetries = 5;
+          const maxCreateRetries = 3; // Reduced retries since trigger should handle it
           
           while (!created && createRetries < maxCreateRetries) {
             try {
+              // First check one more time if user record exists (trigger might have created it)
+              const { data: finalCheck } = await supabase
+                .from('users')
+                .select('id')
+                .eq('id', authData.user.id)
+                .maybeSingle();
+              
+              if (finalCheck) {
+                console.log('User record found on final check (created by trigger)');
+                created = true;
+                break;
+              }
+              
               const { error: profileError } = await supabase
                 .from('users')
                 .insert({
@@ -974,30 +965,86 @@ export const [AppContext, useApp] = createContextHook(() => {
                 });
 
               if (profileError) {
-                // Handle duplicate key error (user already exists - trigger might have created it)
-                if (profileError.code === '23505') {
-                  console.log('User profile already exists (created by trigger), continuing...');
-                  created = true;
-                  break;
-                } else if (profileError.code === '23503') {
-                  // Foreign key constraint violation - auth user might not be visible yet
-                  console.warn(`Foreign key constraint violation (attempt ${createRetries + 1}/${maxCreateRetries}). Auth user may not be fully committed yet.`);
+                // Check if error indicates user already exists (409 Conflict, duplicate key, etc.)
+                const isDuplicateError = 
+                  profileError.code === '23505' || // Duplicate key
+                  profileError.code === 'PGRST116' || // Not found (shouldn't happen on insert, but check)
+                  profileError.message?.toLowerCase().includes('duplicate') ||
+                  profileError.message?.toLowerCase().includes('already exists') ||
+                  profileError.message?.toLowerCase().includes('conflict') ||
+                  profileError.details?.toLowerCase().includes('duplicate') ||
+                  profileError.details?.toLowerCase().includes('already exists') ||
+                  profileError.hint?.toLowerCase().includes('duplicate') ||
+                  profileError.hint?.toLowerCase().includes('already exists');
+                
+                if (isDuplicateError) {
+                  console.log('User profile already exists (trigger likely created it), verifying...');
+                  // Verify it actually exists
+                  const { data: verifyUser } = await supabase
+                    .from('users')
+                    .select('id')
+                    .eq('id', authData.user.id)
+                    .maybeSingle();
+                  
+                  if (verifyUser) {
+                    console.log('User profile confirmed to exist');
+                    created = true;
+                    break;
+                  } else {
+                    console.warn('Duplicate error but user record not found - may be timing issue');
+                  }
+                }
+                
+                // Handle foreign key constraint violation - wait and retry
+                if (profileError.code === '23503') {
+                  console.warn(`Foreign key constraint violation (attempt ${createRetries + 1}/${maxCreateRetries}). Waiting longer...`);
                   createRetries++;
                   if (createRetries < maxCreateRetries) {
-                    // Wait longer and verify auth user exists
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    const { data: { session } } = await supabase.auth.getSession();
-                    if (session?.user?.id !== authData.user.id) {
-                      console.error('Auth user not in session. Cannot create user record.');
+                    // Wait longer - auth user might not be fully committed yet
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    // Check if user record was created by trigger in the meantime
+                    const { data: checkUser } = await supabase
+                      .from('users')
+                      .select('id')
+                      .eq('id', authData.user.id)
+                      .maybeSingle();
+                    if (checkUser) {
+                      console.log('User record found after waiting (created by trigger)');
+                      created = true;
                       break;
                     }
                   }
-                } else if (profileError.code === '42501') {
+                  continue; // Continue to next retry
+                } 
+                // Handle RLS policy error
+                else if (profileError.code === '42501') {
                   console.error('RLS policy error. Please run supabase-fix-rls.sql in your Supabase SQL Editor');
-                  throw profileError;
-                } else {
-                  console.error('Profile creation error:', JSON.stringify(profileError, null, 2));
-                  throw profileError;
+                  // Don't throw - let trigger handle it
+                  break;
+                } 
+                // For any other error, check if user record exists (trigger might have created it)
+                else {
+                  console.warn(`Profile creation error (attempt ${createRetries + 1}/${maxCreateRetries}):`, profileError.code, profileError.message);
+                  // Check if user record was created by trigger anyway
+                  const { data: checkUser } = await supabase
+                    .from('users')
+                    .select('id')
+                    .eq('id', authData.user.id)
+                    .maybeSingle();
+                  if (checkUser) {
+                    console.log('User record found despite error (created by trigger)');
+                    created = true;
+                    break;
+                  }
+                  
+                  createRetries++;
+                  if (createRetries < maxCreateRetries) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                  } else {
+                    // Final attempt failed - trigger should handle it
+                    console.warn('Profile creation failed after all retries. Trigger should create it.');
+                    break;
+                  }
                 }
               } else {
                 console.log('User profile created successfully');

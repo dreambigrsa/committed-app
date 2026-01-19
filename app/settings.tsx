@@ -67,11 +67,7 @@ export default function SettingsScreen() {
   const relationship = getCurrentUserRelationship();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  // Early return if no current user (prevents crashes)
-  if (!currentUser) {
-    return null;
-  }
-
+  // All hooks must be declared before any early returns
   const [editMode, setEditMode] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;

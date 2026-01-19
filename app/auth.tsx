@@ -108,6 +108,24 @@ export default function AuthScreen() {
 
   const saveLegalAcceptances = async (userId: string) => {
     try {
+      // First verify user session is active (fixes 401 errors)
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.warn('Session error when saving legal acceptances:', sessionError);
+        throw new Error(`Authentication error: ${sessionError.message}`);
+      }
+      
+      if (!session || !session.user) {
+        console.warn('No active session when trying to save legal acceptances');
+        throw new Error('No active session. Please log in again.');
+      }
+      
+      if (session.user.id !== userId) {
+        console.warn(`Session user ID (${session.user.id}) doesn't match provided userId (${userId})`);
+        throw new Error('Session mismatch. Please log in again.');
+      }
+
       const acceptancesToSave = Object.entries(legalAcceptances)
         .filter(([_, accepted]) => accepted)
         .map(([documentId, _]) => {
@@ -120,7 +138,7 @@ export default function AuthScreen() {
           };
         });
 
-      // First verify user exists before trying to save acceptances
+      // Verify user exists before trying to save acceptances
       const { data: userCheck, error: userCheckError } = await supabase
         .from('users')
         .select('id')
@@ -153,12 +171,19 @@ export default function AuthScreen() {
           hint: error.hint,
         };
         console.error('Error saving legal acceptances:', JSON.stringify(errorDetails, null, 2));
+        
+        // If it's an RLS error, provide helpful message
+        if (error.code === '42501') {
+          console.error('RLS Policy Error: The database RLS policies for user_legal_acceptances are missing or incorrect.');
+          console.error('Please run the migration: migrations/fix-legal-acceptances-rls-quick.sql in Supabase SQL Editor');
+        }
+        
         throw error;
       }
       
       console.log(`Successfully saved ${data?.length || 0} legal acceptances for user ${userId}`);
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to save legal acceptances:', error);
       throw error; // Re-throw so caller can handle it
     }

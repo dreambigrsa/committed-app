@@ -101,13 +101,36 @@ export async function saveUserAcceptance(
   context: 'signup' | 'relationship_registration' | 'update' | 'manual'
 ): Promise<boolean> {
   try {
+    // Verify session is active (fixes 401 errors)
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
+    if (sessionError) {
+      console.error('Session error when saving acceptance:', sessionError);
+      return false;
+    }
+    
+    if (!session || !session.user) {
+      console.error('No active session when trying to save legal acceptance');
+      return false;
+    }
+    
+    if (session.user.id !== userId) {
+      console.error(`Session user ID (${session.user.id}) doesn't match provided userId (${userId})`);
+      return false;
+    }
+
     // First check if acceptance already exists
-    const { data: existing } = await supabase
+    const { data: existing, error: checkError } = await supabase
       .from('user_legal_acceptances')
       .select('id')
       .eq('user_id', userId)
       .eq('document_id', documentId)
-      .single();
+      .maybeSingle();
+
+    if (checkError && checkError.code !== 'PGRST116') {
+      console.error('Error checking existing acceptance:', checkError);
+      // Don't fail if it's just "not found" - continue to insert
+    }
 
     if (existing) {
       // Update existing acceptance
@@ -122,6 +145,9 @@ export async function saveUserAcceptance(
 
       if (error) {
         console.error('Error updating acceptance:', error);
+        if (error.code === '42501') {
+          console.error('RLS Policy Error: Please run migrations/fix-legal-acceptances-rls-quick.sql in Supabase');
+        }
         throw error;
       }
     } else {
@@ -137,11 +163,15 @@ export async function saveUserAcceptance(
 
       if (error) {
         console.error('Error inserting acceptance:', error);
+        if (error.code === '42501') {
+          console.error('RLS Policy Error: The user_legal_acceptances table is missing INSERT policy.');
+          console.error('Please run migrations/fix-legal-acceptances-rls-quick.sql in Supabase SQL Editor');
+        }
         throw error;
       }
     }
     return true;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error saving acceptance:', error);
     return false;
   }

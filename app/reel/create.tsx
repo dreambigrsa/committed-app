@@ -11,6 +11,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Image,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { X, Video as VideoIcon, Upload, Trash2, Sparkles } from 'lucide-react-native';

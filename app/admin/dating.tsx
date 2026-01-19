@@ -169,7 +169,7 @@ export default function AdminDatingScreen() {
       if (!matchesData || matchesData.length === 0) {
         console.log('No matches found in database (query returned empty)');
         // Show a more informative message
-        if (totalCount !== undefined && totalCount > 0) {
+        if (totalCount !== undefined && totalCount !== null && totalCount > 0) {
           console.warn(`Database has ${totalCount} matches but query returned 0. This might be an RLS filtering issue.`);
         }
         setMatches([]);
@@ -215,7 +215,7 @@ export default function AdminDatingScreen() {
           .from('dating_matches')
           .select('*', { count: 'exact', head: true });
         
-        if (!countError && count !== undefined) {
+        if (!countError && count !== undefined && count !== null) {
           console.log('Total matches in database:', count);
           if (count > 0) {
             console.warn('Matches exist but are not being returned. This is likely an RLS policy issue.');

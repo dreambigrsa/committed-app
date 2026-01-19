@@ -550,9 +550,6 @@ const styles = StyleSheet.create({
   endButton: {
     backgroundColor: colors.danger,
   },
-  deleteButton: {
-    backgroundColor: '#8B0000',
-  },
   adminButtonText: {
     fontSize: 14,
     fontWeight: '600' as const,

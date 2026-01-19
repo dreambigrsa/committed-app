@@ -180,7 +180,7 @@ export default function AdminFalseRelationshipReportsScreen() {
       case 'pending':
         return colors.warning;
       case 'reviewing':
-        return colors.info;
+        return colors.primary;
       case 'resolved':
         return colors.success;
       case 'dismissed':
@@ -353,17 +353,17 @@ export default function AdminFalseRelationshipReportsScreen() {
                     </Text>
                   </View>
 
-                  {relationship && (
+                  {(selectedReport as any).relationship && (
                     <View style={styles.modalSection}>
                       <Text style={styles.modalLabel}>Relationship:</Text>
                       <Text style={styles.modalValue}>
-                        Partner: {relationship.partner_name}
+                        Partner: {(selectedReport as any).relationship.partner_name}
                       </Text>
                       <Text style={styles.modalValue}>
-                        Type: {relationship.type}
+                        Type: {(selectedReport as any).relationship.type}
                       </Text>
                       <Text style={styles.modalValue}>
-                        Status: {relationship.status}
+                        Status: {(selectedReport as any).relationship.status}
                       </Text>
                     </View>
                   )}

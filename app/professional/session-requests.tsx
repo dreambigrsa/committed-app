@@ -14,7 +14,8 @@ import { Stack, useRouter } from 'expo-router';
 import { CheckCircle2, XCircle, Clock, User, MessageSquare, Shield } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
-import { getPendingSessionRequests, acceptProfessionalSession, declineProfessionalSession, ProfessionalSession } from '@/lib/professional-sessions';
+import { getPendingSessionRequests, acceptProfessionalSession, declineProfessionalSession } from '@/lib/professional-sessions';
+import { ProfessionalSession } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { ProfessionalProfile } from '@/types';
 

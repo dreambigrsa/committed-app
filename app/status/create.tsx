@@ -91,6 +91,7 @@ export default function CreateStatusScreen() {
   const [textAlignment, setTextAlignment] = useState<TextAlignment>('center');
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
+  const [videoThumbnails, setVideoThumbnails] = useState<Record<string, string>>({});
   
   // Split text into lines for per-line background rendering
   // Each line gets its own independent pill-shaped background
@@ -338,9 +339,7 @@ export default function CreateStatusScreen() {
     if (videoAssets.length > 0) {
       const thumbnailPromises = videoAssets.map(async (asset) => {
         try {
-          const info = await MediaLibrary.getAssetInfoAsync(asset, {
-            thumbnail: true,
-          });
+          const info = await MediaLibrary.getAssetInfoAsync(asset);
           // Use thumbnail URI if available, otherwise fall back to asset URI
           const thumbnailUri = (info as any).localUri || (info as any).uri || asset.uri;
           return { id: asset.id, uri: thumbnailUri };
@@ -355,7 +354,7 @@ export default function CreateStatusScreen() {
         thumbnails.forEach(({ id, uri }) => {
           thumbnailMap[id] = uri;
         });
-        setVideoThumbnails((prev) => ({ ...prev, ...thumbnailMap }));
+        setVideoThumbnails((prev: Record<string, string>) => ({ ...prev, ...thumbnailMap }));
       }).catch((error) => {
         console.error('Error loading video thumbnails:', error);
       });

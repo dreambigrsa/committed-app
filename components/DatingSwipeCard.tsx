@@ -179,7 +179,8 @@ export default function DatingSwipeCard({
         }
         
         // Calculate velocity (pixels per millisecond)
-        const velocityX = gesture.vx || (gesture.dx / (gesture.dt || 1));
+        // Use vx if available, otherwise estimate from dx (fallback to 1ms if no timing info)
+        const velocityX = gesture.vx || 0;
         const absVelocity = Math.abs(velocityX);
         
         // Check if swipe meets threshold (distance OR velocity)

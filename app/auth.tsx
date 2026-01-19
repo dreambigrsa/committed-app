@@ -215,16 +215,18 @@ export default function AuthScreen() {
         const user = await signup(formData.fullName, formData.email, formData.phoneNumber, formData.password);
         
         // Save legal acceptances after successful signup
+        // Wait a moment for user record to be created by trigger
         if (user?.id) {
           try {
-            // First, ensure the user record exists in the users table
-            // Poll for user record with retries (trigger might take time)
-            let userRecordExists = false;
-            let userCheckRetries = 0;
-            const maxUserCheckRetries = 10; // Check up to 10 times
+            // Quick check for user record (should exist by now from trigger)
+            await new Promise(resolve => setTimeout(resolve, 1000));
             
-            while (!userRecordExists && userCheckRetries < maxUserCheckRetries) {
-              const { data: userRecord, error: checkError } = await supabase
+            let userRecordExists = false;
+            let quickChecks = 0;
+            const maxQuickChecks = 3; // Only 3 quick checks (1.5 seconds max)
+            
+            while (!userRecordExists && quickChecks < maxQuickChecks) {
+              const { data: userRecord } = await supabase
                 .from('users')
                 .select('id')
                 .eq('id', user.id)
@@ -232,93 +234,42 @@ export default function AuthScreen() {
               
               if (userRecord) {
                 userRecordExists = true;
-                console.log('User record confirmed to exist');
+                console.log('User record found, saving legal acceptances...');
                 break;
               }
               
-              if (checkError && checkError.code !== 'PGRST116') {
-                // PGRST116 is "not found" which is expected, other errors are real issues
-                console.warn(`Error checking user record (attempt ${userCheckRetries + 1}/${maxUserCheckRetries}):`, checkError);
-              }
-              
-              userCheckRetries++;
-              if (userCheckRetries < maxUserCheckRetries) {
-                // Wait before checking again
+              quickChecks++;
+              if (quickChecks < maxQuickChecks) {
                 await new Promise(resolve => setTimeout(resolve, 500));
               }
             }
             
-            if (!userRecordExists) {
-              console.error('User record not found after all checks. Legal acceptances will be saved later.');
-              // Don't try to save legal acceptances if user record doesn't exist
-              // The user can accept documents later when they log in
-              // Continue with signup flow - don't block it
-            } else {
-              // Now that user record exists, save legal acceptances with retry logic
-            let saved = false;
-            let retries = 0;
-            const maxRetries = 3;
-            
-            while (!saved && retries < maxRetries) {
+            if (userRecordExists) {
+              // User record exists - save legal acceptances
               try {
                 await saveLegalAcceptances(user.id);
                 
-                // Verify the acceptances were saved
-                await new Promise(resolve => setTimeout(resolve, 500));
+                // Quick verify
+                await new Promise(resolve => setTimeout(resolve, 300));
                 const acceptanceStatus = await checkUserLegalAcceptances(user.id);
                 
                 if (acceptanceStatus.hasAllRequired) {
-                  saved = true;
-                  console.log('Legal acceptances successfully saved and verified');
+                  console.log('Legal acceptances successfully saved');
                 } else {
-                  console.warn(`Legal acceptances not fully saved (attempt ${retries + 1}/${maxRetries}):`, acceptanceStatus);
-                  retries++;
-                  if (retries < maxRetries) {
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                  }
+                  console.warn('Legal acceptances may not be fully saved, but continuing...');
                 }
               } catch (error: any) {
                 const errorMessage = error?.message || JSON.stringify(error);
-                const errorCode = error?.code;
-                console.error(`Failed to save legal acceptances (attempt ${retries + 1}/${maxRetries}):`, {
-                  message: errorMessage,
-                  code: errorCode,
-                  error: error
-                });
-                
-                // If it's a foreign key error, the user record might not exist yet
-                if (errorCode === '23503') {
-                  console.error('Foreign key constraint violation - user record may not exist');
-                  // Wait longer and check user record again
-                  await new Promise(resolve => setTimeout(resolve, 1000));
-                  const { data: userRecord } = await supabase
-                    .from('users')
-                    .select('id')
-                    .eq('id', user.id)
-                    .maybeSingle();
-                  
-                  if (!userRecord) {
-                    console.error('User record still does not exist. Cannot save legal acceptances.');
-                    break; // Stop retrying
-                  }
-                }
-                
-                retries++;
-                if (retries < maxRetries) {
-                  await new Promise(resolve => setTimeout(resolve, 1000));
-                }
+                console.warn('Failed to save legal acceptances (user can accept later):', errorMessage);
+                // Don't block signup
               }
-            }
-            
-            if (!saved) {
-              console.warn('Failed to save legal acceptances after all retries. User can accept documents later when they log in.');
-              // Still continue with signup - user can accept documents later
-            }
+            } else {
+              console.log('User record not ready yet. Legal acceptances will be saved when user logs in.');
+              // Don't block signup - user can accept documents later
             }
           } catch (error: any) {
-            const errorMessage = error?.message || JSON.stringify(error);
-            console.error('Failed to save legal acceptances:', errorMessage, error);
-            // Don't block signup, but log the error
+            console.warn('Error checking user record for legal acceptances:', error?.message);
+            // Don't block signup
           }
         }
         

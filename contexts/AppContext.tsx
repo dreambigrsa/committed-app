@@ -893,46 +893,134 @@ export const [AppContext, useApp] = createContextHook(() => {
 
       console.log('Auth user created:', authData.user.id);
 
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Wait for auth user to be fully committed and verify it exists
+      let authUserExists = false;
+      let authCheckRetries = 0;
+      const maxAuthCheckRetries = 10;
+      
+      while (!authUserExists && authCheckRetries < maxAuthCheckRetries) {
+        // Verify auth user exists by checking session
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user?.id === authData.user.id) {
+          authUserExists = true;
+          console.log('Auth user confirmed in session');
+          break;
+        }
+        
+        authCheckRetries++;
+        if (authCheckRetries < maxAuthCheckRetries) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+      
+      if (!authUserExists) {
+        console.warn('Auth user not found in session after checks, but continuing...');
+      }
+
+      // Wait a bit more for trigger to potentially create user record
+      await new Promise(resolve => setTimeout(resolve, 1500));
 
       try {
-        const { data: existingUser } = await supabase
-          .from('users')
-          .select('id')
-          .eq('id', authData.user.id)
-          .single();
-
-        if (!existingUser) {
-          console.log('Creating user profile record...');
-          const { error: profileError } = await supabase
+        // Poll for user record with retries (trigger might create it)
+        let userRecordExists = false;
+        let userCheckRetries = 0;
+        const maxUserCheckRetries = 15; // Check up to 15 times (7.5 seconds)
+        
+        while (!userRecordExists && userCheckRetries < maxUserCheckRetries) {
+          const { data: existingUser, error: checkError } = await supabase
             .from('users')
-            .insert({
-              id: authData.user.id,
-              full_name: fullName,
-              email,
-              phone_number: normalizedPhone,
-              role: email === 'nashiezw@gmail.com' ? 'super_admin' : 'user',
-              phone_verified: false,
-              email_verified: false,
-              id_verified: false,
-            });
-
-          if (profileError) {
-            // Handle duplicate key error (user already exists)
-            if (profileError.code === '23505') {
-              console.log('User profile already exists, continuing...');
-            } else if (profileError.code === '42501') {
-              console.error('RLS policy error. Please run supabase-fix-rls.sql in your Supabase SQL editor');
-              throw profileError;
-            } else {
-              console.error('Profile creation error:', JSON.stringify(profileError, null, 2));
-              throw profileError;
-            }
-          } else {
-            console.log('User profile created successfully');
+            .select('id')
+            .eq('id', authData.user.id)
+            .maybeSingle();
+          
+          if (existingUser) {
+            userRecordExists = true;
+            console.log('User profile record found (created by trigger)');
+            break;
           }
-        } else {
-          console.log('User profile already exists');
+          
+          if (checkError && checkError.code !== 'PGRST116') {
+            // PGRST116 is "not found" which is expected, other errors are real issues
+            console.warn(`Error checking user record (attempt ${userCheckRetries + 1}/${maxUserCheckRetries}):`, checkError);
+          }
+          
+          userCheckRetries++;
+          if (userCheckRetries < maxUserCheckRetries) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        }
+
+        if (!userRecordExists) {
+          console.log('User profile record not found, creating manually...');
+          
+          // Retry creating user record with better error handling
+          let created = false;
+          let createRetries = 0;
+          const maxCreateRetries = 5;
+          
+          while (!created && createRetries < maxCreateRetries) {
+            try {
+              const { error: profileError } = await supabase
+                .from('users')
+                .insert({
+                  id: authData.user.id,
+                  full_name: fullName,
+                  email,
+                  phone_number: normalizedPhone,
+                  role: email === 'nashiezw@gmail.com' ? 'super_admin' : 'user',
+                  phone_verified: false,
+                  email_verified: false,
+                  id_verified: false,
+                });
+
+              if (profileError) {
+                // Handle duplicate key error (user already exists - trigger might have created it)
+                if (profileError.code === '23505') {
+                  console.log('User profile already exists (created by trigger), continuing...');
+                  created = true;
+                  break;
+                } else if (profileError.code === '23503') {
+                  // Foreign key constraint violation - auth user might not be visible yet
+                  console.warn(`Foreign key constraint violation (attempt ${createRetries + 1}/${maxCreateRetries}). Auth user may not be fully committed yet.`);
+                  createRetries++;
+                  if (createRetries < maxCreateRetries) {
+                    // Wait longer and verify auth user exists
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    const { data: { session } } = await supabase.auth.getSession();
+                    if (session?.user?.id !== authData.user.id) {
+                      console.error('Auth user not in session. Cannot create user record.');
+                      break;
+                    }
+                  }
+                } else if (profileError.code === '42501') {
+                  console.error('RLS policy error. Please run supabase-fix-rls.sql in your Supabase SQL Editor');
+                  throw profileError;
+                } else {
+                  console.error('Profile creation error:', JSON.stringify(profileError, null, 2));
+                  throw profileError;
+                }
+              } else {
+                console.log('User profile created successfully');
+                created = true;
+                break;
+              }
+            } catch (error: any) {
+              if (error.code === '23503') {
+                // Foreign key error - retry
+                createRetries++;
+                if (createRetries < maxCreateRetries) {
+                  await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+              } else {
+                throw error;
+              }
+            }
+          }
+          
+          if (!created) {
+            console.error('Failed to create user profile after all retries. User may need to log in again.');
+            // Don't throw - let the user continue, the trigger might create it later
+          }
         }
 
         // Check and link any relationships where this user's phone number was registered

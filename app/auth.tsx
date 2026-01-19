@@ -120,21 +120,44 @@ export default function AuthScreen() {
           };
         });
 
-      if (acceptancesToSave.length > 0) {
-        const { error, data } = await supabase
-          .from('user_legal_acceptances')
-          .insert(acceptancesToSave)
-          .select();
-
-        if (error) {
-          console.error('Error saving legal acceptances:', error);
-          throw error;
-        }
-        
-        console.log(`Successfully saved ${data?.length || 0} legal acceptances for user ${userId}`);
-        return true;
+      // First verify user exists before trying to save acceptances
+      const { data: userCheck, error: userCheckError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('id', userId)
+        .maybeSingle();
+      
+      if (userCheckError && userCheckError.code !== 'PGRST116') {
+        throw new Error(`Cannot verify user exists: ${userCheckError.message}`);
       }
-      return false;
+      
+      if (!userCheck) {
+        throw new Error(`User record does not exist for user ${userId}. Cannot save legal acceptances.`);
+      }
+
+      if (acceptancesToSave.length === 0) {
+        console.log('No legal acceptances to save');
+        return true; // Return true if nothing to save
+      }
+
+      const { error, data } = await supabase
+        .from('user_legal_acceptances')
+        .insert(acceptancesToSave)
+        .select();
+
+      if (error) {
+        const errorDetails = {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        };
+        console.error('Error saving legal acceptances:', JSON.stringify(errorDetails, null, 2));
+        throw error;
+      }
+      
+      console.log(`Successfully saved ${data?.length || 0} legal acceptances for user ${userId}`);
+      return true;
     } catch (error) {
       console.error('Failed to save legal acceptances:', error);
       throw error; // Re-throw so caller can handle it
@@ -194,10 +217,44 @@ export default function AuthScreen() {
         // Save legal acceptances after successful signup
         if (user?.id) {
           try {
-            // Wait a moment for user record to be fully created
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            // First, ensure the user record exists in the users table
+            // Poll for user record with retries (trigger might take time)
+            let userRecordExists = false;
+            let userCheckRetries = 0;
+            const maxUserCheckRetries = 10; // Check up to 10 times
             
-            // Save legal acceptances with retry logic
+            while (!userRecordExists && userCheckRetries < maxUserCheckRetries) {
+              const { data: userRecord, error: checkError } = await supabase
+                .from('users')
+                .select('id')
+                .eq('id', user.id)
+                .maybeSingle();
+              
+              if (userRecord) {
+                userRecordExists = true;
+                console.log('User record confirmed to exist');
+                break;
+              }
+              
+              if (checkError && checkError.code !== 'PGRST116') {
+                // PGRST116 is "not found" which is expected, other errors are real issues
+                console.warn(`Error checking user record (attempt ${userCheckRetries + 1}/${maxUserCheckRetries}):`, checkError);
+              }
+              
+              userCheckRetries++;
+              if (userCheckRetries < maxUserCheckRetries) {
+                // Wait before checking again
+                await new Promise(resolve => setTimeout(resolve, 500));
+              }
+            }
+            
+            if (!userRecordExists) {
+              console.error('User record not found after all checks. Legal acceptances will be saved later.');
+              // Don't try to save legal acceptances if user record doesn't exist
+              // The user can accept documents later when they log in
+              // Continue with signup flow - don't block it
+            } else {
+              // Now that user record exists, save legal acceptances with retry logic
             let saved = false;
             let retries = 0;
             const maxRetries = 3;
@@ -220,8 +277,32 @@ export default function AuthScreen() {
                     await new Promise(resolve => setTimeout(resolve, 1000));
                   }
                 }
-              } catch (error) {
-                console.error(`Failed to save legal acceptances (attempt ${retries + 1}/${maxRetries}):`, error);
+              } catch (error: any) {
+                const errorMessage = error?.message || JSON.stringify(error);
+                const errorCode = error?.code;
+                console.error(`Failed to save legal acceptances (attempt ${retries + 1}/${maxRetries}):`, {
+                  message: errorMessage,
+                  code: errorCode,
+                  error: error
+                });
+                
+                // If it's a foreign key error, the user record might not exist yet
+                if (errorCode === '23503') {
+                  console.error('Foreign key constraint violation - user record may not exist');
+                  // Wait longer and check user record again
+                  await new Promise(resolve => setTimeout(resolve, 1000));
+                  const { data: userRecord } = await supabase
+                    .from('users')
+                    .select('id')
+                    .eq('id', user.id)
+                    .maybeSingle();
+                  
+                  if (!userRecord) {
+                    console.error('User record still does not exist. Cannot save legal acceptances.');
+                    break; // Stop retrying
+                  }
+                }
+                
                 retries++;
                 if (retries < maxRetries) {
                   await new Promise(resolve => setTimeout(resolve, 1000));
@@ -233,8 +314,10 @@ export default function AuthScreen() {
               console.error('Failed to save legal acceptances after all retries');
               // Still continue with signup - user can accept documents later
             }
-          } catch (error) {
-            console.error('Failed to save legal acceptances:', error);
+            }
+          } catch (error: any) {
+            const errorMessage = error?.message || JSON.stringify(error);
+            console.error('Failed to save legal acceptances:', errorMessage, error);
             // Don't block signup, but log the error
           }
         }

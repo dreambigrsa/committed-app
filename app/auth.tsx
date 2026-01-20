@@ -185,10 +185,50 @@ export default function AuthScreen() {
         return true; // Return true if nothing to save
       }
 
-      const { error, data } = await supabase
+      // During signup, try using the database function first (bypasses RLS)
+      // If that fails, fall back to direct insert
+      let error: any = null;
+      let data: any[] | null = null;
+
+      if (isSignupContext) {
+        try {
+          // Use the database function which bypasses RLS
+          const functionResults = await Promise.all(
+            acceptancesToSave.map(acceptance =>
+              supabase.rpc('insert_user_legal_acceptance', {
+                p_user_id: acceptance.user_id,
+                p_document_id: acceptance.document_id,
+                p_document_version: acceptance.document_version,
+                p_context: acceptance.context || 'signup'
+              })
+            )
+          );
+
+          // Check if all succeeded
+          const allSucceeded = functionResults.every(result => !result.error);
+          if (allSucceeded) {
+            console.log(`Successfully saved ${acceptancesToSave.length} legal acceptances via function`);
+            return true;
+          } else {
+            // If function call failed, log and fall through to direct insert
+            console.warn('Function call failed, trying direct insert...');
+            const firstError = functionResults.find(r => r.error)?.error;
+            if (firstError) console.warn('Function error:', firstError);
+          }
+        } catch (functionError) {
+          console.warn('Error calling insert function, trying direct insert...', functionError);
+          // Fall through to direct insert
+        }
+      }
+
+      // Direct insert (for non-signup or if function failed)
+      const insertResult = await supabase
         .from('user_legal_acceptances')
         .insert(acceptancesToSave)
         .select();
+      
+      error = insertResult.error;
+      data = insertResult.data;
 
       if (error) {
         const errorDetails = {
@@ -202,8 +242,8 @@ export default function AuthScreen() {
         // If it's an RLS error, provide helpful message
         if (error.code === '42501') {
           console.error('RLS Policy Error: The database RLS policies for user_legal_acceptances are missing or incorrect.');
-          console.error('⚠️ URGENT: Run migrations/FIX-RLS-ULTIMATE.sql in Supabase SQL Editor');
-          console.error('This version checks public.users table instead of auth.users (avoids RLS issues).');
+          console.error('⚠️ URGENT: Run migrations/FIX-RLS-WITH-FUNCTION.sql in Supabase SQL Editor');
+          console.error('This version creates a database function that bypasses RLS during signup.');
           console.error('This is a database configuration issue that must be fixed in Supabase dashboard.');
         }
         
@@ -323,8 +363,8 @@ export default function AuthScreen() {
                     '⚠️ Database Configuration Required\n\n' +
                     'Your account was created, but we need to fix a database setting.\n\n' +
                     'Please run this SQL in Supabase SQL Editor:\n' +
-                    'File: migrations/FIX-RLS-ULTIMATE.sql\n\n' +
-                    'This version checks public.users table (simple and reliable).\n' +
+                    'File: migrations/FIX-RLS-WITH-FUNCTION.sql\n\n' +
+                    'This creates a function that bypasses RLS during signup.\n' +
                     'This is a one-time setup that must be done in Supabase dashboard.'
                   );
                 }

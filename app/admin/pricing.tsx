@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Stack } from 'expo-router';
-import { DollarSign, Plus, Shield, Infinity, TrendingUp, Edit2, Save } from 'lucide-react-native';
+import { DollarSign, Plus, Shield, Infinity, TrendingUp, Edit2, Save, Trash2, X } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
@@ -27,6 +27,18 @@ export default function AdminPricingScreen() {
   const [limits, setLimits] = useState<Record<string, any>>({});
   const [pricingConfig, setPricingConfig] = useState<any>({});
   const [editingPlan, setEditingPlan] = useState<string | null>(null);
+  const [showAddFeature, setShowAddFeature] = useState<string | null>(null);
+
+  // Available features that can be added to plans
+  const availableFeatures = [
+    { name: 'daily_likes', label: 'Daily Likes', defaultPeriod: 'daily' },
+    { name: 'daily_super_likes', label: 'Daily Super Likes', defaultPeriod: 'daily' },
+    { name: 'rewinds', label: 'Rewinds', defaultPeriod: 'daily' },
+    { name: 'boosts', label: 'Boosts', defaultPeriod: 'daily' },
+    { name: 'conversation_starter', label: 'Conversation Starter', defaultPeriod: 'lifetime' },
+    { name: 'pre_match_messages', label: 'Pre-Match Messages', defaultPeriod: 'lifetime' },
+    { name: 'messages_per_conversation', label: 'Messages Per Conversation', defaultPeriod: 'lifetime' },
+  ];
 
   useEffect(() => {
     loadData();
@@ -37,7 +49,7 @@ export default function AdminPricingScreen() {
       setLoading(true);
       const [plansRes, limitsRes, configRes] = await Promise.all([
         supabase.from('subscription_plans').select('*').order('display_order'),
-        supabase.from('dating_feature_limits').select('*, subscription_plans!inner(name)'),
+        supabase.from('dating_feature_limits').select('*, subscription_plans!inner(id, name)'),
         supabase.from('pricing_configuration').select('*'),
       ]);
 
@@ -47,10 +59,10 @@ export default function AdminPricingScreen() {
 
       setPlans(plansRes.data || []);
       
-      // Organize limits by plan
+      // Organize limits by plan name (for display) and also by plan_id
       const limitsByPlan: Record<string, any[]> = {};
       (limitsRes.data || []).forEach((limit: any) => {
-        const planName = limit.subscription_plans.name;
+        const planName = limit.subscription_plans?.name || limit.plan_id;
         if (!limitsByPlan[planName]) limitsByPlan[planName] = [];
         limitsByPlan[planName].push(limit);
       });
@@ -160,6 +172,93 @@ export default function AdminPricingScreen() {
     } catch (error: any) {
       Alert.alert('Error', error.message);
     }
+  };
+
+  const deletePlan = async (planId: string, planName: string) => {
+    // Prevent deletion of default plans
+    if (planName === 'free' || planName === 'premium') {
+      Alert.alert('Error', 'Cannot delete default plans (Free or Premium)');
+      return;
+    }
+
+    Alert.alert(
+      'Delete Plan',
+      `Are you sure you want to delete this plan? This will also delete all associated feature limits.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('subscription_plans')
+                .delete()
+                .eq('id', planId);
+
+              if (error) throw error;
+              loadData();
+              Alert.alert('Success', 'Plan deleted successfully');
+            } catch (error: any) {
+              Alert.alert('Error', error.message);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const addFeature = async (planId: string, featureName: string, limitPeriod: string = 'daily') => {
+    try {
+      const { error } = await supabase
+        .from('dating_feature_limits')
+        .insert({
+          plan_id: planId,
+          feature_name: featureName,
+          limit_value: 0, // Default to 0, admin can change it
+          limit_period: limitPeriod,
+        });
+
+      if (error) throw error;
+      loadData();
+      setShowAddFeature(null);
+      Alert.alert('Success', 'Feature added successfully');
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    }
+  };
+
+  const removeFeature = async (limitId: string, featureName: string) => {
+    Alert.alert(
+      'Remove Feature',
+      `Are you sure you want to remove "${featureName.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}" from this plan?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('dating_feature_limits')
+                .delete()
+                .eq('id', limitId);
+
+              if (error) throw error;
+              loadData();
+            } catch (error: any) {
+              Alert.alert('Error', error.message);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const getAvailableFeaturesForPlan = (plan: any) => {
+    const planLimits = limits[plan.name] || [];
+    const existingFeatureNames = planLimits.map((l: any) => l.feature_name);
+    return availableFeatures.filter(f => !existingFeatureNames.includes(f.name));
   };
 
   if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'super_admin')) {
@@ -293,12 +392,22 @@ export default function AdminPricingScreen() {
                         </View>
                       )}
                     </View>
-                    <TouchableOpacity
-                      style={styles.editToggleButton}
-                      onPress={() => setEditingPlan(isEditing ? null : plan.id)}
-                    >
-                      <Edit2 size={18} color={isEditing ? colors.primary : colors.text.secondary} />
-                    </TouchableOpacity>
+                    <View style={styles.planHeaderActions}>
+                      <TouchableOpacity
+                        style={styles.editToggleButton}
+                        onPress={() => setEditingPlan(isEditing ? null : plan.id)}
+                      >
+                        <Edit2 size={18} color={isEditing ? colors.primary : colors.text.secondary} />
+                      </TouchableOpacity>
+                      {!isFreePlan && !isPremiumPlan && (
+                        <TouchableOpacity
+                          style={styles.deleteButton}
+                          onPress={() => deletePlan(plan.id, plan.name)}
+                        >
+                          <Trash2 size={18} color={colors.danger} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   </View>
 
                   {/* Pricing Row */}
@@ -334,9 +443,41 @@ export default function AdminPricingScreen() {
                   </View>
 
                   {/* Feature Limits */}
-                  {planLimits.length > 0 && (
-                    <View style={styles.limitsSection}>
+                  <View style={styles.limitsSection}>
+                    <View style={styles.limitsHeader}>
                       <Text style={styles.limitsTitle}>Feature Limits</Text>
+                      {isEditing && (
+                        <TouchableOpacity
+                          style={styles.addFeatureButton}
+                          onPress={() => setShowAddFeature(showAddFeature === plan.id ? null : plan.id)}
+                        >
+                          <Plus size={16} color={colors.primary} />
+                          <Text style={styles.addFeatureButtonText}>Add Feature</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+
+                    {/* Add Feature Dropdown */}
+                    {isEditing && showAddFeature === plan.id && (
+                      <View style={styles.addFeatureDropdown}>
+                        {getAvailableFeaturesForPlan(plan).length > 0 ? (
+                          getAvailableFeaturesForPlan(plan).map((feature) => (
+                            <TouchableOpacity
+                              key={feature.name}
+                              style={styles.featureOption}
+                              onPress={() => addFeature(plan.id, feature.name, feature.defaultPeriod)}
+                            >
+                              <Text style={styles.featureOptionText}>{feature.label}</Text>
+                              <Text style={styles.featureOptionPeriod}>{feature.defaultPeriod}</Text>
+                            </TouchableOpacity>
+                          ))
+                        ) : (
+                          <Text style={styles.noFeaturesText}>All features have been added</Text>
+                        )}
+                      </View>
+                    )}
+
+                    {planLimits.length > 0 ? (
                       <View style={styles.limitsGrid}>
                         {planLimits.map((limit: any) => (
                           <View key={limit.id} style={styles.limitCard}>
@@ -344,7 +485,17 @@ export default function AdminPricingScreen() {
                               <Text style={styles.limitFeatureName}>
                                 {limit.feature_name.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
                               </Text>
-                              <Text style={styles.limitPeriod}>{limit.limit_period}</Text>
+                              <View style={styles.limitHeaderRight}>
+                                <Text style={styles.limitPeriod}>{limit.limit_period}</Text>
+                                {isEditing && (
+                                  <TouchableOpacity
+                                    style={styles.removeFeatureButton}
+                                    onPress={() => removeFeature(limit.id, limit.feature_name)}
+                                  >
+                                    <X size={14} color={colors.danger} />
+                                  </TouchableOpacity>
+                                )}
+                              </View>
                             </View>
                             <View style={styles.limitValueContainer}>
                               {limit.limit_value === null ? (
@@ -374,8 +525,15 @@ export default function AdminPricingScreen() {
                           </View>
                         ))}
                       </View>
-                    </View>
-                  )}
+                    ) : (
+                      <View style={styles.noLimitsContainer}>
+                        <Text style={styles.noLimitsText}>No features added yet</Text>
+                        {isEditing && (
+                          <Text style={styles.noLimitsSubtext}>Click "Add Feature" to add features to this plan</Text>
+                        )}
+                      </View>
+                    )}
+                  </View>
                 </View>
               );
             })}
@@ -556,7 +714,15 @@ const createStyles = (colors: any) =>
       minHeight: 60,
       textAlignVertical: 'top',
     },
+    planHeaderActions: {
+      flexDirection: 'row',
+      gap: 8,
+      alignItems: 'center',
+    },
     editToggleButton: {
+      padding: 8,
+    },
+    deleteButton: {
       padding: 8,
     },
     pricingRow: {
@@ -602,11 +768,90 @@ const createStyles = (colors: any) =>
       borderTopWidth: 1,
       borderTopColor: colors.border.light,
     },
+    limitsHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 16,
+    },
     limitsTitle: {
       fontSize: 18,
       fontWeight: '700',
       color: colors.text.primary,
+    },
+    addFeatureButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      backgroundColor: colors.primary + '15',
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.primary + '30',
+    },
+    addFeatureButtonText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.primary,
+    },
+    addFeatureDropdown: {
+      backgroundColor: colors.background.primary,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border.light,
       marginBottom: 16,
+      maxHeight: 200,
+      overflow: 'hidden',
+    },
+    featureOption: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: 14,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border.light,
+    },
+    featureOptionText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.text.primary,
+      flex: 1,
+    },
+    featureOptionPeriod: {
+      fontSize: 12,
+      fontWeight: '500',
+      color: colors.text.secondary,
+      backgroundColor: colors.background.secondary,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+    },
+    noFeaturesText: {
+      fontSize: 14,
+      color: colors.text.secondary,
+      textAlign: 'center',
+      padding: 16,
+    },
+    noLimitsContainer: {
+      padding: 24,
+      alignItems: 'center',
+      backgroundColor: colors.background.primary,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border.light,
+      borderStyle: 'dashed',
+    },
+    noLimitsText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.text.secondary,
+      marginBottom: 4,
+    },
+    noLimitsSubtext: {
+      fontSize: 13,
+      color: colors.text.tertiary,
+      textAlign: 'center',
     },
     limitsGrid: {
       gap: 12,
@@ -623,6 +868,16 @@ const createStyles = (colors: any) =>
       justifyContent: 'space-between',
       alignItems: 'center',
       marginBottom: 12,
+    },
+    limitHeaderRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    removeFeatureButton: {
+      padding: 4,
+      backgroundColor: colors.danger + '15',
+      borderRadius: 6,
     },
     limitFeatureName: {
       fontSize: 14,

@@ -177,8 +177,9 @@ export async function saveUserAcceptance(
       if (error) {
         console.error('Error inserting acceptance:', error);
         if (error.code === '42501') {
-          console.error('RLS Policy Error: The user_legal_acceptances table is missing INSERT policy.');
-          console.error('Please run migrations/fix-legal-acceptances-rls-quick.sql in Supabase SQL Editor');
+          console.error('⚠️ RLS Policy Error: The user_legal_acceptances table is missing INSERT policy.');
+          console.error('URGENT: Run migrations/FIX-RLS-NOW.sql in Supabase SQL Editor');
+          console.error('This is a database configuration issue - the SQL must be run in Supabase dashboard.');
         }
         throw error;
       }

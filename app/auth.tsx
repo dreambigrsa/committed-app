@@ -188,7 +188,8 @@ export default function AuthScreen() {
         // If it's an RLS error, provide helpful message
         if (error.code === '42501') {
           console.error('RLS Policy Error: The database RLS policies for user_legal_acceptances are missing or incorrect.');
-          console.error('Please run the migration: migrations/fix-legal-acceptances-rls-quick.sql in Supabase SQL Editor');
+          console.error('⚠️ URGENT: Run migrations/FIX-RLS-NOW.sql in Supabase SQL Editor');
+          console.error('This is a database configuration issue that must be fixed in Supabase dashboard.');
         }
         
         throw error;
@@ -300,6 +301,17 @@ export default function AuthScreen() {
               } catch (error: any) {
                 const errorMessage = error?.message || JSON.stringify(error);
                 console.warn('Failed to save legal acceptances (user can accept later):', errorMessage);
+                
+                // If it's an RLS error, show a helpful alert
+                if (error?.code === '42501') {
+                  alert(
+                    '⚠️ Database Configuration Required\n\n' +
+                    'Your account was created, but we need to fix a database setting.\n\n' +
+                    'Please contact support or run this SQL in Supabase:\n' +
+                    'File: migrations/FIX-RLS-NOW.sql\n\n' +
+                    'This is a one-time setup that must be done in Supabase dashboard.'
+                  );
+                }
                 // Don't block signup
               }
             } else {

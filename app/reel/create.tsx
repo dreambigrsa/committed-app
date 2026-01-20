@@ -32,74 +32,97 @@ export default function CreateReelScreen() {
   const canPost = useMemo(() => !!videoUri && !isUploading, [videoUri, isUploading]);
 
   const pickVideo = async () => {
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
-    if (!permissionResult.granted) {
-      Alert.alert('Permission Required', 'You need to allow access to your videos to upload reels.');
-      return;
-    }
+      if (!permissionResult.granted) {
+        Alert.alert('Permission Required', 'You need to allow access to your videos to upload reels.');
+        return;
+      }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-      allowsEditing: true,
-      quality: 0.8,
-      videoMaxDuration: 60,
-    });
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        allowsEditing: true,
+        quality: 0.8,
+        videoMaxDuration: 60,
+      });
 
-    if (!result.canceled && result.assets[0]) {
-      setVideoUri(result.assets[0].uri);
+      if (!result.canceled && result.assets && result.assets[0] && result.assets[0].uri) {
+        setVideoUri(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Error picking video:', error);
+      Alert.alert('Error', 'Failed to pick video. Please try again.');
     }
   };
 
   const recordVideo = async () => {
-    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+    try {
+      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
 
-    if (!permissionResult.granted) {
-      Alert.alert('Permission Required', 'Camera permission is required to record videos.');
-      return;
-    }
+      if (!permissionResult.granted) {
+        Alert.alert('Permission Required', 'Camera permission is required to record videos.');
+        return;
+      }
 
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-      allowsEditing: true,
-      quality: 0.8,
-      videoMaxDuration: 60,
-    });
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        allowsEditing: true,
+        quality: 0.8,
+        videoMaxDuration: 60,
+      });
 
-    if (!result.canceled && result.assets[0]) {
-      setVideoUri(result.assets[0].uri);
+      if (!result.canceled && result.assets && result.assets[0] && result.assets[0].uri) {
+        setVideoUri(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Error recording video:', error);
+      Alert.alert('Error', 'Failed to record video. Please try again.');
     }
   };
 
   const uploadVideo = async (uri: string): Promise<string> => {
-    const fileName = `reel_${Date.now()}_${Math.random().toString(36).substring(7)}.mp4`;
-    
-    // Convert URI to Uint8Array using legacy API (no deprecation warnings)
-    const base64 = await FileSystem.readAsStringAsync(uri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    
-    // Convert base64 to Uint8Array
-    const binaryString = atob(base64);
-    const uint8Array = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      uint8Array[i] = binaryString.charCodeAt(i);
-    }
-    
-    const { error } = await supabase.storage
-      .from('media')
-      .upload(fileName, uint8Array, {
-        contentType: 'video/mp4',
-        upsert: false,
+    try {
+      if (!uri) {
+        throw new Error('Video URI is required');
+      }
+
+      const fileName = `reel_${Date.now()}_${Math.random().toString(36).substring(7)}.mp4`;
+      
+      // Convert URI to Uint8Array using legacy API (no deprecation warnings)
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
       });
+      
+      // Convert base64 to Uint8Array
+      const binaryString = atob(base64);
+      const uint8Array = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        uint8Array[i] = binaryString.charCodeAt(i);
+      }
+      
+      const { error } = await supabase.storage
+        .from('media')
+        .upload(fileName, uint8Array, {
+          contentType: 'video/mp4',
+          upsert: false,
+        });
 
-    if (error) throw error;
+      if (error) throw error;
 
-    const { data: { publicUrl } } = supabase.storage
-      .from('media')
-      .getPublicUrl(fileName);
+      const { data: { publicUrl } } = supabase.storage
+        .from('media')
+        .getPublicUrl(fileName);
 
-    return publicUrl;
+      if (!publicUrl) {
+        throw new Error('Failed to get public URL for uploaded video');
+      }
+
+      return publicUrl;
+    } catch (error) {
+      console.error('Error uploading video:', error);
+      throw error; // Re-throw to be handled by handlePost
+    }
   };
 
   const handlePost = async () => {

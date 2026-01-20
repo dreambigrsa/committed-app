@@ -29,15 +29,31 @@ DROP POLICY IF EXISTS "Allow insert during signup" ON public.user_legal_acceptan
 DROP FUNCTION IF EXISTS public.user_exists_in_auth(UUID);
 DROP FUNCTION IF EXISTS public.insert_user_legal_acceptance(UUID, UUID, TEXT, TEXT);
 
--- Step 4: Create unique constraint if it doesn't exist (for upsert logic)
+-- Step 4: Clean up duplicates and create unique constraint (for upsert logic)
 DO $$
 BEGIN
+  -- First, remove duplicate records, keeping only the most recent one for each (user_id, document_id) pair
+  DELETE FROM public.user_legal_acceptances
+  WHERE id IN (
+    SELECT id
+    FROM (
+      SELECT id,
+             ROW_NUMBER() OVER (PARTITION BY user_id, document_id ORDER BY created_at DESC, accepted_at DESC NULLS LAST) as rn
+      FROM public.user_legal_acceptances
+    ) t
+    WHERE t.rn > 1
+  );
+
+  -- Drop existing index/constraint if it exists
+  DROP INDEX IF EXISTS user_legal_acceptances_user_id_document_id_key;
+  
+  -- Create unique index (now safe since duplicates are removed)
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint 
-    WHERE conname = 'user_legal_acceptances_user_id_document_id_key'
-    AND conrelid = 'public.user_legal_acceptances'::regclass
+    SELECT 1 FROM pg_indexes 
+    WHERE indexname = 'user_legal_acceptances_user_id_document_id_key'
+    AND tablename = 'user_legal_acceptances'
   ) THEN
-    CREATE UNIQUE INDEX IF NOT EXISTS user_legal_acceptances_user_id_document_id_key 
+    CREATE UNIQUE INDEX user_legal_acceptances_user_id_document_id_key 
     ON public.user_legal_acceptances(user_id, document_id);
   END IF;
 END $$;

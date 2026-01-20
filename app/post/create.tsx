@@ -36,26 +36,35 @@ export default function CreatePostScreen() {
   const canPost = useMemo(() => !!content.trim() || media.length > 0, [content, media.length]);
 
   const pickMedia = async () => {
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
-    if (!permissionResult.granted) {
-      Alert.alert('Permission Required', 'You need to allow access to your photos and videos.');
-      return;
-    }
+      if (!permissionResult.granted) {
+        Alert.alert('Permission Required', 'You need to allow access to your photos and videos.');
+        return;
+      }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
-      allowsMultipleSelection: true,
-      quality: 0.8,
-      videoMaxDuration: 60,
-    });
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        allowsMultipleSelection: true,
+        quality: 0.8,
+        videoMaxDuration: 60,
+      });
 
-    if (!result.canceled && result.assets) {
-      const picked: PickedMedia[] = result.assets.map((asset) => ({
-        uri: asset.uri,
-        kind: asset.type === 'video' ? 'video' : 'image',
-      }));
-      setMedia((prev) => [...prev, ...picked]);
+      if (!result.canceled && result.assets && Array.isArray(result.assets)) {
+        const picked: PickedMedia[] = result.assets
+          .filter((asset) => asset && asset.uri) // Filter out invalid assets
+          .map((asset) => ({
+            uri: asset.uri,
+            kind: asset.type === 'video' ? 'video' : 'image',
+          }));
+        if (picked.length > 0) {
+          setMedia((prev) => [...prev, ...picked]);
+        }
+      }
+    } catch (error) {
+      console.error('Error picking media:', error);
+      Alert.alert('Error', 'Failed to pick media. Please try again.');
     }
   };
 
@@ -68,6 +77,11 @@ export default function CreatePostScreen() {
     
     for (const item of items) {
       try {
+        if (!item || !item.uri) {
+          console.warn('Skipping invalid media item:', item);
+          continue;
+        }
+
         const ext = item.kind === 'video' ? 'mp4' : 'jpg';
         const contentType = item.kind === 'video' ? 'video/mp4' : 'image/jpeg';
         const fileName = `post_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
@@ -84,7 +98,7 @@ export default function CreatePostScreen() {
           uint8Array[i] = binaryString.charCodeAt(i);
         }
         
-        const { error } = await supabase.storage
+        const { error, data: uploadData } = await supabase.storage
           .from('media')
           .upload(fileName, uint8Array, {
             contentType,
@@ -95,12 +109,17 @@ export default function CreatePostScreen() {
 
         const { data: { publicUrl } } = supabase.storage
           .from('media')
-          .getPublicUrl(fileName);
+          .getPublicUrl(uploadData?.path || fileName);
 
-        uploadedUrls.push(publicUrl);
+        if (publicUrl) {
+          uploadedUrls.push(publicUrl);
+        } else {
+          console.warn('Failed to get public URL for uploaded media');
+        }
       } catch (error) {
-        console.error('Failed to upload media:', error);
-        throw error;
+        console.error('Failed to upload media item:', error);
+        // Continue with other items instead of failing completely
+        // This allows partial success
       }
     }
     
@@ -235,7 +254,14 @@ export default function CreatePostScreen() {
 
               {media.map((m, index) => (
                 <View key={`${m.uri}_${index}`} style={styles.mediaTile}>
-                  <Image source={{ uri: m.uri }} style={styles.mediaTileImage} contentFit="cover" />
+                  <Image 
+                    source={{ uri: m.uri }} 
+                    style={styles.mediaTileImage} 
+                    contentFit="cover"
+                    onError={(error) => {
+                      console.error('Error loading media preview:', error);
+                    }}
+                  />
                   <View style={styles.mediaBadge}>
                     {m.kind === 'video' ? (
                       <VideoIcon size={14} color={colors.text.white} />

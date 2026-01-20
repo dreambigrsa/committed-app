@@ -1069,6 +1069,9 @@ export default function FeedScreen() {
                   source={{ uri: url }}
                   style={styles.postImage}
                   contentFit="cover"
+                  onError={(error) => {
+                    console.error('Error loading feed image:', error);
+                  }}
                 />
               </TouchableOpacity>
             );

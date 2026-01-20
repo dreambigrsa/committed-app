@@ -364,8 +364,15 @@ export default function UserProfileScreen() {
               onPress={() => handlePostPress(item)}
               activeOpacity={0.8}
             >
-              {item.mediaUrls[0] ? (
-                <Image source={{ uri: item.mediaUrls[0] }} style={styles.gridImage} contentFit="cover" />
+              {item.mediaUrls && item.mediaUrls[0] ? (
+                <Image 
+                  source={{ uri: item.mediaUrls[0] }} 
+                  style={styles.gridImage} 
+                  contentFit="cover"
+                  onError={(error) => {
+                    console.error('Error loading post image:', error);
+                  }}
+                />
               ) : (
                 <View style={[styles.gridImage, styles.gridPlaceholder]}>
                   <Text style={styles.gridPlaceholderText} numberOfLines={3}>{item.content}</Text>
@@ -398,7 +405,14 @@ export default function UserProfileScreen() {
               activeOpacity={0.8}
             >
               {item.thumbnailUrl ? (
-                <Image source={{ uri: item.thumbnailUrl }} style={styles.gridImage} contentFit="cover" />
+                <Image 
+                  source={{ uri: item.thumbnailUrl }} 
+                  style={styles.gridImage} 
+                  contentFit="cover"
+                  onError={(error) => {
+                    console.error('Error loading reel thumbnail:', error);
+                  }}
+                />
               ) : (
                 <View style={[styles.gridImage, styles.gridPlaceholder]}>
                   <Film size={32} color={colors.text.white} />

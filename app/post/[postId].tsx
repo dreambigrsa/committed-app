@@ -74,7 +74,15 @@ export default function PostDeepLinkScreen() {
           {Array.isArray(post?.media_urls) && post.media_urls.length > 0 && (
             <View style={styles.mediaGrid}>
               {post.media_urls.slice(0, 6).map((url: string, idx: number) => (
-                <Image key={`${url}-${idx}`} source={{ uri: url }} style={styles.media} contentFit="cover" />
+                <Image 
+                  key={`${url}-${idx}`} 
+                  source={{ uri: url }} 
+                  style={styles.media} 
+                  contentFit="cover"
+                  onError={(error) => {
+                    console.error('Error loading post media:', error);
+                  }}
+                />
               ))}
             </View>
           )}

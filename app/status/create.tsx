@@ -315,49 +315,56 @@ export default function CreateStatusScreen() {
   };
 
   const loadMediaAssets = async () => {
-    const { status } = await MediaLibrary.requestPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'We need access to your photos to create stories.');
-      return;
-    }
+    try {
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'We need access to your photos to create stories.');
+        return;
+      }
 
-    const options: MediaLibrary.AssetsOptions = {
-      mediaType: [MediaLibrary.MediaType.photo, MediaLibrary.MediaType.video],
-      sortBy: MediaLibrary.SortBy.creationTime,
-      first: 100,
-    };
+      const options: MediaLibrary.AssetsOptions = {
+        mediaType: [MediaLibrary.MediaType.photo, MediaLibrary.MediaType.video],
+        sortBy: MediaLibrary.SortBy.creationTime,
+        first: 100,
+      };
 
-    if (selectedAlbumId) {
-      options.album = selectedAlbumId;
-    }
+      if (selectedAlbumId) {
+        options.album = selectedAlbumId;
+      }
 
-    const assets = await MediaLibrary.getAssetsAsync(options);
-    setMediaAssets(assets.assets);
-    
-    // Load thumbnails for videos (async, don't block)
-    const videoAssets = assets.assets.filter(a => a.mediaType === 'video');
-    if (videoAssets.length > 0) {
-      const thumbnailPromises = videoAssets.map(async (asset) => {
-        try {
-          const info = await MediaLibrary.getAssetInfoAsync(asset);
-          // Use thumbnail URI if available, otherwise fall back to asset URI
-          const thumbnailUri = (info as any).localUri || (info as any).uri || asset.uri;
-          return { id: asset.id, uri: thumbnailUri };
-        } catch (error) {
-          console.error('Error loading thumbnail for asset:', asset.id, error);
-          return { id: asset.id, uri: asset.uri };
-        }
-      });
+      const assets = await MediaLibrary.getAssetsAsync(options);
+      setMediaAssets(assets.assets || []);
       
-      Promise.all(thumbnailPromises).then((thumbnails) => {
-        const thumbnailMap: Record<string, string> = {};
-        thumbnails.forEach(({ id, uri }) => {
-          thumbnailMap[id] = uri;
+      // Load thumbnails for videos (async, don't block)
+      const videoAssets = (assets.assets || []).filter(a => a.mediaType === 'video');
+      if (videoAssets.length > 0) {
+        const thumbnailPromises = videoAssets.map(async (asset) => {
+          try {
+            const info = await MediaLibrary.getAssetInfoAsync(asset);
+            // Use thumbnail URI if available, otherwise fall back to asset URI
+            const thumbnailUri = (info as any)?.localUri || (info as any)?.uri || asset.uri;
+            return { id: asset.id, uri: thumbnailUri };
+          } catch (error) {
+            console.error('Error loading thumbnail for asset:', asset.id, error);
+            return { id: asset.id, uri: asset.uri };
+          }
         });
-        setVideoThumbnails((prev: Record<string, string>) => ({ ...prev, ...thumbnailMap }));
-      }).catch((error) => {
-        console.error('Error loading video thumbnails:', error);
-      });
+        
+        Promise.all(thumbnailPromises).then((thumbnails) => {
+          const thumbnailMap: Record<string, string> = {};
+          thumbnails.forEach(({ id, uri }) => {
+            thumbnailMap[id] = uri;
+          });
+          setVideoThumbnails((prev: Record<string, string>) => ({ ...prev, ...thumbnailMap }));
+        }).catch((error) => {
+          console.error('Error loading video thumbnails:', error);
+        });
+      }
+    } catch (error) {
+      console.error('Error loading media assets:', error);
+      Alert.alert('Error', 'Failed to load photos. Please try again.');
+      // Set empty array to prevent crashes
+      setMediaAssets([]);
     }
   };
 
@@ -384,75 +391,86 @@ export default function CreateStatusScreen() {
   };
 
   const handleSelectMedia = async (asset: MediaLibrary.Asset) => {
-    // For videos, check duration and automatically open trimmer if needed
-    if (asset.mediaType === 'video') {
-      const duration = asset.duration || 0;
-      
-      // Allow small margin for floating point precision (15.1 seconds)
-      // If video is longer than 15.1 seconds, automatically open trimmer
-      if (duration > 15.1) {
-        // Show a brief message, then automatically open the video trimmer
-        // Note: ImagePicker doesn't support pre-selecting videos, so user will need to select it again
-        Alert.alert(
-          'Video Too Long',
-          `This video is ${Math.round(duration)} seconds. Story videos must be 15 seconds or less. Please select the same video again to trim it.`,
-          [
-            {
-              text: 'Cancel',
-              style: 'cancel',
-            },
-            {
-              text: 'Trim Video',
-              onPress: async () => {
-                try {
-                  const result = await ImagePicker.launchImageLibraryAsync({
-                    mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-                    allowsEditing: true,
-                    videoMaxDuration: 15,
-                    quality: 0.8,
-                    allowsMultipleSelection: false,
-                  });
-
-                  if (!result.canceled && result.assets[0]) {
-                    const trimmedAsset = result.assets[0];
-                    setSelectedMedia({
-                      ...asset,
-                      uri: trimmedAsset.uri,
-                      duration: trimmedAsset.duration || 15,
-                    } as MediaLibrary.Asset);
-                    setMediaUri(trimmedAsset.uri);
-                    setContentType('video');
-                    setScreenMode('preview');
-                    setOverlayPos({ x: 0.5, y: 0.35 });
-                    // Reset video loading/error states
-                    setVideoLoading(false);
-                    setVideoError(null);
-                  }
-                  // If user cancels, just return (don't proceed with original video)
-                } catch (error) {
-                  console.error('Error trimming video:', error);
-                  Alert.alert('Error', 'Failed to trim video. Please try again.');
-                }
-              },
-            },
-          ]
-        );
+    try {
+      // Validate asset
+      if (!asset || !asset.uri) {
+        Alert.alert('Error', 'Invalid media selected. Please try again.');
         return;
       }
-      
-      // If duration is 0 or undefined, try to proceed (might be metadata issue)
-      // If video is 15 seconds or less, proceed normally
-    }
 
-    setSelectedMedia(asset);
-    setMediaUri(asset.uri);
-    setContentType(asset.mediaType === 'video' ? 'video' : 'image');
-    setScreenMode('preview');
-    // Reset overlay position for a new media item
-    setOverlayPos({ x: 0.5, y: 0.35 });
-    // Reset video loading/error states
-    setVideoLoading(false);
-    setVideoError(null);
+      // For videos, check duration and automatically open trimmer if needed
+      if (asset.mediaType === 'video') {
+        const duration = asset.duration || 0;
+        
+        // Allow small margin for floating point precision (15.1 seconds)
+        // If video is longer than 15.1 seconds, automatically open trimmer
+        if (duration > 15.1) {
+          // Show a brief message, then automatically open the video trimmer
+          // Note: ImagePicker doesn't support pre-selecting videos, so user will need to select it again
+          Alert.alert(
+            'Video Too Long',
+            `This video is ${Math.round(duration)} seconds. Story videos must be 15 seconds or less. Please select the same video again to trim it.`,
+            [
+              {
+                text: 'Cancel',
+                style: 'cancel',
+              },
+              {
+                text: 'Trim Video',
+                onPress: async () => {
+                  try {
+                    const result = await ImagePicker.launchImageLibraryAsync({
+                      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+                      allowsEditing: true,
+                      videoMaxDuration: 15,
+                      quality: 0.8,
+                      allowsMultipleSelection: false,
+                    });
+
+                    if (!result.canceled && result.assets[0]) {
+                      const trimmedAsset = result.assets[0];
+                      setSelectedMedia({
+                        ...asset,
+                        uri: trimmedAsset.uri,
+                        duration: trimmedAsset.duration || 15,
+                      } as MediaLibrary.Asset);
+                      setMediaUri(trimmedAsset.uri);
+                      setContentType('video');
+                      setScreenMode('preview');
+                      setOverlayPos({ x: 0.5, y: 0.35 });
+                      // Reset video loading/error states
+                      setVideoLoading(false);
+                      setVideoError(null);
+                    }
+                    // If user cancels, just return (don't proceed with original video)
+                  } catch (error) {
+                    console.error('Error trimming video:', error);
+                    Alert.alert('Error', 'Failed to trim video. Please try again.');
+                  }
+                },
+              },
+            ]
+          );
+          return;
+        }
+        
+        // If duration is 0 or undefined, try to proceed (might be metadata issue)
+        // If video is 15 seconds or less, proceed normally
+      }
+
+      setSelectedMedia(asset);
+      setMediaUri(asset.uri);
+      setContentType(asset.mediaType === 'video' ? 'video' : 'image');
+      setScreenMode('preview');
+      // Reset overlay position for a new media item
+      setOverlayPos({ x: 0.5, y: 0.35 });
+      // Reset video loading/error states
+      setVideoLoading(false);
+      setVideoError(null);
+    } catch (error) {
+      console.error('Error selecting media:', error);
+      Alert.alert('Error', 'Failed to select media. Please try again.');
+    }
   };
 
   const handleTrimVideo = async () => {

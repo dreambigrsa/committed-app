@@ -3662,6 +3662,32 @@ export const [AppContext, useApp] = createContextHook(() => {
     }
   }, [currentUser]);
 
+  const recordAdEngagement = useCallback(async (
+    adId: string, 
+    engagementType: 'like' | 'comment' | 'share',
+    relatedPostId?: string,
+    relatedReelId?: string
+  ) => {
+    try {
+      if (currentUser) {
+        await supabase
+          .from('ad_engagements')
+          .insert({
+            advertisement_id: adId,
+            user_id: currentUser.id,
+            engagement_type: engagementType,
+            related_post_id: relatedPostId || null,
+            related_reel_id: relatedReelId || null,
+          });
+      }
+    } catch (error) {
+      // Ignore unique constraint errors (user already engaged)
+      if ((error as any)?.code !== '23505') {
+        console.error('Record ad engagement error:', error);
+      }
+    }
+  }, [currentUser]);
+
   const getActiveAds = useCallback((placement: Advertisement['placement']) => {
     return advertisements.filter(ad => 
       ad.active &&
@@ -7068,6 +7094,7 @@ export const [AppContext, useApp] = createContextHook(() => {
     deleteAdvertisement,
     recordAdImpression,
     recordAdClick,
+    recordAdEngagement,
     getActiveAds,
     getPersonalizedFeed,
     getSmartAds,

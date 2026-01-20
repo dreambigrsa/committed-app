@@ -59,6 +59,7 @@ export default function AdminAdvertisementsScreen() {
     endDate: '',
     bidCpm: '0.50',
     bidCpc: '0.05',
+    bidCpe: '0.10',
     bidMaxMultiplier: '2.0',
     bidNiche: '',
   });
@@ -86,6 +87,7 @@ export default function AdminAdvertisementsScreen() {
       setSettingsForm({
         defaultCpm: (bidding.defaultCpm ?? 0.5).toString(),
         defaultCpc: (bidding.defaultCpc ?? 0.05).toString(),
+        defaultCpe: (bidding.defaultCpe ?? 0.10).toString(),
         defaultMaxMultiplier: (bidding.defaultMaxMultiplier ?? 2.0).toString(),
         competitorStep: (bidding.competitorStep ?? 0.1).toString(),
       });
@@ -100,6 +102,7 @@ export default function AdminAdvertisementsScreen() {
         bidding: {
           defaultCpm: parseFloat(settingsForm.defaultCpm) || 0.5,
           defaultCpc: parseFloat(settingsForm.defaultCpc) || 0.05,
+          defaultCpe: parseFloat(settingsForm.defaultCpe) || 0.10,
           defaultMaxMultiplier: parseFloat(settingsForm.defaultMaxMultiplier) || 2.0,
           competitorStep: parseFloat(settingsForm.competitorStep) || 0.1,
           groupBy: 'placement+niche',
@@ -126,6 +129,7 @@ export default function AdminAdvertisementsScreen() {
       const biddingDefaults = systemSettings?.bidding || {};
       const DEFAULT_CPM = Number(biddingDefaults.defaultCpm ?? 0.5);
       const DEFAULT_CPC = Number(biddingDefaults.defaultCpc ?? 0.05);
+      const DEFAULT_CPE = Number(biddingDefaults.defaultCpe ?? 0.10);
       const DEFAULT_MAX_MULTIPLIER = Number(biddingDefaults.defaultMaxMultiplier ?? 2.0);
       const COMPETITOR_STEP = Number(biddingDefaults.competitorStep ?? 0.1);
 
@@ -185,6 +189,18 @@ export default function AdminAdvertisementsScreen() {
         for (const ad of adsData) {
           const impressions = impressionsMap.get(ad.id) || 0;
           const clicks = clicksMap.get(ad.id) || 0;
+          
+          // Get engagements (likes, comments, shares)
+          const { data: engagementsData } = await supabase
+            .from('ad_engagements')
+            .select('engagement_type')
+            .eq('advertisement_id', ad.id);
+          const engagements = engagementsData || [];
+          const likes = engagements.filter((e: any) => e.engagement_type === 'like').length;
+          const comments = engagements.filter((e: any) => e.engagement_type === 'comment').length;
+          const shares = engagements.filter((e: any) => e.engagement_type === 'share').length;
+          const totalEngagements = likes + comments + shares;
+          
           const placement = ad.placement || 'feed';
           const niche = (ad.targeting && ad.targeting.bidding && ad.targeting.bidding.niche) ? String(ad.targeting.bidding.niche) : 'general';
           const key = `${placement}:${niche}`;
@@ -192,13 +208,16 @@ export default function AdminAdvertisementsScreen() {
 
           const baseCpm = ad.targeting?.bidding?.cpm ? Number(ad.targeting.bidding.cpm) : DEFAULT_CPM;
           const baseCpc = ad.targeting?.bidding?.cpc ? Number(ad.targeting.bidding.cpc) : DEFAULT_CPC;
+          const baseCpe = ad.targeting?.bidding?.cpe ? Number(ad.targeting.bidding.cpe) : DEFAULT_CPE;
           const maxMult = ad.targeting?.bidding?.maxMultiplier ? Number(ad.targeting.bidding.maxMultiplier) : DEFAULT_MAX_MULTIPLIER;
 
           const multiplier = Math.min(1 + competitors * COMPETITOR_STEP, maxMult);
           const effectiveCPM = baseCpm * multiplier;
           const effectiveCPC = baseCpc * multiplier;
+          const effectiveCPE = baseCpe * multiplier;
 
-          let spend = impressions * (effectiveCPM / 1000) + clicks * effectiveCPC;
+          // Calculate spend: impressions (CPM) + clicks (CPC) + engagements (CPE)
+          let spend = impressions * (effectiveCPM / 1000) + clicks * effectiveCPC + totalEngagements * effectiveCPE;
           if (ad.total_budget) {
             spend = Math.min(spend, Number(ad.total_budget));
           }
@@ -241,6 +260,11 @@ export default function AdminAdvertisementsScreen() {
             // helpful for UI
             effectiveCpm: effectiveCPM,
             effectiveCpc: effectiveCPC,
+            effectiveCpe: effectiveCPE,
+            engagements: totalEngagements,
+            likes,
+            comments,
+            shares,
             bidMultiplier: multiplier,
             billingStatus: ad.billing_status,
             billingProvider: ad.billing_provider,
@@ -398,6 +422,7 @@ export default function AdminAdvertisementsScreen() {
   const saveAd = async () => {
     const bidCpmNum = parseFloat(formData.bidCpm) || 0.5;
     const bidCpcNum = parseFloat(formData.bidCpc) || 0.05;
+    const bidCpeNum = parseFloat(formData.bidCpe) || 0.10;
     const bidMaxNum = parseFloat(formData.bidMaxMultiplier) || 2.0;
 
     const targeting: any = {
@@ -405,6 +430,7 @@ export default function AdminAdvertisementsScreen() {
       bidding: {
         cpm: bidCpmNum,
         cpc: bidCpcNum,
+        cpe: bidCpeNum,
         maxMultiplier: bidMaxNum,
         niche: (formData.bidNiche || '').trim() || null,
       },
@@ -461,6 +487,7 @@ export default function AdminAdvertisementsScreen() {
       endDate: ad.endDate || '',
       bidCpm: (bid.cpm ?? 0.5).toString(),
       bidCpc: (bid.cpc ?? 0.05).toString(),
+      bidCpe: (bid.cpe ?? 0.10).toString(),
       bidMaxMultiplier: (bid.maxMultiplier ?? 2.0).toString(),
       bidNiche: (bid.niche ?? '').toString(),
     });
@@ -614,6 +641,12 @@ export default function AdminAdvertisementsScreen() {
                     <ExternalLink size={16} color={colors.secondary} />
                     <Text style={styles.statItemText}>{ad.clicks} clicks</Text>
                   </View>
+                  {(ad as any).engagements !== undefined && (
+                    <View style={styles.statItem}>
+                      <BarChart3 size={16} color={colors.secondary} />
+                      <Text style={styles.statItemText}>{(ad as any).engagements || 0} engagements</Text>
+                    </View>
+                  )}
                   <Text style={styles.ctrText}>CTR: {getCTR(ad)}</Text>
                 </View>
 
@@ -630,7 +663,21 @@ export default function AdminAdvertisementsScreen() {
                     <Text style={styles.metaLabel}>Bid x</Text>
                     <Text style={styles.metaValue}>{(ad as any).bidMultiplier?.toFixed(2) || '1.00'}</Text>
                   </View>
+                  {(ad as any).engagements !== undefined && (
+                    <View style={styles.metaItem}>
+                      <Text style={styles.metaLabel}>CPE:</Text>
+                      <Text style={styles.metaValue}>${((ad as any).effectiveCpe || 0).toFixed(2)}</Text>
+                    </View>
+                  )}
                 </View>
+                {(ad as any).engagements > 0 && (
+                  <View style={styles.adMeta}>
+                    <Text style={styles.metaLabel}>Engagements: </Text>
+                    <Text style={styles.metaValue}>
+                      {(ad as any).likes || 0} likes, {(ad as any).comments || 0} comments, {(ad as any).shares || 0} shares
+                    </Text>
+                  </View>
+                )}
                 {ad.rejectionReason ? (
                   <Text style={styles.rejectionText}>Rejected: {ad.rejectionReason}</Text>
                 ) : null}
@@ -1213,6 +1260,14 @@ export default function AdminAdvertisementsScreen() {
                   value={settingsForm.defaultCpc}
                   onChangeText={(text) => setSettingsForm((p) => ({ ...p, defaultCpc: text }))}
                   keyboardType="decimal-pad"
+                />
+                <Text style={styles.inputLabel}>Default CPE (USD per engagement)</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={settingsForm.defaultCpe}
+                  onChangeText={(text) => setSettingsForm((p) => ({ ...p, defaultCpe: text }))}
+                  keyboardType="decimal-pad"
+                  placeholder="0.10"
                 />
               </View>
               <View style={styles.inputGroup}>

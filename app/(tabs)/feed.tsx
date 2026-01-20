@@ -39,7 +39,7 @@ const { width } = Dimensions.get('window');
 export default function FeedScreen() {
   const router = useRouter();
   const navigation = useNavigation();
-  const { currentUser, posts, toggleLike, getComments, getActiveAds, getPersonalizedFeed, getSmartAds, recordAdImpression, recordAdClick, addComment, editComment, deleteComment, toggleCommentLike, editPost, deletePost, sharePost, adminDeletePost, adminRejectPost, reportContent, getUserStatus, userStatuses, reelComments, toggleReelLike, addReelComment, shareReel } = useApp();
+  const { currentUser, posts, toggleLike, getComments, getActiveAds, getPersonalizedFeed, getSmartAds, recordAdImpression, recordAdClick, recordAdEngagement, addComment, editComment, deleteComment, toggleCommentLike, editPost, deletePost, sharePost, adminDeletePost, adminRejectPost, reportContent, getUserStatus, userStatuses, reelComments, toggleReelLike, addReelComment, shareReel } = useApp();
   const { colors } = useTheme();
   const [showComments, setShowComments] = useState<string | null>(null);
   const [smartAds, setSmartAds] = useState<Advertisement[]>([]);
@@ -1566,6 +1566,10 @@ export default function FeedScreen() {
       try {
         if (originalPost) {
           await toggleLike(originalPost.id);
+          // Record engagement if it's a new like
+          if (!isLiked) {
+            await recordAdEngagement(ad.id, 'like', originalPost.id, undefined);
+          }
           // Update local state
           const newLikes = isLiked 
             ? adLikesList.filter(id => id !== currentUser.id)
@@ -1573,6 +1577,10 @@ export default function FeedScreen() {
           setAdLikes(prev => ({ ...prev, [ad.id]: newLikes }));
         } else if (originalReel && toggleReelLike) {
           await toggleReelLike(originalReel.id);
+          // Record engagement if it's a new like
+          if (!isLiked) {
+            await recordAdEngagement(ad.id, 'like', undefined, originalReel.id);
+          }
           // Update local state
           const newLikes = isLiked 
             ? adLikesList.filter(id => id !== currentUser.id)
@@ -1599,8 +1607,12 @@ export default function FeedScreen() {
       try {
         if (originalPost) {
           await sharePost(originalPost.id);
+          // Record engagement
+          await recordAdEngagement(ad.id, 'share', originalPost.id, undefined);
         } else if (originalReel && shareReel) {
           await shareReel(originalReel.id);
+          // Record engagement
+          await recordAdEngagement(ad.id, 'share', undefined, originalReel.id);
         } else {
           Alert.alert('Error', 'This ad is not linked to a post or reel. Sharing is not available for standalone ads.');
         }
@@ -1626,6 +1638,10 @@ export default function FeedScreen() {
             console.log('Comment add returned null (user restricted or error)');
             return;
           }
+          // Record engagement (only for top-level comments, not replies)
+          if (!parentCommentId) {
+            await recordAdEngagement(ad.id, 'comment', targetPostId, undefined);
+          }
           // Refresh comments after a short delay to allow state to update
           setTimeout(() => {
             const updatedComments = getComments(targetPostId);
@@ -1641,6 +1657,10 @@ export default function FeedScreen() {
             console.log('Reel comment add returned null (user restricted or error)');
             return;
           }
+          // Record engagement (only for top-level comments, not replies)
+          if (!parentCommentId) {
+            await recordAdEngagement(ad.id, 'comment', undefined, targetReelId);
+          }
           // Refresh comments - wait a bit for state to update
           setTimeout(() => {
             const updatedComments = reelComments[targetReelId] || [];
@@ -1653,6 +1673,9 @@ export default function FeedScreen() {
           console.log('Fallback: Adding comment to post:', postId);
           const result = await addComment(postId, content, parentCommentId, stickerId, messageType);
           if (result === null) return;
+          if (!parentCommentId) {
+            await recordAdEngagement(ad.id, 'comment', postId, undefined);
+          }
           setTimeout(() => {
             const updatedComments = getComments(postId);
             setAdComments(prev => ({ ...prev, [ad.id]: updatedComments }));
@@ -1662,6 +1685,9 @@ export default function FeedScreen() {
           console.log('Fallback: Adding comment to reel:', postId);
           const result = await addReelComment(postId, content, parentCommentId, stickerId, messageType);
           if (result === null) return;
+          if (!parentCommentId) {
+            await recordAdEngagement(ad.id, 'comment', undefined, postId);
+          }
           setTimeout(() => {
             const updatedComments = reelComments[postId] || [];
             setAdComments(prev => ({ ...prev, [ad.id]: updatedComments }));

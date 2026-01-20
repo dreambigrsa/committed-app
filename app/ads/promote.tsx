@@ -1,11 +1,16 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
 import { Advertisement } from '@/types';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import * as ImagePicker from 'expo-image-picker';
+// @ts-ignore - legacy path works at runtime
+import * as FileSystem from 'expo-file-system/legacy';
+import { Image } from 'expo-image';
+import { Upload, X } from 'lucide-react-native';
 
 export default function PromoteScreen() {
   const { colors } = useTheme();
@@ -61,9 +66,63 @@ export default function PromoteScreen() {
   });
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
+  const [uploadingProof, setUploadingProof] = useState(false);
 
   const styles = useMemo(() => createStyles(colors), [colors]);
   const totalSteps = 4;
+
+  const uploadPaymentProof = async () => {
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permissionResult.granted) {
+      Alert.alert('Permission Required', 'You need to allow access to your photos.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setUploadingProof(true);
+      try {
+        const fileName = `payment_proof_${currentUser?.id}_${Date.now()}.jpg`;
+        
+        // Convert URI to Uint8Array
+        const base64 = await FileSystem.readAsStringAsync(result.assets[0].uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        
+        const binaryString = atob(base64);
+        const uint8Array = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          uint8Array[i] = binaryString.charCodeAt(i);
+        }
+
+        const { error } = await supabase.storage
+          .from('media')
+          .upload(fileName, uint8Array, {
+            contentType: 'image/jpeg',
+            upsert: false,
+          });
+
+        if (error) throw error;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('media')
+          .getPublicUrl(fileName);
+
+        setPayment((p) => ({ ...p, proofUrl: publicUrl }));
+        Alert.alert('Success', 'Payment proof uploaded!');
+      } catch (error: any) {
+        console.error('Failed to upload payment proof:', error);
+        Alert.alert('Error', error.message || 'Failed to upload payment proof');
+      } finally {
+        setUploadingProof(false);
+      }
+    }
+  };
 
   useEffect(() => {
     setIsBoostingContent(!!postIdParam || !!reelIdParam);
@@ -307,18 +366,19 @@ export default function PromoteScreen() {
         <Text style={styles.header}>
           {adIdParam ? 'Edit Promotion' : isBoostingContent ? 'Boost' : 'Create Ad'}
         </Text>
-        <Stepper step={step} total={totalSteps} />
+        <Stepper step={step} total={totalSteps} colors={colors} />
         {loading && <ActivityIndicator color={colors.primary} style={{ marginVertical: 12 }} />}
 
         {step === 1 && (
           <>
-            <Section title="Creative">
-              <Field label="Title" value={form.title} onChangeText={(text) => setForm((f) => ({ ...f, title: text }))} />
+            <Section title="Creative" colors={colors}>
+              <Field label="Title" value={form.title} onChangeText={(text) => setForm((f) => ({ ...f, title: text }))} colors={colors} />
               <Field
                 label="Description"
                 multiline
                 value={form.description}
                 onChangeText={(text) => setForm((f) => ({ ...f, description: text }))}
+                colors={colors}
               />
               {!isBoostingContent && (
                 <Field
@@ -326,11 +386,12 @@ export default function PromoteScreen() {
                   value={form.imageUrl}
                   onChangeText={(text) => setForm((f) => ({ ...f, imageUrl: text }))}
                   placeholder="https://..."
+                  colors={colors}
                 />
               )}
             </Section>
 
-            <Section title="CTA">
+            <Section title="CTA" colors={colors}>
               <Segment
                 options={[
                   { value: 'whatsapp', label: 'WhatsApp' },
@@ -339,15 +400,17 @@ export default function PromoteScreen() {
                 ]}
                 value={form.ctaType || 'whatsapp'}
                 onChange={(v) => setForm((f) => ({ ...f, ctaType: v as any }))}
+                colors={colors}
               />
               {form.ctaType === 'whatsapp' && (
                 <>
-                  <Field label="WhatsApp Number" value={form.ctaPhone} onChangeText={(text) => setForm((f) => ({ ...f, ctaPhone: text }))} />
+                  <Field label="WhatsApp Number" value={form.ctaPhone} onChangeText={(text) => setForm((f) => ({ ...f, ctaPhone: text }))} colors={colors} />
                   <Field
                     label="Template Message"
                     multiline
                     value={form.ctaMessage}
                     onChangeText={(text) => setForm((f) => ({ ...f, ctaMessage: text }))}
+                    colors={colors}
                   />
                 </>
               )}
@@ -357,17 +420,19 @@ export default function PromoteScreen() {
                     label="Messenger Page/User ID"
                     value={form.ctaMessengerId}
                     onChangeText={(text) => setForm((f) => ({ ...f, ctaMessengerId: text }))}
+                    colors={colors}
                   />
                   <Field
                     label="Template Message"
                     multiline
                     value={form.ctaMessage}
                     onChangeText={(text) => setForm((f) => ({ ...f, ctaMessage: text }))}
+                    colors={colors}
                   />
                 </>
               )}
               {form.ctaType === 'website' && (
-                <Field label="Website URL" value={form.ctaUrl} onChangeText={(text) => setForm((f) => ({ ...f, ctaUrl: text }))} />
+                <Field label="Website URL" value={form.ctaUrl} onChangeText={(text) => setForm((f) => ({ ...f, ctaUrl: text }))} colors={colors} />
               )}
             </Section>
           </>
@@ -375,18 +440,20 @@ export default function PromoteScreen() {
 
         {step === 2 && (
           <>
-            <Section title="Targeting">
+            <Section title="Targeting" colors={colors}>
               <Field
                 label="Locations (cities/countries)"
                 value={targeting.locations}
                 onChangeText={(text) => setTargeting((t) => ({ ...t, locations: text }))}
                 placeholder="e.g. Harare; Lagos; Nairobi"
+                colors={colors}
               />
               <Field
                 label="Interests / Keywords"
                 value={targeting.interests}
                 onChangeText={(text) => setTargeting((t) => ({ ...t, interests: text }))}
                 placeholder="cleaning services, beauty, sports..."
+                colors={colors}
               />
               <View style={{ flexDirection: 'row', gap: 12 }}>
                 <View style={{ flex: 1 }}>
@@ -395,6 +462,7 @@ export default function PromoteScreen() {
                     value={targeting.ageMin}
                     onChangeText={(text) => setTargeting((t) => ({ ...t, ageMin: text }))}
                     keyboardType="number-pad"
+                    colors={colors}
                   />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -403,6 +471,7 @@ export default function PromoteScreen() {
                     value={targeting.ageMax}
                     onChangeText={(text) => setTargeting((t) => ({ ...t, ageMax: text }))}
                     keyboardType="number-pad"
+                    colors={colors}
                   />
                 </View>
               </View>
@@ -414,10 +483,11 @@ export default function PromoteScreen() {
                 ]}
                 value={targeting.gender}
                 onChange={(v) => setTargeting((t) => ({ ...t, gender: v as any }))}
+                colors={colors}
               />
             </Section>
 
-            <Section title="Placement">
+            <Section title="Placement" colors={colors}>
               <Segment
                 options={[
                   { value: 'feed', label: 'Feed' },
@@ -427,34 +497,39 @@ export default function PromoteScreen() {
                 ]}
                 value={form.placement || 'feed'}
                 onChange={(v) => setForm((f) => ({ ...f, placement: v as any }))}
+                colors={colors}
               />
             </Section>
           </>
         )}
 
         {step === 3 && (
-          <Section title="Budget & Schedule">
+          <Section title="Budget & Schedule" colors={colors}>
             <Field
               label="Daily Budget (USD)"
               keyboardType="decimal-pad"
               value={form.dailyBudget?.toString() || ''}
               onChangeText={(text) => setForm((f) => ({ ...f, dailyBudget: parseFloat(text) || 0 }))}
+              colors={colors}
             />
             <Field
               label="Total Budget (USD)"
               keyboardType="decimal-pad"
               value={form.totalBudget?.toString() || ''}
               onChangeText={(text) => setForm((f) => ({ ...f, totalBudget: parseFloat(text) || 0 }))}
+              colors={colors}
             />
             <DateRow
               label="Start Date"
               value={form.startDate}
               onPress={() => setShowStartPicker(true)}
+              colors={colors}
             />
             <DateRow
               label="End Date"
               value={form.endDate}
               onPress={() => setShowEndPicker(true)}
+              colors={colors}
             />
             {showStartPicker && (
               <DateTimePicker
@@ -481,7 +556,7 @@ export default function PromoteScreen() {
 
         {step === 4 && (
           <>
-            <Section title="Payment">
+            <Section title="Payment" colors={colors}>
               <Segment
                 options={[
                   { value: 'manual', label: 'Manual (in-app/admin)' },
@@ -490,33 +565,61 @@ export default function PromoteScreen() {
                 ]}
                 value={payment.method}
                 onChange={(v) => setPayment((p) => ({ ...p, method: v as any }))}
+                colors={colors}
               />
               <Field
                 label="Payment reference / transaction ID"
                 value={payment.reference}
                 onChangeText={(text) => setPayment((p) => ({ ...p, reference: text }))}
                 placeholder="e.g. receipt #, transfer reference"
+                colors={colors}
               />
-              <Field
-                label="Proof of payment (link to screenshot/receipt)"
-                value={payment.proofUrl}
-                onChangeText={(text) => setPayment((p) => ({ ...p, proofUrl: text }))}
-                placeholder="https://... (upload then paste link)"
-              />
-              <Text style={{ fontSize: 12, color: colors.text.secondary, marginTop: -4 }}>
-                Tip: upload a receipt image to your storage and paste the URL so admins can verify.
-              </Text>
+              <View style={{ marginBottom: 12 }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', marginBottom: 6 }}>Proof of payment</Text>
+                {payment.proofUrl ? (
+                  <View style={styles.proofContainer}>
+                    <Image source={{ uri: payment.proofUrl }} style={styles.proofImage} contentFit="cover" />
+                    <TouchableOpacity
+                      style={styles.removeProofButton}
+                      onPress={() => setPayment((p) => ({ ...p, proofUrl: '' }))}
+                    >
+                      <X size={16} color={colors.text.white} />
+                    </TouchableOpacity>
+                    <Text style={styles.proofUrlText} numberOfLines={1}>{payment.proofUrl}</Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.uploadButton}
+                    onPress={uploadPaymentProof}
+                    disabled={uploadingProof}
+                  >
+                    {uploadingProof ? (
+                      <ActivityIndicator size="small" color={colors.primary} />
+                    ) : (
+                      <>
+                        <Upload size={20} color={colors.primary} />
+                        <Text style={styles.uploadButtonText}>Upload receipt/screenshot</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
+                <Text style={{ fontSize: 12, color: colors.text.secondary, marginTop: 6 }}>
+                  Upload a screenshot or photo of your payment receipt for admin verification.
+                </Text>
+              </View>
             </Section>
 
-            <Section title="Review">
-              <Text style={styles.reviewLine}>Title: {form.title}</Text>
-              <Text style={styles.reviewLine}>Description: {form.description}</Text>
-              <Text style={styles.reviewLine}>Placement: {form.placement}</Text>
-              <Text style={styles.reviewLine}>Budget: ${form.dailyBudget} / day, total ${form.totalBudget}</Text>
-              <Text style={styles.reviewLine}>Schedule: {form.startDate ? new Date(form.startDate).toDateString() : '-'} → {form.endDate ? new Date(form.endDate).toDateString() : '-'}</Text>
-              <Text style={styles.reviewLine}>CTA: {form.ctaType}</Text>
-              <Text style={styles.reviewLine}>Targeting: {targeting.locations || 'anywhere'} | {targeting.interests || 'broad'} | {targeting.gender} | {targeting.ageMin}-{targeting.ageMax}</Text>
-              <Text style={styles.reviewLine}>Payment: {payment.method} / ref {payment.reference || '-'}</Text>
+            <Section title="Review" colors={colors}>
+              <View style={styles.reviewContainer}>
+                <Text style={styles.reviewLine}>Title: {form.title}</Text>
+                <Text style={styles.reviewLine}>Description: {form.description}</Text>
+                <Text style={styles.reviewLine}>Placement: {form.placement}</Text>
+                <Text style={styles.reviewLine}>Budget: ${form.dailyBudget} / day, total ${form.totalBudget}</Text>
+                <Text style={styles.reviewLine}>Schedule: {form.startDate ? new Date(form.startDate).toDateString() : '-'} → {form.endDate ? new Date(form.endDate).toDateString() : '-'}</Text>
+                <Text style={styles.reviewLine}>CTA: {form.ctaType}</Text>
+                <Text style={styles.reviewLine}>Targeting: {targeting.locations || 'anywhere'} | {targeting.interests || 'broad'} | {targeting.gender} | {targeting.ageMin}-{targeting.ageMax}</Text>
+                <Text style={styles.reviewLine}>Payment: {payment.method} / ref {payment.reference || '-'}</Text>
+              </View>
             </Section>
           </>
         )}
@@ -536,32 +639,51 @@ export default function PromoteScreen() {
   );
 }
 
-function Stepper({ step, total }: { step: number; total: number }) {
+function Stepper({ step, total, colors }: { step: number; total: number; colors: any }) {
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 6 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24, gap: 8, paddingVertical: 12 }}>
       {Array.from({ length: total }).map((_, i) => {
         const active = i + 1 <= step;
+        const current = i + 1 === step;
         return (
-          <View
-            key={i}
-            style={{
-              flex: 1,
-              height: 6,
-              borderRadius: 4,
-              backgroundColor: active ? '#2563eb' : '#e5e7eb',
-            }}
-          />
+          <View key={i} style={{ flex: 1, alignItems: 'center' }}>
+            <View
+              style={{
+                flex: 1,
+                height: 4,
+                borderRadius: 2,
+                backgroundColor: active ? colors.primary : colors.border.light,
+                width: '100%',
+              }}
+            />
+            {current && (
+              <View
+                style={{
+                  position: 'absolute',
+                  top: -4,
+                  width: 12,
+                  height: 12,
+                  borderRadius: 6,
+                  backgroundColor: colors.primary,
+                  borderWidth: 2,
+                  borderColor: colors.background.primary,
+                }}
+              />
+            )}
+          </View>
         );
       })}
-      <Text style={{ marginLeft: 8, fontWeight: '700' }}>{step}/{total}</Text>
+      <Text style={{ marginLeft: 8, fontWeight: '700', fontSize: 13, color: colors.text.secondary }}>
+        {step}/{total}
+      </Text>
     </View>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children, colors }: { title: string; children: React.ReactNode; colors: any }) {
   return (
-    <View style={{ marginBottom: 18 }}>
-      <Text style={{ fontSize: 14, fontWeight: '700', marginBottom: 8 }}>{title}</Text>
+    <View style={{ marginBottom: 24, backgroundColor: colors.background.secondary, borderRadius: 16, padding: 16 }}>
+      <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 12, color: colors.text.primary }}>{title}</Text>
       {children}
     </View>
   );
@@ -574,6 +696,7 @@ function Field({
   placeholder,
   keyboardType,
   multiline,
+  colors,
 }: {
   label: string;
   value?: string;
@@ -581,20 +704,25 @@ function Field({
   placeholder?: string;
   keyboardType?: any;
   multiline?: boolean;
+  colors: any;
 }) {
   return (
-    <View style={{ marginBottom: 12 }}>
-      <Text style={{ fontSize: 13, fontWeight: '600', marginBottom: 6 }}>{label}</Text>
+    <View style={{ marginBottom: 16 }}>
+      <Text style={{ fontSize: 14, fontWeight: '600', marginBottom: 8, color: colors.text.primary }}>{label}</Text>
       <TextInput
         style={{
           borderWidth: 1,
-          borderColor: '#ddd',
-          borderRadius: 10,
-          padding: 12,
-          minHeight: multiline ? 80 : undefined,
+          borderColor: colors.border.light,
+          borderRadius: 12,
+          padding: 14,
+          fontSize: 15,
+          backgroundColor: colors.background.secondary,
+          color: colors.text.primary,
+          minHeight: multiline ? 100 : undefined,
           textAlignVertical: multiline ? 'top' : 'center',
         }}
         placeholder={placeholder}
+        placeholderTextColor={colors.text.tertiary}
         value={value}
         onChangeText={onChangeText}
         keyboardType={keyboardType}
@@ -608,38 +736,42 @@ function Segment({
   options,
   value,
   onChange,
+  colors,
 }: {
   options: { value: string; label: string }[];
   value: string;
   onChange: (v: string) => void;
+  colors: any;
 }) {
   return (
-    <View style={{ flexDirection: 'row', gap: 6, marginBottom: 12 }}>
+    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16, backgroundColor: colors.background.secondary, borderRadius: 12, padding: 4 }}>
       {options.map((opt) => (
         <TouchableOpacity
           key={opt.value}
           style={{
             flex: 1,
-            paddingVertical: 10,
-            borderRadius: 10,
-            backgroundColor: value === opt.value ? '#2563eb' : '#f3f4f6',
+            paddingVertical: 12,
+            borderRadius: 8,
+            backgroundColor: value === opt.value ? colors.primary : 'transparent',
             alignItems: 'center',
           }}
           onPress={() => onChange(opt.value)}
         >
-          <Text style={{ color: value === opt.value ? '#fff' : '#111827', fontWeight: '700' }}>{opt.label}</Text>
+          <Text style={{ color: value === opt.value ? colors.text.white : colors.text.primary, fontWeight: '700', fontSize: 14 }}>
+            {opt.label}
+          </Text>
         </TouchableOpacity>
       ))}
     </View>
   );
 }
 
-function DateRow({ label, value, onPress }: { label: string; value?: string | null; onPress: () => void }) {
+function DateRow({ label, value, onPress, colors }: { label: string; value?: string | null; onPress: () => void; colors: any }) {
   return (
-    <TouchableOpacity onPress={onPress} style={{ marginBottom: 10 }}>
-      <Text style={{ fontSize: 13, fontWeight: '600', marginBottom: 4 }}>{label}</Text>
-      <View style={{ borderWidth: 1, borderColor: '#ddd', borderRadius: 10, padding: 12 }}>
-        <Text>{value ? new Date(value).toDateString() : 'Select date'}</Text>
+    <TouchableOpacity onPress={onPress} style={{ marginBottom: 16 }}>
+      <Text style={{ fontSize: 14, fontWeight: '600', marginBottom: 8, color: colors.text.primary }}>{label}</Text>
+      <View style={{ borderWidth: 1, borderColor: colors.border.light, borderRadius: 12, padding: 14, backgroundColor: colors.background.primary }}>
+        <Text style={{ fontSize: 15, color: colors.text.primary }}>{value ? new Date(value).toDateString() : 'Select date'}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -648,14 +780,21 @@ function DateRow({ label, value, onPress }: { label: string; value?: string | nu
 const createStyles = (colors: any) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background.primary },
-    form: { padding: 16 },
-    header: { fontSize: 22, fontWeight: '700', marginBottom: 12, color: colors.text.primary },
-    navRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12, gap: 10 },
-    navButton: { flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
+    form: { padding: 20 },
+    header: { fontSize: 28, fontWeight: '800', marginBottom: 8, color: colors.text.primary, letterSpacing: -0.5 },
+    navRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 24, gap: 12, paddingBottom: 20 },
+    navButton: { flex: 1, paddingVertical: 16, borderRadius: 14, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },
     navPrimary: { backgroundColor: colors.primary },
     navPrimaryText: { color: colors.text.white, fontWeight: '700', fontSize: 16 },
     navSecondary: { backgroundColor: colors.background.secondary, borderWidth: 1, borderColor: colors.border.light },
     navSecondaryText: { color: colors.text.primary, fontWeight: '700', fontSize: 16 },
-    reviewLine: { fontSize: 13, marginBottom: 6, color: colors.text.primary },
+    reviewContainer: { backgroundColor: colors.background.primary, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: colors.border.light },
+    reviewLine: { fontSize: 14, marginBottom: 10, color: colors.text.primary, lineHeight: 20 },
+    uploadButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 12, backgroundColor: colors.background.primary, borderWidth: 2, borderColor: colors.border.light, borderStyle: 'dashed' },
+    uploadButtonText: { fontSize: 15, fontWeight: '600', color: colors.primary },
+    proofContainer: { position: 'relative', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: colors.border.light },
+    proofImage: { width: '100%', height: 200 },
+    removeProofButton: { position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(0, 0, 0, 0.7)', borderRadius: 20, width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+    proofUrlText: { fontSize: 12, color: colors.text.secondary, padding: 8, backgroundColor: colors.background.secondary },
   });
 

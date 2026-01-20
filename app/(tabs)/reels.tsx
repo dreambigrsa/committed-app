@@ -817,6 +817,8 @@ export default function ReelsScreen() {
       return null;
     }
 
+    const cta = buildAdCta(ad);
+
     // Record impression for banner/card ad when overlay is shown
     if (!recordedImpressions.current.has(ad.id)) {
       recordAdImpression(ad.id);

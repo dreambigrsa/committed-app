@@ -643,11 +643,6 @@ const createStyles = (colors: any) => StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 2,
     borderColor: colors.border.light,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
   },
   roleCardGradient: {
     padding: 20,

@@ -850,7 +850,11 @@ export default function AdminStickersScreen() {
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+          <ScrollView 
+            style={styles.modalContent} 
+            contentContainerStyle={styles.modalScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
             <View style={styles.formGroup}>
               <Text style={styles.label}>Pack Name *</Text>
               <TextInput
@@ -956,7 +960,11 @@ export default function AdminStickersScreen() {
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+          <ScrollView 
+            style={styles.modalContent} 
+            contentContainerStyle={styles.modalScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
             <View style={styles.formGroup}>
               <Text style={styles.label}>Sticker Name *</Text>
               <TextInput
@@ -1147,11 +1155,6 @@ const createStyles = (colors: any) => StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 10,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
   },
   addButtonText: {
     fontSize: 13,
@@ -1202,11 +1205,6 @@ const createStyles = (colors: any) => StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 10,
     marginTop: 8,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
   },
   emptyButtonText: {
     fontSize: 14,
@@ -1224,18 +1222,11 @@ const createStyles = (colors: any) => StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border.light,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
   },
   packCardSelected: {
     borderColor: colors.primary,
     borderWidth: 2,
     backgroundColor: colors.primary + '08',
-    shadowColor: colors.primary,
-    shadowOpacity: 0.1,
   },
   packCardContent: {
     flexDirection: 'row',
@@ -1405,6 +1396,9 @@ const createStyles = (colors: any) => StyleSheet.create({
   modalContent: {
     flex: 1,
     padding: 16,
+  },
+  modalScrollContent: {
+    paddingBottom: 100, // Extra padding to ensure save button is above navigation bar
   },
   formGroup: {
     marginBottom: 20,

@@ -422,11 +422,6 @@ const createStyles = (colors: any) =>
       backgroundColor: colors.primary,
       justifyContent: 'center',
       alignItems: 'center',
-      shadowColor: colors.primary,
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 8,
-      elevation: 8,
     },
     modalOverlay: {
       position: 'absolute',
@@ -445,11 +440,6 @@ const createStyles = (colors: any) =>
       backgroundColor: colors.background.primary,
       borderRadius: 24,
       padding: 24,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: 0.3,
-      shadowRadius: 16,
-      elevation: 12,
     },
     modalHeader: {
       flexDirection: 'row',

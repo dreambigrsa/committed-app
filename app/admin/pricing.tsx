@@ -487,11 +487,6 @@ const createStyles = (colors: any) =>
       marginBottom: 20,
       borderWidth: 2,
       borderColor: colors.border.light,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.05,
-      shadowRadius: 12,
-      elevation: 2,
     },
     premiumPlanCard: {
       borderColor: colors.primary,

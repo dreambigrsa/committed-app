@@ -68,7 +68,7 @@ CREATE POLICY "Users can delete own status" ON user_status
 
 -- Grant necessary permissions
 GRANT SELECT, INSERT, UPDATE, DELETE ON user_status TO authenticated;
-GRANT USAGE ON SEQUENCE user_status_id_seq TO authenticated;
+-- Note: user_status uses UUID for id column, not a sequence, so no sequence grant needed
 
 -- Verify policies were created
 SELECT 

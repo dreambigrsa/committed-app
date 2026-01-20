@@ -1109,13 +1109,14 @@ export default function ReelsScreen() {
               }
             }}
           />
-          {/* Video Ad Overlay */}
-          {hasVideoAd && activeVideoAd && renderVideoAdOverlay(reel.id, activeVideoAd.ad)}
-          
-          {/* Banner/Card Ad Overlay - Bottom of video, doesn't pause */}
-          {activeBannerCardAd && activeBannerCardAd.reelId === reel.id && 
-           renderBannerCardAdOverlay(reel.id, activeBannerCardAd.ad)}
         </TouchableOpacity>
+
+        {/* Video Ad Overlay */}
+        {hasVideoAd && activeVideoAd && renderVideoAdOverlay(reel.id, activeVideoAd.ad)}
+        
+        {/* Banner/Card Ad Overlay - Bottom of video, doesn't pause */}
+        {activeBannerCardAd && activeBannerCardAd.reelId === reel.id && 
+         renderBannerCardAdOverlay(reel.id, activeBannerCardAd.ad)}
 
         <View style={styles.overlay}>
           {/* Left side - User info and caption */}

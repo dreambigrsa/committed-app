@@ -11,6 +11,9 @@ import {
   ActivityIndicator,
   Switch,
   Modal,
+  Platform,
+  KeyboardAvoidingView,
+  Dimensions,
 } from 'react-native';
 import { Stack } from 'expo-router';
 import { Plus, Trash2, Shield, CreditCard, Edit2, X, Save, Info } from 'lucide-react-native';
@@ -311,17 +314,20 @@ export default function AdminPaymentMethodsScreen() {
       <Modal
         visible={showAddModal}
         animationType="slide"
-        transparent={true}
+        transparent={Platform.OS === 'android'}
+        presentationStyle={Platform.OS === 'ios' ? 'pageSheet' : undefined}
         onRequestClose={() => {
           setShowAddModal(false);
           resetForm();
           setEditingMethod(null);
         }}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
-              {/* Modal Header */}
+        {Platform.OS === 'ios' ? (
+          <SafeAreaView style={styles.modalContainerIOS}>
+            <KeyboardAvoidingView
+              behavior="padding"
+              style={styles.modalContent}
+            >
               <View style={styles.modalHeader}>
                 <View style={styles.modalHeaderLeft}>
                   <View style={[styles.modalIconContainer, { backgroundColor: (selectedType?.color || colors.primary) + '15' }]}>
@@ -491,9 +497,192 @@ export default function AdminPaymentMethodsScreen() {
                   </LinearGradient>
                 </TouchableOpacity>
               </View>
-            </ScrollView>
+              </ScrollView>
+            </KeyboardAvoidingView>
+          </SafeAreaView>
+        ) : (
+          <View style={styles.modalOverlay}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={styles.modalKeyboardView}
+            >
+              <View style={styles.modalContainer}>
+                <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+                  {/* Modal Header */}
+                  <View style={styles.modalHeader}>
+                    <View style={styles.modalHeaderLeft}>
+                      <View style={[styles.modalIconContainer, { backgroundColor: (selectedType?.color || colors.primary) + '15' }]}>
+                        <Text style={styles.modalIcon}>{selectedType?.icon || '💳'}</Text>
+                      </View>
+                      <View>
+                        <Text style={styles.modalTitle}>
+                          {editingMethod ? 'Edit Payment Method' : 'Add Payment Method'}
+                        </Text>
+                        <Text style={styles.modalSubtitle}>
+                          {selectedType?.label || 'Configure payment settings'}
+                        </Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.modalCloseButton}
+                      onPress={() => {
+                        setShowAddModal(false);
+                        resetForm();
+                        setEditingMethod(null);
+                      }}
+                    >
+                      <X size={24} color={colors.text.secondary} />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Form Fields */}
+                  <View style={styles.formContent}>
+                    <View style={styles.formGroup}>
+                      <Text style={styles.inputLabel}>Name *</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="e.g., Bank Transfer"
+                        value={formData.name}
+                        onChangeText={(text) => setFormData({ ...formData, name: text })}
+                        placeholderTextColor={colors.text.tertiary}
+                      />
+                    </View>
+
+                    <View style={styles.formGroup}>
+                      <Text style={styles.inputLabel}>Description</Text>
+                      <TextInput
+                        style={[styles.input, styles.textArea]}
+                        placeholder="Brief description of the payment method"
+                        value={formData.description}
+                        onChangeText={(text) => setFormData({ ...formData, description: text })}
+                        placeholderTextColor={colors.text.tertiary}
+                        multiline
+                        numberOfLines={2}
+                      />
+                    </View>
+
+                    <View style={styles.formGroup}>
+                      <Text style={styles.inputLabel}>Payment Type *</Text>
+                      <View style={styles.typeGrid}>
+                        {PAYMENT_TYPES.map((type) => (
+                          <TouchableOpacity
+                            key={type.value}
+                            style={[
+                              styles.typeCard,
+                              formData.paymentType === type.value && {
+                                borderColor: type.color,
+                                backgroundColor: type.color + '10',
+                              },
+                            ]}
+                            onPress={() => setFormData({ ...formData, paymentType: type.value as any })}
+                          >
+                            <Text style={styles.typeCardIcon}>{type.icon}</Text>
+                            <Text
+                              style={[
+                                styles.typeCardText,
+                                formData.paymentType === type.value && { color: type.color, fontWeight: '600' },
+                              ]}
+                            >
+                              {type.label}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+
+                    <View style={styles.formGroup}>
+                      <View style={styles.labelRow}>
+                        <Text style={styles.inputLabel}>Account Details (JSON)</Text>
+                        <Info size={16} color={colors.text.tertiary} />
+                      </View>
+                      <Text style={styles.inputHint}>
+                        Example: {'{"bank_name": "Example Bank", "account_number": "1234567890"}'}
+                      </Text>
+                      <TextInput
+                        style={[styles.input, styles.textArea, styles.codeInput]}
+                        placeholder='{"bank_name": "Example Bank", "account_number": "1234567890"}'
+                        value={formData.accountDetails}
+                        onChangeText={(text) => setFormData({ ...formData, accountDetails: text })}
+                        placeholderTextColor={colors.text.tertiary}
+                        multiline
+                        numberOfLines={6}
+                      />
+                    </View>
+
+                    <View style={styles.formGroup}>
+                      <Text style={styles.inputLabel}>Instructions</Text>
+                      <Text style={styles.inputHint}>
+                        Step-by-step instructions for users (use \n for new lines)
+                      </Text>
+                      <TextInput
+                        style={[styles.input, styles.textArea]}
+                        placeholder="1. Step one\n2. Step two\n3. Step three"
+                        value={formData.instructions}
+                        onChangeText={(text) => setFormData({ ...formData, instructions: text })}
+                        placeholderTextColor={colors.text.tertiary}
+                        multiline
+                        numberOfLines={5}
+                      />
+                    </View>
+
+                    <View style={styles.formRow}>
+                      <View style={[styles.formGroup, { flex: 1 }]}>
+                        <Text style={styles.inputLabel}>Icon Emoji</Text>
+                        <TextInput
+                          style={styles.input}
+                          placeholder="🏦"
+                          value={formData.iconEmoji}
+                          onChangeText={(text) => setFormData({ ...formData, iconEmoji: text })}
+                          placeholderTextColor={colors.text.tertiary}
+                          maxLength={2}
+                        />
+                      </View>
+                      <View style={[styles.formGroup, { flex: 1 }]}>
+                        <Text style={styles.inputLabel}>Display Order</Text>
+                        <TextInput
+                          style={styles.input}
+                          placeholder="0"
+                          value={formData.displayOrder}
+                          onChangeText={(text) => setFormData({ ...formData, displayOrder: text })}
+                          placeholderTextColor={colors.text.tertiary}
+                          keyboardType="numeric"
+                        />
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Modal Actions */}
+                  <View style={styles.modalActions}>
+                    <TouchableOpacity
+                      style={styles.cancelButton}
+                      onPress={() => {
+                        setShowAddModal(false);
+                        resetForm();
+                        setEditingMethod(null);
+                      }}
+                    >
+                      <Text style={styles.cancelButtonText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.saveButton}
+                      onPress={handleSubmit}
+                    >
+                      <LinearGradient
+                        colors={[colors.primary, colors.primary + 'DD']}
+                        style={styles.saveButtonGradient}
+                      >
+                        <Save size={18} color="#fff" />
+                        <Text style={styles.saveButtonText}>
+                          {editingMethod ? 'Update' : 'Create'}
+                        </Text>
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
+              </View>
+            </KeyboardAvoidingView>
           </View>
-        </View>
+        )}
       </Modal>
     </SafeAreaView>
   );

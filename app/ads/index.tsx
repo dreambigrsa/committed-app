@@ -5,6 +5,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
 import { Advertisement } from '@/types';
 import { ExternalLink, Play, PauseCircle, RefreshCw, TrendingUp, Trash2 } from 'lucide-react-native';
+import { Image } from 'expo-image';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '@/lib/supabase';
 
@@ -136,6 +137,14 @@ export default function MyAdsScreen() {
         <ScrollView style={styles.list} contentContainerStyle={{ paddingBottom: 32 }}>
           {ads.map((ad) => (
             <View key={ad.id} style={styles.card}>
+              {/* Featured image */}
+              {ad.imageUrl && (
+                <Image
+                  source={{ uri: ad.imageUrl }}
+                  style={styles.featuredImage}
+                  contentFit="cover"
+                />
+              )}
               <View style={styles.rowBetween}>
                 <Text style={styles.title}>{ad.title}</Text>
                 <View style={styles.chipRow}>
@@ -147,11 +156,12 @@ export default function MyAdsScreen() {
                   </View>
                 </View>
               </View>
-              <Text style={styles.desc} numberOfLines={2}>
-                {ad.description}
-              </Text>
+              <View style={{ padding: 16 }}>
+                <Text style={styles.desc} numberOfLines={2}>
+                  {ad.description}
+                </Text>
 
-              <View style={styles.metricsCard}>
+                <View style={styles.metricsCard}>
                 <View style={styles.metricItem}>
                   <TrendingUp size={18} color={colors.primary} />
                   <View>
@@ -173,12 +183,12 @@ export default function MyAdsScreen() {
                 <Text style={styles.meta}>Budget {ad.dailyBudget ? `\$${ad.dailyBudget}/day` : '-'}</Text>
               </View>
 
-              <Text style={styles.suggestion}>{suggestion(ad)}</Text>
-              {ad.rejectionReason ? (
-                <Text style={styles.rejection}>Rejected: {ad.rejectionReason}</Text>
-              ) : null}
+                <Text style={styles.suggestion}>{suggestion(ad)}</Text>
+                {ad.rejectionReason ? (
+                  <Text style={styles.rejection}>Rejected: {ad.rejectionReason}</Text>
+                ) : null}
 
-              <View style={styles.actions}>
+                <View style={styles.actions}>
                 <TouchableOpacity style={styles.actionButton} onPress={() => handleOpenCta(ad)}>
                   <ExternalLink size={16} color={colors.primary} />
                   <Text style={styles.actionText}>View CTA</Text>
@@ -204,6 +214,7 @@ export default function MyAdsScreen() {
                   <Trash2 size={16} color={colors.danger} />
                   <Text style={[styles.actionText, { color: colors.danger }]}>Delete</Text>
                 </TouchableOpacity>
+              </View>
               </View>
             </View>
           ))}
@@ -232,7 +243,8 @@ const createStyles = (colors: any) =>
     newButtonSecondaryText: { color: colors.text.primary, fontWeight: '700' },
     loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     list: { paddingHorizontal: 16, paddingTop: 12 },
-    card: { backgroundColor: colors.background.primary, borderRadius: 16, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: colors.border.light, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
+    card: { backgroundColor: colors.background.primary, borderRadius: 16, marginBottom: 14, borderWidth: 1, borderColor: colors.border.light, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2, overflow: 'hidden' },
+    featuredImage: { width: '100%', height: 200, backgroundColor: colors.background.secondary },
     rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     row: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
     title: { fontSize: 16, fontWeight: '700', color: colors.text.primary, flex: 1, marginRight: 8 },

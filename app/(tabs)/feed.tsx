@@ -39,7 +39,7 @@ const { width } = Dimensions.get('window');
 export default function FeedScreen() {
   const router = useRouter();
   const navigation = useNavigation();
-  const { currentUser, posts, toggleLike, getComments, getActiveAds, getPersonalizedFeed, getSmartAds, recordAdImpression, recordAdClick, addComment, editComment, deleteComment, toggleCommentLike, editPost, deletePost, sharePost, adminDeletePost, adminRejectPost, reportContent, getUserStatus, userStatuses } = useApp();
+  const { currentUser, posts, toggleLike, getComments, getActiveAds, getPersonalizedFeed, getSmartAds, recordAdImpression, recordAdClick, addComment, editComment, deleteComment, toggleCommentLike, editPost, deletePost, sharePost, adminDeletePost, adminRejectPost, reportContent, getUserStatus, userStatuses, reelComments, toggleReelLike, addReelComment, shareReel } = useApp();
   const { colors } = useTheme();
   const [showComments, setShowComments] = useState<string | null>(null);
   const [smartAds, setSmartAds] = useState<Advertisement[]>([]);
@@ -61,6 +61,12 @@ export default function FeedScreen() {
   const failedAdImages = useRef<Set<string>>(new Set());
   const [boostedPostIds, setBoostedPostIds] = useState<Set<string>>(new Set());
   const [adUserPhotos, setAdUserPhotos] = useState<Record<string, string>>({});
+  const [adOriginalPosts, setAdOriginalPosts] = useState<Record<string, Post | null>>({});
+  const [adOriginalReels, setAdOriginalReels] = useState<Record<string, any>>({});
+  const [adLikes, setAdLikes] = useState<Record<string, string[]>>({});
+  const [adComments, setAdComments] = useState<Record<string, Comment[]>>({});
+  const [expandedAdDescriptions, setExpandedAdDescriptions] = useState<Set<string>>(new Set());
+  const [showAdComments, setShowAdComments] = useState<string | null>(null);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -166,6 +172,46 @@ export default function FeedScreen() {
             setAdUserPhotos(photoMap);
           }
         }
+
+        // Load original posts/reels for boosted content
+        const postMap: Record<string, Post | null> = {};
+        const reelMap: Record<string, any> = {};
+        const likesMap: Record<string, string[]> = {};
+        const commentsMap: Record<string, Comment[]> = {};
+
+        for (const ad of ads) {
+          if (ad.promotedPostId) {
+            const originalPost = posts.find(p => p.id === ad.promotedPostId);
+            if (originalPost) {
+              postMap[ad.id] = originalPost;
+              likesMap[ad.id] = originalPost.likes;
+              commentsMap[ad.id] = getComments(originalPost.id);
+            }
+          } else if (ad.promotedReelId) {
+            const { data: reelData } = await supabase
+              .from('reels')
+              .select('id, user_id, caption, video_url, thumbnail_url, created_at')
+              .eq('id', ad.promotedReelId)
+              .single();
+            if (reelData) {
+              reelMap[ad.id] = reelData;
+              // Get reel likes
+              const { data: reelLikes } = await supabase
+                .from('reel_likes')
+                .select('user_id')
+                .eq('reel_id', ad.promotedReelId);
+              likesMap[ad.id] = (reelLikes || []).map((l: any) => l.user_id);
+              // Get reel comments
+              const reelCommentsList = reelComments[ad.promotedReelId] || [];
+              commentsMap[ad.id] = reelCommentsList;
+            }
+          }
+        }
+
+        setAdOriginalPosts(postMap);
+        setAdOriginalReels(reelMap);
+        setAdLikes(likesMap);
+        setAdComments(commentsMap);
       } catch (error) {
         console.error('Error loading smart ads:', error);
         // Fallback to regular ads
@@ -176,7 +222,46 @@ export default function FeedScreen() {
     if (currentUser) {
       loadSmartAds();
     }
-  }, [getSmartAds, getActiveAds, currentUser]);
+  }, [getSmartAds, getActiveAds, currentUser, posts, getComments, reelComments]);
+
+  // Refresh ad engagement when posts/comments change
+  useEffect(() => {
+    const updateAdEngagement = () => {
+      const newLikes: Record<string, string[]> = {};
+      const newComments: Record<string, Comment[]> = {};
+      
+      smartAds.forEach(ad => {
+        if (ad.promotedPostId) {
+          const originalPost = posts.find(p => p.id === ad.promotedPostId);
+          if (originalPost) {
+            newLikes[ad.id] = originalPost.likes;
+            newComments[ad.id] = getComments(originalPost.id);
+          }
+        } else if (ad.promotedReelId) {
+          const reelCommentsList = reelComments[ad.promotedReelId] || [];
+          newComments[ad.id] = reelCommentsList;
+          // Get reel likes from database
+          supabase
+            .from('reel_likes')
+            .select('user_id')
+            .eq('reel_id', ad.promotedReelId)
+            .then(({ data }) => {
+              if (data) {
+                const likes = data.map((l: any) => l.user_id);
+                setAdLikes(prev => ({ ...prev, [ad.id]: likes }));
+              }
+            });
+        }
+      });
+      
+      setAdLikes(prev => ({ ...prev, ...newLikes }));
+      setAdComments(prev => ({ ...prev, ...newComments }));
+    };
+    
+    if (smartAds.length > 0) {
+      updateAdEngagement();
+    }
+  }, [posts, reelComments, smartAds, getComments]);
   
   // Reload ads periodically to ensure rotation (every 30 seconds or when posts change)
   useEffect(() => {
@@ -716,6 +801,68 @@ export default function FeedScreen() {
       fontSize: 14,
       color: '#1877F2',
       marginLeft: 4,
+    },
+    verifiedBadge: {
+      width: 16,
+      height: 16,
+      borderRadius: 8,
+      backgroundColor: '#1877F2',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    verifiedTick: {
+      fontSize: 10,
+      color: colors.text.white,
+      fontWeight: '800' as const,
+    },
+    adSponsoredText: {
+      fontSize: 12,
+      color: colors.text.tertiary,
+    },
+    seeMoreText: {
+      fontSize: 14,
+      color: colors.text.secondary,
+      fontWeight: '600' as const,
+      marginTop: 4,
+    },
+    adEngagementRow: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderTopWidth: 1,
+      borderTopColor: colors.border.light,
+    },
+    adEngagementCounts: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    adEngagementItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    adEngagementCountText: {
+      fontSize: 13,
+      color: colors.text.secondary,
+    },
+    adActionButtons: {
+      flexDirection: 'row',
+      borderTopWidth: 1,
+      borderTopColor: colors.border.light,
+      paddingHorizontal: 8,
+    },
+    adActionButton: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      paddingVertical: 10,
+    },
+    adActionButtonText: {
+      fontSize: 14,
+      color: colors.text.secondary,
+      fontWeight: '600' as const,
     },
     adCTAButton: {
       flexDirection: 'row',
@@ -1341,8 +1488,68 @@ export default function FeedScreen() {
     const sponsorPhoto = ad.userId ? adUserPhotos[ad.userId] : null;
     const isAdOwner = ad.userId === currentUser?.id;
     
+    // Get original post/reel for engagement
+    const originalPost = ad.promotedPostId ? adOriginalPosts[ad.id] : null;
+    const originalReel = ad.promotedReelId ? adOriginalReels[ad.id] : null;
+    
+    // Get likes and comments from original content
+    const adLikesList = adLikes[ad.id] || [];
+    const adCommentsList = adComments[ad.id] || [];
+    const isLiked = currentUser ? adLikesList.includes(currentUser.id) : false;
+    const isDescriptionExpanded = expandedAdDescriptions.has(ad.id);
+    const descriptionLines = 3;
+    const shouldShowSeeMore = ad.description && ad.description.length > 150;
+    
+    // Handle ad engagement - link to original post/reel
+    const handleAdLike = async () => {
+      if (originalPost) {
+        await toggleLike(originalPost.id);
+        // Update local state
+        const newLikes = isLiked 
+          ? adLikesList.filter(id => id !== currentUser.id)
+          : [...adLikesList, currentUser.id];
+        setAdLikes(prev => ({ ...prev, [ad.id]: newLikes }));
+      } else if (originalReel && toggleReelLike) {
+        await toggleReelLike(originalReel.id);
+        // Update local state
+        const newLikes = isLiked 
+          ? adLikesList.filter(id => id !== currentUser.id)
+          : [...adLikesList, currentUser.id];
+        setAdLikes(prev => ({ ...prev, [ad.id]: newLikes }));
+      }
+    };
+
+    const handleAdComment = () => {
+      setShowAdComments(ad.id);
+    };
+
+    const handleAdShare = async () => {
+      if (originalPost) {
+        await sharePost(originalPost.id);
+      } else if (originalReel && shareReel) {
+        await shareReel(originalReel.id);
+      }
+    };
+
+    const handleAdAddComment = async (content: string, parentCommentId?: string, stickerId?: string, messageType?: 'text' | 'sticker') => {
+      if (originalPost) {
+        await addComment(originalPost.id, content, parentCommentId, stickerId, messageType);
+        // Refresh comments
+        const updatedComments = getComments(originalPost.id);
+        setAdComments(prev => ({ ...prev, [ad.id]: updatedComments }));
+      } else if (originalReel && addReelComment) {
+        await addReelComment(originalReel.id, content, parentCommentId, stickerId, messageType);
+        // Refresh comments - wait a bit for state to update
+        setTimeout(() => {
+          const updatedComments = reelComments[originalReel.id] || [];
+          setAdComments(prev => ({ ...prev, [ad.id]: updatedComments }));
+        }, 500);
+      }
+    };
+    
     return (
       <View key={`ad-card-${ad.id}`} style={styles.adCard}>
+        {/* Facebook-style header: Profile photo, name, Sponsored tag */}
         <View style={styles.adHeader}>
           <TouchableOpacity
             style={styles.adSponsorInfo}
@@ -1360,18 +1567,23 @@ export default function FeedScreen() {
                 <Text style={styles.adAvatarText}>{sponsorInitial}</Text>
               </View>
             )}
-            <View>
+            <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Text style={styles.adSponsorName}>{ad.sponsorName || 'Sponsored'}</Text>
-                {!!ad.sponsorVerified && <Text style={styles.adVerifiedTick}>✓</Text>}
+                {!!ad.sponsorVerified && (
+                  <View style={styles.verifiedBadge}>
+                    <Text style={styles.verifiedTick}>✓</Text>
+                  </View>
+                )}
               </View>
-              <View style={styles.adSponsorMeta}>
-                <Text style={[styles.adBadgeText, { color: colors.text.tertiary, fontSize: 12 }]}>Sponsored</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Text style={styles.adSponsoredText}>Sponsored</Text>
               </View>
             </View>
           </TouchableOpacity>
         </View>
 
+        {/* Ad image */}
         <TouchableOpacity
           activeOpacity={0.95}
           onPress={() => handleAdPress(ad)}
@@ -1393,31 +1605,121 @@ export default function FeedScreen() {
           )}
         </TouchableOpacity>
         
+        {/* Facebook-style description with "See more" */}
         <View style={styles.adContent}>
-          <Text style={styles.adTitle}>{ad.title}</Text>
-          <Text style={styles.adDescription} numberOfLines={3}>
-            {ad.description}
-          </Text>
+          {ad.title && (
+            <Text style={styles.adTitle}>{ad.title}</Text>
+          )}
+          {ad.description && (
+            <View>
+              <Text 
+                style={styles.adDescription} 
+                numberOfLines={isDescriptionExpanded ? undefined : descriptionLines}
+              >
+                {ad.description}
+              </Text>
+              {shouldShowSeeMore && (
+                <TouchableOpacity
+                  onPress={() => {
+                    if (isDescriptionExpanded) {
+                      setExpandedAdDescriptions(prev => {
+                        const next = new Set(prev);
+                        next.delete(ad.id);
+                        return next;
+                      });
+                    } else {
+                      setExpandedAdDescriptions(prev => new Set([...prev, ad.id]));
+                    }
+                  }}
+                >
+                  <Text style={styles.seeMoreText}>
+                    {isDescriptionExpanded ? 'See less' : 'See more'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
         </View>
 
+        {/* CTA Button (if exists) */}
         {cta.url && (
-          <View style={styles.adActionsRow}>
-            {isAdOwner && (
-              <TouchableOpacity
-                style={styles.adInsightsButton}
-                onPress={() => router.push('/ads' as any)}
+          <TouchableOpacity
+            style={styles.adCTAButton}
+            onPress={() => handleAdPress(ad)}
+          >
+            <Text style={styles.adCTAButtonText}>{cta.label || 'Learn More'}</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Facebook-style engagement: Likes, Comments, Shares */}
+        <View style={styles.adEngagementRow}>
+          <View style={styles.adEngagementCounts}>
+            {adLikesList.length > 0 && (
+              <View style={styles.adEngagementItem}>
+                <Heart size={16} color={colors.primary} fill={colors.primary} />
+                <Text style={styles.adEngagementCountText}>{adLikesList.length}</Text>
+              </View>
+            )}
+            {adCommentsList.length > 0 && (
+              <TouchableOpacity 
+                style={styles.adEngagementItem}
+                onPress={() => setShowAdComments(ad.id)}
               >
-                <Text style={styles.adInsightsButtonText}>See insights & ads</Text>
+                <Text style={styles.adEngagementCountText}>
+                  {adCommentsList.length} {adCommentsList.length === 1 ? 'comment' : 'comments'}
+                </Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity
-              style={styles.adCTAButton}
-              onPress={() => handleAdPress(ad)}
-            >
-              <Text style={styles.adCTAButtonText}>{cta.label || 'Learn More'}</Text>
-              <ExternalLink size={14} color={colors.text.white} />
-            </TouchableOpacity>
           </View>
+        </View>
+
+        {/* Facebook-style action buttons: Like, Comment, Share */}
+        <View style={styles.adActionButtons}>
+          <TouchableOpacity
+            style={styles.adActionButton}
+            onPress={handleAdLike}
+          >
+            <Heart
+              size={20}
+              color={isLiked ? colors.primary : colors.text.secondary}
+              fill={isLiked ? colors.primary : 'transparent'}
+            />
+            <Text style={[styles.adActionButtonText, isLiked && { color: colors.primary }]}>
+              Like
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.adActionButton}
+            onPress={handleAdComment}
+          >
+            <MessageCircle size={20} color={colors.text.secondary} />
+            <Text style={styles.adActionButtonText}>Comment</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.adActionButton}
+            onPress={handleAdShare}
+          >
+            <Share2 size={20} color={colors.text.secondary} />
+            <Text style={styles.adActionButtonText}>Share</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Comments Modal for Ad */}
+        {showAdComments === ad.id && (
+          <CommentsModal
+            postId={originalPost?.id || originalReel?.id || ad.id}
+            visible={true}
+            onClose={() => setShowAdComments(null)}
+            comments={adCommentsList}
+            colors={colors}
+            styles={styles}
+            addComment={handleAdAddComment}
+            editComment={originalPost ? editComment : async () => false}
+            deleteComment={originalPost ? deleteComment : async () => false}
+            toggleCommentLike={originalPost ? toggleCommentLike : async () => false}
+          />
         )}
       </View>
     );
@@ -1885,8 +2187,8 @@ export default function FeedScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Facebook-style boost row under the post (owner only) */}
-        {isOwner && (
+        {/* Facebook-style boost row under the post (owner only, and only if boosted) */}
+        {isOwner && isBoosted && (
           <View style={styles.boostRow}>
             <TouchableOpacity style={styles.boostSecondaryBtn} onPress={() => router.push('/ads' as any)}>
               <Text style={styles.boostSecondaryText}>See insights & ads</Text>
@@ -1895,7 +2197,7 @@ export default function FeedScreen() {
               style={styles.boostPrimaryBtn}
               onPress={() => router.push({ pathname: '/ads/promote', params: { postId: post.id } })}
             >
-              <Text style={styles.boostPrimaryText}>{isBoosted ? 'Boost again' : 'Boost post'}</Text>
+              <Text style={styles.boostPrimaryText}>Boost again</Text>
             </TouchableOpacity>
           </View>
         )}

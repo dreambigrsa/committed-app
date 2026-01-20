@@ -54,7 +54,6 @@ WITH CHECK (auth.uid() = user_id);
 
 -- Step 6: Grant permissions
 GRANT SELECT, INSERT, UPDATE ON public.user_legal_acceptances TO authenticated;
-GRANT USAGE ON SEQUENCE user_legal_acceptances_id_seq TO authenticated;
 
 -- Step 7: Verify it worked (you should see 3 rows)
 SELECT 

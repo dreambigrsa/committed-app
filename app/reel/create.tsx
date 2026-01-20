@@ -198,7 +198,7 @@ export default function CreateReelScreen() {
             <View style={styles.composerHeader}>
               <View style={styles.avatarCircle}>
                 {currentUser?.profilePicture ? (
-                  <Image source={{ uri: currentUser.profilePicture }} style={styles.avatarImage} contentFit="cover" />
+                  <Image source={{ uri: currentUser.profilePicture }} style={styles.avatarImage} resizeMode="cover" />
                 ) : (
                   <Text style={styles.avatarText}>
                     {(currentUser?.fullName || currentUser?.username || 'U').slice(0, 1).toUpperCase()}

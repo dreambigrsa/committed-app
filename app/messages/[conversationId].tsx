@@ -1767,7 +1767,7 @@ export default function ConversationDetailScreen() {
   // Show loading state while conversation is being loaded
   if (isLoadingConversation || !conversation || !otherParticipant) {
     return (
-      <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+      <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background.primary }}>
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={{ marginTop: 16, color: colors.text.secondary }}>Loading conversation...</Text>
       </SafeAreaView>

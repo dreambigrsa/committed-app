@@ -37,10 +37,6 @@ export default function ReelsScreen() {
   const { currentUser, reels, toggleReelLike, editReel, deleteReel, shareReel, adminDeleteReel, adminRejectReel, followUser, unfollowUser, isFollowing: checkIsFollowing, addReelComment, getReelComments, editReelComment, deleteReelComment, toggleReelCommentLike, reportContent, getActiveAds, getSmartAds, recordAdImpression, recordAdClick, getUserStatus, userStatuses, legalAcceptanceStatus } = useApp();
   const { colors } = useTheme();
   
-  // Early return check - must be before all hooks
-  if (!currentUser) {
-    return null;
-  }
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [currentReelId, setCurrentReelId] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState<boolean>(false);
@@ -1042,6 +1038,9 @@ export default function ReelsScreen() {
   };
 
   const renderReel = (reel: Reel, index: number) => {
+    if (!currentUser) {
+      return null;
+    }
     const isLiked = reel.likes.includes(currentUser.id);
     const isOwner = reel.userId === currentUser.id;
     const isAdmin = currentUser.role === 'admin' || currentUser.role === 'super_admin' || currentUser.role === 'moderator';
@@ -1326,6 +1325,10 @@ export default function ReelsScreen() {
       </View>
     );
   };
+
+  if (!currentUser) {
+    return null;
+  }
 
   return (
     <View style={styles.container}>

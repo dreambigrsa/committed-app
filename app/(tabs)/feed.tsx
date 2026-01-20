@@ -21,7 +21,7 @@ import { useRouter } from 'expo-router';
 import { Heart, MessageCircle, Share2, Plus, X, ExternalLink, MoreVertical, Edit2, Trash2, Image as ImageIcon, Flag, Smile, Camera, FileText, Video as VideoIcon } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Post, Advertisement, Sticker } from '@/types';
+import { Post, Advertisement, Sticker, Comment as PostComment, ReelComment } from '@/types';
 import StickerPicker from '@/components/StickerPicker';
 import StatusIndicator from '@/components/StatusIndicator';
 import StatusStoriesBar from '@/components/StatusStoriesBar';
@@ -39,7 +39,7 @@ const { width } = Dimensions.get('window');
 export default function FeedScreen() {
   const router = useRouter();
   const navigation = useNavigation();
-  const { currentUser, posts, toggleLike, getComments, getActiveAds, getPersonalizedFeed, getSmartAds, recordAdImpression, recordAdClick, recordAdEngagement, addComment, editComment, deleteComment, toggleCommentLike, editPost, deletePost, sharePost, adminDeletePost, adminRejectPost, reportContent, getUserStatus, userStatuses, reelComments, toggleReelLike, addReelComment, shareReel } = useApp();
+  const { currentUser, posts, toggleLike, getComments, getActiveAds, getPersonalizedFeed, getSmartAds, recordAdImpression, recordAdClick, recordAdEngagement, addComment, editComment, deleteComment, toggleCommentLike, editPost, deletePost, sharePost, adminDeletePost, adminRejectPost, reportContent, getUserStatus, userStatuses, getReelComments, toggleReelLike, addReelComment, shareReel } = useApp();
   const { colors } = useTheme();
   const [showComments, setShowComments] = useState<string | null>(null);
   const [smartAds, setSmartAds] = useState<Advertisement[]>([]);
@@ -64,7 +64,7 @@ export default function FeedScreen() {
   const [adOriginalPosts, setAdOriginalPosts] = useState<Record<string, Post | null>>({});
   const [adOriginalReels, setAdOriginalReels] = useState<Record<string, any>>({});
   const [adLikes, setAdLikes] = useState<Record<string, string[]>>({});
-  const [adComments, setAdComments] = useState<Record<string, Comment[]>>({});
+  const [adComments, setAdComments] = useState<Record<string, Array<PostComment | ReelComment>>>({});
   const [expandedAdDescriptions, setExpandedAdDescriptions] = useState<Set<string>>(new Set());
   const [showAdComments, setShowAdComments] = useState<string | null>(null);
 
@@ -177,7 +177,7 @@ export default function FeedScreen() {
         const postMap: Record<string, Post | null> = {};
         const reelMap: Record<string, any> = {};
         const likesMap: Record<string, string[]> = {};
-        const commentsMap: Record<string, Comment[]> = {};
+        const commentsMap: Record<string, Array<PostComment | ReelComment>> = {};
 
         for (const ad of ads) {
           if (ad.promotedPostId) {
@@ -202,7 +202,7 @@ export default function FeedScreen() {
                 .eq('reel_id', ad.promotedReelId);
               likesMap[ad.id] = (reelLikes || []).map((l: any) => l.user_id);
               // Get reel comments
-              const reelCommentsList = reelComments[ad.promotedReelId] || [];
+              const reelCommentsList = getReelComments(ad.promotedReelId) || [];
               commentsMap[ad.id] = reelCommentsList;
             }
           }
@@ -222,13 +222,13 @@ export default function FeedScreen() {
     if (currentUser) {
       loadSmartAds();
     }
-  }, [getSmartAds, getActiveAds, currentUser, posts, getComments, reelComments]);
+  }, [getSmartAds, getActiveAds, currentUser, posts, getComments, getReelComments]);
 
   // Refresh ad engagement when posts/comments change
   useEffect(() => {
     const updateAdEngagement = () => {
       const newLikes: Record<string, string[]> = {};
-      const newComments: Record<string, Comment[]> = {};
+      const newComments: Record<string, Array<PostComment | ReelComment>> = {};
       
       smartAds.forEach(ad => {
         if (ad.promotedPostId) {
@@ -238,7 +238,7 @@ export default function FeedScreen() {
             newComments[ad.id] = getComments(originalPost.id);
           }
         } else if (ad.promotedReelId) {
-          const reelCommentsList = reelComments[ad.promotedReelId] || [];
+          const reelCommentsList = getReelComments(ad.promotedReelId) || [];
           newComments[ad.id] = reelCommentsList;
           // Get reel likes from database
           supabase
@@ -261,7 +261,7 @@ export default function FeedScreen() {
     if (smartAds.length > 0) {
       updateAdEngagement();
     }
-  }, [posts, reelComments, smartAds, getComments]);
+  }, [posts, smartAds, getComments, getReelComments]);
   
   // Reload ads periodically to ensure rotation (every 30 seconds or when posts change)
   useEffect(() => {
@@ -862,6 +862,21 @@ export default function FeedScreen() {
     adActionButtonText: {
       fontSize: 14,
       color: colors.text.secondary,
+      fontWeight: '600' as const,
+    },
+    adLinkButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginTop: 8,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      backgroundColor: colors.background.secondary,
+      borderRadius: 8,
+    },
+    adLinkText: {
+      fontSize: 14,
+      color: colors.primary,
       fontWeight: '600' as const,
     },
     adButtonRow: {
@@ -1663,7 +1678,7 @@ export default function FeedScreen() {
           }
           // Refresh comments - wait a bit for state to update
           setTimeout(() => {
-            const updatedComments = reelComments[targetReelId] || [];
+            const updatedComments = getReelComments(targetReelId) || [];
             console.log('Refreshed reel comments:', updatedComments.length);
             setAdComments(prev => ({ ...prev, [ad.id]: updatedComments }));
           }, 500);
@@ -1689,7 +1704,7 @@ export default function FeedScreen() {
             await recordAdEngagement(ad.id, 'comment', undefined, postId);
           }
           setTimeout(() => {
-            const updatedComments = reelComments[postId] || [];
+            const updatedComments = getReelComments(postId) || [];
             setAdComments(prev => ({ ...prev, [ad.id]: updatedComments }));
           }, 500);
         } 

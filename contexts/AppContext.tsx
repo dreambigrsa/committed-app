@@ -5898,6 +5898,17 @@ export const [AppContext, useApp] = createContextHook(() => {
     }
   }, [currentUser, reels, logActivity]);
 
+  const tryCopyToClipboard = useCallback(async (text: string) => {
+    const maybeNavigator =
+      typeof globalThis !== 'undefined' ? (globalThis as any).navigator : undefined;
+    const clipboard = maybeNavigator?.clipboard;
+    if (clipboard && typeof clipboard.writeText === 'function') {
+      await clipboard.writeText(text);
+      return true;
+    }
+    return false;
+  }, []);
+
   const sharePost = useCallback(async (postId: string) => {
     if (!currentUser) return;
     
@@ -5920,15 +5931,15 @@ export const [AppContext, useApp] = createContextHook(() => {
         console.warn('Share API not available');
         // Fallback: try to copy to clipboard
         try {
-          const { Clipboard } = require('@react-native-clipboard/clipboard');
-          if (Clipboard && Clipboard.setString) {
-            await Clipboard.setString(shareText);
+          const copied = await tryCopyToClipboard(shareText);
+          if (copied) {
             Alert.alert('Copied!', 'Post link copied to clipboard. You can paste it anywhere.');
+            return;
           }
         } catch (clipboardError) {
           console.warn('Clipboard not available:', clipboardError);
-          Alert.alert('Share Unavailable', 'Sharing is not available on this device.');
         }
+        Alert.alert('Share Unavailable', 'Sharing is not available on this device.');
         return;
       }
       
@@ -5958,10 +5969,9 @@ export const [AppContext, useApp] = createContextHook(() => {
             const downloadUrl = `https://dreambig.org.za/committed`;
             const preview = post.content ? `${post.content.substring(0, 100)}...` : 'View this post in Committed';
             const shareText = `${preview}\n\nOpen in app: ${deepLink}\nDownload Committed: ${downloadUrl}`;
-            
-            const { Clipboard } = require('@react-native-clipboard/clipboard');
-            if (Clipboard && Clipboard.setString) {
-              await Clipboard.setString(shareText);
+
+            const copied = await tryCopyToClipboard(shareText);
+            if (copied) {
               Alert.alert('Copied!', 'Share is not available. Post link copied to clipboard instead.');
               return;
             }
@@ -6000,15 +6010,15 @@ export const [AppContext, useApp] = createContextHook(() => {
         console.warn('Share API not available');
         // Fallback: try to copy to clipboard
         try {
-          const { Clipboard } = require('@react-native-clipboard/clipboard');
-          if (Clipboard && Clipboard.setString) {
-            await Clipboard.setString(shareText);
+          const copied = await tryCopyToClipboard(shareText);
+          if (copied) {
             Alert.alert('Copied!', 'Reel link copied to clipboard. You can paste it anywhere.');
+            return;
           }
         } catch (clipboardError) {
           console.warn('Clipboard not available:', clipboardError);
-          Alert.alert('Share Unavailable', 'Sharing is not available on this device.');
         }
+        Alert.alert('Share Unavailable', 'Sharing is not available on this device.');
         return;
       }
       
@@ -6038,10 +6048,9 @@ export const [AppContext, useApp] = createContextHook(() => {
             const downloadUrl = `https://dreambig.org.za/committed`;
             const preview = reel.caption ? `${reel.caption.substring(0, 100)}...` : 'View this reel in Committed';
             const shareText = `${preview}\n\nOpen in app: ${deepLink}\nDownload Committed: ${downloadUrl}`;
-            
-            const { Clipboard } = require('@react-native-clipboard/clipboard');
-            if (Clipboard && Clipboard.setString) {
-              await Clipboard.setString(shareText);
+
+            const copied = await tryCopyToClipboard(shareText);
+            if (copied) {
               Alert.alert('Copied!', 'Share is not available. Reel link copied to clipboard instead.');
               return;
             }

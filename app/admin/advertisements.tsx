@@ -29,9 +29,16 @@ export default function AdminAdvertisementsScreen() {
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
   const [editingAd, setEditingAd] = useState<Advertisement | null>(null);
   const [systemSettings, setSystemSettings] = useState<any>(null);
-  const [settingsForm, setSettingsForm] = useState({
+  const [settingsForm, setSettingsForm] = useState<{
+    defaultCpm: string;
+    defaultCpc: string;
+    defaultCpe: string;
+    defaultMaxMultiplier: string;
+    competitorStep: string;
+  }>({
     defaultCpm: '0.50',
     defaultCpc: '0.05',
+    defaultCpe: '0.10',
     defaultMaxMultiplier: '2.0',
     competitorStep: '0.10',
   });
@@ -228,7 +235,7 @@ export default function AdminAdvertisementsScreen() {
             .update({ spend })
             .eq('id', ad.id);
 
-          formattedAds.push({
+          const adObj: Advertisement = {
             id: ad.id,
             title: ad.title,
             description: ad.description,
@@ -257,22 +264,25 @@ export default function AdminAdvertisementsScreen() {
             dailyBudget: ad.daily_budget,
             totalBudget: ad.total_budget,
             spend,
-            // helpful for UI
-            effectiveCpm: effectiveCPM,
-            effectiveCpc: effectiveCPC,
-            effectiveCpe: effectiveCPE,
-            engagements: totalEngagements,
-            likes,
-            comments,
-            shares,
-            bidMultiplier: multiplier,
             billingStatus: ad.billing_status,
             billingProvider: ad.billing_provider,
             billingTxnId: ad.billing_txn_id,
             promotedPostId: ad.promoted_post_id,
             promotedReelId: ad.promoted_reel_id,
             targeting: ad.targeting,
-          });
+          };
+          
+          // Add UI-only properties
+          (adObj as any).effectiveCpm = effectiveCPM;
+          (adObj as any).effectiveCpc = effectiveCPC;
+          (adObj as any).effectiveCpe = effectiveCPE;
+          (adObj as any).engagements = totalEngagements;
+          (adObj as any).likes = likes;
+          (adObj as any).comments = comments;
+          (adObj as any).shares = shares;
+          (adObj as any).bidMultiplier = multiplier;
+          
+          formattedAds.push(adObj);
         }
 
         setAdvertisements(formattedAds);
@@ -537,6 +547,7 @@ export default function AdminAdvertisementsScreen() {
       endDate: '',
       bidCpm: '0.50',
       bidCpc: '0.05',
+      bidCpe: '0.10',
       bidMaxMultiplier: '2.0',
       bidNiche: '',
     });
@@ -1684,6 +1695,14 @@ const styles = StyleSheet.create({
   checkboxLabel: {
     fontSize: 16,
     color: colors.text.primary,
+  },
+  rejectionText: {
+    fontSize: 13,
+    color: colors.danger,
+    marginTop: 8,
+    padding: 8,
+    backgroundColor: colors.danger + '10',
+    borderRadius: 8,
   },
   modalActions: {
     flexDirection: 'row',

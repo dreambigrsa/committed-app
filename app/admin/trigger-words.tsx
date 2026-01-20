@@ -23,6 +23,8 @@ export default function TriggerWordsManagementScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingWord, setEditingWord] = useState<TriggerWord | null>(null);
+  const categories = ['romantic', 'intimate', 'suspicious', 'meetup', 'secret', 'general'] as const;
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(categories));
   
   const [newWord, setNewWord] = useState({
     wordPhrase: '',
@@ -155,8 +157,6 @@ export default function TriggerWordsManagementScreen() {
   const inactiveWords = triggerWords.filter(w => !w.active);
 
   // Group words by category
-  const categories = ['romantic', 'intimate', 'suspicious', 'meetup', 'secret', 'general'] as const;
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(categories));
 
   const toggleCategory = (category: string) => {
     const newExpanded = new Set(expandedCategories);

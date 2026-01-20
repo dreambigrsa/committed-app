@@ -782,7 +782,7 @@ export default function AdminPricingScreen() {
                               <View style={styles.limitInputGroup}>
                                 <Text style={styles.limitLabel}>Limit Value</Text>
                                 <TextInput
-                                  style={styles.limitInput}
+                                  style={styles.featureLimitInput}
                                   value={limit.value}
                                   onChangeText={(text) => updateFeatureLimit(feature.name, 'value', text)}
                                   placeholder="0"
@@ -1224,6 +1224,15 @@ const createStyles = (colors: any) =>
       borderColor: colors.border.light,
       textAlign: 'center',
     },
+    featureLimitInput: {
+      backgroundColor: colors.background.primary,
+      borderRadius: 8,
+      padding: 10,
+      fontSize: 14,
+      color: colors.text.primary,
+      borderWidth: 1,
+      borderColor: colors.border.light,
+    },
     unlimitedBadge: {
       flex: 1,
       flexDirection: 'row',
@@ -1397,15 +1406,6 @@ const createStyles = (colors: any) =>
       fontWeight: '600',
       color: colors.text.secondary,
       marginBottom: 6,
-    },
-    limitInput: {
-      backgroundColor: colors.background.primary,
-      borderRadius: 8,
-      padding: 10,
-      fontSize: 14,
-      color: colors.text.primary,
-      borderWidth: 1,
-      borderColor: colors.border.light,
     },
     periodInputGroup: {
       flex: 1,

@@ -3426,6 +3426,13 @@ export const [AppContext, useApp] = createContextHook(() => {
           placement: adData.placement,
           active: adData.active,
           created_by: currentUser.id,
+          cta_type: adData.ctaType,
+          cta_phone: adData.ctaPhone,
+          cta_message: adData.ctaMessage,
+          cta_messenger_id: adData.ctaMessengerId,
+          cta_url: adData.ctaUrl,
+          sponsor_name: adData.sponsorName,
+          sponsor_verified: adData.sponsorVerified,
         })
         .select()
         .single();
@@ -3446,6 +3453,13 @@ export const [AppContext, useApp] = createContextHook(() => {
         createdBy: data.created_by,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
+        ctaType: data.cta_type,
+        ctaPhone: data.cta_phone,
+        ctaMessage: data.cta_message,
+        ctaMessengerId: data.cta_messenger_id,
+        ctaUrl: data.cta_url,
+        sponsorName: data.sponsor_name,
+        sponsorVerified: data.sponsor_verified,
       };
 
       setAdvertisements([newAd, ...advertisements]);
@@ -3468,6 +3482,13 @@ export const [AppContext, useApp] = createContextHook(() => {
       if (updates.type !== undefined) updateData.type = updates.type;
       if (updates.placement !== undefined) updateData.placement = updates.placement;
       if (updates.active !== undefined) updateData.active = updates.active;
+      if (updates.ctaType !== undefined) updateData.cta_type = updates.ctaType;
+      if (updates.ctaPhone !== undefined) updateData.cta_phone = updates.ctaPhone;
+      if (updates.ctaMessage !== undefined) updateData.cta_message = updates.ctaMessage;
+      if (updates.ctaMessengerId !== undefined) updateData.cta_messenger_id = updates.ctaMessengerId;
+      if (updates.ctaUrl !== undefined) updateData.cta_url = updates.ctaUrl;
+      if (updates.sponsorName !== undefined) updateData.sponsor_name = updates.sponsorName;
+      if (updates.sponsorVerified !== undefined) updateData.sponsor_verified = updates.sponsorVerified;
 
       const { error } = await supabase
         .from('advertisements')

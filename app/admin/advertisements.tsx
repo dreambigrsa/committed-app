@@ -35,6 +35,13 @@ export default function AdminAdvertisementsScreen() {
     type: 'card' as Advertisement['type'],
     placement: 'feed' as Advertisement['placement'],
     active: true,
+    ctaType: 'whatsapp' as Advertisement['ctaType'],
+    ctaPhone: '',
+    ctaMessage: '',
+    ctaMessengerId: '',
+    ctaUrl: '',
+    sponsorName: '',
+    sponsorVerified: false,
   });
 
   useEffect(() => {
@@ -98,6 +105,13 @@ export default function AdminAdvertisementsScreen() {
           createdBy: ad.created_by,
           createdAt: ad.created_at,
           updatedAt: ad.updated_at,
+          ctaType: ad.cta_type,
+          ctaPhone: ad.cta_phone,
+          ctaMessage: ad.cta_message,
+          ctaMessengerId: ad.cta_messenger_id,
+          ctaUrl: ad.cta_url,
+          sponsorName: ad.sponsor_name,
+          sponsorVerified: ad.sponsor_verified,
         }));
 
         setAdvertisements(formattedAds);
@@ -172,6 +186,29 @@ export default function AdminAdvertisementsScreen() {
       }
     }
 
+    // CTA validation
+    if (formData.ctaType === 'whatsapp') {
+      if (!formData.ctaPhone) {
+        Alert.alert('Error', 'Please provide a WhatsApp phone number.');
+        return;
+      }
+    } else if (formData.ctaType === 'messenger') {
+      if (!formData.ctaMessengerId) {
+        Alert.alert('Error', 'Please provide a Messenger page/user ID.');
+        return;
+      }
+    } else if (formData.ctaType === 'website') {
+      if (!formData.ctaUrl && !formData.linkUrl) {
+        Alert.alert('Error', 'Please provide a website URL.');
+        return;
+      }
+      const targetUrl = formData.ctaUrl || formData.linkUrl;
+      if (targetUrl && !validateURL(targetUrl)) {
+        Alert.alert('Invalid URL', 'Please enter a valid website URL for the CTA.');
+        return;
+      }
+    }
+
     await saveAd();
   };
 
@@ -202,6 +239,13 @@ export default function AdminAdvertisementsScreen() {
       type: ad.type,
       placement: ad.placement,
       active: ad.active,
+      ctaType: ad.ctaType || 'whatsapp',
+      ctaPhone: ad.ctaPhone || '',
+      ctaMessage: ad.ctaMessage || '',
+      ctaMessengerId: ad.ctaMessengerId || '',
+      ctaUrl: ad.ctaUrl || '',
+      sponsorName: ad.sponsorName || '',
+      sponsorVerified: !!ad.sponsorVerified,
     });
     setShowCreateModal(true);
   };
@@ -233,6 +277,13 @@ export default function AdminAdvertisementsScreen() {
       type: 'card',
       placement: 'feed',
       active: true,
+      ctaType: 'whatsapp',
+      ctaPhone: '',
+      ctaMessage: '',
+      ctaMessengerId: '',
+      ctaUrl: '',
+      sponsorName: '',
+      sponsorVerified: false,
     });
   };
 
@@ -501,6 +552,136 @@ export default function AdminAdvertisementsScreen() {
                     </TouchableOpacity>
                   ))}
                 </View>
+              </View>
+
+              {/* CTA Settings */}
+              <View style={styles.sectionDivider}>
+                <Text style={styles.sectionDividerText}>Call To Action</Text>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>CTA Type</Text>
+                <View style={styles.segmentedControl}>
+                  {(['whatsapp', 'messenger', 'website'] as const).map((cta) => (
+                    <TouchableOpacity
+                      key={cta}
+                      style={[
+                        styles.segmentedButton,
+                        formData.ctaType === cta && styles.segmentedButtonActive,
+                      ]}
+                      onPress={() => setFormData({ ...formData, ctaType: cta })}
+                    >
+                      <Text
+                        style={[
+                          styles.segmentedButtonText,
+                          formData.ctaType === cta && styles.segmentedButtonTextActive,
+                        ]}
+                      >
+                        {cta === 'whatsapp'
+                          ? 'WhatsApp'
+                          : cta === 'messenger'
+                          ? 'Messenger'
+                          : 'Website'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {formData.ctaType === 'whatsapp' && (
+                <>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>WhatsApp Number *</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="+1234567890"
+                      placeholderTextColor={colors.text.tertiary}
+                      value={formData.ctaPhone}
+                      onChangeText={(text) => setFormData({ ...formData, ctaPhone: text })}
+                      keyboardType="phone-pad"
+                    />
+                  </View>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Template Message (Optional)</Text>
+                    <TextInput
+                      style={[styles.textInput, styles.textArea]}
+                      placeholder="Hi, I'm interested..."
+                      placeholderTextColor={colors.text.tertiary}
+                      value={formData.ctaMessage}
+                      onChangeText={(text) => setFormData({ ...formData, ctaMessage: text })}
+                      multiline
+                      numberOfLines={3}
+                    />
+                  </View>
+                </>
+              )}
+
+              {formData.ctaType === 'messenger' && (
+                <>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Messenger Page/User ID *</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="page_id or username"
+                      placeholderTextColor={colors.text.tertiary}
+                      value={formData.ctaMessengerId}
+                      onChangeText={(text) => setFormData({ ...formData, ctaMessengerId: text })}
+                      autoCapitalize="none"
+                    />
+                  </View>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Template Message (Optional)</Text>
+                    <TextInput
+                      style={[styles.textInput, styles.textArea]}
+                      placeholder="Hi, I'm interested..."
+                      placeholderTextColor={colors.text.tertiary}
+                      value={formData.ctaMessage}
+                      onChangeText={(text) => setFormData({ ...formData, ctaMessage: text })}
+                      multiline
+                      numberOfLines={3}
+                    />
+                  </View>
+                </>
+              )}
+
+              {formData.ctaType === 'website' && (
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Website URL *</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="https://example.com"
+                    placeholderTextColor={colors.text.tertiary}
+                    value={formData.ctaUrl || formData.linkUrl}
+                    onChangeText={(text) => setFormData({ ...formData, ctaUrl: text })}
+                    autoCapitalize="none"
+                  />
+                </View>
+              )}
+
+              <View style={styles.sectionDivider}>
+                <Text style={styles.sectionDividerText}>Sponsor</Text>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Sponsor Name</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Brand or company name"
+                  placeholderTextColor={colors.text.tertiary}
+                  value={formData.sponsorName}
+                  onChangeText={(text) => setFormData({ ...formData, sponsorName: text })}
+                />
+              </View>
+              <View style={styles.inputGroup}>
+                <TouchableOpacity
+                  style={styles.checkboxRow}
+                  onPress={() => setFormData({ ...formData, sponsorVerified: !formData.sponsorVerified })}
+                >
+                  <View style={[styles.checkbox, formData.sponsorVerified && styles.checkboxChecked]}>
+                    {formData.sponsorVerified && <View style={styles.checkboxInner} />}
+                  </View>
+                  <Text style={styles.checkboxLabel}>Verified Sponsor</Text>
+                </TouchableOpacity>
               </View>
 
               <View style={styles.inputGroup}>
@@ -837,6 +1018,18 @@ const styles = StyleSheet.create({
   },
   segmentedButtonTextActive: {
     color: colors.text.white,
+  },
+  sectionDivider: {
+    marginVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.light,
+    paddingTop: 8,
+  },
+  sectionDividerText: {
+    fontSize: 13,
+    fontWeight: '700' as const,
+    color: colors.text.secondary,
+    textTransform: 'uppercase',
   },
   checkboxRow: {
     flexDirection: 'row',

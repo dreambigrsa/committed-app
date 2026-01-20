@@ -176,6 +176,13 @@ export interface Advertisement {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  ctaType?: 'whatsapp' | 'messenger' | 'website';
+  ctaPhone?: string;
+  ctaMessage?: string;
+  ctaMessengerId?: string;
+  ctaUrl?: string;
+  sponsorName?: string;
+  sponsorVerified?: boolean;
 }
 
 export interface CheatingAlert {

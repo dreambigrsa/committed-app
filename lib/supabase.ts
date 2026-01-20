@@ -79,6 +79,13 @@ export interface SupabaseAdvertisement {
   created_by: string;
   created_at: string;
   updated_at: string;
+  cta_type?: 'whatsapp' | 'messenger' | 'website';
+  cta_phone?: string;
+  cta_message?: string;
+  cta_messenger_id?: string;
+  cta_url?: string;
+  sponsor_name?: string;
+  sponsor_verified?: boolean;
 }
 
 export interface SupabasePost {

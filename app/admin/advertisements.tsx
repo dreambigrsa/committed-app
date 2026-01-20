@@ -233,8 +233,14 @@ export default function AdminAdvertisementsScreen() {
   };
 
   const handleApprove = async (ad: Advertisement) => {
-    await updateAdvertisement(ad.id, { status: 'approved', rejectionReason: '', active: true });
-    setAdvertisements((prev) => prev.map((a) => (a.id === ad.id ? { ...a, status: 'approved', rejectionReason: '', active: true } : a)));
+    await updateAdvertisement(ad.id, { status: 'approved', rejectionReason: '', active: true, billingStatus: 'paid', billingProvider: ad.billingProvider || 'manual' });
+    setAdvertisements((prev) =>
+      prev.map((a) =>
+        a.id === ad.id
+          ? { ...a, status: 'approved', rejectionReason: '', active: true, billingStatus: 'paid', billingProvider: a.billingProvider || 'manual' }
+          : a
+      )
+    );
   };
 
   const handleReject = async (ad: Advertisement) => {
@@ -244,8 +250,12 @@ export default function AdminAdvertisementsScreen() {
         text: 'Reject',
         style: 'destructive',
         onPress: async () => {
-          await updateAdvertisement(ad.id, { status: 'rejected', active: false, rejectionReason: 'Rejected by admin' });
-          setAdvertisements((prev) => prev.map((a) => (a.id === ad.id ? { ...a, status: 'rejected', active: false, rejectionReason: 'Rejected by admin' } : a)));
+          await updateAdvertisement(ad.id, { status: 'rejected', active: false, rejectionReason: 'Rejected by admin', billingStatus: 'unpaid' });
+          setAdvertisements((prev) =>
+            prev.map((a) =>
+              a.id === ad.id ? { ...a, status: 'rejected', active: false, rejectionReason: 'Rejected by admin', billingStatus: 'unpaid' } : a
+            )
+          );
         },
       },
     ]);
@@ -495,14 +505,40 @@ export default function AdminAdvertisementsScreen() {
                 </View>
 
                 <View style={styles.adActions}>
-                  <TouchableOpacity style={styles.approveButton} onPress={() => handleApprove(ad)}>
-                    <CheckCircle2 size={18} color={colors.text.white} />
-                    <Text style={styles.buttonTextOnDark}>Approve</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.rejectButton} onPress={() => handleReject(ad)}>
-                    <XCircle size={18} color={colors.text.white} />
-                    <Text style={styles.buttonTextOnDark}>Reject</Text>
-                  </TouchableOpacity>
+                  {ad.status === 'approved' ? (
+                    <>
+                      <View style={[styles.approveButton, styles.disabledButton]}>
+                        <CheckCircle2 size={18} color={colors.text.white} />
+                        <Text style={styles.buttonTextOnDark}>Approved</Text>
+                      </View>
+                      <TouchableOpacity style={styles.rejectButton} onPress={() => handleReject(ad)}>
+                        <XCircle size={18} color={colors.text.white} />
+                        <Text style={styles.buttonTextOnDark}>Reject</Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : ad.status === 'rejected' ? (
+                    <>
+                      <TouchableOpacity style={styles.approveButton} onPress={() => handleApprove(ad)}>
+                        <CheckCircle2 size={18} color={colors.text.white} />
+                        <Text style={styles.buttonTextOnDark}>Approve</Text>
+                      </TouchableOpacity>
+                      <View style={[styles.rejectButton, styles.disabledButton]}>
+                        <XCircle size={18} color={colors.text.white} />
+                        <Text style={styles.buttonTextOnDark}>Rejected</Text>
+                      </View>
+                    </>
+                  ) : (
+                    <>
+                      <TouchableOpacity style={styles.approveButton} onPress={() => handleApprove(ad)}>
+                        <CheckCircle2 size={18} color={colors.text.white} />
+                        <Text style={styles.buttonTextOnDark}>Approve</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.rejectButton} onPress={() => handleReject(ad)}>
+                        <XCircle size={18} color={colors.text.white} />
+                        <Text style={styles.buttonTextOnDark}>Reject</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
                 </View>
 
                 <View style={styles.adActions}>
@@ -1165,6 +1201,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700' as const,
     color: colors.text.white,
+  },
+  disabledButton: {
+    opacity: 0.6,
   },
   emptyState: {
     paddingVertical: 60,

@@ -49,6 +49,10 @@ export default function AdminAdvertisementsScreen() {
     billingStatus: 'unpaid' as Advertisement['billingStatus'],
     startDate: '',
     endDate: '',
+    bidCpm: '0.50',
+    bidCpc: '0.05',
+    bidMaxMultiplier: '2.0',
+    bidNiche: '',
   });
 
   useEffect(() => {
@@ -59,9 +63,9 @@ export default function AdminAdvertisementsScreen() {
     try {
       setLoading(true);
       
-      const BASE_CPM = 0.5; // $0.50 per 1000 impressions
-      const BASE_CPC = 0.05; // $0.05 per click
-      const MAX_MULTIPLIER = 2; // cap bid multiplier
+      const DEFAULT_CPM = 0.5; // $0.50 per 1000 impressions
+      const DEFAULT_CPC = 0.05; // $0.05 per click
+      const DEFAULT_MAX_MULTIPLIER = 2; // cap bid multiplier
 
       // Load all advertisements (not just active ones for admin view)
       const { data: adsData, error: adsError } = await supabase
@@ -104,24 +108,33 @@ export default function AdminAdvertisementsScreen() {
         // Format advertisements with real-time analytics
         const formattedAds: Advertisement[] = [];
 
-        // Build a simple competition map by placement for bidding
+        // Build a simple competition map by niche+placement for bidding
         const activeApproved = adsData.filter(
           (ad: any) => ad.active && ad.status === 'approved' && ad.billing_status === 'paid'
         );
-        const placementCounts = new Map<string, number>();
+        const groupCounts = new Map<string, number>();
         activeApproved.forEach((ad: any) => {
-          const key = ad.placement || 'feed';
-          placementCounts.set(key, (placementCounts.get(key) || 0) + 1);
+          const placement = ad.placement || 'feed';
+          const niche = (ad.targeting && ad.targeting.bidding && ad.targeting.bidding.niche) ? String(ad.targeting.bidding.niche) : 'general';
+          const key = `${placement}:${niche}`;
+          groupCounts.set(key, (groupCounts.get(key) || 0) + 1);
         });
 
         for (const ad of adsData) {
           const impressions = impressionsMap.get(ad.id) || 0;
           const clicks = clicksMap.get(ad.id) || 0;
-          const placementKey = ad.placement || 'feed';
-          const competitors = (placementCounts.get(placementKey) || 1) - 1; // exclude self loosely
-          const multiplier = Math.min(1 + competitors * 0.1, MAX_MULTIPLIER);
-          const effectiveCPM = BASE_CPM * multiplier;
-          const effectiveCPC = BASE_CPC * multiplier;
+          const placement = ad.placement || 'feed';
+          const niche = (ad.targeting && ad.targeting.bidding && ad.targeting.bidding.niche) ? String(ad.targeting.bidding.niche) : 'general';
+          const key = `${placement}:${niche}`;
+          const competitors = (groupCounts.get(key) || 1) - 1; // exclude self loosely
+
+          const baseCpm = ad.targeting?.bidding?.cpm ? Number(ad.targeting.bidding.cpm) : DEFAULT_CPM;
+          const baseCpc = ad.targeting?.bidding?.cpc ? Number(ad.targeting.bidding.cpc) : DEFAULT_CPC;
+          const maxMult = ad.targeting?.bidding?.maxMultiplier ? Number(ad.targeting.bidding.maxMultiplier) : DEFAULT_MAX_MULTIPLIER;
+
+          const multiplier = Math.min(1 + competitors * 0.1, maxMult);
+          const effectiveCPM = baseCpm * multiplier;
+          const effectiveCPC = baseCpc * multiplier;
 
           let spend = impressions * (effectiveCPM / 1000) + clicks * effectiveCPC;
           if (ad.total_budget) {
@@ -172,6 +185,7 @@ export default function AdminAdvertisementsScreen() {
             billingTxnId: ad.billing_txn_id,
             promotedPostId: ad.promoted_post_id,
             promotedReelId: ad.promoted_reel_id,
+            targeting: ad.targeting,
           });
         }
 
@@ -320,11 +334,26 @@ export default function AdminAdvertisementsScreen() {
   };
 
   const saveAd = async () => {
+    const bidCpmNum = parseFloat(formData.bidCpm) || 0.5;
+    const bidCpcNum = parseFloat(formData.bidCpc) || 0.05;
+    const bidMaxNum = parseFloat(formData.bidMaxMultiplier) || 2.0;
+
+    const targeting: any = {
+      ...(editingAd?.targeting || {}),
+      bidding: {
+        cpm: bidCpmNum,
+        cpc: bidCpcNum,
+        maxMultiplier: bidMaxNum,
+        niche: (formData.bidNiche || '').trim() || null,
+      },
+    };
+
     if (editingAd) {
       await updateAdvertisement(editingAd.id, {
         ...formData,
         dailyBudget: formData.dailyBudget ? parseFloat(formData.dailyBudget) : undefined,
         totalBudget: formData.totalBudget ? parseFloat(formData.totalBudget) : undefined,
+        targeting,
       });
     } else {
       await createAdvertisement({
@@ -333,6 +362,7 @@ export default function AdminAdvertisementsScreen() {
         active: formData.active,
         dailyBudget: formData.dailyBudget ? parseFloat(formData.dailyBudget) : undefined,
         totalBudget: formData.totalBudget ? parseFloat(formData.totalBudget) : undefined,
+        targeting,
       });
     }
 
@@ -344,6 +374,7 @@ export default function AdminAdvertisementsScreen() {
 
   const handleEditAd = (ad: Advertisement) => {
     setEditingAd(ad);
+    const bid = (ad as any).targeting?.bidding || {};
     setFormData({
       title: ad.title,
       description: ad.description,
@@ -366,6 +397,10 @@ export default function AdminAdvertisementsScreen() {
       billingStatus: ad.billingStatus || 'unpaid',
       startDate: ad.startDate || '',
       endDate: ad.endDate || '',
+      bidCpm: (bid.cpm ?? 0.5).toString(),
+      bidCpc: (bid.cpc ?? 0.05).toString(),
+      bidMaxMultiplier: (bid.maxMultiplier ?? 2.0).toString(),
+      bidNiche: (bid.niche ?? '').toString(),
     });
     setShowCreateModal(true);
   };
@@ -411,6 +446,10 @@ export default function AdminAdvertisementsScreen() {
       billingStatus: 'unpaid',
       startDate: '',
       endDate: '',
+      bidCpm: '0.50',
+      bidCpc: '0.05',
+      bidMaxMultiplier: '2.0',
+      bidNiche: '',
     });
   };
 
@@ -982,6 +1021,64 @@ export default function AdminAdvertisementsScreen() {
                   onChangeText={(text) => setFormData({ ...formData, totalBudget: text })}
                   keyboardType="decimal-pad"
                 />
+              </View>
+
+              <View style={styles.sectionDivider}>
+                <Text style={styles.sectionDividerText}>Bidding (CPM/CPC + Competition)</Text>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Base CPM (USD per 1,000 views)</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="0.50"
+                  placeholderTextColor={colors.text.tertiary}
+                  value={formData.bidCpm}
+                  onChangeText={(text) => setFormData({ ...formData, bidCpm: text })}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Base CPC (USD per click)</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="0.05"
+                  placeholderTextColor={colors.text.tertiary}
+                  value={formData.bidCpc}
+                  onChangeText={(text) => setFormData({ ...formData, bidCpc: text })}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Max Competition Multiplier</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="2.0"
+                  placeholderTextColor={colors.text.tertiary}
+                  value={formData.bidMaxMultiplier}
+                  onChangeText={(text) => setFormData({ ...formData, bidMaxMultiplier: text })}
+                  keyboardType="decimal-pad"
+                />
+                <Text style={styles.helperText}>
+                  Bidding increases by +10% per competing paid ad in the same placement+niche, capped by this value.
+                </Text>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Niche / Audience Key (optional)</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="e.g., relationships, dating, ruwah, women_25_35"
+                  placeholderTextColor={colors.text.tertiary}
+                  value={formData.bidNiche}
+                  onChangeText={(text) => setFormData({ ...formData, bidNiche: text })}
+                  autoCapitalize="none"
+                />
+                <Text style={styles.helperText}>
+                  Ads with the same niche compete with each other (bid goes up). Empty = general.
+                </Text>
               </View>
             </ScrollView>
 

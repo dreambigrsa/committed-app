@@ -901,6 +901,10 @@ export default function FeedScreen() {
       lineHeight: 20,
       marginBottom: 12,
     },
+    adDescriptionLink: {
+      color: '#1877F2',
+      textDecorationLine: 'underline',
+    },
     adActionsRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -1507,51 +1511,136 @@ export default function FeedScreen() {
     const isDescriptionExpanded = expandedAdDescriptions.has(ad.id);
     const descriptionLines = 3;
     const shouldShowSeeMore = ad.description && ad.description.length > 150;
+
+    const renderDescriptionWithLinks = (value: string) => {
+      const urlRegex = /(https?:\/\/[^\s]+)|(www\.[^\s]+)/g;
+      const parts: { text: string; isLink: boolean }[] = [];
+      let lastIndex = 0;
+
+      value.replace(urlRegex, (match, _p1, _p2, offset) => {
+        if (typeof offset === 'number' && offset > lastIndex) {
+          parts.push({ text: value.slice(lastIndex, offset), isLink: false });
+        }
+        parts.push({ text: match, isLink: true });
+        lastIndex = (offset as number) + match.length;
+        return match;
+      });
+
+      if (lastIndex < value.length) {
+        parts.push({ text: value.slice(lastIndex), isLink: false });
+      }
+
+      const handleOpenUrl = async (rawUrl: string) => {
+        const url = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
+        try {
+          await WebBrowser.openBrowserAsync(url);
+        } catch (e) {
+          console.warn('Failed to open ad description url', e);
+        }
+      };
+
+      return (
+        <Text
+          style={styles.adDescription}
+          numberOfLines={isDescriptionExpanded ? undefined : descriptionLines}
+        >
+          {parts.map((part, idx) =>
+            part.isLink ? (
+              <Text
+                key={`link-${idx}`}
+                style={styles.adDescriptionLink}
+                onPress={() => handleOpenUrl(part.text)}
+              >
+                {part.text}
+              </Text>
+            ) : (
+              <Text key={`text-${idx}`}>{part.text}</Text>
+            ),
+          )}
+        </Text>
+      );
+    };
     
     // Handle ad engagement - link to original post/reel
     const handleAdLike = async () => {
-      if (originalPost) {
-        await toggleLike(originalPost.id);
-        // Update local state
-        const newLikes = isLiked 
-          ? adLikesList.filter(id => id !== currentUser.id)
-          : [...adLikesList, currentUser.id];
-        setAdLikes(prev => ({ ...prev, [ad.id]: newLikes }));
-      } else if (originalReel && toggleReelLike) {
-        await toggleReelLike(originalReel.id);
-        // Update local state
-        const newLikes = isLiked 
-          ? adLikesList.filter(id => id !== currentUser.id)
-          : [...adLikesList, currentUser.id];
-        setAdLikes(prev => ({ ...prev, [ad.id]: newLikes }));
+      try {
+        if (originalPost) {
+          await toggleLike(originalPost.id);
+          // Update local state
+          const newLikes = isLiked 
+            ? adLikesList.filter(id => id !== currentUser.id)
+            : [...adLikesList, currentUser.id];
+          setAdLikes(prev => ({ ...prev, [ad.id]: newLikes }));
+        } else if (originalReel && toggleReelLike) {
+          await toggleReelLike(originalReel.id);
+          // Update local state
+          const newLikes = isLiked 
+            ? adLikesList.filter(id => id !== currentUser.id)
+            : [...adLikesList, currentUser.id];
+          setAdLikes(prev => ({ ...prev, [ad.id]: newLikes }));
+        } else {
+          Alert.alert('Error', 'This ad is not linked to a post or reel. Engagement is not available for standalone ads.');
+        }
+      } catch (error: any) {
+        console.error('Error liking ad:', error);
+        Alert.alert('Error', error?.message || 'Failed to like. Please try again.');
       }
     };
 
     const handleAdComment = () => {
+      if (!originalPost && !originalReel) {
+        Alert.alert('Error', 'This ad is not linked to a post or reel. Comments are not available for standalone ads.');
+        return;
+      }
       setShowAdComments(ad.id);
     };
 
     const handleAdShare = async () => {
-      if (originalPost) {
-        await sharePost(originalPost.id);
-      } else if (originalReel && shareReel) {
-        await shareReel(originalReel.id);
+      try {
+        if (originalPost) {
+          await sharePost(originalPost.id);
+        } else if (originalReel && shareReel) {
+          await shareReel(originalReel.id);
+        } else {
+          Alert.alert('Error', 'This ad is not linked to a post or reel. Sharing is not available for standalone ads.');
+        }
+      } catch (error: any) {
+        console.error('Error sharing ad:', error);
+        Alert.alert('Error', error?.message || 'Failed to share. Please try again.');
       }
     };
 
     const handleAdAddComment = async (content: string, parentCommentId?: string, stickerId?: string, messageType?: 'text' | 'sticker') => {
-      if (originalPost) {
-        await addComment(originalPost.id, content, parentCommentId, stickerId, messageType);
-        // Refresh comments
-        const updatedComments = getComments(originalPost.id);
-        setAdComments(prev => ({ ...prev, [ad.id]: updatedComments }));
-      } else if (originalReel && addReelComment) {
-        await addReelComment(originalReel.id, content, parentCommentId, stickerId, messageType);
-        // Refresh comments - wait a bit for state to update
-        setTimeout(() => {
-          const updatedComments = reelComments[originalReel.id] || [];
+      try {
+        if (originalPost) {
+          const result = await addComment(originalPost.id, content, parentCommentId, stickerId, messageType);
+          if (result === null) {
+            // User is restricted or error occurred
+            return;
+          }
+          // Refresh comments
+          const updatedComments = getComments(originalPost.id);
           setAdComments(prev => ({ ...prev, [ad.id]: updatedComments }));
-        }, 500);
+        } else if (originalReel && addReelComment) {
+          const result = await addReelComment(originalReel.id, content, parentCommentId, stickerId, messageType);
+          if (result === null) {
+            // User is restricted or error occurred
+            return;
+          }
+          // Refresh comments - wait a bit for state to update
+          setTimeout(() => {
+            const updatedComments = reelComments[originalReel.id] || [];
+            setAdComments(prev => ({ ...prev, [ad.id]: updatedComments }));
+          }, 500);
+        } else {
+          Alert.alert('Error', 'This ad is not linked to a post or reel. Comments are not available for standalone ads.');
+          throw new Error('Ad not linked to post or reel');
+        }
+      } catch (error: any) {
+        console.error('Add comment error:', error);
+        const errorMessage = error?.message || error?.toString() || 'Failed to add comment. Please try again.';
+        Alert.alert('Add comment error', errorMessage);
+        throw error; // Re-throw so CommentsModal can handle it
       }
     };
     
@@ -1598,12 +1687,7 @@ export default function FeedScreen() {
           )}
           {ad.description && (
             <View>
-              <Text 
-                style={styles.adDescription} 
-                numberOfLines={isDescriptionExpanded ? undefined : descriptionLines}
-              >
-                {ad.description}
-              </Text>
+              {renderDescriptionWithLinks(ad.description)}
               {shouldShowSeeMore && (
                 <TouchableOpacity
                   onPress={() => {
@@ -1725,9 +1809,9 @@ export default function FeedScreen() {
         </View>
 
         {/* Comments Modal for Ad */}
-        {showAdComments === ad.id && (
+        {showAdComments === ad.id && (originalPost || originalReel) && (
           <CommentsModal
-            postId={originalPost?.id || originalReel?.id || ad.id}
+            postId={originalPost?.id || originalReel?.id || ''}
             visible={true}
             onClose={() => setShowAdComments(null)}
             comments={adCommentsList}
@@ -2482,28 +2566,34 @@ function CommentsModal({
   const [expandedReplies, setExpandedReplies] = useState<Set<string>>(new Set());
 
   const handleSubmit = async () => {
-    if (replyingTo && (replyText.trim() || selectedSticker)) {
-      await addComment(
-        postId, 
-        replyText.trim(), 
-        replyingTo,
-        selectedSticker?.id,
-        selectedSticker ? 'sticker' : 'text'
-      );
-      setReplyText('');
-      setSelectedSticker(null);
-      setReplyingTo(null);
-      setExpandedReplies((prev: Set<string>) => new Set([...prev, replyingTo]));
-    } else if (commentText.trim() || selectedSticker) {
-      await addComment(
-        postId, 
-        commentText.trim(),
-        undefined,
-        selectedSticker?.id,
-        selectedSticker ? 'sticker' : 'text'
-      );
-      setCommentText('');
-      setSelectedSticker(null);
+    try {
+      if (replyingTo && (replyText.trim() || selectedSticker)) {
+        await addComment(
+          postId, 
+          replyText.trim(), 
+          replyingTo,
+          selectedSticker?.id,
+          selectedSticker ? 'sticker' : 'text'
+        );
+        setReplyText('');
+        setSelectedSticker(null);
+        setReplyingTo(null);
+        setExpandedReplies((prev: Set<string>) => new Set([...prev, replyingTo]));
+      } else if (commentText.trim() || selectedSticker) {
+        await addComment(
+          postId, 
+          commentText.trim(),
+          undefined,
+          selectedSticker?.id,
+          selectedSticker ? 'sticker' : 'text'
+        );
+        setCommentText('');
+        setSelectedSticker(null);
+      }
+    } catch (error: any) {
+      console.error('Error submitting comment:', error);
+      const errorMessage = error?.message || error?.toString() || 'Failed to add comment. Please try again.';
+      Alert.alert('Add comment error', errorMessage);
     }
   };
 

@@ -930,16 +930,28 @@ const createStyles = (colors: any) =>
       backgroundColor: 'rgba(0, 0, 0, 0.6)',
       justifyContent: 'flex-end',
     },
+    modalKeyboardView: {
+      flex: 1,
+      justifyContent: 'flex-end',
+    },
     modalContainer: {
       backgroundColor: colors.background.primary,
       borderTopLeftRadius: 24,
       borderTopRightRadius: 24,
-      maxHeight: '90%',
+      maxHeight: Dimensions.get('window').height * 0.9,
+      minHeight: 400,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: -4 },
       shadowOpacity: 0.2,
       shadowRadius: 16,
       elevation: 16,
+    },
+    modalContainerIOS: {
+      flex: 1,
+      backgroundColor: colors.background.primary,
+    },
+    modalContent: {
+      flex: 1,
     },
     modalScroll: {
       flex: 1,

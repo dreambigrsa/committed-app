@@ -20,7 +20,7 @@ function RootLayoutNav() {
         <Stack.Screen name="auth" options={{ headerShown: false }} />
         <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
-        <Stack.Screen name="verify-email" options={{ headerShown: true, title: 'Verify Email' }} />
+        <Stack.Screen name="verify-email" options={{ headerShown: false }} />
         <Stack.Screen name="legal/[slug]" options={{ headerShown: true, title: 'Legal Document' }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="profile/[userId]" options={{ headerShown: true, title: "Profile" }} />

@@ -27,26 +27,12 @@ export default function VerifyEmailScreen() {
   const [isVerified, setIsVerified] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [email, setEmail] = useState<string>('');
+  const [emailLoaded, setEmailLoaded] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
 
   useEffect(() => {
-    // Get email from session immediately for display
-    const loadEmail = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user?.email) {
-          setEmail(session.user.email);
-        }
-      } catch (error) {
-        console.error('Error loading email:', error);
-      }
-    };
-    
-    loadEmail();
-    checkEmailVerification();
-    
-    // Animate entrance
+    // Start animations immediately so screen appears right away
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -59,6 +45,23 @@ export default function VerifyEmailScreen() {
         useNativeDriver: true,
       }),
     ]).start();
+
+    // Get email from session immediately for display
+    const loadEmail = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user?.email) {
+          setEmail(session.user.email);
+          setEmailLoaded(true);
+        }
+      } catch (error) {
+        console.error('Error loading email:', error);
+        setEmailLoaded(true); // Set to true even on error so screen shows
+      }
+    };
+    
+    loadEmail();
+    checkEmailVerification();
     
     // Check every 3 seconds if email is verified
     const interval = setInterval(() => {
@@ -265,7 +268,13 @@ export default function VerifyEmailScreen() {
     Linking.openURL('mailto:');
   };
 
-  const styles = createStyles(themeColors);
+  // Always render content immediately - don't wait for anything
+  // Use fallback colors if themeColors not available
+  const styles = createStyles(themeColors || colors);
+  const displayEmail = email || 'your email address';
+  
+  // Ensure we always have colors
+  const safeThemeColors = themeColors || colors;
 
   return (
     <>
@@ -274,18 +283,12 @@ export default function VerifyEmailScreen() {
           headerShown: false,
         }}
       />
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={[styles.container, { backgroundColor: safeThemeColors?.background?.primary || colors.background.primary }]}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {isChecking && !email ? (
-            // Show loading only if we don't have email yet (initial load)
-            <View style={styles.centerContent}>
-              <ActivityIndicator size="large" color={themeColors.primary} />
-              <Text style={styles.checkingText}>Loading...</Text>
-            </View>
-          ) : isVerified ? (
+          {isVerified ? (
             <Animated.View
               style={[
                 styles.centerContent,
@@ -296,7 +299,7 @@ export default function VerifyEmailScreen() {
               ]}
             >
               <View style={styles.successIconContainer}>
-                <CheckCircle size={80} color={themeColors.status.verified} strokeWidth={2} />
+                <CheckCircle size={80} color={safeThemeColors?.status?.verified || '#4CAF50'} strokeWidth={2} />
               </View>
               <Text style={styles.successTitle}>Email Verified!</Text>
               <Text style={styles.successMessage}>
@@ -327,30 +330,30 @@ export default function VerifyEmailScreen() {
                   style={styles.backButton}
                   onPress={() => router.back()}
                 >
-                  <ArrowLeft size={24} color={themeColors.text.white} />
+                  <ArrowLeft size={24} color={safeThemeColors.text.white} />
                 </TouchableOpacity>
 
                 <View style={styles.logoContainer}>
                   <View style={styles.logoCircle}>
-                    <Shield size={56} color={themeColors.text.white} strokeWidth={2} />
+                    <Shield size={56} color={safeThemeColors.text.white} strokeWidth={2} />
                     <View style={styles.heartBadge}>
-                      <Heart size={28} color={themeColors.danger} fill={themeColors.danger} />
+                      <Heart size={28} color={safeThemeColors.danger} fill={safeThemeColors.danger} />
                     </View>
                   </View>
                 </View>
 
                 <View style={styles.iconContainer}>
-                  <Mail size={64} color={themeColors.text.white} strokeWidth={1.5} />
+                  <Mail size={64} color={safeThemeColors.text.white} strokeWidth={1.5} />
                 </View>
 
                 <Text style={styles.heroTitle}>Verify Your Email</Text>
                 <Text style={styles.heroSubtitle}>
                   We've sent a verification link to{'\n'}
-                  <Text style={styles.emailText}>{email}</Text>
+                  <Text style={styles.emailText}>{displayEmail}</Text>
                 </Text>
 
                 <View style={styles.heroTagline}>
-                  <Sparkles size={20} color={themeColors.accent} />
+                  <Sparkles size={20} color={safeThemeColors.accent} />
                   <Text style={styles.heroTaglineText}>
                     Check your inbox and click the link
                   </Text>
@@ -408,7 +411,7 @@ export default function VerifyEmailScreen() {
                     style={styles.primaryButton}
                     onPress={openEmailApp}
                   >
-                    <Mail size={20} color={themeColors.text.white} />
+                    <Mail size={20} color={safeThemeColors.text.white} />
                     <Text style={styles.primaryButtonText}>Open Email App</Text>
                   </TouchableOpacity>
 
@@ -418,10 +421,10 @@ export default function VerifyEmailScreen() {
                     disabled={isResending}
                   >
                     {isResending ? (
-                      <ActivityIndicator size="small" color={themeColors.primary} />
+                      <ActivityIndicator size="small" color={safeThemeColors.primary} />
                     ) : (
                       <>
-                        <RefreshCw size={20} color={themeColors.primary} />
+                        <RefreshCw size={20} color={safeThemeColors.primary} />
                         <Text style={styles.secondaryButtonText}>Resend Email</Text>
                       </>
                     )}
@@ -434,7 +437,7 @@ export default function VerifyEmailScreen() {
                   disabled={isChecking}
                 >
                   {isChecking ? (
-                    <ActivityIndicator size="small" color={themeColors.primary} />
+                    <ActivityIndicator size="small" color={safeThemeColors.primary} />
                   ) : (
                     <Text style={styles.checkButtonText}>
                       I've verified my email

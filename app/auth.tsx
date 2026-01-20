@@ -386,25 +386,24 @@ export default function AuthScreen() {
           const { data: { session } } = await supabase.auth.getSession();
           const emailConfirmed = !!session?.user?.email_confirmed_at;
           
-          // Keep loading visible - verify-email screen will handle showing its own UI
-          // Don't clear loading here - let the next screen handle it
-          // This prevents white screen flash
+          // Redirect immediately - verify-email screen will render instantly
+          // Don't clear loading until after redirect completes
           if (!emailConfirmed) {
               // Redirect to email verification screen
               router.replace('/verify-email');
-              // Clear loading after a delay to ensure smooth transition
-              setTimeout(() => setIsLoading(false), 500);
+              // Keep loading visible during transition, then clear it
+              setTimeout(() => setIsLoading(false), 300);
             } else {
               // Email already confirmed, redirect to index which will check onboarding
               router.replace('/');
               // Clear loading after redirect starts
-              setTimeout(() => setIsLoading(false), 500);
+              setTimeout(() => setIsLoading(false), 300);
             }
         } catch (redirectError) {
           console.error('Error during redirect after signup:', redirectError);
           // Fallback: always go to verify-email if we can't check status
           router.replace('/verify-email');
-          setTimeout(() => setIsLoading(false), 500);
+          setTimeout(() => setIsLoading(false), 300);
         }
       } else {
         if (!formData.email || !formData.password) {

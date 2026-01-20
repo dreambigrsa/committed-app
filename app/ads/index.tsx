@@ -1,17 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
 import { Advertisement } from '@/types';
-import { ExternalLink, Play, PauseCircle, RefreshCw, TrendingUp } from 'lucide-react-native';
+import { ExternalLink, Play, PauseCircle, RefreshCw, TrendingUp, Trash2 } from 'lucide-react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '@/lib/supabase';
 
 export default function MyAdsScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { currentUser, updateAdvertisement, recordAdClick } = useApp();
+  const { currentUser, updateAdvertisement, deleteAdvertisement, recordAdClick } = useApp();
   const [ads, setAds] = useState<Advertisement[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -98,13 +98,32 @@ export default function MyAdsScreen() {
     }
   };
 
+  const handleDelete = async (ad: Advertisement) => {
+    Alert.alert('Delete ad', 'Are you sure you want to delete this ad?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          await deleteAdvertisement(ad.id);
+          setAds((prev) => prev.filter((a) => a.id !== ad.id));
+        },
+      },
+    ]);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>My Ads</Text>
-        <TouchableOpacity style={styles.newButton} onPress={() => router.push('/ads/promote')}>
-          <Text style={styles.newButtonText}>New Boost</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TouchableOpacity style={styles.newButtonSecondary} onPress={() => router.push('/ads/promote')}>
+            <Text style={styles.newButtonSecondaryText}>Create Ad</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.newButton} onPress={() => router.push('/ads/promote')}>
+            <Text style={styles.newButtonText}>Boost</Text>
+          </TouchableOpacity>
+        </View>
       </View>
       {loading ? (
         <View style={styles.loading}>
@@ -155,13 +174,17 @@ export default function MyAdsScreen() {
                   <RefreshCw size={16} color={colors.primary} />
                   <Text style={styles.actionText}>Edit</Text>
                 </TouchableOpacity>
+                <TouchableOpacity style={styles.actionButton} onPress={() => handleDelete(ad)}>
+                  <Trash2 size={16} color={colors.danger} />
+                  <Text style={[styles.actionText, { color: colors.danger }]}>Delete</Text>
+                </TouchableOpacity>
               </View>
             </View>
           ))}
           {ads.length === 0 && (
             <View style={styles.empty}>
               <Text style={styles.emptyTitle}>No ads yet</Text>
-              <Text style={styles.emptyDesc}>Tap “New Boost” to promote a post or reel.</Text>
+              <Text style={styles.emptyDesc}>Tap “Boost” on your post/reel, or “Create Ad” to make a standalone ad.</Text>
             </View>
           )}
         </ScrollView>
@@ -177,6 +200,8 @@ const createStyles = (colors: any) =>
     headerTitle: { fontSize: 22, fontWeight: '700', color: colors.text.primary },
     newButton: { backgroundColor: colors.primary, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
     newButtonText: { color: colors.text.white, fontWeight: '700' },
+    newButtonSecondary: { backgroundColor: colors.background.secondary, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border.light },
+    newButtonSecondaryText: { color: colors.text.primary, fontWeight: '700' },
     loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     list: { paddingHorizontal: 16 },
     card: { backgroundColor: colors.background.secondary, borderRadius: 12, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: colors.border.light },

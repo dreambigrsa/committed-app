@@ -17,6 +17,7 @@ export default function PromoteScreen() {
   const { currentUser, createAdvertisement, updateAdvertisement } = useApp();
 
   const [loading, setLoading] = useState(false);
+  const [isBoostingContent, setIsBoostingContent] = useState<boolean>(!!postIdParam || !!reelIdParam);
   const [form, setForm] = useState<Partial<Advertisement>>({
     title: '',
     description: '',
@@ -37,6 +38,10 @@ export default function PromoteScreen() {
   const [showEndPicker, setShowEndPicker] = useState(false);
 
   const styles = createStyles(colors);
+
+  useEffect(() => {
+    setIsBoostingContent(!!postIdParam || !!reelIdParam);
+  }, [postIdParam, reelIdParam]);
 
   useEffect(() => {
     const loadAd = async () => {
@@ -79,13 +84,80 @@ export default function PromoteScreen() {
     loadAd();
   }, [adIdParam]);
 
+  useEffect(() => {
+    const loadContentDefaults = async () => {
+      if (!currentUser) return;
+      if (adIdParam) return; // editing existing ad
+      if (!postIdParam && !reelIdParam) return; // standalone ad creation
+
+      setLoading(true);
+      try {
+        if (postIdParam) {
+          const { data: post, error } = await supabase
+            .from('posts')
+            .select('id, content, media_urls, created_at')
+            .eq('id', postIdParam)
+            .single();
+          if (error) throw error;
+
+          const mediaUrls: string[] = Array.isArray((post as any).media_urls) ? (post as any).media_urls : [];
+          const firstMedia = mediaUrls[0] || '';
+          const isVideo = firstMedia ? (firstMedia.includes('.mp4') || firstMedia.includes('.mov') || firstMedia.includes('video')) : false;
+
+          setForm((f) => ({
+            ...f,
+            // Facebook-style: use the post itself as creative
+            title: f.title || 'Boost post',
+            description: f.description || ((post as any).content || ''),
+            imageUrl: f.imageUrl || firstMedia,
+            type: f.type || (isVideo ? 'video' : 'card'),
+            promotedPostId: postIdParam,
+            promotedReelId: null,
+            sponsorName: f.sponsorName || currentUser.fullName,
+            sponsorVerified: f.sponsorVerified ?? false,
+          }));
+        } else if (reelIdParam) {
+          const { data: reel, error } = await supabase
+            .from('reels')
+            .select('id, caption, video_url, thumbnail_url, created_at')
+            .eq('id', reelIdParam)
+            .single();
+          if (error) throw error;
+
+          const videoUrl = (reel as any).video_url as string | undefined;
+          const thumbUrl = (reel as any).thumbnail_url as string | undefined;
+
+          setForm((f) => ({
+            ...f,
+            title: f.title || 'Boost reel',
+            description: f.description || ((reel as any).caption || ''),
+            // For video ads we use the video URL as creative; thumbnail (if any) is secondary
+            imageUrl: f.imageUrl || videoUrl || thumbUrl || '',
+            type: f.type || 'video',
+            promotedReelId: reelIdParam,
+            promotedPostId: null,
+            sponsorName: f.sponsorName || currentUser.fullName,
+            sponsorVerified: f.sponsorVerified ?? false,
+          }));
+        }
+      } catch (e) {
+        console.error('Failed to load boost content defaults:', e);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadContentDefaults();
+  }, [currentUser, adIdParam, postIdParam, reelIdParam]);
+
   const save = async () => {
     if (!currentUser) {
       Alert.alert('Login required', 'Please sign in to promote content.');
       return;
     }
-    if (!form.title || !form.description || !form.imageUrl) {
-      Alert.alert('Missing info', 'Please fill title, description, and image URL/video URL.');
+    // For boost flows, we auto-fill from post/reel. For standalone ads we still require creative.
+    if (!form.description || !form.imageUrl) {
+      Alert.alert('Missing info', isBoostingContent ? 'Could not load post/reel creative. Please try again.' : 'Please fill description and image/video URL.');
       return;
     }
     setLoading(true);
@@ -120,24 +192,28 @@ export default function PromoteScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.form} contentContainerStyle={{ paddingBottom: 32 }}>
-        <Text style={styles.header}>{adIdParam ? 'Edit Promotion' : 'Boost Content'}</Text>
+        <Text style={styles.header}>
+          {adIdParam ? 'Edit Promotion' : isBoostingContent ? 'Boost' : 'Create Ad'}
+        </Text>
         {loading && <ActivityIndicator color={colors.primary} style={{ marginVertical: 12 }} />}
 
-        <Section title="Creative">
-          <Field label="Title" value={form.title} onChangeText={(text) => setForm((f) => ({ ...f, title: text }))} />
-          <Field
-            label="Description"
-            multiline
-            value={form.description}
-            onChangeText={(text) => setForm((f) => ({ ...f, description: text }))}
-          />
-          <Field
-            label="Image / Video URL"
-            value={form.imageUrl}
-            onChangeText={(text) => setForm((f) => ({ ...f, imageUrl: text }))}
-            placeholder="https://..."
-          />
-        </Section>
+        {!isBoostingContent && (
+          <Section title="Creative">
+            <Field label="Title" value={form.title} onChangeText={(text) => setForm((f) => ({ ...f, title: text }))} />
+            <Field
+              label="Description"
+              multiline
+              value={form.description}
+              onChangeText={(text) => setForm((f) => ({ ...f, description: text }))}
+            />
+            <Field
+              label="Image / Video URL"
+              value={form.imageUrl}
+              onChangeText={(text) => setForm((f) => ({ ...f, imageUrl: text }))}
+              placeholder="https://..."
+            />
+          </Section>
+        )}
 
         <Section title="CTA">
           <Segment

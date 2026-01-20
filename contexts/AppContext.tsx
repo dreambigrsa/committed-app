@@ -359,10 +359,20 @@ export const [AppContext, useApp] = createContextHook(() => {
         .from('advertisements')
         .select('*')
         .eq('active', true)
+        .eq('status', 'approved')
+        .eq('billing_status', 'paid')
         .order('created_at', { ascending: false });
 
       if (adsData) {
-        const formattedAds: Advertisement[] = adsData.map((ad: any) => ({
+        const formattedAds: Advertisement[] = adsData
+          .filter((ad: any) => {
+            // date window check (NULL means open-ended)
+            const now = new Date();
+            const startOk = !ad.start_date || new Date(ad.start_date) <= now;
+            const endOk = !ad.end_date || new Date(ad.end_date) >= now;
+            return startOk && endOk;
+          })
+          .map((ad: any) => ({
           id: ad.id,
           title: ad.title,
           description: ad.description,
@@ -376,6 +386,27 @@ export const [AppContext, useApp] = createContextHook(() => {
           createdBy: ad.created_by,
           createdAt: ad.created_at,
           updatedAt: ad.updated_at,
+          ctaType: ad.cta_type,
+          ctaPhone: ad.cta_phone,
+          ctaMessage: ad.cta_message,
+          ctaMessengerId: ad.cta_messenger_id,
+          ctaUrl: ad.cta_url,
+          sponsorName: ad.sponsor_name,
+          sponsorVerified: ad.sponsor_verified,
+          userId: ad.user_id,
+          status: ad.status,
+          rejectionReason: ad.rejection_reason,
+          targeting: ad.targeting,
+          startDate: ad.start_date,
+          endDate: ad.end_date,
+          dailyBudget: ad.daily_budget,
+          totalBudget: ad.total_budget,
+          spend: ad.spend,
+          billingStatus: ad.billing_status,
+          billingProvider: ad.billing_provider,
+          billingTxnId: ad.billing_txn_id,
+          promotedPostId: ad.promoted_post_id,
+          promotedReelId: ad.promoted_reel_id,
         }));
         setAdvertisements(formattedAds);
       }
@@ -3502,24 +3533,66 @@ export const [AppContext, useApp] = createContextHook(() => {
   }, [currentUser, advertisements]);
 
   const updateAdvertisement = useCallback(async (adId: string, updates: Partial<Advertisement>) => {
-    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'super_admin')) return;
+    if (!currentUser) return;
+    const isReviewer = currentUser.role === 'admin' || currentUser.role === 'super_admin' || currentUser.role === 'moderator';
+    const targetAd = advertisements.find(a => a.id === adId);
+    const isOwner = !!targetAd && (targetAd.userId === currentUser.id || targetAd.createdBy === currentUser.id);
+    if (!isReviewer && !isOwner) return;
     
     try {
       const updateData: any = {};
-      if (updates.title !== undefined) updateData.title = updates.title;
-      if (updates.description !== undefined) updateData.description = updates.description;
-      if (updates.imageUrl !== undefined) updateData.image_url = updates.imageUrl;
-      if (updates.linkUrl !== undefined) updateData.link_url = updates.linkUrl;
-      if (updates.type !== undefined) updateData.type = updates.type;
-      if (updates.placement !== undefined) updateData.placement = updates.placement;
-      if (updates.active !== undefined) updateData.active = updates.active;
-      if (updates.ctaType !== undefined) updateData.cta_type = updates.ctaType;
-      if (updates.ctaPhone !== undefined) updateData.cta_phone = updates.ctaPhone;
-      if (updates.ctaMessage !== undefined) updateData.cta_message = updates.ctaMessage;
-      if (updates.ctaMessengerId !== undefined) updateData.cta_messenger_id = updates.ctaMessengerId;
-      if (updates.ctaUrl !== undefined) updateData.cta_url = updates.ctaUrl;
-      if (updates.sponsorName !== undefined) updateData.sponsor_name = updates.sponsorName;
-      if (updates.sponsorVerified !== undefined) updateData.sponsor_verified = updates.sponsorVerified;
+      // Fields that owners can update (draft/pending/paused)
+      const ownerAllowed: (keyof Advertisement)[] = [
+        'title','description','imageUrl','linkUrl','type','placement',
+        'ctaType','ctaPhone','ctaMessage','ctaMessengerId','ctaUrl',
+        'dailyBudget','totalBudget','startDate','endDate','targeting',
+        'status',
+      ];
+      // Review/billing fields restricted to reviewers
+      const reviewerOnly: (keyof Advertisement)[] = [
+        'active','status','rejectionReason','billingStatus','billingProvider','billingTxnId','spend','sponsorVerified','sponsorName',
+      ];
+
+      const canSet = (k: keyof Advertisement) => {
+        if (isReviewer) return true;
+        if (!isOwner) return false;
+        if (!ownerAllowed.includes(k)) return false;
+        if (k === 'status') {
+          // Owners can only move to pending/paused/draft (not approve/reject)
+          return updates.status === 'pending' || updates.status === 'paused' || updates.status === 'draft';
+        }
+        return true;
+      };
+
+      if (updates.title !== undefined && canSet('title')) updateData.title = updates.title;
+      if (updates.description !== undefined && canSet('description')) updateData.description = updates.description;
+      if (updates.imageUrl !== undefined && canSet('imageUrl')) updateData.image_url = updates.imageUrl;
+      if (updates.linkUrl !== undefined && canSet('linkUrl')) updateData.link_url = updates.linkUrl;
+      if (updates.type !== undefined && canSet('type')) updateData.type = updates.type;
+      if (updates.placement !== undefined && canSet('placement')) updateData.placement = updates.placement;
+      if (updates.ctaType !== undefined && canSet('ctaType')) updateData.cta_type = updates.ctaType;
+      if (updates.ctaPhone !== undefined && canSet('ctaPhone')) updateData.cta_phone = updates.ctaPhone;
+      if (updates.ctaMessage !== undefined && canSet('ctaMessage')) updateData.cta_message = updates.ctaMessage;
+      if (updates.ctaMessengerId !== undefined && canSet('ctaMessengerId')) updateData.cta_messenger_id = updates.ctaMessengerId;
+      if (updates.ctaUrl !== undefined && canSet('ctaUrl')) updateData.cta_url = updates.ctaUrl;
+
+      if (updates.dailyBudget !== undefined && canSet('dailyBudget')) updateData.daily_budget = updates.dailyBudget;
+      if (updates.totalBudget !== undefined && canSet('totalBudget')) updateData.total_budget = updates.totalBudget;
+      if (updates.startDate !== undefined && canSet('startDate')) updateData.start_date = updates.startDate;
+      if (updates.endDate !== undefined && canSet('endDate')) updateData.end_date = updates.endDate;
+      if (updates.targeting !== undefined && canSet('targeting')) updateData.targeting = updates.targeting;
+
+      if (isReviewer) {
+        if (updates.active !== undefined) updateData.active = updates.active;
+        if (updates.status !== undefined) updateData.status = updates.status;
+        if (updates.rejectionReason !== undefined) updateData.rejection_reason = updates.rejectionReason;
+        if (updates.billingStatus !== undefined) updateData.billing_status = updates.billingStatus;
+        if (updates.billingProvider !== undefined) updateData.billing_provider = updates.billingProvider;
+        if (updates.billingTxnId !== undefined) updateData.billing_txn_id = updates.billingTxnId;
+        if (updates.spend !== undefined) updateData.spend = updates.spend;
+        if (updates.sponsorName !== undefined) updateData.sponsor_name = updates.sponsorName;
+        if (updates.sponsorVerified !== undefined) updateData.sponsor_verified = updates.sponsorVerified;
+      }
 
       const { error } = await supabase
         .from('advertisements')
@@ -3538,7 +3611,11 @@ export const [AppContext, useApp] = createContextHook(() => {
   }, [currentUser, advertisements]);
 
   const deleteAdvertisement = useCallback(async (adId: string) => {
-    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'super_admin')) return;
+    if (!currentUser) return;
+    const isReviewer = currentUser.role === 'admin' || currentUser.role === 'super_admin' || currentUser.role === 'moderator';
+    const targetAd = advertisements.find(a => a.id === adId);
+    const isOwner = !!targetAd && (targetAd.userId === currentUser.id || targetAd.createdBy === currentUser.id);
+    if (!isReviewer && !isOwner) return;
     
     try {
       const { error } = await supabase
@@ -3587,7 +3664,16 @@ export const [AppContext, useApp] = createContextHook(() => {
 
   const getActiveAds = useCallback((placement: Advertisement['placement']) => {
     return advertisements.filter(ad => 
-      ad.active && (ad.placement === placement || ad.placement === 'all')
+      ad.active &&
+      (ad.status === 'approved') &&
+      (ad.billingStatus === 'paid') &&
+      (ad.placement === placement || ad.placement === 'all') &&
+      (() => {
+        const now = new Date();
+        const startOk = !ad.startDate || new Date(ad.startDate) <= now;
+        const endOk = !ad.endDate || new Date(ad.endDate) >= now;
+        return startOk && endOk;
+      })()
     );
   }, [advertisements]);
 

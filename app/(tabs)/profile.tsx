@@ -513,6 +513,17 @@ export default function ProfileScreen() {
             </View>
           </TouchableOpacity>
 
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => router.push('/ads' as any)}
+          >
+            <View style={styles.menuItemLeft}>
+              <BarChart3 size={20} color={colors.primary} />
+              <Text style={[styles.menuItemText, { color: colors.primary }]}>My Ads</Text>
+            </View>
+            <ChevronRight size={20} color={colors.text.tertiary} />
+          </TouchableOpacity>
+
           <TouchableOpacity 
             style={styles.menuItem}
             onPress={() => router.push('/settings' as any)}

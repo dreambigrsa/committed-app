@@ -59,6 +59,7 @@ export default function FeedScreen() {
   const recordedImpressions = useRef<Set<string>>(new Set());
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
   const failedAdImages = useRef<Set<string>>(new Set());
+  const [boostedPostIds, setBoostedPostIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -72,6 +73,32 @@ export default function FeedScreen() {
   useEffect(() => {
     recordedImpressions.current.clear();
   }, [smartAds]);
+
+  // Track which of the current user's posts have a boost (so we can show "Boost again")
+  useEffect(() => {
+    const loadBoosted = async () => {
+      if (!currentUser) return;
+      try {
+        const nowIso = new Date().toISOString();
+        const { data } = await supabase
+          .from('advertisements')
+          .select('promoted_post_id, status, end_date')
+          .eq('user_id', currentUser.id)
+          .not('promoted_post_id', 'is', null)
+          .in('status', ['pending', 'approved', 'paused'])
+          .or(`end_date.is.null,end_date.gte.${nowIso}`);
+
+        const ids = new Set<string>();
+        (data || []).forEach((row: any) => {
+          if (row.promoted_post_id) ids.add(row.promoted_post_id);
+        });
+        setBoostedPostIds(ids);
+      } catch (e) {
+        console.error('Failed to load boosted post ids:', e);
+      }
+    };
+    loadBoosted();
+  }, [currentUser]);
 
   // Load feed sorted by date/time (newest first) - like Facebook
   useEffect(() => {
@@ -979,6 +1006,40 @@ export default function FeedScreen() {
       fontWeight: '600' as const,
       color: colors.text.secondary,
     },
+    boostRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderTopWidth: 1,
+      borderColor: colors.border.light,
+      backgroundColor: colors.background.primary,
+    },
+    boostSecondaryBtn: {
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      borderRadius: 10,
+      backgroundColor: colors.background.secondary,
+      borderWidth: 1,
+      borderColor: colors.border.light,
+    },
+    boostSecondaryText: {
+      fontSize: 13,
+      fontWeight: '700' as const,
+      color: colors.text.primary,
+    },
+    boostPrimaryBtn: {
+      paddingHorizontal: 12,
+      paddingVertical: 9,
+      borderRadius: 10,
+      backgroundColor: colors.primary,
+    },
+    boostPrimaryText: {
+      fontSize: 13,
+      fontWeight: '800' as const,
+      color: colors.text.white,
+    },
   }), [colors]);
 
   if (!currentUser) {
@@ -1488,6 +1549,7 @@ export default function FeedScreen() {
     const postComments = getComments(post.id);
     const isOwner = post.userId === currentUser.id;
     const isAdmin = currentUser.role === 'admin' || currentUser.role === 'super_admin' || currentUser.role === 'moderator';
+    const isBoosted = boostedPostIds.has(post.id);
 
     return (
       <View key={post.id} style={styles.post}>
@@ -1697,6 +1759,21 @@ export default function FeedScreen() {
             <Share2 size={24} color={colors.text.secondary} />
           </TouchableOpacity>
         </View>
+
+        {/* Facebook-style boost row under the post (owner only) */}
+        {isOwner && (
+          <View style={styles.boostRow}>
+            <TouchableOpacity style={styles.boostSecondaryBtn} onPress={() => router.push('/ads' as any)}>
+              <Text style={styles.boostSecondaryText}>See insights & ads</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.boostPrimaryBtn}
+              onPress={() => router.push({ pathname: '/ads/promote', params: { postId: post.id } })}
+            >
+              <Text style={styles.boostPrimaryText}>{isBoosted ? 'Boost again' : 'Boost post'}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {showComments === post.id && (
           <CommentsModal

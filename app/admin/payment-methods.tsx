@@ -354,7 +354,8 @@ export default function AdminPaymentMethodsScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* Form Fields */}
+              <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+                {/* Form Fields */}
               <View style={styles.formContent}>
                 <View style={styles.formGroup}>
                   <Text style={styles.inputLabel}>Name *</Text>

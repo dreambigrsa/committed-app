@@ -1884,14 +1884,34 @@ export default function ConversationDetailScreen() {
     return `Last seen ${lastActive.toLocaleDateString()}`;
   };
 
+  const buildAdCta = (ad: Advertisement) => {
+    if (ad.ctaType === 'whatsapp' && ad.ctaPhone) {
+      const msg = encodeURIComponent(ad.ctaMessage || '');
+      return {
+        url: `https://wa.me/${ad.ctaPhone}${msg ? `?text=${msg}` : ''}`,
+        label: 'WhatsApp',
+      };
+    }
+    if (ad.ctaType === 'messenger' && ad.ctaMessengerId) {
+      return {
+        url: `https://m.me/${ad.ctaMessengerId}`,
+        label: 'Message',
+      };
+    }
+    const url = ad.ctaUrl || ad.linkUrl;
+    return { url, label: 'Learn More' };
+  };
+
   const handleAdPress = async (ad: Advertisement) => {
     await recordAdClick(ad.id);
-    if (ad.linkUrl) {
-      await WebBrowser.openBrowserAsync(ad.linkUrl);
+    const cta = buildAdCta(ad);
+    if (cta.url) {
+      await WebBrowser.openBrowserAsync(cta.url);
     }
   };
 
   const renderBannerAd = (ad: Advertisement) => {
+    const cta = buildAdCta(ad);
     // Prevent duplicate impressions
     if (!recordedImpressions.current.has(ad.id)) {
       recordAdImpression(ad.id);
@@ -1924,9 +1944,9 @@ export default function ConversationDetailScreen() {
           )}
           <View style={styles.bannerAdContent}>
             <Text style={styles.bannerAdTitle}>{ad.title}</Text>
-            {ad.linkUrl && (
+            {cta.url && (
               <View style={styles.bannerAdLinkButton}>
-                <Text style={styles.bannerAdLinkText}>Learn More</Text>
+                <Text style={styles.bannerAdLinkText}>{cta.label}</Text>
                 <ExternalLink size={14} color={colors.primary} />
               </View>
             )}
@@ -1937,6 +1957,7 @@ export default function ConversationDetailScreen() {
   };
 
   const renderCardAd = (ad: Advertisement) => {
+    const cta = buildAdCta(ad);
     // Prevent duplicate impressions
     if (!recordedImpressions.current.has(ad.id)) {
       recordAdImpression(ad.id);
@@ -1972,9 +1993,9 @@ export default function ConversationDetailScreen() {
             <Text style={styles.adDescription} numberOfLines={2}>
               {ad.description}
             </Text>
-            {ad.linkUrl && (
+            {cta.url && (
               <View style={styles.adLinkButton}>
-                <Text style={styles.adLinkText}>Learn More</Text>
+                <Text style={styles.adLinkText}>{cta.label}</Text>
                 <ExternalLink size={16} color={colors.primary} />
               </View>
             )}
@@ -1985,6 +2006,7 @@ export default function ConversationDetailScreen() {
   };
 
   const renderVideoAd = (ad: Advertisement) => {
+    const cta = buildAdCta(ad);
     // Prevent duplicate impressions
     if (!recordedImpressions.current.has(ad.id)) {
       recordAdImpression(ad.id);
@@ -2016,9 +2038,9 @@ export default function ConversationDetailScreen() {
             <Text style={styles.adDescription} numberOfLines={2}>
               {ad.description}
             </Text>
-            {ad.linkUrl && (
+            {cta.url && (
               <View style={styles.adLinkButton}>
-                <Text style={styles.adLinkText}>Learn More</Text>
+                <Text style={styles.adLinkText}>{cta.label}</Text>
                 <ExternalLink size={16} color={colors.primary} />
               </View>
             )}

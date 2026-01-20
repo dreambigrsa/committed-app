@@ -2367,17 +2367,21 @@ export default function FeedScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Facebook-style boost row under the post (owner only, and only if boosted) */}
-        {isOwner && isBoosted && (
+        {/* Facebook-style boost row under the post (owner only) */}
+        {isOwner && (
           <View style={styles.boostRow}>
             <TouchableOpacity style={styles.boostSecondaryBtn} onPress={() => router.push('/ads' as any)}>
-              <Text style={styles.boostSecondaryText}>See insights & ads</Text>
+              <Text style={styles.boostSecondaryText}>
+                {isBoosted ? 'See insights & ads' : 'See ads'}
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.boostPrimaryBtn}
               onPress={() => router.push({ pathname: '/ads/promote', params: { postId: post.id } })}
             >
-              <Text style={styles.boostPrimaryText}>Boost again</Text>
+              <Text style={styles.boostPrimaryText}>
+                {isBoosted ? 'Boost again' : 'Boost post'}
+              </Text>
             </TouchableOpacity>
           </View>
         )}

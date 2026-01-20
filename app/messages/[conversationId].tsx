@@ -816,17 +816,18 @@ export default function ConversationDetailScreen() {
     try {
       setIsDownloading(true);
       
-      // Request media library permissions (only photos, not audio)
-      // Wrap in try-catch to handle audio permission errors gracefully
+      // Request write permissions for saving photos/videos
+      // audioPermission: false in config prevents audio permission request
+      // Videos with audio tracks can be saved using video write permissions
       let permissionStatus;
       try {
-        const result = await MediaLibrary.requestPermissionsAsync();
+        // Use writeOnly mode for saving (no read permission needed, no audio permission requested)
+        const result = await MediaLibrary.requestPermissionsAsync(true);
         permissionStatus = result.status;
       } catch (error: any) {
-        // If audio permission error occurs, try to continue with just photo permission
+        // If error occurs, try to continue with ImagePicker permission as fallback
         if (error?.message?.includes('AUDIO permission')) {
-          console.warn('Audio permission not available, continuing with photo permission only');
-          // Check if we have photo permission via ImagePicker instead
+          console.warn('Audio permission not available, trying ImagePicker permission');
           const imagePickerResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
           if (!imagePickerResult.granted) {
             Alert.alert('Permission Required', 'Please grant access to save photos to your gallery.');

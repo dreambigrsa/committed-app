@@ -99,9 +99,10 @@
       [
         "expo-media-library",
         {
-          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos to save images.",
-          "savePhotosPermission": "Allow $(PRODUCT_NAME) to save photos to your gallery.",
-          "isAccessMediaLocationEnabled": true
+          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos and videos to create content.",
+          "savePhotosPermission": "Allow $(PRODUCT_NAME) to save photos and videos to your gallery.",
+          "isAccessMediaLocationEnabled": true,
+          "audioPermission": false
         }
       ]
     ],

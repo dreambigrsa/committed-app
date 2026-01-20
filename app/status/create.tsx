@@ -303,6 +303,7 @@ export default function CreateStatusScreen() {
   }, [selectedAlbumId]);
 
   const loadAlbums = async () => {
+    // Request read permissions for accessing videos/photos (audioPermission: false in config prevents audio permission request)
     const { status } = await MediaLibrary.requestPermissionsAsync();
     if (status !== 'granted') return;
 
@@ -316,9 +317,11 @@ export default function CreateStatusScreen() {
 
   const loadMediaAssets = async () => {
     try {
+      // Request read permissions for accessing videos/photos (audioPermission: false in config prevents audio permission request)
+      // Videos with audio tracks are handled by video permissions, not separate audio permission
       const { status } = await MediaLibrary.requestPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Required', 'We need access to your photos to create stories.');
+        Alert.alert('Permission Required', 'We need access to your photos and videos to create stories.');
         return;
       }
 

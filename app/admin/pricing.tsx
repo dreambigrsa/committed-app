@@ -448,7 +448,7 @@ export default function AdminPricingScreen() {
               </View>
               <TouchableOpacity
                 style={styles.addButton}
-                onPress={addNewPlan}
+                onPress={openCreateModal}
               >
                 <LinearGradient
                   colors={[colors.primary, colors.primary + 'DD']}

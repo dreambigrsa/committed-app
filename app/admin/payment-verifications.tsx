@@ -10,7 +10,7 @@ import {
   Alert,
   Animated,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { Check, X, Eye, Clock, DollarSign, CreditCard, Shield } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -20,10 +20,20 @@ import { Image as ExpoImage } from 'expo-image';
 export default function AdminPaymentVerificationsScreen() {
   const { currentUser } = useApp();
   const router = useRouter();
+  const params = useLocalSearchParams<{ type?: string }>();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  const [submissionType, setSubmissionType] = useState<'subscriptions' | 'ads'>('subscriptions');
+  const [submissionType, setSubmissionType] = useState<'subscriptions' | 'ads'>(
+    params.type === 'ads' ? 'ads' : 'subscriptions'
+  );
+  useEffect(() => {
+    if (params.type === 'ads') {
+      setSubmissionType('ads');
+    } else if (params.type === 'subscriptions') {
+      setSubmissionType('subscriptions');
+    }
+  }, [params.type]);
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);

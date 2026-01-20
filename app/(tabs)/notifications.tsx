@@ -271,7 +271,8 @@ export default function NotificationsScreen() {
       case 'payment_submission':
         // Navigate to admin payment verifications if admin, otherwise do nothing
         if (currentUser?.role === 'admin' || currentUser?.role === 'super_admin') {
-          router.push('/admin/payment-verifications' as any);
+          const targetType = data.advertisementId ? 'ads' : 'subscriptions';
+          router.push({ pathname: '/admin/payment-verifications', params: { type: targetType } } as any);
         }
         break;
       case 'payment_approved':

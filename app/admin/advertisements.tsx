@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { Stack } from 'expo-router';
 import { Image } from 'expo-image';
-import { Plus, Edit2, Trash2, BarChart3, ExternalLink, X } from 'lucide-react-native';
+import { Plus, Edit2, Trash2, BarChart3, ExternalLink, X, CheckCircle2, PauseCircle, Play, XCircle } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
 import colors from '@/constants/colors';
@@ -42,6 +42,13 @@ export default function AdminAdvertisementsScreen() {
     ctaUrl: '',
     sponsorName: '',
     sponsorVerified: false,
+    status: 'pending' as Advertisement['status'],
+    rejectionReason: '',
+    dailyBudget: '',
+    totalBudget: '',
+    billingStatus: 'unpaid' as Advertisement['billingStatus'],
+    startDate: '',
+    endDate: '',
   });
 
   useEffect(() => {
@@ -112,6 +119,19 @@ export default function AdminAdvertisementsScreen() {
           ctaUrl: ad.cta_url,
           sponsorName: ad.sponsor_name,
           sponsorVerified: ad.sponsor_verified,
+          userId: ad.user_id,
+          status: ad.status,
+          rejectionReason: ad.rejection_reason,
+          startDate: ad.start_date,
+          endDate: ad.end_date,
+          dailyBudget: ad.daily_budget,
+          totalBudget: ad.total_budget,
+          spend: ad.spend,
+          billingStatus: ad.billing_status,
+          billingProvider: ad.billing_provider,
+          billingTxnId: ad.billing_txn_id,
+          promotedPostId: ad.promoted_post_id,
+          promotedReelId: ad.promoted_reel_id,
         }));
 
         setAdvertisements(formattedAds);
@@ -214,12 +234,18 @@ export default function AdminAdvertisementsScreen() {
 
   const saveAd = async () => {
     if (editingAd) {
-      await updateAdvertisement(editingAd.id, formData);
+      await updateAdvertisement(editingAd.id, {
+        ...formData,
+        dailyBudget: formData.dailyBudget ? parseFloat(formData.dailyBudget) : undefined,
+        totalBudget: formData.totalBudget ? parseFloat(formData.totalBudget) : undefined,
+      });
     } else {
       await createAdvertisement({
         ...formData,
         createdBy: currentUser.id,
         active: formData.active,
+        dailyBudget: formData.dailyBudget ? parseFloat(formData.dailyBudget) : undefined,
+        totalBudget: formData.totalBudget ? parseFloat(formData.totalBudget) : undefined,
       });
     }
 
@@ -246,6 +272,13 @@ export default function AdminAdvertisementsScreen() {
       ctaUrl: ad.ctaUrl || '',
       sponsorName: ad.sponsorName || '',
       sponsorVerified: !!ad.sponsorVerified,
+      status: ad.status || 'pending',
+      rejectionReason: ad.rejectionReason || '',
+      dailyBudget: ad.dailyBudget?.toString() || '',
+      totalBudget: ad.totalBudget?.toString() || '',
+      billingStatus: ad.billingStatus || 'unpaid',
+      startDate: ad.startDate || '',
+      endDate: ad.endDate || '',
     });
     setShowCreateModal(true);
   };
@@ -284,6 +317,13 @@ export default function AdminAdvertisementsScreen() {
       ctaUrl: '',
       sponsorName: '',
       sponsorVerified: false,
+      status: 'pending',
+      rejectionReason: '',
+      dailyBudget: '',
+      totalBudget: '',
+      billingStatus: 'unpaid',
+      startDate: '',
+      endDate: '',
     });
   };
 
@@ -694,6 +734,98 @@ export default function AdminAdvertisementsScreen() {
                   </View>
                   <Text style={styles.checkboxLabel}>Active</Text>
                 </TouchableOpacity>
+              </View>
+
+              <View style={styles.sectionDivider}>
+                <Text style={styles.sectionDividerText}>Review & Billing</Text>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Status</Text>
+                <View style={styles.segmentedControl}>
+                  {(['pending', 'approved', 'rejected', 'paused'] as const).map((s) => (
+                    <TouchableOpacity
+                      key={s}
+                      style={[
+                        styles.segmentedButton,
+                        formData.status === s && styles.segmentedButtonActive,
+                      ]}
+                      onPress={() => setFormData({ ...formData, status: s })}
+                    >
+                      <Text
+                        style={[
+                          styles.segmentedButtonText,
+                          formData.status === s && styles.segmentedButtonTextActive,
+                        ]}
+                      >
+                        {s.charAt(0).toUpperCase() + s.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {formData.status === 'rejected' && (
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Rejection Reason</Text>
+                  <TextInput
+                    style={[styles.textInput, styles.textArea]}
+                    placeholder="Explain why this ad was rejected"
+                    placeholderTextColor={colors.text.tertiary}
+                    value={formData.rejectionReason}
+                    onChangeText={(text) => setFormData({ ...formData, rejectionReason: text })}
+                    multiline
+                  />
+                </View>
+              )}
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Billing Status</Text>
+                <View style={styles.segmentedControl}>
+                  {(['unpaid', 'paid', 'failed', 'refunded'] as const).map((s) => (
+                    <TouchableOpacity
+                      key={s}
+                      style={[
+                        styles.segmentedButton,
+                        formData.billingStatus === s && styles.segmentedButtonActive,
+                      ]}
+                      onPress={() => setFormData({ ...formData, billingStatus: s })}
+                    >
+                      <Text
+                        style={[
+                          styles.segmentedButtonText,
+                          formData.billingStatus === s && styles.segmentedButtonTextActive,
+                        ]}
+                      >
+                        {s.toUpperCase()}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Daily Budget (USD)</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="e.g., 5"
+                  placeholderTextColor={colors.text.tertiary}
+                  value={formData.dailyBudget}
+                  onChangeText={(text) => setFormData({ ...formData, dailyBudget: text })}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Total Budget (USD)</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="e.g., 50"
+                  placeholderTextColor={colors.text.tertiary}
+                  value={formData.totalBudget}
+                  onChangeText={(text) => setFormData({ ...formData, totalBudget: text })}
+                  keyboardType="decimal-pad"
+                />
               </View>
             </ScrollView>
 

@@ -1206,6 +1206,16 @@ export default function ReelsScreen() {
                     <Trash2 size={18} color={colors.danger} />
                     <Text style={[styles.reelMenuItemText, styles.reelMenuItemDelete]}>Delete</Text>
                   </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.reelMenuItem}
+                      onPress={() => {
+                        setShowReelMenu(null);
+                        router.push({ pathname: '/ads/promote', params: { reelId: reel.id } });
+                      }}
+                    >
+                      <ExternalLink size={18} color={colors.primary} />
+                      <Text style={styles.reelMenuItemText}>Boost reel</Text>
+                    </TouchableOpacity>
                 </>
               )}
               {isAdmin && !isOwner && (

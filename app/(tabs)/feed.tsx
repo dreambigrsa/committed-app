@@ -31,12 +31,14 @@ import ReportContentModal from '@/components/ReportContentModal';
 import * as ImagePicker from 'expo-image-picker';
 // @ts-ignore - legacy path works at runtime, TypeScript definitions may not include it
 import * as FileSystem from 'expo-file-system/legacy';
+import { useNavigation } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 
 const { width } = Dimensions.get('window');
 
 export default function FeedScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const { currentUser, posts, toggleLike, getComments, getActiveAds, getPersonalizedFeed, getSmartAds, recordAdImpression, recordAdClick, addComment, editComment, deleteComment, toggleCommentLike, editPost, deletePost, sharePost, adminDeletePost, adminRejectPost, reportContent, getUserStatus, userStatuses } = useApp();
   const { colors } = useTheme();
   const [showComments, setShowComments] = useState<string | null>(null);
@@ -1545,6 +1547,16 @@ export default function FeedScreen() {
                 >
                   <Trash2 size={18} color={colors.danger} />
                   <Text style={[styles.menuItemText, styles.deleteText]}>Delete</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    setShowPostMenu(null);
+                    router.push({ pathname: '/ads/promote', params: { postId: post.id } });
+                  }}
+                >
+                  <ExternalLink size={18} color={colors.primary} />
+                  <Text style={styles.menuItemText}>Boost post</Text>
                 </TouchableOpacity>
               </>
             )}

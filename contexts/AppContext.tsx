@@ -3412,7 +3412,10 @@ export const [AppContext, useApp] = createContextHook(() => {
   }, [comments]);
 
   const createAdvertisement = useCallback(async (adData: Omit<Advertisement, 'id' | 'impressions' | 'clicks' | 'createdAt' | 'updatedAt'>) => {
-    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'super_admin')) return null;
+    if (!currentUser) return null;
+    const isAdmin = currentUser.role === 'admin' || currentUser.role === 'super_admin' || currentUser.role === 'moderator';
+    // Users can create ads; only admins auto-approve if needed. Default pending.
+    const status = adData.status || (isAdmin ? 'pending' : 'pending');
     
     try {
       const { data, error } = await supabase
@@ -3427,7 +3430,7 @@ export const [AppContext, useApp] = createContextHook(() => {
           active: adData.active,
           created_by: currentUser.id,
           user_id: adData.userId || currentUser.id,
-          status: adData.status || 'pending',
+          status,
           rejection_reason: adData.rejectionReason,
           targeting: adData.targeting,
           start_date: adData.startDate,

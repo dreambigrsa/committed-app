@@ -189,6 +189,20 @@ export default function AdminPaymentVerificationsScreen() {
           </View>
         </View>
 
+        <View style={styles.amountRow}>
+          <View>
+            <Text style={styles.amountLabel}>Amount</Text>
+            <Text style={styles.amountValue}>
+              {item.currency || 'USD'} {item.amount}
+            </Text>
+          </View>
+          <View style={styles.amountMeta}>
+            <Text style={styles.amountMetaText}>
+              {submissionType === 'ads' ? 'Ad Payment' : 'Subscription'}
+            </Text>
+          </View>
+        </View>
+
         <View style={styles.submissionContent}>
           {submissionType === 'ads' ? (
             <View style={styles.detailRow}>
@@ -215,14 +229,6 @@ export default function AdminPaymentVerificationsScreen() {
             <Text style={styles.detailLabel}>Method:</Text>
             <Text style={styles.detailValue}>
               {method?.icon_emoji} {method?.name || 'N/A'}
-            </Text>
-          </View>
-
-          <View style={styles.detailRow}>
-            <DollarSign size={16} color={colors.text.secondary} />
-            <Text style={styles.detailLabel}>Amount:</Text>
-            <Text style={styles.detailValue}>
-              {item.currency || 'USD'} {item.amount}
             </Text>
           </View>
 
@@ -310,6 +316,10 @@ export default function AdminPaymentVerificationsScreen() {
       
       {/* Status Filter */}
       <View style={styles.filterContainer}>
+        <Text style={styles.filterTitle}>Payment Verifications</Text>
+        <Text style={styles.filterSubtitle}>
+          Review pending payments and keep billing up to date.
+        </Text>
         <View style={styles.typeToggle}>
           {(['subscriptions', 'ads'] as const).map((type) => (
             <TouchableOpacity
@@ -385,7 +395,7 @@ const createStyles = (colors: any) =>
   StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: colors.background.primary,
+      backgroundColor: colors.background.secondary,
     },
     errorContainer: {
       flex: 1,
@@ -400,10 +410,21 @@ const createStyles = (colors: any) =>
     },
     filterContainer: {
       paddingHorizontal: 20,
-      paddingVertical: 12,
-      gap: 10,
+      paddingTop: 20,
+      paddingBottom: 14,
+      gap: 8,
+      backgroundColor: colors.background.primary,
       borderBottomWidth: 1,
       borderBottomColor: colors.border.light,
+    },
+    filterTitle: {
+      fontSize: 20,
+      fontWeight: '700',
+      color: colors.text.primary,
+    },
+    filterSubtitle: {
+      fontSize: 12,
+      color: colors.text.secondary,
     },
     statusToggle: {
       flexDirection: 'row',
@@ -462,18 +483,23 @@ const createStyles = (colors: any) =>
       padding: 20,
     },
     submissionCard: {
-      backgroundColor: colors.background.secondary,
-      borderRadius: 16,
+      backgroundColor: colors.background.primary,
+      borderRadius: 18,
       padding: 16,
       marginBottom: 16,
       borderWidth: 1,
       borderColor: colors.border.light,
+      shadowColor: '#000',
+      shadowOpacity: 0.06,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 2,
     },
     submissionHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'flex-start',
-      marginBottom: 16,
+      marginBottom: 12,
     },
     userInfo: {
       flexDirection: 'row',
@@ -502,11 +528,41 @@ const createStyles = (colors: any) =>
     statusBadge: {
       paddingHorizontal: 12,
       paddingVertical: 6,
-      borderRadius: 12,
+      borderRadius: 999,
     },
     statusText: {
       fontSize: 12,
       fontWeight: '700',
+    },
+    amountRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      borderRadius: 12,
+      backgroundColor: colors.background.secondary,
+      marginBottom: 12,
+    },
+    amountLabel: {
+      fontSize: 12,
+      color: colors.text.tertiary,
+    },
+    amountValue: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.text.primary,
+    },
+    amountMeta: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 999,
+      backgroundColor: colors.primary + '15',
+    },
+    amountMetaText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.primary,
     },
     submissionContent: {
       gap: 10,
@@ -535,21 +591,21 @@ const createStyles = (colors: any) =>
       alignItems: 'center',
       gap: 8,
       padding: 12,
-      backgroundColor: colors.primary + '15',
+      backgroundColor: colors.primary,
       borderRadius: 12,
       marginTop: 8,
       alignSelf: 'flex-start',
     },
     proofButtonText: {
       fontSize: 14,
-      fontWeight: '600',
-      color: colors.primary,
+      fontWeight: '700',
+      color: '#fff',
     },
     notesContainer: {
       marginTop: 12,
       padding: 12,
-      backgroundColor: colors.background.primary,
-      borderRadius: 8,
+      backgroundColor: colors.background.secondary,
+      borderRadius: 10,
     },
     notesLabel: {
       fontSize: 12,

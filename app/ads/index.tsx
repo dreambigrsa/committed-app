@@ -165,90 +165,101 @@ export default function MyAdsScreen() {
                   contentFit="cover"
                 />
               )}
-              <View style={styles.rowBetween}>
-                <Text style={styles.title}>{ad.title}</Text>
-                <View style={styles.chipRow}>
-                  <View style={[styles.chip, styles.statusChip]}>
-                    <Text style={styles.chipText}>{(ad.status || 'pending').toUpperCase()}</Text>
+              <View style={{ padding: 16 }}>
+                <View style={styles.cardHeader}>
+                  <View style={styles.titleWrap}>
+                    <Text style={styles.title}>{ad.title}</Text>
+                    <Text style={styles.subtitle}>
+                      {(ad.placement || 'feed').toUpperCase()} • {(ad.type || 'card').toUpperCase()}
+                    </Text>
                   </View>
-                  <View style={[styles.chip, styles.billingChip]}>
-                    <Text style={styles.chipText}>{(ad.billingStatus || 'unpaid').toUpperCase()}</Text>
+                  <View style={styles.chipRow}>
+                    <View style={[styles.chip, ad.status === 'approved' ? styles.chipApproved : ad.status === 'rejected' ? styles.chipRejected : styles.chipPending]}>
+                      <Text style={styles.chipText}>{(ad.status || 'pending').toUpperCase()}</Text>
+                    </View>
+                    <View style={[styles.chip, ad.billingStatus === 'paid' ? styles.chipPaid : styles.chipUnpaid]}>
+                      <Text style={styles.chipText}>{(ad.billingStatus || 'unpaid').toUpperCase()}</Text>
+                    </View>
                   </View>
                 </View>
-              </View>
-              <View style={{ padding: 16 }}>
+
                 <Text style={styles.desc} numberOfLines={2}>
                   {ad.description}
                 </Text>
 
-                <View style={styles.metricsCard}>
-                <View style={styles.metricItem}>
-                  <TrendingUp size={18} color={colors.primary} />
-                  <View>
-                    <Text style={styles.metricLabel}>Reach</Text>
-                    <Text style={styles.metricValue}>{ad.impressions} impressions</Text>
+                <View style={styles.metricsRow}>
+                  <View style={styles.metricCard}>
+                    <Text style={styles.metricValue}>{ad.impressions}</Text>
+                    <Text style={styles.metricLabel}>Impressions</Text>
+                  </View>
+                  <View style={styles.metricCard}>
+                    <Text style={styles.metricValue}>{ad.clicks}</Text>
+                    <Text style={styles.metricLabel}>Clicks</Text>
+                  </View>
+                  <View style={styles.metricCard}>
+                    <Text style={styles.metricValue}>
+                      {ad.impressions > 0 ? `${((ad.clicks / ad.impressions) * 100).toFixed(2)}%` : '0%'}
+                    </Text>
+                    <Text style={styles.metricLabel}>CTR</Text>
                   </View>
                 </View>
-                <View style={styles.metricItem}>
-                  <ExternalLink size={18} color={colors.primary} />
-                  <View>
-                    <Text style={styles.metricLabel}>Engagement</Text>
-                    <Text style={styles.metricValue}>{ad.clicks} clicks</Text>
-                  </View>
-                </View>
-              </View>
 
-              <View style={styles.rowBetween}>
-                <Text style={styles.metaEmphasis}>Spend {ad.spend ? `\$${ad.spend.toFixed(2)}` : '$0.00'}</Text>
-                <Text style={styles.meta}>Budget {ad.dailyBudget ? `\$${ad.dailyBudget}/day` : '-'}</Text>
-              </View>
+                <View style={styles.spendRow}>
+                  <Text style={styles.metaEmphasis}>
+                    Spend {ad.spend ? `\$${ad.spend.toFixed(2)}` : '$0.00'}
+                  </Text>
+                  <Text style={styles.meta}>Budget {ad.dailyBudget ? `\$${ad.dailyBudget}/day` : '-'}</Text>
+                </View>
 
                 <Text style={styles.suggestion}>{suggestion(ad)}</Text>
                 {ad.rejectionReason ? (
                   <Text style={styles.rejection}>Rejected: {ad.rejectionReason}</Text>
                 ) : null}
 
-                <View style={styles.actions}>
-                <TouchableOpacity style={styles.actionButton} onPress={() => handleOpenCta(ad)}>
-                  <ExternalLink size={16} color={colors.primary} />
-                  <Text style={styles.actionText}>View CTA</Text>
-                </TouchableOpacity>
-                {receiptsByAdId[ad.id] && (
-                  <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={() =>
-                      router.push({
-                        pathname: '/ads/receipt',
-                        params: { receiptId: receiptsByAdId[ad.id].id },
-                      } as any)
-                    }
-                  >
-                    <FileText size={16} color={colors.primary} />
-                    <Text style={styles.actionText}>Receipt</Text>
+                <View style={styles.primaryActions}>
+                  <TouchableOpacity style={[styles.primaryAction, styles.primaryActionBrand]} onPress={() => handleOpenCta(ad)}>
+                    <ExternalLink size={16} color={colors.text.white} />
+                    <Text style={styles.primaryActionText}>View CTA</Text>
                   </TouchableOpacity>
-                )}
-                <TouchableOpacity style={styles.actionButton} onPress={() => handlePauseResume(ad)}>
-                  {ad.status === 'paused' ? (
-                    <>
-                      <Play size={16} color={colors.primary} />
-                      <Text style={styles.actionText}>Resume</Text>
-                    </>
-                  ) : (
-                    <>
-                      <PauseCircle size={16} color={colors.primary} />
-                      <Text style={styles.actionText}>Pause</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.actionButton} onPress={() => router.push({ pathname: '/ads/promote', params: { adId: ad.id } })}>
-                  <RefreshCw size={16} color={colors.primary} />
-                  <Text style={styles.actionText}>Edit</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.actionButton} onPress={() => handleDelete(ad)}>
-                  <Trash2 size={16} color={colors.danger} />
-                  <Text style={[styles.actionText, { color: colors.danger }]}>Delete</Text>
-                </TouchableOpacity>
-              </View>
+                  {receiptsByAdId[ad.id] ? (
+                    <TouchableOpacity
+                      style={[styles.primaryAction, styles.primaryActionSecondary]}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/ads/receipt',
+                          params: { receiptId: receiptsByAdId[ad.id].id },
+                        } as any)
+                      }
+                    >
+                      <FileText size={16} color={colors.text.primary} />
+                      <Text style={styles.primaryActionTextAlt}>Receipt</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+
+                <View style={styles.secondaryActions}>
+                  <TouchableOpacity style={styles.secondaryAction} onPress={() => handlePauseResume(ad)}>
+                    {ad.status === 'paused' ? (
+                      <>
+                        <Play size={16} color={colors.text.primary} />
+                        <Text style={styles.secondaryActionText}>Resume</Text>
+                      </>
+                    ) : (
+                      <>
+                        <PauseCircle size={16} color={colors.text.primary} />
+                        <Text style={styles.secondaryActionText}>Pause</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.secondaryAction} onPress={() => router.push({ pathname: '/ads/promote', params: { adId: ad.id } })}>
+                    <RefreshCw size={16} color={colors.text.primary} />
+                    <Text style={styles.secondaryActionText}>Edit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.secondaryAction} onPress={() => handleDelete(ad)}>
+                    <Trash2 size={16} color={colors.danger} />
+                    <Text style={[styles.secondaryActionText, { color: colors.danger }]}>Delete</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           ))}
@@ -277,28 +288,41 @@ const createStyles = (colors: any) =>
     newButtonSecondaryText: { color: colors.text.primary, fontWeight: '700' },
     loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     list: { paddingHorizontal: 16, paddingTop: 12 },
-    card: { backgroundColor: colors.background.primary, borderRadius: 16, marginBottom: 14, borderWidth: 1, borderColor: colors.border.light, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2, overflow: 'hidden' },
+    card: { backgroundColor: colors.background.primary, borderRadius: 18, marginBottom: 14, borderWidth: 1, borderColor: colors.border.light, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 2, overflow: 'hidden' },
     featuredImage: { width: '100%', height: 200, backgroundColor: colors.background.secondary },
     rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     row: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
-    title: { fontSize: 16, fontWeight: '700', color: colors.text.primary, flex: 1, marginRight: 8 },
-    chipRow: { flexDirection: 'row', gap: 6 },
+    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginBottom: 8 },
+    titleWrap: { flex: 1 },
+    title: { fontSize: 18, fontWeight: '700', color: colors.text.primary },
+    subtitle: { marginTop: 4, fontSize: 11, fontWeight: '600' as const, color: colors.text.tertiary, letterSpacing: 0.4 },
+    chipRow: { flexDirection: 'row', gap: 6, alignItems: 'center' },
     chip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
-    statusChip: { backgroundColor: colors.primary + '20' },
-    billingChip: { backgroundColor: colors.background.secondary, borderWidth: 1, borderColor: colors.border.light },
-    chipText: { fontSize: 10, fontWeight: '700', color: colors.text.primary },
+    chipText: { fontSize: 10, fontWeight: '700', color: colors.text.white },
+    chipApproved: { backgroundColor: colors.success || colors.primary },
+    chipRejected: { backgroundColor: colors.danger },
+    chipPending: { backgroundColor: colors.accent || colors.primary },
+    chipPaid: { backgroundColor: colors.primary },
+    chipUnpaid: { backgroundColor: colors.text.tertiary },
     desc: { marginTop: 4, color: colors.text.secondary },
     meta: { fontSize: 12, color: colors.text.secondary },
     metaEmphasis: { fontSize: 13, fontWeight: '700', color: colors.text.primary },
     suggestion: { marginTop: 6, fontSize: 12, color: colors.text.secondary },
     rejection: { marginTop: 4, fontSize: 12, color: colors.danger },
-    metricsCard: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, marginBottom: 8, padding: 10, borderRadius: 12, backgroundColor: colors.background.secondary },
-    metricItem: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
-    metricLabel: { fontSize: 11, color: colors.text.tertiary },
-    metricValue: { fontSize: 13, fontWeight: '600', color: colors.text.primary },
-    actions: { flexDirection: 'row', gap: 8, marginTop: 10 },
-    actionButton: { flexDirection: 'row', gap: 6, alignItems: 'center', paddingVertical: 8, paddingHorizontal: 10, backgroundColor: colors.background.primary, borderRadius: 8, borderWidth: 1, borderColor: colors.border.light },
-    actionText: { color: colors.text.primary, fontWeight: '600' },
+    metricsRow: { flexDirection: 'row', gap: 10, marginTop: 10, marginBottom: 8 },
+    metricCard: { flex: 1, backgroundColor: colors.background.secondary, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
+    metricLabel: { fontSize: 11, color: colors.text.tertiary, marginTop: 4 },
+    metricValue: { fontSize: 16, fontWeight: '700', color: colors.text.primary },
+    spendRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 },
+    primaryActions: { flexDirection: 'row', gap: 10, marginTop: 12 },
+    primaryAction: { flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 12 },
+    primaryActionBrand: { backgroundColor: colors.primary },
+    primaryActionSecondary: { backgroundColor: colors.background.secondary, borderWidth: 1, borderColor: colors.border.light },
+    primaryActionText: { color: colors.text.white, fontWeight: '700' },
+    primaryActionTextAlt: { color: colors.text.primary, fontWeight: '700' },
+    secondaryActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
+    secondaryAction: { flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 12, backgroundColor: colors.background.secondary, borderWidth: 1, borderColor: colors.border.light },
+    secondaryActionText: { color: colors.text.primary, fontWeight: '600' },
     empty: { padding: 24, alignItems: 'center' },
     emptyTitle: { fontSize: 18, fontWeight: '700', color: colors.text.primary },
     emptyDesc: { marginTop: 6, color: colors.text.secondary, textAlign: 'center' },

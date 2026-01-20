@@ -13,9 +13,15 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   // Merge config sources so Expo Doctor can see that app.json values are being used.
   // `config` is the base Expo config passed by the CLI, `app.json` is the static config in repo.
   const appJsonExpo = (appJson as any).expo ?? {};
+  const projectId =
+    process.env.EXPO_PUBLIC_EAS_PROJECT_ID ??
+    appJsonExpo?.extra?.eas?.projectId ??
+    '71adf4b0-d8c6-4467-9316-962abdcb8cc2';
+  const owner = process.env.EXPO_OWNER ?? appJsonExpo?.owner ?? undefined;
   const base = {
     ...config,
     ...appJsonExpo,
+    owner,
     extra: {
       ...(config.extra ?? {}),
       ...(appJsonExpo.extra ?? {}),
@@ -28,6 +34,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       ...(base.extra ?? {}),
       // Inject the key at build time (never hardcode keys in repo).
       openaiApiKey: process.env.EXPO_PUBLIC_OPENAI_API_KEY ?? null,
+      eas: {
+        ...(base.extra?.eas ?? {}),
+        projectId,
+      },
     },
   };
 };

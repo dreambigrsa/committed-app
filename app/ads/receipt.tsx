@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ActivityIndicator, ScrollView, Share, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ActivityIndicator, ScrollView, Alert, Platform } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { Download, X } from 'lucide-react-native';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 
 export default function AdReceiptScreen() {
   const router = useRouter();
@@ -65,28 +67,69 @@ export default function AdReceiptScreen() {
 
   const handleShareReceipt = async () => {
     const amount = `${receipt.currency || 'USD'} ${Number(receipt.amount || 0).toFixed(2)}`;
-    const receiptText = [
-      `Ad Payment Receipt`,
-      `Receipt #${receipt.receipt_number}`,
-      `Amount: ${amount}`,
-      `Issued: ${new Date(receipt.issued_at).toLocaleString()}`,
-      `Ad: ${advertisement?.title || '—'}`,
-      `Placement: ${advertisement?.placement || '—'}`,
-    ].join('\n');
+    const issuedAt = new Date(receipt.issued_at).toLocaleString();
+    const adTitle = advertisement?.title || '—';
+    const placement = advertisement?.placement || '—';
+
+    const html = `
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <style>
+            body { font-family: Arial, sans-serif; padding: 24px; color: #111827; }
+            .title { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+            .subtitle { font-size: 12px; color: #6B7280; margin-bottom: 20px; }
+            .card { border: 1px solid #E5E7EB; border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+            .section-title { font-size: 14px; font-weight: 700; margin-bottom: 10px; color: #111827; }
+            .row { display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px; }
+            .label { font-size: 12px; color: #6B7280; }
+            .value { font-size: 13px; font-weight: 600; color: #111827; text-align: right; flex: 1; }
+            .note { font-size: 12px; color: #6B7280; line-height: 18px; }
+          </style>
+        </head>
+        <body>
+          <div class="title">Payment Receipt</div>
+          <div class="subtitle">Receipt #${receipt.receipt_number}</div>
+
+          <div class="card">
+            <div class="section-title">Ad Details</div>
+            <div class="row"><div class="label">Title</div><div class="value">${adTitle}</div></div>
+            <div class="row"><div class="label">Placement</div><div class="value">${placement}</div></div>
+            <div class="row"><div class="label">Billing Status</div><div class="value">${advertisement?.billing_status || 'paid'}</div></div>
+          </div>
+
+          <div class="card">
+            <div class="section-title">Payment Summary</div>
+            <div class="row"><div class="label">Amount</div><div class="value">${amount}</div></div>
+            <div class="row"><div class="label">Issued</div><div class="value">${issuedAt}</div></div>
+            <div class="row"><div class="label">Receipt ID</div><div class="value">${receipt.id}</div></div>
+          </div>
+
+          <div class="card">
+            <div class="section-title">Notes</div>
+            <div class="note">This receipt confirms payment for your advertisement. Keep it for your records.</div>
+          </div>
+        </body>
+      </html>
+    `;
 
     try {
-      await Share.share({
-        message: receiptText,
-      });
-    } catch (error) {
-      const maybeNavigator =
-        typeof globalThis !== 'undefined' ? (globalThis as any).navigator : undefined;
-      if (Platform.OS === 'web' && maybeNavigator?.clipboard?.writeText) {
-        await maybeNavigator.clipboard.writeText(receiptText);
-        Alert.alert('Copied', 'Receipt details copied to clipboard.');
+      const file = await Print.printToFileAsync({ html });
+      if (Platform.OS === 'web') {
+        const opener = typeof globalThis !== 'undefined' ? (globalThis as any) : undefined;
+        if (opener?.open) {
+          opener.open(file.uri, '_blank');
+          return;
+        }
+        Alert.alert('Saved', 'Receipt PDF created.');
         return;
       }
-      Alert.alert('Error', 'Unable to share receipt.');
+      await Sharing.shareAsync(file.uri, {
+        UTI: '.pdf',
+        mimeType: 'application/pdf',
+      });
+    } catch (error) {
+      Alert.alert('Error', 'Unable to generate receipt PDF.');
     }
   };
 
@@ -142,7 +185,7 @@ export default function AdReceiptScreen() {
 
         <TouchableOpacity style={styles.downloadButton} onPress={handleShareReceipt}>
           <Download size={18} color={colors.text.white} />
-          <Text style={styles.downloadButtonText}>Download / Share</Text>
+          <Text style={styles.downloadButtonText}>Download PDF</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.doneButton} onPress={() => router.back()}>
           <Text style={styles.doneButtonText}>Done</Text>

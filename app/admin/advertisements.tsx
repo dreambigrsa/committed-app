@@ -568,24 +568,27 @@ export default function AdminAdvertisementsScreen() {
       <Stack.Screen options={{ title: 'Advertisements', headerShown: true }} />
       
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Manage Ads</Text>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
+        <View>
+          <Text style={styles.headerTitle}>Manage Ads</Text>
+          <Text style={styles.headerSubtitle}>Review, approve, and optimize ad performance.</Text>
+        </View>
+        <View style={styles.headerActions}>
           <TouchableOpacity
-            style={[styles.createButton, { backgroundColor: colors.background.secondary, borderWidth: 1, borderColor: colors.border.light }]}
+            style={[styles.secondaryButton, styles.headerButton]}
             onPress={() => setShowSettingsModal(true)}
           >
-            <Text style={[styles.createButtonText, { color: colors.text.primary }]}>Ad Settings</Text>
+            <Text style={styles.secondaryButtonText}>Ad Settings</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.createButton}
+            style={[styles.primaryButton, styles.headerButton]}
             onPress={() => {
               resetForm();
               setEditingAd(null);
               setShowCreateModal(true);
             }}
           >
-            <Plus size={20} color={colors.text.white} />
-            <Text style={styles.createButtonText}>New Ad</Text>
+            <Plus size={18} color={colors.text.white} />
+            <Text style={styles.primaryButtonText}>New Ad</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -627,69 +630,54 @@ export default function AdminAdvertisementsScreen() {
               </View>
 
               <View style={styles.adContent}>
-                <Text style={styles.adTitle}>{ad.title}</Text>
+                <View style={styles.adHeaderRow}>
+                  <View style={styles.adTitleWrap}>
+                    <Text style={styles.adTitle}>{ad.title}</Text>
+                    <Text style={styles.adSubtitle}>
+                      {(ad.placement || 'feed').toUpperCase()} • {(ad.type || 'card').toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={styles.chipRow}>
+                    <View style={[styles.chip, ad.status === 'approved' ? styles.chipApproved : ad.status === 'rejected' ? styles.chipRejected : styles.chipPending]}>
+                      <Text style={styles.chipText}>{(ad.status || 'pending').toUpperCase()}</Text>
+                    </View>
+                    <View style={[styles.chip, ad.billingStatus === 'paid' ? styles.chipPaid : styles.chipUnpaid]}>
+                      <Text style={styles.chipText}>{(ad.billingStatus || 'unpaid').toUpperCase()}</Text>
+                    </View>
+                  </View>
+                </View>
+
                 <Text style={styles.adDescription} numberOfLines={2}>
                   {ad.description}
                 </Text>
 
-                <View style={styles.adMeta}>
-                  <View style={styles.metaItem}>
-                    <Text style={styles.metaLabel}>Type:</Text>
-                    <Text style={styles.metaValue}>{ad.type}</Text>
+                <View style={styles.metricsRow}>
+                  <View style={styles.metricCard}>
+                    <Text style={styles.metricValue}>{ad.impressions}</Text>
+                    <Text style={styles.metricLabel}>Impressions</Text>
                   </View>
-                  <View style={styles.metaItem}>
-                    <Text style={styles.metaLabel}>Placement:</Text>
-                    <Text style={styles.metaValue}>{ad.placement}</Text>
+                  <View style={styles.metricCard}>
+                    <Text style={styles.metricValue}>{ad.clicks}</Text>
+                    <Text style={styles.metricLabel}>Clicks</Text>
+                  </View>
+                  <View style={styles.metricCard}>
+                    <Text style={styles.metricValue}>{getCTR(ad)}</Text>
+                    <Text style={styles.metricLabel}>CTR</Text>
                   </View>
                 </View>
 
-                <View style={styles.adStats}>
-                  <View style={styles.statItem}>
-                    <BarChart3 size={16} color={colors.primary} />
-                    <Text style={styles.statItemText}>{ad.impressions} views</Text>
-                  </View>
-                  <View style={styles.statItem}>
-                    <ExternalLink size={16} color={colors.secondary} />
-                    <Text style={styles.statItemText}>{ad.clicks} clicks</Text>
-                  </View>
-                  {(ad as any).engagements !== undefined && (
-                    <View style={styles.statItem}>
-                      <BarChart3 size={16} color={colors.secondary} />
-                      <Text style={styles.statItemText}>{(ad as any).engagements || 0} engagements</Text>
-                    </View>
-                  )}
-                  <Text style={styles.ctrText}>CTR: {getCTR(ad)}</Text>
+                <View style={styles.spendRow}>
+                  <Text style={styles.spendText}>
+                    Spend ${Number(ad.spend || 0).toFixed(2)}
+                    {ad.totalBudget ? ` / ${Number(ad.totalBudget).toFixed(2)}` : ''}
+                  </Text>
+                  <Text style={styles.spendSubtext}>Bid x{(ad as any).bidMultiplier?.toFixed(2) || '1.00'}</Text>
                 </View>
 
-                <View style={styles.adMeta}>
-                  <View style={styles.metaItem}>
-                    <Text style={styles.metaLabel}>Status:</Text>
-                    <Text style={styles.metaValue}>{ad.status || 'pending'}</Text>
-                  </View>
-                  <View style={styles.metaItem}>
-                    <Text style={styles.metaLabel}>Billing:</Text>
-                    <Text style={styles.metaValue}>{ad.billingStatus || 'unpaid'}</Text>
-                  </View>
-                  <View style={styles.metaItem}>
-                    <Text style={styles.metaLabel}>Spend:</Text>
-                    <Text style={styles.metaValue}>${(ad.spend || 0).toFixed(2)}</Text>
-                  </View>
-                  <View style={styles.metaItem}>
-                    <Text style={styles.metaLabel}>Bid x</Text>
-                    <Text style={styles.metaValue}>{(ad as any).bidMultiplier?.toFixed(2) || '1.00'}</Text>
-                  </View>
-                  {(ad as any).engagements !== undefined && (
-                    <View style={styles.metaItem}>
-                      <Text style={styles.metaLabel}>CPE:</Text>
-                      <Text style={styles.metaValue}>${((ad as any).effectiveCpe || 0).toFixed(2)}</Text>
-                    </View>
-                  )}
-                </View>
                 {(ad as any).engagements > 0 && (
-                  <View style={styles.adMeta}>
-                    <Text style={styles.metaLabel}>Engagements: </Text>
-                    <Text style={styles.metaValue}>
-                      {(ad as any).likes || 0} likes, {(ad as any).comments || 0} comments, {(ad as any).shares || 0} shares
+                  <View style={styles.engagementRow}>
+                    <Text style={styles.engagementText}>
+                      {(ad as any).likes || 0} likes • {(ad as any).comments || 0} comments • {(ad as any).shares || 0} shares
                     </Text>
                   </View>
                 )}
@@ -697,77 +685,76 @@ export default function AdminAdvertisementsScreen() {
                   <Text style={styles.rejectionText}>Rejected: {ad.rejectionReason}</Text>
                 ) : null}
 
-                <View style={styles.adActions}>
-                  <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={() => handleToggleActive(ad)}
-                  >
-                    <Text style={styles.actionButtonText}>
-                      {ad.active ? 'Deactivate' : 'Activate'}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={() => handleEditAd(ad)}
-                  >
-                    <Edit2 size={18} color={colors.primary} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={() => handleDeleteAd(ad)}
-                  >
-                    <Trash2 size={18} color={colors.danger} />
-                  </TouchableOpacity>
-                </View>
-
-                <View style={styles.adActions}>
+                <View style={styles.primaryActions}>
                   {ad.status === 'approved' ? (
                     <>
-                      <View style={[styles.approveButton, styles.disabledButton]}>
+                      <View style={[styles.primaryAction, styles.primaryActionSuccess, styles.disabledButton]}>
                         <CheckCircle2 size={18} color={colors.text.white} />
-                        <Text style={styles.buttonTextOnDark}>Approved</Text>
+                        <Text style={styles.primaryActionText}>Approved</Text>
                       </View>
-                      <TouchableOpacity style={styles.rejectButton} onPress={() => handleReject(ad)}>
+                      <TouchableOpacity style={[styles.primaryAction, styles.primaryActionDanger]} onPress={() => handleReject(ad)}>
                         <XCircle size={18} color={colors.text.white} />
-                        <Text style={styles.buttonTextOnDark}>Reject</Text>
+                        <Text style={styles.primaryActionText}>Reject</Text>
                       </TouchableOpacity>
                     </>
                   ) : ad.status === 'rejected' ? (
                     <>
-                      <TouchableOpacity style={styles.approveButton} onPress={() => handleApprove(ad)}>
+                      <TouchableOpacity style={[styles.primaryAction, styles.primaryActionSuccess]} onPress={() => handleApprove(ad)}>
                         <CheckCircle2 size={18} color={colors.text.white} />
-                        <Text style={styles.buttonTextOnDark}>Approve</Text>
+                        <Text style={styles.primaryActionText}>Approve</Text>
                       </TouchableOpacity>
-                      <View style={[styles.rejectButton, styles.disabledButton]}>
+                      <View style={[styles.primaryAction, styles.primaryActionDanger, styles.disabledButton]}>
                         <XCircle size={18} color={colors.text.white} />
-                        <Text style={styles.buttonTextOnDark}>Rejected</Text>
+                        <Text style={styles.primaryActionText}>Rejected</Text>
                       </View>
                     </>
                   ) : (
                     <>
-                      <TouchableOpacity style={styles.approveButton} onPress={() => handleApprove(ad)}>
+                      <TouchableOpacity style={[styles.primaryAction, styles.primaryActionSuccess]} onPress={() => handleApprove(ad)}>
                         <CheckCircle2 size={18} color={colors.text.white} />
-                        <Text style={styles.buttonTextOnDark}>Approve</Text>
+                        <Text style={styles.primaryActionText}>Approve</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity style={styles.rejectButton} onPress={() => handleReject(ad)}>
+                      <TouchableOpacity style={[styles.primaryAction, styles.primaryActionDanger]} onPress={() => handleReject(ad)}>
                         <XCircle size={18} color={colors.text.white} />
-                        <Text style={styles.buttonTextOnDark}>Reject</Text>
+                        <Text style={styles.primaryActionText}>Reject</Text>
                       </TouchableOpacity>
                     </>
                   )}
                 </View>
 
-                <View style={styles.adActions}>
-                  <TouchableOpacity style={styles.primaryButton} onPress={() => handleMarkPaid(ad)}>
+                <View style={styles.secondaryActions}>
+                  <TouchableOpacity style={[styles.primaryAction, styles.primaryActionBrand]} onPress={() => handleMarkPaid(ad)}>
                     <DollarSign size={18} color={colors.text.white} />
-                    <Text style={styles.buttonTextOnDark}>Mark Paid (manual)</Text>
+                    <Text style={styles.primaryActionText}>Mark Paid (manual)</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={styles.actionButton}
+                    style={styles.secondaryAction}
                     onPress={() => updateAdvertisement(ad.id, { billingStatus: 'unpaid', active: false })}
                   >
-                    <PauseCircle size={18} color={colors.text.primary} />
-                    <Text style={styles.actionButtonText}>Mark Unpaid</Text>
+                    <PauseCircle size={16} color={colors.text.primary} />
+                    <Text style={styles.secondaryActionText}>Mark Unpaid</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.utilityActions}>
+                  <TouchableOpacity
+                    style={styles.iconAction}
+                    onPress={() => handleToggleActive(ad)}
+                  >
+                    {ad.active ? (
+                      <PauseCircle size={16} color={colors.text.primary} />
+                    ) : (
+                      <Play size={16} color={colors.text.primary} />
+                    )}
+                    <Text style={styles.iconActionText}>{ad.active ? 'Deactivate' : 'Activate'}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.iconAction} onPress={() => handleEditAd(ad)}>
+                    <Edit2 size={16} color={colors.text.primary} />
+                    <Text style={styles.iconActionText}>Edit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.iconAction} onPress={() => handleDeleteAd(ad)}>
+                    <Trash2 size={16} color={colors.danger} />
+                    <Text style={[styles.iconActionText, { color: colors.danger }]}>Delete</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1362,7 +1349,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingHorizontal: 20,
     paddingVertical: 16,
     backgroundColor: colors.background.primary,
@@ -1374,19 +1361,40 @@ const styles = StyleSheet.create({
     fontWeight: '700' as const,
     color: colors.text.primary,
   },
-  createButton: {
+  headerSubtitle: {
+    marginTop: 4,
+    fontSize: 12,
+    color: colors.text.secondary,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  headerButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  primaryButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     backgroundColor: colors.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
   },
-  createButtonText: {
+  primaryButtonText: {
+    fontSize: 14,
+    fontWeight: '700' as const,
+    color: colors.text.white,
+  },
+  secondaryButton: {
+    backgroundColor: colors.background.secondary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+  },
+  secondaryButtonText: {
     fontSize: 14,
     fontWeight: '600' as const,
-    color: colors.text.white,
+    color: colors.text.primary,
   },
   content: {
     flex: 1,
@@ -1399,9 +1407,16 @@ const styles = StyleSheet.create({
   statCard: {
     flex: 1,
     backgroundColor: colors.background.primary,
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 16,
+    padding: 18,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   statValue: {
     fontSize: 24,
@@ -1420,8 +1435,15 @@ const styles = StyleSheet.create({
   },
   adCard: {
     backgroundColor: colors.background.primary,
-    borderRadius: 12,
+    borderRadius: 18,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   adImageContainer: {
     position: 'relative',
@@ -1452,19 +1474,108 @@ const styles = StyleSheet.create({
     color: colors.text.white,
   },
   adContent: {
-    padding: 16,
+    padding: 18,
+  },
+  adHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 8,
+  },
+  adTitleWrap: {
+    flex: 1,
   },
   adTitle: {
     fontSize: 18,
     fontWeight: '700' as const,
     color: colors.text.primary,
-    marginBottom: 8,
+  },
+  adSubtitle: {
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: '600' as const,
+    color: colors.text.tertiary,
+    letterSpacing: 0.4,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+  },
+  chip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  chipText: {
+    fontSize: 10,
+    fontWeight: '700' as const,
+    color: colors.text.white,
+  },
+  chipApproved: {
+    backgroundColor: colors.success || colors.primary,
+  },
+  chipRejected: {
+    backgroundColor: colors.danger,
+  },
+  chipPending: {
+    backgroundColor: colors.accent || colors.primary,
+  },
+  chipPaid: {
+    backgroundColor: colors.primary,
+  },
+  chipUnpaid: {
+    backgroundColor: colors.text.tertiary,
   },
   adDescription: {
     fontSize: 14,
     color: colors.text.secondary,
     lineHeight: 20,
     marginBottom: 12,
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 12,
+  },
+  metricCard: {
+    flex: 1,
+    backgroundColor: colors.background.secondary,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  metricValue: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+    color: colors.text.primary,
+  },
+  metricLabel: {
+    marginTop: 4,
+    fontSize: 11,
+    color: colors.text.tertiary,
+  },
+  spendRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  spendText: {
+    fontSize: 13,
+    fontWeight: '700' as const,
+    color: colors.text.primary,
+  },
+  spendSubtext: {
+    fontSize: 11,
+    color: colors.text.tertiary,
+  },
+  engagementRow: {
+    marginBottom: 10,
+  },
+  engagementText: {
+    fontSize: 12,
+    color: colors.text.secondary,
   },
   adMeta: {
     flexDirection: 'row',
@@ -1508,59 +1619,75 @@ const styles = StyleSheet.create({
     color: colors.primary,
     marginLeft: 'auto',
   },
-  adActions: {
+  primaryActions: {
     flexDirection: 'row',
     gap: 12,
+    marginTop: 6,
   },
-  actionButton: {
+  primaryAction: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  primaryActionSuccess: {
+    backgroundColor: colors.success || colors.primary,
+  },
+  primaryActionDanger: {
+    backgroundColor: colors.danger,
+  },
+  primaryActionBrand: {
+    backgroundColor: colors.primary,
+  },
+  primaryActionText: {
+    fontSize: 13,
+    fontWeight: '700' as const,
+    color: colors.text.white,
+  },
+  secondaryActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 10,
+  },
+  secondaryAction: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: 12,
     backgroundColor: colors.background.secondary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
   },
-  actionButtonText: {
-    fontSize: 14,
+  secondaryActionText: {
+    fontSize: 13,
     fontWeight: '600' as const,
     color: colors.text.primary,
   },
-  approveButton: {
+  utilityActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  iconAction: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: colors.success || colors.primary,
+    borderRadius: 12,
+    backgroundColor: colors.background.secondary,
   },
-  rejectButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: colors.danger,
-  },
-  primaryButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: colors.primary,
-  },
-  buttonTextOnDark: {
-    fontSize: 14,
-    fontWeight: '700' as const,
-    color: colors.text.white,
+  iconActionText: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    color: colors.text.primary,
   },
   disabledButton: {
     opacity: 0.6,

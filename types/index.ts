@@ -183,6 +183,20 @@ export interface Advertisement {
   ctaUrl?: string;
   sponsorName?: string;
   sponsorVerified?: boolean;
+  userId?: string;
+  status?: 'draft' | 'pending' | 'approved' | 'rejected' | 'paused';
+  rejectionReason?: string;
+  targeting?: any;
+  startDate?: string | null;
+  endDate?: string | null;
+  dailyBudget?: number | null;
+  totalBudget?: number | null;
+  spend?: number | null;
+  billingStatus?: 'unpaid' | 'paid' | 'failed' | 'refunded';
+  billingProvider?: string | null;
+  billingTxnId?: string | null;
+  promotedPostId?: string | null;
+  promotedReelId?: string | null;
 }
 
 export interface CheatingAlert {

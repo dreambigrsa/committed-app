@@ -1096,14 +1096,42 @@ export default function FeedScreen() {
     );
   };
 
+  const buildAdCta = (ad: Advertisement) => {
+    const label = ad.ctaType === 'whatsapp'
+      ? 'Message on WhatsApp'
+      : ad.ctaType === 'messenger'
+      ? 'Message on Messenger'
+      : 'Learn More';
+
+    if (ad.ctaType === 'whatsapp' && ad.ctaPhone) {
+      const msg = encodeURIComponent(ad.ctaMessage || '');
+      return {
+        url: `https://wa.me/${ad.ctaPhone}${msg ? `?text=${msg}` : ''}`,
+        label: 'WhatsApp',
+        icon: 'whatsapp',
+      };
+    }
+    if (ad.ctaType === 'messenger' && ad.ctaMessengerId) {
+      return {
+        url: `https://m.me/${ad.ctaMessengerId}`,
+        label: 'Message',
+        icon: 'messenger',
+      };
+    }
+    const url = ad.ctaUrl || ad.linkUrl;
+    return { url, label, icon: 'link' };
+  };
+
   const handleAdPress = async (ad: Advertisement) => {
     await recordAdClick(ad.id);
-    if (ad.linkUrl) {
-      await WebBrowser.openBrowserAsync(ad.linkUrl);
+    const cta = buildAdCta(ad);
+    if (cta.url) {
+      await WebBrowser.openBrowserAsync(cta.url);
     }
   };
 
   const renderBannerAd = (ad: Advertisement) => {
+    const cta = buildAdCta(ad);
     // Prevent duplicate impressions
     if (!recordedImpressions.current.has(ad.id)) {
       recordAdImpression(ad.id);
@@ -1141,9 +1169,9 @@ export default function FeedScreen() {
               {ad.description}
             </Text>
           )}
-          {ad.linkUrl && (
+          {cta.url && (
             <View style={styles.bannerAdLinkButton}>
-              <Text style={styles.bannerAdLinkText}>Learn More</Text>
+              <Text style={styles.bannerAdLinkText}>{cta.label || 'Learn More'}</Text>
               <ExternalLink size={14} color={colors.primary} />
             </View>
           )}
@@ -1153,6 +1181,7 @@ export default function FeedScreen() {
   };
 
   const renderCardAd = (ad: Advertisement) => {
+    const cta = buildAdCta(ad);
     // Prevent duplicate impressions
     if (!recordedImpressions.current.has(ad.id)) {
       recordAdImpression(ad.id);
@@ -1167,7 +1196,14 @@ export default function FeedScreen() {
       >
         <View style={styles.adBadge}>
           <Text style={styles.adBadgeText}>Sponsored</Text>
+          {!!ad.sponsorVerified && <Text style={styles.adBadgeTick}>✓</Text>}
         </View>
+        {!!ad.sponsorName && (
+          <View style={styles.adSponsorRow}>
+            <Text style={styles.adSponsorName}>{ad.sponsorName}</Text>
+            {!!ad.sponsorVerified && <Text style={styles.adSponsorVerified}>Verified</Text>}
+          </View>
+        )}
         {!failedAdImages.current.has(ad.id) ? (
           <Image 
             source={{ uri: ad.imageUrl }} 
@@ -1188,9 +1224,9 @@ export default function FeedScreen() {
           <Text style={styles.adDescription} numberOfLines={2}>
             {ad.description}
           </Text>
-          {ad.linkUrl && (
+          {cta.url && (
             <View style={styles.adLinkButton}>
-              <Text style={styles.adLinkText}>Learn More</Text>
+              <Text style={styles.adLinkText}>{cta.label || 'Learn More'}</Text>
               <ExternalLink size={16} color={colors.primary} />
             </View>
           )}

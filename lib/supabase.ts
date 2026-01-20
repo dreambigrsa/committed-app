@@ -86,6 +86,20 @@ export interface SupabaseAdvertisement {
   cta_url?: string;
   sponsor_name?: string;
   sponsor_verified?: boolean;
+  user_id?: string;
+  status?: 'draft' | 'pending' | 'approved' | 'rejected' | 'paused';
+  rejection_reason?: string;
+  targeting?: any;
+  start_date?: string | null;
+  end_date?: string | null;
+  daily_budget?: number | null;
+  total_budget?: number | null;
+  spend?: number | null;
+  billing_status?: 'unpaid' | 'paid' | 'failed' | 'refunded';
+  billing_provider?: string | null;
+  billing_txn_id?: string | null;
+  promoted_post_id?: string | null;
+  promoted_reel_id?: string | null;
 }
 
 export interface SupabasePost {

@@ -1638,9 +1638,9 @@ export default function FeedScreen() {
         }
       } catch (error: any) {
         console.error('Add comment error:', error);
-        const errorMessage = error?.message || error?.toString() || 'Failed to add comment. Please try again.';
+        const errorMessage = extractErrorMessage(error);
         Alert.alert('Add comment error', errorMessage);
-        throw error; // Re-throw so CommentsModal can handle it
+        // Don't re-throw - we've handled it with the alert, CommentsModal will handle its own errors
       }
     };
     
@@ -2531,6 +2531,45 @@ export default function FeedScreen() {
     );
   }
 
+// Helper function to extract readable error messages
+const extractErrorMessage = (error: any): string => {
+  if (!error) return 'An unknown error occurred.';
+  
+  // Check for Supabase error format
+  if (error.message) return error.message;
+  if (error.error?.message) return error.error.message;
+  if (error.details) return error.details;
+  if (error.hint) return error.hint;
+  if (error.code) return `Error ${error.code}: ${error.message || 'Unknown error'}`;
+  
+  // Check for string errors
+  if (typeof error === 'string') return error;
+  
+  // Try to extract from object
+  if (typeof error === 'object') {
+    try {
+      // Check common error properties
+      if (error.toString && error.toString() !== '[object Object]') {
+        const str = error.toString();
+        if (str.startsWith('Error:') || str.startsWith('TypeError:') || str.startsWith('ReferenceError:')) {
+          return str;
+        }
+      }
+      
+      // Try JSON stringify
+      const errorStr = JSON.stringify(error);
+      if (errorStr && errorStr !== '{}' && errorStr !== 'null') {
+        const parsed = JSON.parse(errorStr);
+        return parsed.message || parsed.error || parsed.details || parsed.hint || `Error: ${errorStr.substring(0, 100)}`;
+      }
+    } catch {
+      // If all else fails, return generic message
+    }
+  }
+  
+  return 'Failed to add comment. Please try again.';
+};
+
 function CommentsModal({
   postId,
   visible,
@@ -2592,7 +2631,7 @@ function CommentsModal({
       }
     } catch (error: any) {
       console.error('Error submitting comment:', error);
-      const errorMessage = error?.message || error?.toString() || 'Failed to add comment. Please try again.';
+      const errorMessage = extractErrorMessage(error);
       Alert.alert('Add comment error', errorMessage);
     }
   };

@@ -109,6 +109,28 @@ export async function getPaymentSubmissions(status?: 'all' | 'pending' | 'approv
   return data || [];
 }
 
+export async function getAdPaymentSubmissions(status?: 'all' | 'pending' | 'approved' | 'rejected') {
+  let query = supabase
+    .from('payment_submissions')
+    .select(`
+      *,
+      user:users!payment_submissions_user_id_fkey(id, full_name, email, profile_picture),
+      payment_method:payment_methods!payment_submissions_payment_method_id_fkey(id, name, icon_emoji),
+      advertisement:advertisements!payment_submissions_advertisement_id_fkey(id, title, description, image_url, placement, total_budget, user_id, status, billing_status)
+    `)
+    .not('advertisement_id', 'is', null)
+    .order('created_at', { ascending: false });
+
+  if (status && status !== 'all') {
+    query = query.eq('status', status);
+  }
+
+  const { data, error } = await query;
+
+  if (error) throw error;
+  return data || [];
+}
+
 export async function verifyPayment(
   submissionId: string,
   status: 'approved' | 'rejected',
@@ -143,3 +165,90 @@ export async function verifyPayment(
   return data;
 }
 
+export async function verifyAdPayment(
+  submissionId: string,
+  status: 'approved' | 'rejected',
+  rejectionReason?: string
+) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const updateData: any = {
+    status,
+    verified_by: user.id,
+    verified_at: new Date().toISOString(),
+  };
+
+  if (status === 'rejected' && rejectionReason) {
+    updateData.rejection_reason = rejectionReason;
+  }
+
+  const { data, error } = await supabase
+    .from('payment_submissions')
+    .update(updateData)
+    .eq('id', submissionId)
+    .select(`
+      *,
+      user:users!payment_submissions_user_id_fkey(id, full_name, email),
+      payment_method:payment_methods!payment_submissions_payment_method_id_fkey(id, name, icon_emoji),
+      advertisement:advertisements!payment_submissions_advertisement_id_fkey(id, title, status, billing_status)
+    `)
+    .single();
+
+  if (error) throw error;
+
+  if (data?.advertisement?.id) {
+    const adUpdates: any =
+      status === 'approved'
+        ? { billing_status: 'paid', status: 'approved', active: true }
+        : { billing_status: 'failed', status: 'rejected', active: false };
+
+    const { error: adError } = await supabase
+      .from('advertisements')
+      .update(adUpdates)
+      .eq('id', data.advertisement.id);
+
+    if (adError) throw adError;
+  }
+
+  if (status === 'approved' && data?.advertisement?.id && data?.user?.id) {
+    const receiptNumber = `AD-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.random()
+      .toString(36)
+      .slice(2, 8)
+      .toUpperCase()}`;
+
+    const { error: receiptError } = await supabase
+      .from('ad_payment_receipts')
+      .insert({
+        advertisement_id: data.advertisement.id,
+        payment_submission_id: data.id,
+        user_id: data.user.id,
+        amount: data.amount,
+        currency: data.currency || 'USD',
+        receipt_number: receiptNumber,
+        issued_at: new Date().toISOString(),
+      });
+
+    if (receiptError) throw receiptError;
+
+    await supabase.rpc('create_notification', {
+      p_user_id: data.user.id,
+      p_type: 'payment_approved',
+      p_title: 'Ad payment approved',
+      p_message: 'Your ad payment was approved. A receipt is now available.',
+      p_data: { advertisementId: data.advertisement.id, receiptNumber },
+    });
+  }
+
+  if (status === 'rejected' && data?.user?.id) {
+    await supabase.rpc('create_notification', {
+      p_user_id: data.user.id,
+      p_type: 'payment_rejected',
+      p_title: 'Ad payment rejected',
+      p_message: 'Your ad payment was rejected. Please check the rejection reason.',
+      p_data: { advertisementId: data.advertisement?.id, rejectionReason },
+    });
+  }
+
+  return data;
+}

@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
 import { Advertisement } from '@/types';
-import { ExternalLink, Play, PauseCircle, RefreshCw, TrendingUp, Trash2 } from 'lucide-react-native';
+import { ExternalLink, FileText, Play, PauseCircle, RefreshCw, TrendingUp, Trash2 } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '@/lib/supabase';
@@ -14,6 +14,7 @@ export default function MyAdsScreen() {
   const router = useRouter();
   const { currentUser, updateAdvertisement, deleteAdvertisement, recordAdClick } = useApp();
   const [ads, setAds] = useState<Advertisement[]>([]);
+  const [receiptsByAdId, setReceiptsByAdId] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(false);
 
   const styles = createStyles(colors);
@@ -65,6 +66,21 @@ export default function MyAdsScreen() {
             promotedReelId: ad.promoted_reel_id,
           })),
         );
+      }
+      if (!error && data && currentUser) {
+        const adIds = data.map((ad: any) => ad.id);
+        if (adIds.length > 0) {
+          const { data: receipts } = await supabase
+            .from('ad_payment_receipts')
+            .select('*')
+            .in('advertisement_id', adIds)
+            .eq('user_id', currentUser.id);
+          const receiptMap: Record<string, any> = {};
+          (receipts || []).forEach((receipt: any) => {
+            receiptMap[receipt.advertisement_id] = receipt;
+          });
+          setReceiptsByAdId(receiptMap);
+        }
       }
       setLoading(false);
     };
@@ -193,6 +209,20 @@ export default function MyAdsScreen() {
                   <ExternalLink size={16} color={colors.primary} />
                   <Text style={styles.actionText}>View CTA</Text>
                 </TouchableOpacity>
+                {receiptsByAdId[ad.id] && (
+                  <TouchableOpacity
+                    style={styles.actionButton}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/ads/receipt',
+                        params: { receiptId: receiptsByAdId[ad.id].id },
+                      } as any)
+                    }
+                  >
+                    <FileText size={16} color={colors.primary} />
+                    <Text style={styles.actionText}>Receipt</Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity style={styles.actionButton} onPress={() => handlePauseResume(ad)}>
                   {ad.status === 'paused' ? (
                     <>

@@ -671,6 +671,10 @@ export default function AdminAdvertisementsScreen() {
                     <Text style={styles.metaValue}>{ad.billingStatus || 'unpaid'}</Text>
                   </View>
                   <View style={styles.metaItem}>
+                    <Text style={styles.metaLabel}>Spend:</Text>
+                    <Text style={styles.metaValue}>${(ad.spend || 0).toFixed(2)}</Text>
+                  </View>
+                  <View style={styles.metaItem}>
                     <Text style={styles.metaLabel}>Bid x</Text>
                     <Text style={styles.metaValue}>{(ad as any).bidMultiplier?.toFixed(2) || '1.00'}</Text>
                   </View>

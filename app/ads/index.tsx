@@ -28,7 +28,34 @@ export default function MyAdsScreen() {
         .select('*')
         .eq('user_id', currentUser.id)
         .order('created_at', { ascending: false });
-      if (!error && data) {
+      if (!error && data && currentUser) {
+        const adIds = data.map((ad: any) => ad.id);
+        let impressionsMap = new Map<string, number>();
+        let clicksMap = new Map<string, number>();
+
+        if (adIds.length > 0) {
+          const [impressionsRes, clicksRes] = await Promise.all([
+            supabase
+              .from('advertisement_impressions')
+              .select('advertisement_id')
+              .in('advertisement_id', adIds),
+            supabase
+              .from('advertisement_clicks')
+              .select('advertisement_id')
+              .in('advertisement_id', adIds),
+          ]);
+
+          impressionsRes.data?.forEach((imp: any) => {
+            const count = impressionsMap.get(imp.advertisement_id) || 0;
+            impressionsMap.set(imp.advertisement_id, count + 1);
+          });
+
+          clicksRes.data?.forEach((click: any) => {
+            const count = clicksMap.get(click.advertisement_id) || 0;
+            clicksMap.set(click.advertisement_id, count + 1);
+          });
+        }
+
         setAds(
           data.map((ad: any) => ({
             id: ad.id,
@@ -39,8 +66,8 @@ export default function MyAdsScreen() {
             type: ad.type,
             placement: ad.placement,
             active: ad.active,
-            impressions: ad.impressions,
-            clicks: ad.clicks,
+            impressions: impressionsMap.get(ad.id) || 0,
+            clicks: clicksMap.get(ad.id) || 0,
             createdBy: ad.created_by,
             createdAt: ad.created_at,
             updatedAt: ad.updated_at,

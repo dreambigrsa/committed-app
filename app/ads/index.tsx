@@ -137,6 +137,10 @@ export default function MyAdsScreen() {
           <Text style={styles.headerSubtitle}>Monitor performance, tweak targeting, and boost again in one place.</Text>
         </View>
         <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.newButtonSecondary} onPress={() => router.push('/ads/invoices' as any)}>
+            <FileText size={16} color={colors.text.primary} />
+            <Text style={styles.newButtonSecondaryText}>Invoices</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.newButtonSecondary} onPress={() => router.push('/ads/promote')}>
             <Text style={styles.newButtonSecondaryText}>Create Ad</Text>
           </TouchableOpacity>
@@ -269,7 +273,7 @@ const createStyles = (colors: any) =>
     headerActions: { flexDirection: 'row', gap: 8, marginLeft: 12 },
     newButton: { backgroundColor: colors.primary, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
     newButtonText: { color: colors.text.white, fontWeight: '700' },
-    newButtonSecondary: { backgroundColor: colors.background.secondary, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border.light },
+    newButtonSecondary: { backgroundColor: colors.background.secondary, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border.light, flexDirection: 'row', alignItems: 'center', gap: 6 },
     newButtonSecondaryText: { color: colors.text.primary, fontWeight: '700' },
     loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     list: { paddingHorizontal: 16, paddingTop: 12 },

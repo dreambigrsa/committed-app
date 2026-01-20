@@ -2,18 +2,23 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ActivityIndicator, ScrollView, Alert, Platform } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
 import { Download, X } from 'lucide-react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import { Asset } from 'expo-asset';
+import * as FileSystem from 'expo-file-system';
 
 export default function AdReceiptScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ receiptId: string }>();
   const { colors } = useTheme();
+  const { currentUser } = useApp();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [receipt, setReceipt] = useState<any>(null);
   const [advertisement, setAdvertisement] = useState<any>(null);
+  const [logoDataUri, setLogoDataUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -38,6 +43,34 @@ export default function AdReceiptScreen() {
     };
     loadReceipt();
   }, [params.receiptId]);
+
+  useEffect(() => {
+    const loadLogo = async () => {
+      try {
+        const asset = Asset.fromModule(require('../../assets/images/icon.png'));
+        await asset.downloadAsync();
+        if (Platform.OS === 'web') {
+          const response = await fetch(asset.uri);
+          const blob = await response.blob();
+          const reader = new FileReader();
+          const dataUri = await new Promise<string>((resolve, reject) => {
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = () => reject(new Error('Failed to read logo'));
+            reader.readAsDataURL(blob);
+          });
+          setLogoDataUri(dataUri);
+        } else {
+          const base64 = await FileSystem.readAsStringAsync(asset.localUri || asset.uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          setLogoDataUri(`data:image/png;base64,${base64}`);
+        }
+      } catch (error) {
+        console.warn('Failed to load logo for receipt PDF.', error);
+      }
+    };
+    loadLogo();
+  }, []);
 
   if (loading) {
     return (
@@ -70,44 +103,82 @@ export default function AdReceiptScreen() {
     const issuedAt = new Date(receipt.issued_at).toLocaleString();
     const adTitle = advertisement?.title || '—';
     const placement = advertisement?.placement || '—';
+    const billTo = currentUser?.fullName || '—';
+    const billToEmail = currentUser?.email || '';
 
     const html = `
       <html>
         <head>
           <meta charset="utf-8" />
           <style>
-            body { font-family: Arial, sans-serif; padding: 24px; color: #111827; }
-            .title { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
-            .subtitle { font-size: 12px; color: #6B7280; margin-bottom: 20px; }
-            .card { border: 1px solid #E5E7EB; border-radius: 12px; padding: 16px; margin-bottom: 14px; }
-            .section-title { font-size: 14px; font-weight: 700; margin-bottom: 10px; color: #111827; }
-            .row { display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px; }
-            .label { font-size: 12px; color: #6B7280; }
-            .value { font-size: 13px; font-weight: 600; color: #111827; text-align: right; flex: 1; }
-            .note { font-size: 12px; color: #6B7280; line-height: 18px; }
+            body { font-family: 'Arial', sans-serif; padding: 32px; color: #111827; background: #F9FAFB; }
+            .sheet { background: #ffffff; border-radius: 18px; padding: 28px; border: 1px solid #E5E7EB; }
+            .brand { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+            .brand-left { display: flex; align-items: center; gap: 12px; }
+            .logo { width: 44px; height: 44px; border-radius: 10px; object-fit: cover; }
+            .brand-title { font-size: 20px; font-weight: 700; margin: 0; }
+            .brand-subtitle { font-size: 12px; color: #6B7280; margin: 2px 0 0; }
+            .pill { background: #0EA5E9; color: #fff; padding: 6px 12px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+            .title { font-size: 24px; font-weight: 800; margin: 8px 0 4px; }
+            .subtitle { font-size: 12px; color: #6B7280; margin-bottom: 18px; }
+            .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 16px; }
+            .card { border: 1px solid #E5E7EB; border-radius: 12px; padding: 14px; background: #F9FAFB; }
+            .section-title { font-size: 12px; font-weight: 700; margin-bottom: 10px; color: #111827; text-transform: uppercase; letter-spacing: 0.6px; }
+            .row { display: flex; justify-content: space-between; margin-bottom: 8px; gap: 12px; }
+            .label { font-size: 11px; color: #6B7280; }
+            .value { font-size: 13px; font-weight: 700; color: #111827; text-align: right; flex: 1; }
+            .total { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 12px; border-top: 1px dashed #E5E7EB; }
+            .total .value { font-size: 16px; }
+            .note { font-size: 11px; color: #6B7280; line-height: 16px; }
+            .footer { margin-top: 20px; font-size: 10px; color: #9CA3AF; text-align: center; }
           </style>
         </head>
         <body>
-          <div class="title">Payment Receipt</div>
-          <div class="subtitle">Receipt #${receipt.receipt_number}</div>
+          <div class="sheet">
+            <div class="brand">
+              <div class="brand-left">
+                ${logoDataUri ? `<img class="logo" src="${logoDataUri}" />` : ''}
+                <div>
+                  <p class="brand-title">Committed</p>
+                  <p class="brand-subtitle">Trust. Love. Commitment.</p>
+                </div>
+              </div>
+              <div class="pill">PAID</div>
+            </div>
 
-          <div class="card">
-            <div class="section-title">Ad Details</div>
-            <div class="row"><div class="label">Title</div><div class="value">${adTitle}</div></div>
-            <div class="row"><div class="label">Placement</div><div class="value">${placement}</div></div>
-            <div class="row"><div class="label">Billing Status</div><div class="value">${advertisement?.billing_status || 'paid'}</div></div>
-          </div>
+            <div class="title">Ad Payment Receipt</div>
+            <div class="subtitle">Receipt #${receipt.receipt_number} • Issued ${issuedAt}</div>
 
-          <div class="card">
-            <div class="section-title">Payment Summary</div>
-            <div class="row"><div class="label">Amount</div><div class="value">${amount}</div></div>
-            <div class="row"><div class="label">Issued</div><div class="value">${issuedAt}</div></div>
-            <div class="row"><div class="label">Receipt ID</div><div class="value">${receipt.id}</div></div>
-          </div>
+            <div class="grid">
+              <div class="card">
+                <div class="section-title">Billed To</div>
+                <div class="row"><div class="label">Name</div><div class="value">${billTo}</div></div>
+                ${billToEmail ? `<div class="row"><div class="label">Email</div><div class="value">${billToEmail}</div></div>` : ''}
+                <div class="row"><div class="label">Receipt</div><div class="value">#${receipt.receipt_number}</div></div>
+              </div>
+              <div class="card">
+                <div class="section-title">Ad Details</div>
+                <div class="row"><div class="label">Title</div><div class="value">${adTitle}</div></div>
+                <div class="row"><div class="label">Placement</div><div class="value">${placement}</div></div>
+                <div class="row"><div class="label">Status</div><div class="value">${advertisement?.billing_status || 'paid'}</div></div>
+              </div>
+              <div class="card">
+                <div class="section-title">Billing</div>
+                <div class="row"><div class="label">Amount</div><div class="value">${amount}</div></div>
+                <div class="row"><div class="label">Receipt ID</div><div class="value">${receipt.id}</div></div>
+                <div class="total">
+                  <div class="label">Total Paid</div>
+                  <div class="value">${amount}</div>
+                </div>
+              </div>
+            </div>
 
-          <div class="card">
-            <div class="section-title">Notes</div>
-            <div class="note">This receipt confirms payment for your advertisement. Keep it for your records.</div>
+            <div class="card">
+              <div class="section-title">Notes</div>
+              <div class="note">This receipt confirms payment for your advertisement on Committed. Please retain for your records.</div>
+            </div>
+
+            <div class="footer">Committed • Ads & Billing</div>
           </div>
         </body>
       </html>

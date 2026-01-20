@@ -115,8 +115,11 @@ export default function MyAdsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Ads</Text>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View>
+          <Text style={styles.headerTitle}>My Ads</Text>
+          <Text style={styles.headerSubtitle}>Monitor performance, tweak targeting, and boost again in one place.</Text>
+        </View>
+        <View style={styles.headerActions}>
           <TouchableOpacity style={styles.newButtonSecondary} onPress={() => router.push('/ads/promote')}>
             <Text style={styles.newButtonSecondaryText}>Create Ad</Text>
           </TouchableOpacity>
@@ -135,23 +138,46 @@ export default function MyAdsScreen() {
             <View key={ad.id} style={styles.card}>
               <View style={styles.rowBetween}>
                 <Text style={styles.title}>{ad.title}</Text>
-                <Text style={styles.status}>{ad.status || 'pending'}</Text>
+                <View style={styles.chipRow}>
+                  <View style={[styles.chip, styles.statusChip]}>
+                    <Text style={styles.chipText}>{(ad.status || 'pending').toUpperCase()}</Text>
+                  </View>
+                  <View style={[styles.chip, styles.billingChip]}>
+                    <Text style={styles.chipText}>{(ad.billingStatus || 'unpaid').toUpperCase()}</Text>
+                  </View>
+                </View>
               </View>
               <Text style={styles.desc} numberOfLines={2}>
                 {ad.description}
               </Text>
-              <View style={styles.row}>
-                <TrendingUp size={16} color={colors.primary} />
-                <Text style={styles.meta}>{ad.impressions} impressions • {ad.clicks} clicks</Text>
+
+              <View style={styles.metricsCard}>
+                <View style={styles.metricItem}>
+                  <TrendingUp size={18} color={colors.primary} />
+                  <View>
+                    <Text style={styles.metricLabel}>Reach</Text>
+                    <Text style={styles.metricValue}>{ad.impressions} impressions</Text>
+                  </View>
+                </View>
+                <View style={styles.metricItem}>
+                  <ExternalLink size={18} color={colors.primary} />
+                  <View>
+                    <Text style={styles.metricLabel}>Engagement</Text>
+                    <Text style={styles.metricValue}>{ad.clicks} clicks</Text>
+                  </View>
+                </View>
               </View>
-              <View style={styles.row}>
-                <Text style={styles.meta}>Spend: {ad.spend ? `$${ad.spend}` : '$0'}</Text>
-                <Text style={styles.meta}>Budget: {ad.dailyBudget ? `$${ad.dailyBudget}/day` : '-'}</Text>
+
+              <View style={styles.rowBetween}>
+                <Text style={styles.metaEmphasis}>Spend {ad.spend ? `\$${ad.spend.toFixed(2)}` : '$0.00'}</Text>
+                <Text style={styles.meta}>Budget {ad.dailyBudget ? `\$${ad.dailyBudget}/day` : '-'}</Text>
               </View>
+
               <Text style={styles.suggestion}>{suggestion(ad)}</Text>
               {ad.rejectionReason ? (
                 <Text style={styles.rejection}>Rejected: {ad.rejectionReason}</Text>
               ) : null}
+
               <View style={styles.actions}>
                 <TouchableOpacity style={styles.actionButton} onPress={() => handleOpenCta(ad)}>
                   <ExternalLink size={16} color={colors.primary} />
@@ -195,24 +221,35 @@ export default function MyAdsScreen() {
 
 const createStyles = (colors: any) =>
   StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.background.primary },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 },
-    headerTitle: { fontSize: 22, fontWeight: '700', color: colors.text.primary },
+    container: { flex: 1, backgroundColor: colors.background.secondary },
+    header: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', padding: 20, paddingBottom: 12, backgroundColor: colors.background.primary, borderBottomWidth: 1, borderBottomColor: colors.border.light },
+    headerTitle: { fontSize: 24, fontWeight: '800', color: colors.text.primary },
+    headerSubtitle: { marginTop: 4, fontSize: 12, color: colors.text.secondary, maxWidth: 220 },
+    headerActions: { flexDirection: 'row', gap: 8, marginLeft: 12 },
     newButton: { backgroundColor: colors.primary, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
     newButtonText: { color: colors.text.white, fontWeight: '700' },
     newButtonSecondary: { backgroundColor: colors.background.secondary, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border.light },
     newButtonSecondaryText: { color: colors.text.primary, fontWeight: '700' },
     loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    list: { paddingHorizontal: 16 },
-    card: { backgroundColor: colors.background.secondary, borderRadius: 12, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: colors.border.light },
+    list: { paddingHorizontal: 16, paddingTop: 12 },
+    card: { backgroundColor: colors.background.primary, borderRadius: 16, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: colors.border.light, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
     rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     row: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
-    title: { fontSize: 16, fontWeight: '700', color: colors.text.primary },
-    status: { fontSize: 12, fontWeight: '700', color: colors.primary },
+    title: { fontSize: 16, fontWeight: '700', color: colors.text.primary, flex: 1, marginRight: 8 },
+    chipRow: { flexDirection: 'row', gap: 6 },
+    chip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
+    statusChip: { backgroundColor: colors.primary + '20' },
+    billingChip: { backgroundColor: colors.background.secondary, borderWidth: 1, borderColor: colors.border.light },
+    chipText: { fontSize: 10, fontWeight: '700', color: colors.text.primary },
     desc: { marginTop: 4, color: colors.text.secondary },
     meta: { fontSize: 12, color: colors.text.secondary },
+    metaEmphasis: { fontSize: 13, fontWeight: '700', color: colors.text.primary },
     suggestion: { marginTop: 6, fontSize: 12, color: colors.text.secondary },
     rejection: { marginTop: 4, fontSize: 12, color: colors.danger },
+    metricsCard: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, marginBottom: 8, padding: 10, borderRadius: 12, backgroundColor: colors.background.secondary },
+    metricItem: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+    metricLabel: { fontSize: 11, color: colors.text.tertiary },
+    metricValue: { fontSize: 13, fontWeight: '600', color: colors.text.primary },
     actions: { flexDirection: 'row', gap: 8, marginTop: 10 },
     actionButton: { flexDirection: 'row', gap: 6, alignItems: 'center', paddingVertical: 8, paddingHorizontal: 10, backgroundColor: colors.background.primary, borderRadius: 8, borderWidth: 1, borderColor: colors.border.light },
     actionText: { color: colors.text.primary, fontWeight: '600' },

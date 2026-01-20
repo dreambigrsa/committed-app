@@ -60,6 +60,7 @@ export default function FeedScreen() {
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
   const failedAdImages = useRef<Set<string>>(new Set());
   const [boostedPostIds, setBoostedPostIds] = useState<Set<string>>(new Set());
+  const [adUserPhotos, setAdUserPhotos] = useState<Record<string, string>>({});
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -146,6 +147,25 @@ export default function FeedScreen() {
         // The algorithm will naturally rotate ads based on recent impressions
         const ads = await getSmartAds('feed', [], 20);
         setSmartAds(ads);
+        
+        // Load profile photos for ad sponsors
+        const userIds = ads.filter(ad => ad.userId).map(ad => ad.userId!);
+        if (userIds.length > 0) {
+          const { data: users } = await supabase
+            .from('users')
+            .select('id, profile_picture')
+            .in('id', userIds);
+          
+          if (users) {
+            const photoMap: Record<string, string> = {};
+            users.forEach(user => {
+              if (user.profile_picture) {
+                photoMap[user.id] = user.profile_picture;
+              }
+            });
+            setAdUserPhotos(photoMap);
+          }
+        }
       } catch (error) {
         console.error('Error loading smart ads:', error);
         // Fallback to regular ads
@@ -632,9 +652,10 @@ export default function FeedScreen() {
       marginBottom: 12,
       position: 'relative',
       overflow: 'hidden',
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.border.light,
+      borderRadius: 0,
+      borderWidth: 0,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border.light,
     },
     adBadge: {
       position: 'absolute',
@@ -668,14 +689,13 @@ export default function FeedScreen() {
       gap: 10,
     },
     adAvatar: {
-      width: 38,
-      height: 38,
-      borderRadius: 19,
+      width: 40,
+      height: 40,
+      borderRadius: 20,
       backgroundColor: colors.background.secondary,
       alignItems: 'center',
       justifyContent: 'center',
-      borderWidth: 1,
-      borderColor: colors.border.light,
+      overflow: 'hidden',
     },
     adAvatarText: {
       color: colors.text.primary,
@@ -687,81 +707,68 @@ export default function FeedScreen() {
       alignItems: 'center',
       gap: 6,
     },
+    adSponsorName: {
+      fontSize: 15,
+      fontWeight: '700' as const,
+      color: colors.text.primary,
+    },
+    adVerifiedTick: {
+      fontSize: 14,
+      color: '#1877F2',
+      marginLeft: 4,
+    },
     adCTAButton: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
       backgroundColor: colors.primary,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
       borderRadius: 8,
+      alignSelf: 'flex-start',
     },
     adCTAButtonText: {
       color: colors.text.white,
       fontWeight: '700' as const,
-      fontSize: 13,
+      fontSize: 14,
     },
     adContent: {
-      padding: 16,
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      paddingBottom: 16,
     },
     adTitle: {
-      fontSize: 18,
+      fontSize: 16,
       fontWeight: '700' as const,
       color: colors.text.primary,
-      marginBottom: 6,
+      marginBottom: 4,
     },
     adDescription: {
       fontSize: 14,
       color: colors.text.secondary,
       lineHeight: 20,
-      marginBottom: 4,
+      marginBottom: 12,
     },
-    // Facebook-like ad header
-    adHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-    },
-    adSponsorInfo: {
+    adActionsRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 10,
+      justifyContent: 'flex-end',
+      gap: 12,
+      paddingHorizontal: 16,
+      paddingBottom: 12,
     },
-    adAvatar: {
-      width: 38,
-      height: 38,
-      borderRadius: 19,
-      backgroundColor: colors.background.secondary,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderWidth: 1,
-      borderColor: colors.border.light,
-    },
-    adAvatarText: {
-      color: colors.text.primary,
-      fontWeight: '800' as const,
-      fontSize: 16,
-    },
-    adSponsorMeta: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-    },
-    adCTAButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      backgroundColor: colors.primary,
+    adInsightsButton: {
       paddingHorizontal: 12,
       paddingVertical: 8,
       borderRadius: 8,
+      backgroundColor: colors.background.secondary,
+      borderWidth: 1,
+      borderColor: colors.border.light,
     },
-    adCTAButtonText: {
-      color: colors.text.white,
-      fontWeight: '700' as const,
+    adInsightsButtonText: {
       fontSize: 13,
+      fontWeight: '600' as const,
+      color: colors.text.primary,
     },
     bannerAdCard: {
       backgroundColor: colors.background.primary,
@@ -1331,61 +1338,88 @@ export default function FeedScreen() {
       recordedImpressions.current.add(ad.id);
     }
     const sponsorInitial = (ad.sponsorName || 'Sponsored').charAt(0).toUpperCase();
+    const sponsorPhoto = ad.userId ? adUserPhotos[ad.userId] : null;
+    const isAdOwner = ad.userId === currentUser?.id;
+    
     return (
-      <TouchableOpacity
-        key={`ad-card-${ad.id}`}
-        style={styles.adCard}
-        onPress={() => handleAdPress(ad)}
-        activeOpacity={0.9}
-      >
+      <View key={`ad-card-${ad.id}`} style={styles.adCard}>
         <View style={styles.adHeader}>
-          <View style={styles.adSponsorInfo}>
-            <View style={styles.adAvatar}>
-              <Text style={styles.adAvatarText}>{sponsorInitial}</Text>
-            </View>
+          <TouchableOpacity
+            style={styles.adSponsorInfo}
+            onPress={() => ad.userId && router.push(`/profile/${ad.userId}` as any)}
+            disabled={!ad.userId}
+          >
+            {sponsorPhoto ? (
+              <Image
+                source={{ uri: sponsorPhoto }}
+                style={styles.adAvatar}
+                contentFit="cover"
+              />
+            ) : (
+              <View style={styles.adAvatar}>
+                <Text style={styles.adAvatarText}>{sponsorInitial}</Text>
+              </View>
+            )}
             <View>
-              <TouchableOpacity
-                onPress={() => ad.userId && router.push(`/profile/${ad.userId}` as any)}
-                disabled={!ad.userId}
-              >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Text style={styles.adSponsorName}>{ad.sponsorName || 'Sponsored'}</Text>
-              </TouchableOpacity>
+                {!!ad.sponsorVerified && <Text style={styles.adVerifiedTick}>✓</Text>}
+              </View>
               <View style={styles.adSponsorMeta}>
-                <Text style={styles.adBadgeText}>Sponsored</Text>
-                {!!ad.sponsorVerified && <Text style={styles.adBadgeTick}>✓</Text>}
+                <Text style={[styles.adBadgeText, { color: colors.text.tertiary, fontSize: 12 }]}>Sponsored</Text>
               </View>
             </View>
-          </View>
-          {cta.url && (
-            <TouchableOpacity style={styles.adCTAButton} onPress={() => handleAdPress(ad)}>
-              <Text style={styles.adCTAButtonText}>{cta.label || 'Learn More'}</Text>
-              <ExternalLink size={14} color={colors.text.white} />
-            </TouchableOpacity>
-          )}
+          </TouchableOpacity>
         </View>
 
-        {!failedAdImages.current.has(ad.id) ? (
-          <Image 
-            source={{ uri: ad.imageUrl }} 
-            style={styles.adImage} 
-            contentFit="cover"
-            onError={() => {
-              failedAdImages.current.add(ad.id);
-              console.warn('Failed to load card ad image:', ad.id);
-            }}
-          />
-        ) : (
-          <View style={[styles.adImage, { backgroundColor: colors.background.secondary, justifyContent: 'center', alignItems: 'center' }]}>
-            <ImageIcon size={32} color={colors.text.tertiary} />
-          </View>
-        )}
+        <TouchableOpacity
+          activeOpacity={0.95}
+          onPress={() => handleAdPress(ad)}
+        >
+          {!failedAdImages.current.has(ad.id) ? (
+            <Image 
+              source={{ uri: ad.imageUrl }} 
+              style={styles.adImage} 
+              contentFit="cover"
+              onError={() => {
+                failedAdImages.current.add(ad.id);
+                console.warn('Failed to load card ad image:', ad.id);
+              }}
+            />
+          ) : (
+            <View style={[styles.adImage, { backgroundColor: colors.background.secondary, justifyContent: 'center', alignItems: 'center' }]}>
+              <ImageIcon size={32} color={colors.text.tertiary} />
+            </View>
+          )}
+        </TouchableOpacity>
+        
         <View style={styles.adContent}>
           <Text style={styles.adTitle}>{ad.title}</Text>
-          <Text style={styles.adDescription} numberOfLines={2}>
+          <Text style={styles.adDescription} numberOfLines={3}>
             {ad.description}
           </Text>
         </View>
-      </TouchableOpacity>
+
+        {cta.url && (
+          <View style={styles.adActionsRow}>
+            {isAdOwner && (
+              <TouchableOpacity
+                style={styles.adInsightsButton}
+                onPress={() => router.push('/ads' as any)}
+              >
+                <Text style={styles.adInsightsButtonText}>See insights & ads</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={styles.adCTAButton}
+              onPress={() => handleAdPress(ad)}
+            >
+              <Text style={styles.adCTAButtonText}>{cta.label || 'Learn More'}</Text>
+              <ExternalLink size={14} color={colors.text.white} />
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
     );
   };
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -18,6 +18,7 @@ export default function PromoteScreen() {
 
   const [loading, setLoading] = useState(false);
   const [isBoostingContent, setIsBoostingContent] = useState<boolean>(!!postIdParam || !!reelIdParam);
+  const [step, setStep] = useState(1);
   const [form, setForm] = useState<Partial<Advertisement>>({
     title: '',
     description: '',
@@ -33,11 +34,36 @@ export default function PromoteScreen() {
     startDate: new Date().toISOString(),
     endDate: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
     status: 'pending',
+    targeting: {},
+    billingProvider: 'manual',
+  });
+  const [targeting, setTargeting] = useState<{
+    locations: string;
+    gender: 'any' | 'male' | 'female';
+    ageMin: string;
+    ageMax: string;
+    interests: string;
+  }>({
+    locations: '',
+    gender: 'any',
+    ageMin: '18',
+    ageMax: '65',
+    interests: '',
+  });
+  const [payment, setPayment] = useState<{
+    method: 'manual' | 'bank' | 'mobile_money';
+    reference: string;
+    proofUrl: string;
+  }>({
+    method: 'manual',
+    reference: '',
+    proofUrl: '',
   });
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
 
-  const styles = createStyles(colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const totalSteps = 4;
 
   useEffect(() => {
     setIsBoostingContent(!!postIdParam || !!reelIdParam);
@@ -77,7 +103,22 @@ export default function PromoteScreen() {
           billingTxnId: data.billing_txn_id,
           promotedPostId: data.promoted_post_id,
           promotedReelId: data.promoted_reel_id,
+          targeting: data.targeting || {},
         });
+        if (data.targeting) {
+          setTargeting({
+            locations: data.targeting.locations || '',
+            gender: data.targeting.gender || 'any',
+            ageMin: String(data.targeting.ageMin || '18'),
+            ageMax: String(data.targeting.ageMax || '65'),
+            interests: data.targeting.interests || '',
+          });
+          setPayment({
+            method: (data.targeting.paymentMethod as any) || 'manual',
+            reference: data.billing_txn_id || '',
+            proofUrl: data.targeting.paymentProofUrl || '',
+          });
+        }
       }
       setLoading(false);
     };
@@ -103,12 +144,18 @@ export default function PromoteScreen() {
           const mediaUrls: string[] = Array.isArray((post as any).media_urls) ? (post as any).media_urls : [];
           const firstMedia = mediaUrls[0] || '';
           const isVideo = firstMedia ? (firstMedia.includes('.mp4') || firstMedia.includes('.mov') || firstMedia.includes('video')) : false;
+          const postContent = (post as any).content || '';
+          
+          // Auto-detect title: first line or first 50 chars
+          const autoTitle = postContent.split('\n')[0].trim() || postContent.substring(0, 50).trim() || 'Boost post';
+          // Auto-detect description: full content or truncated
+          const autoDescription = postContent || '';
 
           setForm((f) => ({
             ...f,
-            // Facebook-style: use the post itself as creative
-            title: f.title || 'Boost post',
-            description: f.description || ((post as any).content || ''),
+            // Facebook-style: use the post itself as creative, auto-detect title and description
+            title: f.title || autoTitle,
+            description: f.description || autoDescription,
             imageUrl: f.imageUrl || firstMedia,
             type: f.type || (isVideo ? 'video' : 'card'),
             promotedPostId: postIdParam,
@@ -126,11 +173,17 @@ export default function PromoteScreen() {
 
           const videoUrl = (reel as any).video_url as string | undefined;
           const thumbUrl = (reel as any).thumbnail_url as string | undefined;
+          const reelCaption = (reel as any).caption || '';
+          
+          // Auto-detect title: first line or first 50 chars
+          const autoTitle = reelCaption.split('\n')[0].trim() || reelCaption.substring(0, 50).trim() || 'Boost reel';
+          // Auto-detect description: full caption or truncated
+          const autoDescription = reelCaption || '';
 
           setForm((f) => ({
             ...f,
-            title: f.title || 'Boost reel',
-            description: f.description || ((reel as any).caption || ''),
+            title: f.title || autoTitle,
+            description: f.description || autoDescription,
             // For video ads we use the video URL as creative; thumbnail (if any) is secondary
             imageUrl: f.imageUrl || videoUrl || thumbUrl || '',
             type: f.type || 'video',
@@ -149,6 +202,52 @@ export default function PromoteScreen() {
 
     loadContentDefaults();
   }, [currentUser, adIdParam, postIdParam, reelIdParam]);
+
+  const validateStep = (currentStep: number) => {
+    if (currentStep === 1) {
+      if (!form.title || !form.description) {
+        Alert.alert('Add creative', 'Please add a title and description.');
+        return false;
+      }
+      if (!isBoostingContent && !form.imageUrl) {
+        Alert.alert('Add media', 'Please add an image or video URL.');
+        return false;
+      }
+    }
+    if (currentStep === 2) {
+      if (!targeting.locations && !targeting.interests) {
+        Alert.alert('Targeting needed', 'Add at least a location or interests.');
+        return false;
+      }
+    }
+    if (currentStep === 3) {
+      if (!form.dailyBudget || !form.totalBudget) {
+        Alert.alert('Budget required', 'Set a daily and total budget.');
+        return false;
+      }
+      if (!form.startDate || !form.endDate) {
+        Alert.alert('Schedule required', 'Set start and end dates.');
+        return false;
+      }
+    }
+    if (currentStep === 4) {
+      if (!payment.reference) {
+        Alert.alert('Payment reference', 'Provide a payment reference/transaction ID.');
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const goNext = () => {
+    if (!validateStep(step)) return;
+    if (step < totalSteps) setStep(step + 1);
+    else save();
+  };
+
+  const goBack = () => {
+    if (step > 1) setStep(step - 1);
+  };
 
   const save = async () => {
     if (!currentUser) {
@@ -169,6 +268,19 @@ export default function PromoteScreen() {
       promotedReelId: reelIdParam || form.promotedReelId || null,
       type: form.type || 'card',
       active: true,
+      targeting: {
+        ...(form.targeting || {}),
+        locations: targeting.locations,
+        gender: targeting.gender,
+        ageMin: Number(targeting.ageMin) || 18,
+        ageMax: Number(targeting.ageMax) || 65,
+        interests: targeting.interests,
+        paymentMethod: payment.method,
+        paymentProofUrl: payment.proofUrl,
+      },
+      billingProvider: payment.method,
+      billingTxnId: payment.reference,
+      billingStatus: form.billingStatus || 'pending',
     };
     try {
       if (adIdParam) {
@@ -195,130 +307,254 @@ export default function PromoteScreen() {
         <Text style={styles.header}>
           {adIdParam ? 'Edit Promotion' : isBoostingContent ? 'Boost' : 'Create Ad'}
         </Text>
+        <Stepper step={step} total={totalSteps} />
         {loading && <ActivityIndicator color={colors.primary} style={{ marginVertical: 12 }} />}
 
-        {!isBoostingContent && (
-          <Section title="Creative">
-            <Field label="Title" value={form.title} onChangeText={(text) => setForm((f) => ({ ...f, title: text }))} />
+        {step === 1 && (
+          <>
+            <Section title="Creative">
+              <Field label="Title" value={form.title} onChangeText={(text) => setForm((f) => ({ ...f, title: text }))} />
+              <Field
+                label="Description"
+                multiline
+                value={form.description}
+                onChangeText={(text) => setForm((f) => ({ ...f, description: text }))}
+              />
+              {!isBoostingContent && (
+                <Field
+                  label="Image / Video URL"
+                  value={form.imageUrl}
+                  onChangeText={(text) => setForm((f) => ({ ...f, imageUrl: text }))}
+                  placeholder="https://..."
+                />
+              )}
+            </Section>
+
+            <Section title="CTA">
+              <Segment
+                options={[
+                  { value: 'whatsapp', label: 'WhatsApp' },
+                  { value: 'messenger', label: 'Messenger' },
+                  { value: 'website', label: 'Website' },
+                ]}
+                value={form.ctaType || 'whatsapp'}
+                onChange={(v) => setForm((f) => ({ ...f, ctaType: v as any }))}
+              />
+              {form.ctaType === 'whatsapp' && (
+                <>
+                  <Field label="WhatsApp Number" value={form.ctaPhone} onChangeText={(text) => setForm((f) => ({ ...f, ctaPhone: text }))} />
+                  <Field
+                    label="Template Message"
+                    multiline
+                    value={form.ctaMessage}
+                    onChangeText={(text) => setForm((f) => ({ ...f, ctaMessage: text }))}
+                  />
+                </>
+              )}
+              {form.ctaType === 'messenger' && (
+                <>
+                  <Field
+                    label="Messenger Page/User ID"
+                    value={form.ctaMessengerId}
+                    onChangeText={(text) => setForm((f) => ({ ...f, ctaMessengerId: text }))}
+                  />
+                  <Field
+                    label="Template Message"
+                    multiline
+                    value={form.ctaMessage}
+                    onChangeText={(text) => setForm((f) => ({ ...f, ctaMessage: text }))}
+                  />
+                </>
+              )}
+              {form.ctaType === 'website' && (
+                <Field label="Website URL" value={form.ctaUrl} onChangeText={(text) => setForm((f) => ({ ...f, ctaUrl: text }))} />
+              )}
+            </Section>
+          </>
+        )}
+
+        {step === 2 && (
+          <>
+            <Section title="Targeting">
+              <Field
+                label="Locations (cities/countries)"
+                value={targeting.locations}
+                onChangeText={(text) => setTargeting((t) => ({ ...t, locations: text }))}
+                placeholder="e.g. Harare; Lagos; Nairobi"
+              />
+              <Field
+                label="Interests / Keywords"
+                value={targeting.interests}
+                onChangeText={(text) => setTargeting((t) => ({ ...t, interests: text }))}
+                placeholder="cleaning services, beauty, sports..."
+              />
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Field
+                    label="Age min"
+                    value={targeting.ageMin}
+                    onChangeText={(text) => setTargeting((t) => ({ ...t, ageMin: text }))}
+                    keyboardType="number-pad"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Field
+                    label="Age max"
+                    value={targeting.ageMax}
+                    onChangeText={(text) => setTargeting((t) => ({ ...t, ageMax: text }))}
+                    keyboardType="number-pad"
+                  />
+                </View>
+              </View>
+              <Segment
+                options={[
+                  { value: 'any', label: 'All genders' },
+                  { value: 'male', label: 'Male' },
+                  { value: 'female', label: 'Female' },
+                ]}
+                value={targeting.gender}
+                onChange={(v) => setTargeting((t) => ({ ...t, gender: v as any }))}
+              />
+            </Section>
+
+            <Section title="Placement">
+              <Segment
+                options={[
+                  { value: 'feed', label: 'Feed' },
+                  { value: 'reels', label: 'Reels' },
+                  { value: 'messages', label: 'Messages' },
+                  { value: 'all', label: 'All' },
+                ]}
+                value={form.placement || 'feed'}
+                onChange={(v) => setForm((f) => ({ ...f, placement: v as any }))}
+              />
+            </Section>
+          </>
+        )}
+
+        {step === 3 && (
+          <Section title="Budget & Schedule">
             <Field
-              label="Description"
-              multiline
-              value={form.description}
-              onChangeText={(text) => setForm((f) => ({ ...f, description: text }))}
+              label="Daily Budget (USD)"
+              keyboardType="decimal-pad"
+              value={form.dailyBudget?.toString() || ''}
+              onChangeText={(text) => setForm((f) => ({ ...f, dailyBudget: parseFloat(text) || 0 }))}
             />
             <Field
-              label="Image / Video URL"
-              value={form.imageUrl}
-              onChangeText={(text) => setForm((f) => ({ ...f, imageUrl: text }))}
-              placeholder="https://..."
+              label="Total Budget (USD)"
+              keyboardType="decimal-pad"
+              value={form.totalBudget?.toString() || ''}
+              onChangeText={(text) => setForm((f) => ({ ...f, totalBudget: parseFloat(text) || 0 }))}
             />
+            <DateRow
+              label="Start Date"
+              value={form.startDate}
+              onPress={() => setShowStartPicker(true)}
+            />
+            <DateRow
+              label="End Date"
+              value={form.endDate}
+              onPress={() => setShowEndPicker(true)}
+            />
+            {showStartPicker && (
+              <DateTimePicker
+                value={form.startDate ? new Date(form.startDate) : new Date()}
+                mode="date"
+                onChange={(e, d) => {
+                  setShowStartPicker(false);
+                  if (d) setDate('startDate', d);
+                }}
+              />
+            )}
+            {showEndPicker && (
+              <DateTimePicker
+                value={form.endDate ? new Date(form.endDate) : new Date()}
+                mode="date"
+                onChange={(e, d) => {
+                  setShowEndPicker(false);
+                  if (d) setDate('endDate', d);
+                }}
+              />
+            )}
           </Section>
         )}
 
-        <Section title="CTA">
-          <Segment
-            options={[
-              { value: 'whatsapp', label: 'WhatsApp' },
-              { value: 'messenger', label: 'Messenger' },
-              { value: 'website', label: 'Website' },
-            ]}
-            value={form.ctaType || 'whatsapp'}
-            onChange={(v) => setForm((f) => ({ ...f, ctaType: v as any }))}
-          />
-          {form.ctaType === 'whatsapp' && (
-            <>
-              <Field label="WhatsApp Number" value={form.ctaPhone} onChangeText={(text) => setForm((f) => ({ ...f, ctaPhone: text }))} />
-              <Field
-                label="Template Message"
-                multiline
-                value={form.ctaMessage}
-                onChangeText={(text) => setForm((f) => ({ ...f, ctaMessage: text }))}
-              />
-            </>
-          )}
-          {form.ctaType === 'messenger' && (
-            <>
-              <Field
-                label="Messenger Page/User ID"
-                value={form.ctaMessengerId}
-                onChangeText={(text) => setForm((f) => ({ ...f, ctaMessengerId: text }))}
+        {step === 4 && (
+          <>
+            <Section title="Payment">
+              <Segment
+                options={[
+                  { value: 'manual', label: 'Manual (in-app/admin)' },
+                  { value: 'bank', label: 'Bank' },
+                  { value: 'mobile_money', label: 'Mobile Money' },
+                ]}
+                value={payment.method}
+                onChange={(v) => setPayment((p) => ({ ...p, method: v as any }))}
               />
               <Field
-                label="Template Message"
-                multiline
-                value={form.ctaMessage}
-                onChangeText={(text) => setForm((f) => ({ ...f, ctaMessage: text }))}
+                label="Payment reference / transaction ID"
+                value={payment.reference}
+                onChangeText={(text) => setPayment((p) => ({ ...p, reference: text }))}
+                placeholder="e.g. receipt #, transfer reference"
               />
-            </>
-          )}
-          {form.ctaType === 'website' && (
-            <Field label="Website URL" value={form.ctaUrl} onChangeText={(text) => setForm((f) => ({ ...f, ctaUrl: text }))} />
-          )}
-        </Section>
+              <Field
+                label="Proof of payment (link to screenshot/receipt)"
+                value={payment.proofUrl}
+                onChangeText={(text) => setPayment((p) => ({ ...p, proofUrl: text }))}
+                placeholder="https://... (upload then paste link)"
+              />
+              <Text style={{ fontSize: 12, color: colors.text.secondary, marginTop: -4 }}>
+                Tip: upload a receipt image to your storage and paste the URL so admins can verify.
+              </Text>
+            </Section>
 
-        <Section title="Budget & Schedule">
-          <Field
-            label="Daily Budget (USD)"
-            keyboardType="decimal-pad"
-            value={form.dailyBudget?.toString() || ''}
-            onChangeText={(text) => setForm((f) => ({ ...f, dailyBudget: parseFloat(text) || 0 }))}
-          />
-          <Field
-            label="Total Budget (USD)"
-            keyboardType="decimal-pad"
-            value={form.totalBudget?.toString() || ''}
-            onChangeText={(text) => setForm((f) => ({ ...f, totalBudget: parseFloat(text) || 0 }))}
-          />
-          <DateRow
-            label="Start Date"
-            value={form.startDate}
-            onPress={() => setShowStartPicker(true)}
-          />
-          <DateRow
-            label="End Date"
-            value={form.endDate}
-            onPress={() => setShowEndPicker(true)}
-          />
-          {showStartPicker && (
-            <DateTimePicker
-              value={form.startDate ? new Date(form.startDate) : new Date()}
-              mode="date"
-              onChange={(e, d) => {
-                setShowStartPicker(false);
-                if (d) setDate('startDate', d);
-              }}
-            />
-          )}
-          {showEndPicker && (
-            <DateTimePicker
-              value={form.endDate ? new Date(form.endDate) : new Date()}
-              mode="date"
-              onChange={(e, d) => {
-                setShowEndPicker(false);
-                if (d) setDate('endDate', d);
-              }}
-            />
-          )}
-        </Section>
+            <Section title="Review">
+              <Text style={styles.reviewLine}>Title: {form.title}</Text>
+              <Text style={styles.reviewLine}>Description: {form.description}</Text>
+              <Text style={styles.reviewLine}>Placement: {form.placement}</Text>
+              <Text style={styles.reviewLine}>Budget: ${form.dailyBudget} / day, total ${form.totalBudget}</Text>
+              <Text style={styles.reviewLine}>Schedule: {form.startDate ? new Date(form.startDate).toDateString() : '-'} → {form.endDate ? new Date(form.endDate).toDateString() : '-'}</Text>
+              <Text style={styles.reviewLine}>CTA: {form.ctaType}</Text>
+              <Text style={styles.reviewLine}>Targeting: {targeting.locations || 'anywhere'} | {targeting.interests || 'broad'} | {targeting.gender} | {targeting.ageMin}-{targeting.ageMax}</Text>
+              <Text style={styles.reviewLine}>Payment: {payment.method} / ref {payment.reference || '-'}</Text>
+            </Section>
+          </>
+        )}
 
-        <Section title="Placement">
-          <Segment
-            options={[
-              { value: 'feed', label: 'Feed' },
-              { value: 'reels', label: 'Reels' },
-              { value: 'messages', label: 'Messages' },
-              { value: 'all', label: 'All' },
-            ]}
-            value={form.placement || 'feed'}
-            onChange={(v) => setForm((f) => ({ ...f, placement: v as any }))}
-          />
-        </Section>
-
-        <TouchableOpacity style={styles.submit} onPress={save} disabled={loading}>
-          <Text style={styles.submitText}>{adIdParam ? 'Update' : 'Submit for Review'}</Text>
-        </TouchableOpacity>
+        <View style={styles.navRow}>
+          {step > 1 && (
+            <TouchableOpacity style={[styles.navButton, styles.navSecondary]} onPress={goBack} disabled={loading}>
+              <Text style={styles.navSecondaryText}>Back</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={[styles.navButton, styles.navPrimary]} onPress={goNext} disabled={loading}>
+            <Text style={styles.navPrimaryText}>{step === totalSteps ? (adIdParam ? 'Update' : 'Submit for Review') : 'Next'}</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function Stepper({ step, total }: { step: number; total: number }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 6 }}>
+      {Array.from({ length: total }).map((_, i) => {
+        const active = i + 1 <= step;
+        return (
+          <View
+            key={i}
+            style={{
+              flex: 1,
+              height: 6,
+              borderRadius: 4,
+              backgroundColor: active ? '#2563eb' : '#e5e7eb',
+            }}
+          />
+        );
+      })}
+      <Text style={{ marginLeft: 8, fontWeight: '700' }}>{step}/{total}</Text>
+    </View>
   );
 }
 
@@ -414,13 +650,12 @@ const createStyles = (colors: any) =>
     container: { flex: 1, backgroundColor: colors.background.primary },
     form: { padding: 16 },
     header: { fontSize: 22, fontWeight: '700', marginBottom: 12, color: colors.text.primary },
-    submit: {
-      marginTop: 10,
-      backgroundColor: colors.primary,
-      paddingVertical: 14,
-      borderRadius: 12,
-      alignItems: 'center',
-    },
-    submitText: { color: colors.text.white, fontWeight: '700', fontSize: 16 },
+    navRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12, gap: 10 },
+    navButton: { flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
+    navPrimary: { backgroundColor: colors.primary },
+    navPrimaryText: { color: colors.text.white, fontWeight: '700', fontSize: 16 },
+    navSecondary: { backgroundColor: colors.background.secondary, borderWidth: 1, borderColor: colors.border.light },
+    navSecondaryText: { color: colors.text.primary, fontWeight: '700', fontSize: 16 },
+    reviewLine: { fontSize: 13, marginBottom: 6, color: colors.text.primary },
   });
 

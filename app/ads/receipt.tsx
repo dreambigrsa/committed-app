@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ActivityIndicator, ScrollView, Share, Alert, Platform } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
@@ -63,6 +63,33 @@ export default function AdReceiptScreen() {
     );
   }
 
+  const handleShareReceipt = async () => {
+    const amount = `${receipt.currency || 'USD'} ${Number(receipt.amount || 0).toFixed(2)}`;
+    const receiptText = [
+      `Ad Payment Receipt`,
+      `Receipt #${receipt.receipt_number}`,
+      `Amount: ${amount}`,
+      `Issued: ${new Date(receipt.issued_at).toLocaleString()}`,
+      `Ad: ${advertisement?.title || '—'}`,
+      `Placement: ${advertisement?.placement || '—'}`,
+    ].join('\n');
+
+    try {
+      await Share.share({
+        message: receiptText,
+      });
+    } catch (error) {
+      const maybeNavigator =
+        typeof globalThis !== 'undefined' ? (globalThis as any).navigator : undefined;
+      if (Platform.OS === 'web' && maybeNavigator?.clipboard?.writeText) {
+        await maybeNavigator.clipboard.writeText(receiptText);
+        Alert.alert('Copied', 'Receipt details copied to clipboard.');
+        return;
+      }
+      Alert.alert('Error', 'Unable to share receipt.');
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <Stack.Screen options={{ title: 'Ad Receipt', headerShown: true }} />
@@ -113,9 +140,12 @@ export default function AdReceiptScreen() {
           </Text>
         </View>
 
-        <TouchableOpacity style={styles.downloadButton} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.downloadButton} onPress={handleShareReceipt}>
           <Download size={18} color={colors.text.white} />
-          <Text style={styles.downloadButtonText}>Done</Text>
+          <Text style={styles.downloadButtonText}>Download / Share</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.doneButton} onPress={() => router.back()}>
+          <Text style={styles.doneButtonText}>Done</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -142,4 +172,6 @@ const createStyles = (colors: any) =>
     noteText: { fontSize: 12, color: colors.text.secondary, lineHeight: 18 },
     downloadButton: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, paddingVertical: 14, borderRadius: 12, backgroundColor: colors.primary },
     downloadButtonText: { color: colors.text.white, fontWeight: '700' },
+    doneButton: { marginTop: 10, alignItems: 'center', paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.background.primary },
+    doneButtonText: { color: colors.text.primary, fontWeight: '700' },
   });

@@ -32,9 +32,10 @@ export default function MyAdsScreen() {
         const adIds = data.map((ad: any) => ad.id);
         let impressionsMap = new Map<string, number>();
         let clicksMap = new Map<string, number>();
+        let engagementsMap = new Map<string, { likes: number; comments: number; shares: number }>();
 
         if (adIds.length > 0) {
-          const [impressionsRes, clicksRes] = await Promise.all([
+          const [impressionsRes, clicksRes, engagementsRes] = await Promise.all([
             supabase
               .from('advertisement_impressions')
               .select('advertisement_id')
@@ -42,6 +43,10 @@ export default function MyAdsScreen() {
             supabase
               .from('advertisement_clicks')
               .select('advertisement_id')
+              .in('advertisement_id', adIds),
+            supabase
+              .from('ad_engagements')
+              .select('advertisement_id, engagement_type')
               .in('advertisement_id', adIds),
           ]);
 
@@ -53,6 +58,14 @@ export default function MyAdsScreen() {
           clicksRes.data?.forEach((click: any) => {
             const count = clicksMap.get(click.advertisement_id) || 0;
             clicksMap.set(click.advertisement_id, count + 1);
+          });
+
+          engagementsRes.data?.forEach((eng: any) => {
+            const entry = engagementsMap.get(eng.advertisement_id) || { likes: 0, comments: 0, shares: 0 };
+            if (eng.engagement_type === 'like') entry.likes += 1;
+            if (eng.engagement_type === 'comment') entry.comments += 1;
+            if (eng.engagement_type === 'share') entry.shares += 1;
+            engagementsMap.set(eng.advertisement_id, entry);
           });
         }
 
@@ -68,6 +81,7 @@ export default function MyAdsScreen() {
             active: ad.active,
             impressions: impressionsMap.get(ad.id) || 0,
             clicks: clicksMap.get(ad.id) || 0,
+            engagementSummary: engagementsMap.get(ad.id),
             createdBy: ad.created_by,
             createdAt: ad.created_at,
             updatedAt: ad.updated_at,
@@ -239,6 +253,15 @@ export default function MyAdsScreen() {
                 </View>
 
                 <Text style={styles.suggestion}>{suggestion(ad)}</Text>
+                {((ad as any).engagementSummary?.likes ||
+                  (ad as any).engagementSummary?.comments ||
+                  (ad as any).engagementSummary?.shares) ? (
+                  <Text style={styles.engagementText}>
+                    {(ad as any).engagementSummary?.likes || 0} likes •{' '}
+                    {(ad as any).engagementSummary?.comments || 0} comments •{' '}
+                    {(ad as any).engagementSummary?.shares || 0} shares
+                  </Text>
+                ) : null}
                 {ad.rejectionReason ? (
                   <Text style={styles.rejection}>Rejected: {ad.rejectionReason}</Text>
                 ) : null}
@@ -335,6 +358,7 @@ const createStyles = (colors: any) =>
     meta: { fontSize: 12, color: colors.text.secondary },
     metaEmphasis: { fontSize: 13, fontWeight: '700', color: colors.text.primary },
     suggestion: { marginTop: 6, fontSize: 12, color: colors.text.secondary },
+    engagementText: { marginTop: 6, fontSize: 12, color: colors.text.tertiary },
     rejection: { marginTop: 4, fontSize: 12, color: colors.danger },
     metricsRow: { flexDirection: 'row', gap: 10, marginTop: 10, marginBottom: 8 },
     metricCard: { flex: 1, backgroundColor: colors.background.secondary, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },

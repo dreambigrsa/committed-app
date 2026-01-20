@@ -1610,29 +1610,65 @@ export default function FeedScreen() {
       }
     };
 
-    const handleAdAddComment = async (content: string, parentCommentId?: string, stickerId?: string, messageType?: 'text' | 'sticker') => {
+    const handleAdAddComment = async (postId: string, content: string, parentCommentId?: string, stickerId?: string, messageType?: 'text' | 'sticker') => {
       try {
-        if (originalPost) {
-          const result = await addComment(originalPost.id, content, parentCommentId, stickerId, messageType);
+        console.log('handleAdAddComment called:', { postId, content, adId: ad.id, originalPost: originalPost?.id, originalReel: originalReel?.id });
+        
+        // Determine if this is a post or reel based on what we have
+        const targetPostId = originalPost?.id;
+        const targetReelId = originalReel?.id;
+        
+        // Check if postId matches our original post
+        if (targetPostId && postId === targetPostId) {
+          console.log('Adding comment to post:', targetPostId);
+          const result = await addComment(targetPostId, content, parentCommentId, stickerId, messageType);
           if (result === null) {
-            // User is restricted or error occurred
+            console.log('Comment add returned null (user restricted or error)');
             return;
           }
-          // Refresh comments
-          const updatedComments = getComments(originalPost.id);
-          setAdComments(prev => ({ ...prev, [ad.id]: updatedComments }));
-        } else if (originalReel && addReelComment) {
-          const result = await addReelComment(originalReel.id, content, parentCommentId, stickerId, messageType);
+          // Refresh comments after a short delay to allow state to update
+          setTimeout(() => {
+            const updatedComments = getComments(targetPostId);
+            console.log('Refreshed post comments:', updatedComments.length);
+            setAdComments(prev => ({ ...prev, [ad.id]: updatedComments }));
+          }, 300);
+        } 
+        // Check if postId matches our original reel
+        else if (targetReelId && postId === targetReelId && addReelComment) {
+          console.log('Adding comment to reel:', targetReelId);
+          const result = await addReelComment(targetReelId, content, parentCommentId, stickerId, messageType);
           if (result === null) {
-            // User is restricted or error occurred
+            console.log('Reel comment add returned null (user restricted or error)');
             return;
           }
           // Refresh comments - wait a bit for state to update
           setTimeout(() => {
-            const updatedComments = reelComments[originalReel.id] || [];
+            const updatedComments = reelComments[targetReelId] || [];
+            console.log('Refreshed reel comments:', updatedComments.length);
             setAdComments(prev => ({ ...prev, [ad.id]: updatedComments }));
           }, 500);
-        } else {
+        } 
+        // Fallback: try to determine from postId directly
+        else if (originalPost && postId === originalPost.id) {
+          console.log('Fallback: Adding comment to post:', postId);
+          const result = await addComment(postId, content, parentCommentId, stickerId, messageType);
+          if (result === null) return;
+          setTimeout(() => {
+            const updatedComments = getComments(postId);
+            setAdComments(prev => ({ ...prev, [ad.id]: updatedComments }));
+          }, 300);
+        } 
+        else if (originalReel && postId === originalReel.id && addReelComment) {
+          console.log('Fallback: Adding comment to reel:', postId);
+          const result = await addReelComment(postId, content, parentCommentId, stickerId, messageType);
+          if (result === null) return;
+          setTimeout(() => {
+            const updatedComments = reelComments[postId] || [];
+            setAdComments(prev => ({ ...prev, [ad.id]: updatedComments }));
+          }, 500);
+        } 
+        else {
+          console.error('Ad comment error: No matching post or reel found', { postId, adId: ad.id, originalPost: originalPost?.id, originalReel: originalReel?.id });
           Alert.alert('Error', 'This ad is not linked to a post or reel. Comments are not available for standalone ads.');
           throw new Error('Ad not linked to post or reel');
         }
@@ -1640,7 +1676,8 @@ export default function FeedScreen() {
         console.error('Add comment error:', error);
         const errorMessage = extractErrorMessage(error);
         Alert.alert('Add comment error', errorMessage);
-        // Don't re-throw - we've handled it with the alert, CommentsModal will handle its own errors
+        // Re-throw so CommentsModal can handle it
+        throw error;
       }
     };
     

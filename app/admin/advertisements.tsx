@@ -59,8 +59,9 @@ export default function AdminAdvertisementsScreen() {
     try {
       setLoading(true);
       
-      const CPM = 0.5; // $0.50 per 1000 impressions
-      const CPC = 0.05; // $0.05 per click
+      const BASE_CPM = 0.5; // $0.50 per 1000 impressions
+      const BASE_CPC = 0.05; // $0.05 per click
+      const MAX_MULTIPLIER = 2; // cap bid multiplier
 
       // Load all advertisements (not just active ones for admin view)
       const { data: adsData, error: adsError } = await supabase
@@ -103,10 +104,26 @@ export default function AdminAdvertisementsScreen() {
         // Format advertisements with real-time analytics
         const formattedAds: Advertisement[] = [];
 
+        // Build a simple competition map by placement for bidding
+        const activeApproved = adsData.filter(
+          (ad: any) => ad.active && ad.status === 'approved' && ad.billing_status === 'paid'
+        );
+        const placementCounts = new Map<string, number>();
+        activeApproved.forEach((ad: any) => {
+          const key = ad.placement || 'feed';
+          placementCounts.set(key, (placementCounts.get(key) || 0) + 1);
+        });
+
         for (const ad of adsData) {
           const impressions = impressionsMap.get(ad.id) || 0;
           const clicks = clicksMap.get(ad.id) || 0;
-          let spend = impressions * (CPM / 1000) + clicks * CPC;
+          const placementKey = ad.placement || 'feed';
+          const competitors = (placementCounts.get(placementKey) || 1) - 1; // exclude self loosely
+          const multiplier = Math.min(1 + competitors * 0.1, MAX_MULTIPLIER);
+          const effectiveCPM = BASE_CPM * multiplier;
+          const effectiveCPC = BASE_CPC * multiplier;
+
+          let spend = impressions * (effectiveCPM / 1000) + clicks * effectiveCPC;
           if (ad.total_budget) {
             spend = Math.min(spend, Number(ad.total_budget));
           }
@@ -146,6 +163,10 @@ export default function AdminAdvertisementsScreen() {
             dailyBudget: ad.daily_budget,
             totalBudget: ad.total_budget,
             spend,
+            // helpful for UI
+            effectiveCpm: effectiveCPM,
+            effectiveCpc: effectiveCPC,
+            bidMultiplier: multiplier,
             billingStatus: ad.billing_status,
             billingProvider: ad.billing_provider,
             billingTxnId: ad.billing_txn_id,
@@ -495,6 +516,10 @@ export default function AdminAdvertisementsScreen() {
                   <View style={styles.metaItem}>
                     <Text style={styles.metaLabel}>Billing:</Text>
                     <Text style={styles.metaValue}>{ad.billingStatus || 'unpaid'}</Text>
+                  </View>
+                  <View style={styles.metaItem}>
+                    <Text style={styles.metaLabel}>Bid x</Text>
+                    <Text style={styles.metaValue}>{(ad as any).bidMultiplier?.toFixed(2) || '1.00'}</Text>
                   </View>
                 </View>
                 {ad.rejectionReason ? (

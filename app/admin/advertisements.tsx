@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { Stack } from 'expo-router';
 import { Image } from 'expo-image';
-import { Plus, Edit2, Trash2, BarChart3, ExternalLink, X, CheckCircle2, PauseCircle, Play, XCircle } from 'lucide-react-native';
+import { Plus, Edit2, Trash2, BarChart3, ExternalLink, X, CheckCircle2, PauseCircle, Play, XCircle, DollarSign } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
 import colors from '@/constants/colors';
@@ -232,6 +232,42 @@ export default function AdminAdvertisementsScreen() {
     await saveAd();
   };
 
+  const handleApprove = async (ad: Advertisement) => {
+    await updateAdvertisement(ad.id, { status: 'approved', rejectionReason: '', active: true });
+    setAdvertisements((prev) => prev.map((a) => (a.id === ad.id ? { ...a, status: 'approved', rejectionReason: '', active: true } : a)));
+  };
+
+  const handleReject = async (ad: Advertisement) => {
+    Alert.alert('Reject ad', 'Add a rejection reason', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Reject',
+        style: 'destructive',
+        onPress: async () => {
+          await updateAdvertisement(ad.id, { status: 'rejected', active: false, rejectionReason: 'Rejected by admin' });
+          setAdvertisements((prev) => prev.map((a) => (a.id === ad.id ? { ...a, status: 'rejected', active: false, rejectionReason: 'Rejected by admin' } : a)));
+        },
+      },
+    ]);
+  };
+
+  const handleMarkPaid = async (ad: Advertisement) => {
+    Alert.alert(
+      'Mark as paid',
+      'Confirm payment received (manual/transfer).',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Mark paid',
+          onPress: async () => {
+            await updateAdvertisement(ad.id, { billingStatus: 'paid', billingProvider: ad.billingProvider || 'manual', active: true });
+            setAdvertisements((prev) => prev.map((a) => (a.id === ad.id ? { ...a, billingStatus: 'paid', billingProvider: ad.billingProvider || 'manual', active: true } : a)));
+          },
+        },
+      ],
+    );
+  };
+
   const saveAd = async () => {
     if (editingAd) {
       await updateAdvertisement(editingAd.id, {
@@ -421,6 +457,20 @@ export default function AdminAdvertisementsScreen() {
                   <Text style={styles.ctrText}>CTR: {getCTR(ad)}</Text>
                 </View>
 
+                <View style={styles.adMeta}>
+                  <View style={styles.metaItem}>
+                    <Text style={styles.metaLabel}>Status:</Text>
+                    <Text style={styles.metaValue}>{ad.status || 'pending'}</Text>
+                  </View>
+                  <View style={styles.metaItem}>
+                    <Text style={styles.metaLabel}>Billing:</Text>
+                    <Text style={styles.metaValue}>{ad.billingStatus || 'unpaid'}</Text>
+                  </View>
+                </View>
+                {ad.rejectionReason ? (
+                  <Text style={styles.rejectionText}>Rejected: {ad.rejectionReason}</Text>
+                ) : null}
+
                 <View style={styles.adActions}>
                   <TouchableOpacity
                     style={styles.actionButton}
@@ -441,6 +491,31 @@ export default function AdminAdvertisementsScreen() {
                     onPress={() => handleDeleteAd(ad)}
                   >
                     <Trash2 size={18} color={colors.danger} />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.adActions}>
+                  <TouchableOpacity style={styles.approveButton} onPress={() => handleApprove(ad)}>
+                    <CheckCircle2 size={18} color={colors.text.white} />
+                    <Text style={styles.buttonTextOnDark}>Approve</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.rejectButton} onPress={() => handleReject(ad)}>
+                    <XCircle size={18} color={colors.text.white} />
+                    <Text style={styles.buttonTextOnDark}>Reject</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.adActions}>
+                  <TouchableOpacity style={styles.primaryButton} onPress={() => handleMarkPaid(ad)}>
+                    <DollarSign size={18} color={colors.text.white} />
+                    <Text style={styles.buttonTextOnDark}>Mark Paid (manual)</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.actionButton}
+                    onPress={() => updateAdvertisement(ad.id, { billingStatus: 'unpaid', active: false })}
+                  >
+                    <PauseCircle size={18} color={colors.text.primary} />
+                    <Text style={styles.actionButtonText}>Mark Unpaid</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1055,6 +1130,41 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600' as const,
     color: colors.text.primary,
+  },
+  approveButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: colors.success || colors.primary,
+  },
+  rejectButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: colors.danger,
+  },
+  primaryButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: colors.primary,
+  },
+  buttonTextOnDark: {
+    fontSize: 14,
+    fontWeight: '700' as const,
+    color: colors.text.white,
   },
   emptyState: {
     paddingVertical: 60,

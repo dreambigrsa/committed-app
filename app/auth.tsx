@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  TextInput,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
@@ -17,8 +18,6 @@ import { supabase } from '@/lib/supabase';
 import LegalAcceptanceCheckbox from '@/components/LegalAcceptanceCheckbox';
 import { LegalDocument } from '@/types';
 import { checkUserLegalAcceptances } from '@/lib/legal-enforcement';
-import { Button, Input } from '@/components/ui';
-import { spacing, typography, borderRadius, layout } from '@/constants/design-system';
 
 export default function AuthScreen() {
   const router = useRouter();
@@ -523,52 +522,61 @@ export default function AuthScreen() {
           )}
 
           {isSignUp && !showForgotPassword && (
-            <Input
-              label="Full Name"
-              placeholder="Enter your full name"
-              value={formData.fullName}
-              onChangeText={(text) => setFormData({ ...formData, fullName: text })}
-              autoCapitalize="words"
-              size="md"
-              variant="default"
-            />
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Full Name</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="Enter your full name"
+                placeholderTextColor={colors.text.tertiary}
+                value={formData.fullName}
+                onChangeText={(text) => setFormData({ ...formData, fullName: text })}
+                autoCapitalize="words"
+              />
+            </View>
           )}
 
-          <Input
-            label="Email"
-            placeholder="Enter your email"
-            value={formData.email}
-            onChangeText={(text) => setFormData({ ...formData, email: text })}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            size="md"
-            variant="default"
-          />
-
-          {!showForgotPassword && (
-            <Input
-              label="Phone Number"
-              placeholder="+1 (555) 000-0000"
-              value={formData.phoneNumber}
-              onChangeText={(text) => setFormData({ ...formData, phoneNumber: text })}
-              keyboardType="phone-pad"
-              size="md"
-              variant="default"
-            />
-          )}
-
-          {!showForgotPassword && (
-            <Input
-              label="Password"
-              placeholder="Enter your password"
-              value={formData.password}
-              onChangeText={(text) => setFormData({ ...formData, password: text })}
-              secureTextEntry={!showPassword}
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Email</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="Enter your email"
+              placeholderTextColor={colors.text.tertiary}
+              value={formData.email}
+              onChangeText={(text) => setFormData({ ...formData, email: text })}
+              keyboardType="email-address"
               autoCapitalize="none"
-              size="md"
-              variant="default"
-              rightIcon={
+            />
+          </View>
+
+          {!showForgotPassword && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Phone Number</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="+1 (555) 000-0000"
+                placeholderTextColor={colors.text.tertiary}
+                value={formData.phoneNumber}
+                onChangeText={(text) => setFormData({ ...formData, phoneNumber: text })}
+                keyboardType="phone-pad"
+              />
+            </View>
+          )}
+
+          {!showForgotPassword && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Password</Text>
+              <View style={styles.passwordInputContainer}>
+                <TextInput
+                  style={styles.passwordInput}
+                  placeholder="Enter your password"
+                  placeholderTextColor={colors.text.tertiary}
+                  value={formData.password}
+                  onChangeText={(text) => setFormData({ ...formData, password: text })}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                />
                 <TouchableOpacity
+                  style={styles.passwordToggle}
                   onPress={() => setShowPassword(!showPassword)}
                   activeOpacity={0.7}
                 >
@@ -578,42 +586,43 @@ export default function AuthScreen() {
                     <Eye size={20} color={colors.text.secondary} />
                   )}
                 </TouchableOpacity>
-              }
-            />
+              </View>
+            </View>
           )}
 
-          <Button
-            title={showForgotPassword ? 'Send Reset Link' : (isSignUp ? 'Create Account' : 'Sign In')}
+          <TouchableOpacity
+            style={[styles.authButton, isLoading && styles.buttonDisabled]}
             onPress={showForgotPassword ? handleResetPassword : handleAuth}
-            variant="primary"
-            size="lg"
-            loading={isLoading}
             disabled={isLoading}
-            fullWidth
-            style={{ marginTop: spacing.md }}
-          />
+          >
+            {isLoading ? (
+              <ActivityIndicator color={colors.text.white} />
+            ) : (
+              <Text style={styles.authButtonText}>
+                {showForgotPassword ? 'Send Reset Link' : (isSignUp ? 'Create Account' : 'Sign In')}
+              </Text>
+            )}
+          </TouchableOpacity>
 
           {!isSignUp && !showForgotPassword && (
-            <Button
-              title="Forgot Password?"
+            <TouchableOpacity
+              style={styles.forgotPasswordButton}
               onPress={() => setShowForgotPassword(true)}
-              variant="ghost"
-              size="md"
-              style={{ marginTop: spacing.sm }}
-            />
+            >
+              <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+            </TouchableOpacity>
           )}
 
           {showForgotPassword && (
-            <Button
-              title="Back to Sign In"
+            <TouchableOpacity
+              style={styles.forgotPasswordButton}
               onPress={() => {
                 setShowForgotPassword(false);
                 setIsSignUp(false);
               }}
-              variant="ghost"
-              size="md"
-              style={{ marginTop: spacing.sm }}
-            />
+            >
+              <Text style={styles.forgotPasswordText}>Back to Sign In</Text>
+            </TouchableOpacity>
           )}
 
           {isSignUp && !showForgotPassword && legalDocuments.length > 0 && (
@@ -676,15 +685,15 @@ const createStyles = (colors: typeof import('@/constants/colors').default) => St
   backButton: {
     width: 40,
     height: 40,
-    borderRadius: borderRadius.full,
+    borderRadius: 20,
     backgroundColor: colors.background.secondary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.lg,
+    marginBottom: 24,
   },
   header: {
     alignItems: 'center',
-    marginBottom: spacing.xl,
+    marginBottom: 40,
   },
   logoContainer: {
     position: 'relative',
@@ -692,7 +701,7 @@ const createStyles = (colors: typeof import('@/constants/colors').default) => St
     height: 80,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.md,
+    marginBottom: 16,
   },
   heartLogo: {
     position: 'absolute',
@@ -700,16 +709,16 @@ const createStyles = (colors: typeof import('@/constants/colors').default) => St
     right: -4,
   },
   title: {
-    fontSize: typography.fontSize.display,
-    fontWeight: typography.fontWeight.bold,
+    fontSize: 36,
+    fontWeight: '700' as const,
     color: colors.text.primary,
-    marginBottom: spacing.sm,
+    marginBottom: 8,
   },
   subtitle: {
-    fontSize: typography.fontSize.md,
+    fontSize: 16,
     color: colors.text.secondary,
     textAlign: 'center',
-    lineHeight: typography.lineHeight.relaxed * typography.fontSize.md,
+    lineHeight: 24,
   },
   formContainer: {
     flex: 1,
@@ -793,28 +802,37 @@ const createStyles = (colors: typeof import('@/constants/colors').default) => St
     color: colors.text.white,
   },
   disclaimer: {
-    fontSize: typography.fontSize.xs,
+    fontSize: 12,
     color: colors.text.tertiary,
     textAlign: 'center',
-    lineHeight: typography.lineHeight.normal * typography.fontSize.xs,
-    marginTop: spacing.lg,
+    lineHeight: 18,
+    marginTop: 20,
+  },
+  forgotPasswordButton: {
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  forgotPasswordText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: colors.primary,
   },
   resetTitle: {
-    fontSize: typography.fontSize.xxl,
-    fontWeight: typography.fontWeight.bold,
+    fontSize: 24,
+    fontWeight: '700' as const,
     color: colors.text.primary,
-    marginBottom: spacing.sm,
+    marginBottom: 8,
   },
   resetSubtitle: {
-    fontSize: typography.fontSize.sm,
+    fontSize: 14,
     color: colors.text.secondary,
     textAlign: 'center',
-    lineHeight: typography.lineHeight.normal * typography.fontSize.sm,
-    marginBottom: spacing.lg,
+    lineHeight: 20,
+    marginBottom: 24,
   },
   legalSection: {
-    marginTop: spacing.xl,
-    paddingTop: spacing.lg,
+    marginTop: 32,
+    paddingTop: 24,
     borderTopWidth: 2,
     borderTopColor: colors.border.light,
   },
@@ -836,28 +854,28 @@ const createStyles = (colors: typeof import('@/constants/colors').default) => St
     flex: 1,
   },
   legalSectionTitle: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold,
+    fontSize: 18,
+    fontWeight: '700' as const,
     color: colors.text.primary,
-    marginBottom: spacing.xs,
+    marginBottom: 4,
   },
   legalSectionSubtitle: {
-    fontSize: typography.fontSize.sm,
+    fontSize: 13,
     color: colors.text.secondary,
-    lineHeight: typography.lineHeight.normal * typography.fontSize.sm,
+    lineHeight: 18,
   },
   legalDocumentsList: {
-    gap: spacing.sm + spacing.xs,
+    gap: 12,
   },
   legalLoadingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.sm + spacing.xs,
-    paddingVertical: spacing.lg,
+    gap: 12,
+    paddingVertical: 24,
   },
   legalLoadingText: {
-    fontSize: typography.fontSize.sm,
+    fontSize: 14,
     color: colors.text.secondary,
   },
 });

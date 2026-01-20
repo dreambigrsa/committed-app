@@ -16,8 +16,6 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
 import colors from '@/constants/colors';
-import { Button, Input } from '@/components/ui';
-import { spacing, typography, borderRadius } from '@/constants/design-system';
 
 const ONBOARDING_VERSION = '1.0.0';
 
@@ -161,22 +159,20 @@ export default function OnboardingScreen() {
             Sharing your location helps us connect you with local professionals and provide better service. This is completely optional and can be changed later.
           </Text>
           
-          <Input
-            label="Location (Optional)"
-            placeholder="City, Country (e.g., New York, USA)"
+          <TextInput
+            style={styles.locationInput}
             value={location}
             onChangeText={setLocation}
-            size="md"
-            variant="default"
+            placeholder="City, Country (e.g., New York, USA)"
+            placeholderTextColor={themeColors.text.tertiary}
           />
           
-          <Button
-            title="Skip"
+          <TouchableOpacity
+            style={styles.skipButton}
             onPress={() => setStep(step + 1)}
-            variant="ghost"
-            size="md"
-            style={{ marginTop: spacing.sm, alignSelf: 'center' }}
-          />
+          >
+            <Text style={styles.skipButtonText}>Skip</Text>
+          </TouchableOpacity>
         </View>
       ),
     },
@@ -285,26 +281,28 @@ export default function OnboardingScreen() {
 
       <View style={styles.footer}>
         {step > 0 && (
-          <Button
-            title="Back"
+          <TouchableOpacity
+            style={styles.backButton}
             onPress={() => setStep(step - 1)}
-            variant="secondary"
-            size="lg"
-            style={{ flex: 1 }}
-          />
+          >
+            <Text style={styles.backButtonText}>Back</Text>
+          </TouchableOpacity>
         )}
         
-        <Button
-          title={isLastStep ? (saving ? 'Saving...' : 'Get Started') : 'Next'}
+        <TouchableOpacity
+          style={[
+            styles.nextButton,
+            (!isLastStep || consentGiven) && styles.nextButtonActive,
+            saving && styles.nextButtonDisabled,
+          ]}
           onPress={handleNext}
-          variant="primary"
-          size="lg"
-          loading={saving}
           disabled={saving || (isLastStep && !consentGiven)}
-          icon={!isLastStep ? <ArrowRight size={20} color={themeColors.text.white} /> : undefined}
-          iconPosition="right"
-          style={{ flex: step > 0 ? 2 : 1, marginLeft: step > 0 ? spacing.sm : 0 }}
-        />
+        >
+          <Text style={styles.nextButtonText}>
+            {isLastStep ? (saving ? 'Saving...' : 'Get Started') : 'Next'}
+          </Text>
+          {!isLastStep && <ArrowRight size={20} color={themeColors.text.white} />}
+        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
@@ -316,8 +314,8 @@ const createStyles = (colors: any) => StyleSheet.create({
     backgroundColor: colors.background.secondary,
   },
   header: {
-    padding: spacing.lg,
-    paddingTop: spacing.sm + spacing.xs,
+    padding: 20,
+    paddingTop: 10,
     backgroundColor: colors.background.primary,
     borderBottomWidth: 1,
     borderBottomColor: colors.border.light,
@@ -325,17 +323,17 @@ const createStyles = (colors: any) => StyleSheet.create({
   progressBar: {
     height: 4,
     backgroundColor: colors.border.light,
-    borderRadius: borderRadius.xs,
-    marginBottom: spacing.sm,
+    borderRadius: 2,
+    marginBottom: 8,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
     backgroundColor: colors.primary,
-    borderRadius: borderRadius.xs,
+    borderRadius: 2,
   },
   stepIndicator: {
-    fontSize: typography.fontSize.xs,
+    fontSize: 12,
     color: colors.text.secondary,
     textAlign: 'center',
   },
@@ -343,24 +341,24 @@ const createStyles = (colors: any) => StyleSheet.create({
     flex: 1,
   },
   stepContainer: {
-    padding: spacing.lg,
+    padding: 24,
     alignItems: 'center',
   },
   iconContainer: {
     width: 120,
     height: 120,
-    borderRadius: borderRadius.full,
+    borderRadius: 60,
     backgroundColor: colors.primary + '15',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: spacing.lg,
+    marginBottom: 24,
   },
   stepTitle: {
-    fontSize: typography.fontSize.xxxl,
-    fontWeight: typography.fontWeight.bold,
+    fontSize: 28,
+    fontWeight: '700',
     color: colors.text.primary,
     textAlign: 'center',
-    marginBottom: spacing.lg,
+    marginBottom: 24,
   },
   stepContent: {
     width: '100%',
@@ -484,12 +482,46 @@ const createStyles = (colors: any) => StyleSheet.create({
   },
   footer: {
     flexDirection: 'row',
-    padding: spacing.lg,
-    paddingTop: spacing.md,
+    padding: 20,
+    paddingTop: 16,
     backgroundColor: colors.background.primary,
     borderTopWidth: 1,
     borderTopColor: colors.border.light,
-    gap: spacing.sm + spacing.xs,
+    gap: 12,
+  },
+  backButton: {
+    flex: 1,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background.secondary,
+    borderRadius: 12,
+  },
+  backButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text.secondary,
+  },
+  nextButton: {
+    flex: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: 12,
+    backgroundColor: colors.border.light,
+    gap: 8,
+  },
+  nextButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  nextButtonDisabled: {
+    opacity: 0.6,
+  },
+  nextButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text.white,
   },
 });
 

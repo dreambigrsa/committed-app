@@ -121,25 +121,28 @@ export async function saveUserAcceptance(
         return false;
       }
     } else {
-      // During signup, refresh session to ensure it's available in database context
-      // Wait a moment for session to be established
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // During signup, wait for session to be established
+      // Don't try to refresh if there's no session yet - just wait
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Refresh the session to ensure it's propagated to the database
-      const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
+      // Try to get session (don't refresh if it doesn't exist)
+      const { data: { session } } = await supabase.auth.getSession();
       
-      if (refreshError) {
-        console.warn('Session refresh error during signup:', refreshError);
-        // Try to get session anyway
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session && session.user && session.user.id !== userId) {
+      if (session && session.user) {
+        // Only refresh if we have a session
+        const { error: refreshError } = await supabase.auth.refreshSession();
+        if (refreshError && refreshError.message !== 'Auth session missing!') {
+          console.warn('Session refresh error during signup:', refreshError);
+        } else {
+          console.log('Session available for legal acceptance');
+        }
+        
+        if (session.user.id !== userId) {
           console.warn(`Session user ID (${session.user.id}) doesn't match provided userId (${userId}) during signup`);
         }
-      } else if (refreshedSession && refreshedSession.user) {
-        console.log('Session refreshed successfully for legal acceptance');
-        if (refreshedSession.user.id !== userId) {
-          console.warn(`Refreshed session user ID (${refreshedSession.user.id}) doesn't match provided userId (${userId})`);
-        }
+      } else {
+        // No session yet - that's OK, the RLS policy will handle it via the helper function
+        console.log('No session yet during signup - RLS policy will use helper function');
       }
     }
 
@@ -189,8 +192,8 @@ export async function saveUserAcceptance(
         console.error('Error inserting acceptance:', error);
         if (error.code === '42501') {
           console.error('⚠️ RLS Policy Error: The user_legal_acceptances table is missing INSERT policy.');
-          console.error('URGENT: Run migrations/FIX-RLS-COMPLETE.sql in Supabase SQL Editor');
-          console.error('This version handles signup cases where auth.uid() might not be immediately available.');
+          console.error('URGENT: Run migrations/FIX-RLS-FINAL.sql in Supabase SQL Editor');
+          console.error('This version uses a SECURITY DEFINER function to handle signup cases.');
           console.error('This is a database configuration issue - the SQL must be run in Supabase dashboard.');
         }
         throw error;

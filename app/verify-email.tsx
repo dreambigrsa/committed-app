@@ -31,6 +31,19 @@ export default function VerifyEmailScreen() {
   const slideAnim = useRef(new Animated.Value(50)).current;
 
   useEffect(() => {
+    // Get email from session immediately for display
+    const loadEmail = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user?.email) {
+          setEmail(session.user.email);
+        }
+      } catch (error) {
+        console.error('Error loading email:', error);
+      }
+    };
+    
+    loadEmail();
     checkEmailVerification();
     
     // Animate entrance
@@ -266,10 +279,11 @@ export default function VerifyEmailScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {isChecking ? (
+          {isChecking && !email ? (
+            // Show loading only if we don't have email yet (initial load)
             <View style={styles.centerContent}>
               <ActivityIndicator size="large" color={themeColors.primary} />
-              <Text style={styles.checkingText}>Checking verification status...</Text>
+              <Text style={styles.checkingText}>Loading...</Text>
             </View>
           ) : isVerified ? (
             <Animated.View

@@ -121,14 +121,25 @@ export async function saveUserAcceptance(
         return false;
       }
     } else {
-      // During signup, try to get session but don't fail if not available yet
+      // During signup, refresh session to ensure it's available in database context
       // Wait a moment for session to be established
-      await new Promise(resolve => setTimeout(resolve, 300));
-      const { data: { session } } = await supabase.auth.getSession();
+      await new Promise(resolve => setTimeout(resolve, 500));
       
-      if (session && session.user && session.user.id !== userId) {
-        console.warn(`Session user ID (${session.user.id}) doesn't match provided userId (${userId}) during signup`);
-        // Don't return false - continue anyway since we have userId
+      // Refresh the session to ensure it's propagated to the database
+      const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
+      
+      if (refreshError) {
+        console.warn('Session refresh error during signup:', refreshError);
+        // Try to get session anyway
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session && session.user && session.user.id !== userId) {
+          console.warn(`Session user ID (${session.user.id}) doesn't match provided userId (${userId}) during signup`);
+        }
+      } else if (refreshedSession && refreshedSession.user) {
+        console.log('Session refreshed successfully for legal acceptance');
+        if (refreshedSession.user.id !== userId) {
+          console.warn(`Refreshed session user ID (${refreshedSession.user.id}) doesn't match provided userId (${userId})`);
+        }
       }
     }
 
@@ -178,7 +189,8 @@ export async function saveUserAcceptance(
         console.error('Error inserting acceptance:', error);
         if (error.code === '42501') {
           console.error('⚠️ RLS Policy Error: The user_legal_acceptances table is missing INSERT policy.');
-          console.error('URGENT: Run migrations/FIX-RLS-NOW.sql in Supabase SQL Editor');
+          console.error('URGENT: Run migrations/FIX-RLS-COMPLETE.sql in Supabase SQL Editor');
+          console.error('This version handles signup cases where auth.uid() might not be immediately available.');
           console.error('This is a database configuration issue - the SQL must be run in Supabase dashboard.');
         }
         throw error;

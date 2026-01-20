@@ -128,14 +128,25 @@ export default function AuthScreen() {
           throw new Error('Session mismatch. Please log in again.');
         }
       } else {
-        // During signup, try to get session but don't fail if not available yet
+        // During signup, refresh session to ensure it's available in database context
         // Wait a moment for session to be established
         await new Promise(resolve => setTimeout(resolve, 500));
-        const { data: { session } } = await supabase.auth.getSession();
         
-        if (session && session.user && session.user.id !== userId) {
-          console.warn(`Session user ID (${session.user.id}) doesn't match provided userId (${userId}) during signup`);
-          // Don't throw - continue anyway since we have userId
+        // Refresh the session to ensure it's propagated to the database
+        const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
+        
+        if (refreshError) {
+          console.warn('Session refresh error during signup:', refreshError);
+          // Try to get session anyway
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session && session.user && session.user.id !== userId) {
+            console.warn(`Session user ID (${session.user.id}) doesn't match provided userId (${userId}) during signup`);
+          }
+        } else if (refreshedSession && refreshedSession.user) {
+          console.log('Session refreshed successfully for legal acceptances');
+          if (refreshedSession.user.id !== userId) {
+            console.warn(`Refreshed session user ID (${refreshedSession.user.id}) doesn't match provided userId (${userId})`);
+          }
         }
       }
 
@@ -188,7 +199,8 @@ export default function AuthScreen() {
         // If it's an RLS error, provide helpful message
         if (error.code === '42501') {
           console.error('RLS Policy Error: The database RLS policies for user_legal_acceptances are missing or incorrect.');
-          console.error('⚠️ URGENT: Run migrations/FIX-RLS-NOW.sql in Supabase SQL Editor');
+          console.error('⚠️ URGENT: Run migrations/FIX-RLS-COMPLETE.sql in Supabase SQL Editor');
+          console.error('This version handles the signup case where auth.uid() might not be immediately available.');
           console.error('This is a database configuration issue that must be fixed in Supabase dashboard.');
         }
         
@@ -307,8 +319,9 @@ export default function AuthScreen() {
                   alert(
                     '⚠️ Database Configuration Required\n\n' +
                     'Your account was created, but we need to fix a database setting.\n\n' +
-                    'Please contact support or run this SQL in Supabase:\n' +
-                    'File: migrations/FIX-RLS-NOW.sql\n\n' +
+                    'Please run this SQL in Supabase SQL Editor:\n' +
+                    'File: migrations/FIX-RLS-COMPLETE.sql\n\n' +
+                    'This version handles signup cases better.\n' +
                     'This is a one-time setup that must be done in Supabase dashboard.'
                   );
                 }

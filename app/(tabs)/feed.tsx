@@ -632,11 +632,9 @@ export default function FeedScreen() {
       marginBottom: 12,
       position: 'relative',
       overflow: 'hidden',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.05,
-      shadowRadius: 4,
-      elevation: 2,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border.light,
     },
     adBadge: {
       position: 'absolute',
@@ -657,6 +655,52 @@ export default function FeedScreen() {
       width: '100%',
       height: 200,
     },
+    adHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+    },
+    adSponsorInfo: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    adAvatar: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      backgroundColor: colors.background.secondary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: colors.border.light,
+    },
+    adAvatarText: {
+      color: colors.text.primary,
+      fontWeight: '800' as const,
+      fontSize: 16,
+    },
+    adSponsorMeta: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    adCTAButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: colors.primary,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 8,
+    },
+    adCTAButtonText: {
+      color: colors.text.white,
+      fontWeight: '700' as const,
+      fontSize: 13,
+    },
     adContent: {
       padding: 16,
     },
@@ -664,24 +708,60 @@ export default function FeedScreen() {
       fontSize: 18,
       fontWeight: '700' as const,
       color: colors.text.primary,
-      marginBottom: 8,
+      marginBottom: 6,
     },
     adDescription: {
       fontSize: 14,
       color: colors.text.secondary,
       lineHeight: 20,
-      marginBottom: 12,
+      marginBottom: 4,
     },
-    adLinkButton: {
+    // Facebook-like ad header
+    adHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+    },
+    adSponsorInfo: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    adAvatar: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      backgroundColor: colors.background.secondary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: colors.border.light,
+    },
+    adAvatarText: {
+      color: colors.text.primary,
+      fontWeight: '800' as const,
+      fontSize: 16,
+    },
+    adSponsorMeta: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
-      paddingVertical: 8,
     },
-    adLinkText: {
-      fontSize: 15,
+    adCTAButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: colors.primary,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 8,
+    },
+    adCTAButtonText: {
+      color: colors.text.white,
       fontWeight: '700' as const,
-      color: colors.primary,
+      fontSize: 13,
     },
     bannerAdCard: {
       backgroundColor: colors.background.primary,
@@ -1250,6 +1330,7 @@ export default function FeedScreen() {
       recordAdImpression(ad.id);
       recordedImpressions.current.add(ad.id);
     }
+    const sponsorInitial = (ad.sponsorName || 'Sponsored').charAt(0).toUpperCase();
     return (
       <TouchableOpacity
         key={`ad-card-${ad.id}`}
@@ -1257,16 +1338,32 @@ export default function FeedScreen() {
         onPress={() => handleAdPress(ad)}
         activeOpacity={0.9}
       >
-        <View style={styles.adBadge}>
-          <Text style={styles.adBadgeText}>Sponsored</Text>
-          {!!ad.sponsorVerified && <Text style={styles.adBadgeTick}>✓</Text>}
-        </View>
-        {!!ad.sponsorName && (
-          <View style={styles.adSponsorRow}>
-            <Text style={styles.adSponsorName}>{ad.sponsorName}</Text>
-            {!!ad.sponsorVerified && <Text style={styles.adSponsorVerified}>Verified</Text>}
+        <View style={styles.adHeader}>
+          <View style={styles.adSponsorInfo}>
+            <View style={styles.adAvatar}>
+              <Text style={styles.adAvatarText}>{sponsorInitial}</Text>
+            </View>
+            <View>
+              <TouchableOpacity
+                onPress={() => ad.userId && router.push(`/profile/${ad.userId}` as any)}
+                disabled={!ad.userId}
+              >
+                <Text style={styles.adSponsorName}>{ad.sponsorName || 'Sponsored'}</Text>
+              </TouchableOpacity>
+              <View style={styles.adSponsorMeta}>
+                <Text style={styles.adBadgeText}>Sponsored</Text>
+                {!!ad.sponsorVerified && <Text style={styles.adBadgeTick}>✓</Text>}
+              </View>
+            </View>
           </View>
-        )}
+          {cta.url && (
+            <TouchableOpacity style={styles.adCTAButton} onPress={() => handleAdPress(ad)}>
+              <Text style={styles.adCTAButtonText}>{cta.label || 'Learn More'}</Text>
+              <ExternalLink size={14} color={colors.text.white} />
+            </TouchableOpacity>
+          )}
+        </View>
+
         {!failedAdImages.current.has(ad.id) ? (
           <Image 
             source={{ uri: ad.imageUrl }} 
@@ -1287,12 +1384,6 @@ export default function FeedScreen() {
           <Text style={styles.adDescription} numberOfLines={2}>
             {ad.description}
           </Text>
-          {cta.url && (
-            <View style={styles.adLinkButton}>
-              <Text style={styles.adLinkText}>{cta.label || 'Learn More'}</Text>
-              <ExternalLink size={16} color={colors.primary} />
-            </View>
-          )}
         </View>
       </TouchableOpacity>
     );

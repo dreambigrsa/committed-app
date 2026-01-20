@@ -59,6 +59,9 @@ export default function AdminAdvertisementsScreen() {
     try {
       setLoading(true);
       
+      const CPM = 0.5; // $0.50 per 1000 impressions
+      const CPC = 0.05; // $0.05 per click
+
       // Load all advertisements (not just active ones for admin view)
       const { data: adsData, error: adsError } = await supabase
         .from('advertisements')
@@ -98,41 +101,58 @@ export default function AdminAdvertisementsScreen() {
         });
 
         // Format advertisements with real-time analytics
-        const formattedAds: Advertisement[] = adsData.map((ad: any) => ({
-          id: ad.id,
-          title: ad.title,
-          description: ad.description,
-          imageUrl: ad.image_url,
-          linkUrl: ad.link_url,
-          type: ad.type,
-          placement: ad.placement,
-          active: ad.active,
-          impressions: impressionsMap.get(ad.id) || 0, // Use real count from tracking table
-          clicks: clicksMap.get(ad.id) || 0, // Use real count from tracking table
-          createdBy: ad.created_by,
-          createdAt: ad.created_at,
-          updatedAt: ad.updated_at,
-          ctaType: ad.cta_type,
-          ctaPhone: ad.cta_phone,
-          ctaMessage: ad.cta_message,
-          ctaMessengerId: ad.cta_messenger_id,
-          ctaUrl: ad.cta_url,
-          sponsorName: ad.sponsor_name,
-          sponsorVerified: ad.sponsor_verified,
-          userId: ad.user_id,
-          status: ad.status,
-          rejectionReason: ad.rejection_reason,
-          startDate: ad.start_date,
-          endDate: ad.end_date,
-          dailyBudget: ad.daily_budget,
-          totalBudget: ad.total_budget,
-          spend: ad.spend,
-          billingStatus: ad.billing_status,
-          billingProvider: ad.billing_provider,
-          billingTxnId: ad.billing_txn_id,
-          promotedPostId: ad.promoted_post_id,
-          promotedReelId: ad.promoted_reel_id,
-        }));
+        const formattedAds: Advertisement[] = [];
+
+        for (const ad of adsData) {
+          const impressions = impressionsMap.get(ad.id) || 0;
+          const clicks = clicksMap.get(ad.id) || 0;
+          let spend = impressions * (CPM / 1000) + clicks * CPC;
+          if (ad.total_budget) {
+            spend = Math.min(spend, Number(ad.total_budget));
+          }
+
+          // Persist computed spend so My Ads shows it too
+          await supabase
+            .from('advertisements')
+            .update({ spend })
+            .eq('id', ad.id);
+
+          formattedAds.push({
+            id: ad.id,
+            title: ad.title,
+            description: ad.description,
+            imageUrl: ad.image_url,
+            linkUrl: ad.link_url,
+            type: ad.type,
+            placement: ad.placement,
+            active: ad.active,
+            impressions,
+            clicks,
+            createdBy: ad.created_by,
+            createdAt: ad.created_at,
+            updatedAt: ad.updated_at,
+            ctaType: ad.cta_type,
+            ctaPhone: ad.cta_phone,
+            ctaMessage: ad.cta_message,
+            ctaMessengerId: ad.cta_messenger_id,
+            ctaUrl: ad.cta_url,
+            sponsorName: ad.sponsor_name,
+            sponsorVerified: ad.sponsor_verified,
+            userId: ad.user_id,
+            status: ad.status,
+            rejectionReason: ad.rejection_reason,
+            startDate: ad.start_date,
+            endDate: ad.end_date,
+            dailyBudget: ad.daily_budget,
+            totalBudget: ad.total_budget,
+            spend,
+            billingStatus: ad.billing_status,
+            billingProvider: ad.billing_provider,
+            billingTxnId: ad.billing_txn_id,
+            promotedPostId: ad.promoted_post_id,
+            promotedReelId: ad.promoted_reel_id,
+          });
+        }
 
         setAdvertisements(formattedAds);
       } else {

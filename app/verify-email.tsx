@@ -32,44 +32,94 @@ export default function VerifyEmailScreen() {
   const slideAnim = useRef(new Animated.Value(50)).current;
 
   useEffect(() => {
-    // Start animations immediately so screen appears right away
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 600,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 600,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    let interval: ReturnType<typeof setInterval> | null = null;
+    let isMounted = true;
 
-    // Get email from session immediately for display
-    const loadEmail = async () => {
+    // First, immediately check if email is already verified - if so, redirect immediately
+    const checkAndRedirectIfVerified = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user?.email) {
-          setEmail(session.user.email);
-          setEmailLoaded(true);
+        if (session?.user?.email_confirmed_at) {
+          // Email already verified - redirect immediately without showing screen
+          console.log('Email already verified, redirecting...');
+          setIsVerified(true);
+          
+          // Redirect to appropriate screen based on onboarding status
+          if (hasCompletedOnboarding === false) {
+            router.replace('/onboarding');
+          } else if (hasCompletedOnboarding === true) {
+            router.replace('/(tabs)/home');
+          } else {
+            // Onboarding status not loaded yet, go to index which will check
+            router.replace('/');
+          }
+          return true; // Indicates we redirected
         }
+        return false; // Not verified, show screen
       } catch (error) {
-        console.error('Error loading email:', error);
-        setEmailLoaded(true); // Set to true even on error so screen shows
+        console.error('Error checking email verification on mount:', error);
+        return false; // On error, show screen
       }
     };
-    
-    loadEmail();
-    checkEmailVerification();
-    
-    // Check every 3 seconds if email is verified
-    const interval = setInterval(() => {
-      checkEmailVerification();
-    }, 3000);
 
-    return () => clearInterval(interval);
-  }, []);
+    // Check immediately
+    checkAndRedirectIfVerified().then((redirected) => {
+      if (redirected || !isMounted) {
+        // Already verified and redirected, don't set up the screen
+        return;
+      }
+
+      // Email not verified - proceed with normal screen setup
+      // Start animations immediately so screen appears right away
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+      ]).start();
+
+      // Get email from session immediately for display
+      const loadEmail = async () => {
+        if (!isMounted) return;
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user?.email) {
+            setEmail(session.user.email);
+            setEmailLoaded(true);
+          }
+        } catch (error) {
+          console.error('Error loading email:', error);
+          if (isMounted) {
+            setEmailLoaded(true); // Set to true even on error so screen shows
+          }
+        }
+      };
+      
+      loadEmail();
+      checkEmailVerification();
+      
+      // Check every 3 seconds if email is verified
+      interval = setInterval(() => {
+        if (isMounted) {
+          checkEmailVerification();
+        }
+      }, 3000);
+    });
+
+    // Cleanup
+    return () => {
+      isMounted = false;
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [hasCompletedOnboarding, router]);
 
   const checkEmailVerification = async (showMessage: boolean = false) => {
     try {

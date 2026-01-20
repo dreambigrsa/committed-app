@@ -1,6 +1,6 @@
 import createContextHook from '@nkzw/create-context-hook';
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Alert } from 'react-native';
 import { User, Relationship, RelationshipRequest, Post, Reel, Comment, Conversation, Message, Advertisement, Notification, CheatingAlert, Follow, Dispute, CoupleCertificate, Anniversary, ReportedContent, ReelComment, NotificationType, MessageWarning, InfidelityReport, TriggerWord, LegalDocument, UserStatus, UserStatusType, StatusVisibility } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { Session, RealtimeChannel } from '@supabase/supabase-js';
@@ -5888,15 +5888,67 @@ export const [AppContext, useApp] = createContextHook(() => {
       
       // Use React Native Share API
       const Share = require('react-native').Share;
-      await Share.share({
+      
+      // Check if Share is available
+      if (!Share || !Share.share) {
+        console.warn('Share API not available');
+        // Fallback: try to copy to clipboard
+        try {
+          const { Clipboard } = require('@react-native-clipboard/clipboard');
+          if (Clipboard && Clipboard.setString) {
+            await Clipboard.setString(shareText);
+            Alert.alert('Copied!', 'Post link copied to clipboard. You can paste it anywhere.');
+          }
+        } catch (clipboardError) {
+          console.warn('Clipboard not available:', clipboardError);
+          Alert.alert('Share Unavailable', 'Sharing is not available on this device.');
+        }
+        return;
+      }
+      
+      const result = await Share.share({
         message: shareText,
         url: deepLink,
         title: `Post by ${post.userName}`,
       });
       
-      await logActivity('share_post', 'post', postId);
-    } catch (error) {
+      // Check if share was successful (not cancelled)
+      if (result.action === Share.sharedAction) {
+        await logActivity('share_post', 'post', postId);
+      } else if (result.action === Share.dismissedAction) {
+        // User dismissed the share dialog - this is not an error
+        console.log('Share dismissed by user');
+      }
+    } catch (error: any) {
       console.error('Share post error:', error);
+      
+      // Handle specific permission errors gracefully
+      if (error?.name === 'NotAllowedError' || error?.message?.includes('Permission denied') || error?.message?.includes('NotAllowedError')) {
+        // Try fallback: copy to clipboard
+        try {
+          const post = posts.find(p => p.id === postId);
+          if (post) {
+            const deepLink = `committed://post/${postId}`;
+            const downloadUrl = `https://dreambig.org.za/committed`;
+            const preview = post.content ? `${post.content.substring(0, 100)}...` : 'View this post in Committed';
+            const shareText = `${preview}\n\nOpen in app: ${deepLink}\nDownload Committed: ${downloadUrl}`;
+            
+            const { Clipboard } = require('@react-native-clipboard/clipboard');
+            if (Clipboard && Clipboard.setString) {
+              await Clipboard.setString(shareText);
+              Alert.alert('Copied!', 'Share is not available. Post link copied to clipboard instead.');
+              return;
+            }
+          }
+        } catch (clipboardError) {
+          console.error('Clipboard fallback failed:', clipboardError);
+        }
+        
+        Alert.alert('Share Unavailable', 'Sharing is not available on this device. Please try copying the link manually.');
+      } else {
+        // Other errors
+        Alert.alert('Share Error', 'Unable to share post. Please try again.');
+      }
     }
   }, [currentUser, posts, logActivity]);
 
@@ -5916,15 +5968,67 @@ export const [AppContext, useApp] = createContextHook(() => {
       
       // Use React Native Share API
       const Share = require('react-native').Share;
-      await Share.share({
+      
+      // Check if Share is available
+      if (!Share || !Share.share) {
+        console.warn('Share API not available');
+        // Fallback: try to copy to clipboard
+        try {
+          const { Clipboard } = require('@react-native-clipboard/clipboard');
+          if (Clipboard && Clipboard.setString) {
+            await Clipboard.setString(shareText);
+            Alert.alert('Copied!', 'Reel link copied to clipboard. You can paste it anywhere.');
+          }
+        } catch (clipboardError) {
+          console.warn('Clipboard not available:', clipboardError);
+          Alert.alert('Share Unavailable', 'Sharing is not available on this device.');
+        }
+        return;
+      }
+      
+      const result = await Share.share({
         message: shareText,
         url: deepLink,
         title: `Reel by ${reel.userName}`,
       });
       
-      await logActivity('share_reel', 'reel', reelId);
-    } catch (error) {
+      // Check if share was successful (not cancelled)
+      if (result.action === Share.sharedAction) {
+        await logActivity('share_reel', 'reel', reelId);
+      } else if (result.action === Share.dismissedAction) {
+        // User dismissed the share dialog - this is not an error
+        console.log('Share dismissed by user');
+      }
+    } catch (error: any) {
       console.error('Share reel error:', error);
+      
+      // Handle specific permission errors gracefully
+      if (error?.name === 'NotAllowedError' || error?.message?.includes('Permission denied') || error?.message?.includes('NotAllowedError')) {
+        // Try fallback: copy to clipboard
+        try {
+          const reel = reels.find(r => r.id === reelId);
+          if (reel) {
+            const deepLink = `committed://reel/${reelId}`;
+            const downloadUrl = `https://dreambig.org.za/committed`;
+            const preview = reel.caption ? `${reel.caption.substring(0, 100)}...` : 'View this reel in Committed';
+            const shareText = `${preview}\n\nOpen in app: ${deepLink}\nDownload Committed: ${downloadUrl}`;
+            
+            const { Clipboard } = require('@react-native-clipboard/clipboard');
+            if (Clipboard && Clipboard.setString) {
+              await Clipboard.setString(shareText);
+              Alert.alert('Copied!', 'Share is not available. Reel link copied to clipboard instead.');
+              return;
+            }
+          }
+        } catch (clipboardError) {
+          console.error('Clipboard fallback failed:', clipboardError);
+        }
+        
+        Alert.alert('Share Unavailable', 'Sharing is not available on this device. Please try copying the link manually.');
+      } else {
+        // Other errors
+        Alert.alert('Share Error', 'Unable to share reel. Please try again.');
+      }
     }
   }, [currentUser, reels, logActivity]);
 

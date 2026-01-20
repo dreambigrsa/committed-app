@@ -16,7 +16,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   const projectId =
     process.env.EXPO_PUBLIC_EAS_PROJECT_ID ??
     appJsonExpo?.extra?.eas?.projectId ??
-    '71adf4b0-d8c6-4467-9316-962abdcb8cc2';
+    undefined;
   const owner = process.env.EXPO_OWNER ?? appJsonExpo?.owner ?? undefined;
   const base = {
     ...config,
@@ -34,10 +34,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       ...(base.extra ?? {}),
       // Inject the key at build time (never hardcode keys in repo).
       openaiApiKey: process.env.EXPO_PUBLIC_OPENAI_API_KEY ?? null,
-      eas: {
-        ...(base.extra?.eas ?? {}),
-        projectId,
-      },
+      eas: projectId
+        ? {
+            ...(base.extra?.eas ?? {}),
+            projectId,
+          }
+        : {
+            ...(base.extra?.eas ?? {}),
+          },
     },
   };
 };

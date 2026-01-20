@@ -26,7 +26,15 @@ export default function AdminAdvertisementsScreen() {
   const [advertisements, setAdvertisements] = useState<Advertisement[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
+  const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
   const [editingAd, setEditingAd] = useState<Advertisement | null>(null);
+  const [systemSettings, setSystemSettings] = useState<any>(null);
+  const [settingsForm, setSettingsForm] = useState({
+    defaultCpm: '0.50',
+    defaultCpc: '0.05',
+    defaultMaxMultiplier: '2.0',
+    competitorStep: '0.10',
+  });
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -56,16 +64,70 @@ export default function AdminAdvertisementsScreen() {
   });
 
   useEffect(() => {
-    loadAdvertisements();
+    loadSystemSettings();
   }, []);
+
+  useEffect(() => {
+    // Once settings are loaded (or if they change), reload ads to apply spend calc
+    loadAdvertisements();
+  }, [systemSettings]);
+
+  const loadSystemSettings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('ad_system_settings')
+        .select('id, settings')
+        .eq('id', 'default')
+        .maybeSingle();
+      if (error) throw error;
+      const settings = (data as any)?.settings || {};
+      setSystemSettings(settings);
+      const bidding = settings?.bidding || {};
+      setSettingsForm({
+        defaultCpm: (bidding.defaultCpm ?? 0.5).toString(),
+        defaultCpc: (bidding.defaultCpc ?? 0.05).toString(),
+        defaultMaxMultiplier: (bidding.defaultMaxMultiplier ?? 2.0).toString(),
+        competitorStep: (bidding.competitorStep ?? 0.1).toString(),
+      });
+    } catch (e) {
+      console.error('Failed to load ad system settings:', e);
+    }
+  };
+
+  const saveSystemSettings = async () => {
+    try {
+      const payload = {
+        bidding: {
+          defaultCpm: parseFloat(settingsForm.defaultCpm) || 0.5,
+          defaultCpc: parseFloat(settingsForm.defaultCpc) || 0.05,
+          defaultMaxMultiplier: parseFloat(settingsForm.defaultMaxMultiplier) || 2.0,
+          competitorStep: parseFloat(settingsForm.competitorStep) || 0.1,
+          groupBy: 'placement+niche',
+        },
+      };
+      const { error } = await supabase
+        .from('ad_system_settings')
+        .upsert({ id: 'default', settings: payload }, { onConflict: 'id' });
+      if (error) throw error;
+      setSystemSettings(payload);
+      setShowSettingsModal(false);
+      Alert.alert('Saved', 'Ad system settings updated.');
+      loadAdvertisements(); // recalc spend using new settings
+    } catch (e: any) {
+      console.error('Failed to save ad system settings:', e);
+      Alert.alert('Error', e?.message || 'Failed to save settings');
+    }
+  };
 
   const loadAdvertisements = async () => {
     try {
       setLoading(true);
       
-      const DEFAULT_CPM = 0.5; // $0.50 per 1000 impressions
-      const DEFAULT_CPC = 0.05; // $0.05 per click
-      const DEFAULT_MAX_MULTIPLIER = 2; // cap bid multiplier
+      const biddingDefaults = systemSettings?.bidding || {};
+      const DEFAULT_CPM = Number(biddingDefaults.defaultCpm ?? 0.5);
+      const DEFAULT_CPC = Number(biddingDefaults.defaultCpc ?? 0.05);
+      const DEFAULT_MAX_MULTIPLIER = Number(biddingDefaults.defaultMaxMultiplier ?? 2.0);
+      const COMPETITOR_STEP = Number(biddingDefaults.competitorStep ?? 0.1);
 
       // Load all advertisements (not just active ones for admin view)
       const { data: adsData, error: adsError } = await supabase
@@ -132,7 +194,7 @@ export default function AdminAdvertisementsScreen() {
           const baseCpc = ad.targeting?.bidding?.cpc ? Number(ad.targeting.bidding.cpc) : DEFAULT_CPC;
           const maxMult = ad.targeting?.bidding?.maxMultiplier ? Number(ad.targeting.bidding.maxMultiplier) : DEFAULT_MAX_MULTIPLIER;
 
-          const multiplier = Math.min(1 + competitors * 0.1, maxMult);
+          const multiplier = Math.min(1 + competitors * COMPETITOR_STEP, maxMult);
           const effectiveCPM = baseCpm * multiplier;
           const effectiveCPC = baseCpc * multiplier;
 
@@ -469,17 +531,25 @@ export default function AdminAdvertisementsScreen() {
       
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Manage Ads</Text>
-        <TouchableOpacity
-          style={styles.createButton}
-          onPress={() => {
-            resetForm();
-            setEditingAd(null);
-            setShowCreateModal(true);
-          }}
-        >
-          <Plus size={20} color={colors.text.white} />
-          <Text style={styles.createButtonText}>New Ad</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <TouchableOpacity
+            style={[styles.createButton, { backgroundColor: colors.background.secondary, borderWidth: 1, borderColor: colors.border.light }]}
+            onPress={() => setShowSettingsModal(true)}
+          >
+            <Text style={[styles.createButtonText, { color: colors.text.primary }]}>Ad Settings</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.createButton}
+            onPress={() => {
+              resetForm();
+              setEditingAd(null);
+              setShowCreateModal(true);
+            }}
+          >
+            <Plus size={20} color={colors.text.white} />
+            <Text style={styles.createButtonText}>New Ad</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {loading ? (
@@ -1100,6 +1170,84 @@ export default function AdminAdvertisementsScreen() {
                 <Text style={styles.saveButtonText}>
                   {editingAd ? 'Update' : 'Create'}
                 </Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </Modal>
+
+      <Modal
+        visible={showSettingsModal}
+        animationType="slide"
+        onRequestClose={() => setShowSettingsModal(false)}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.modalContent}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Ad System Settings</Text>
+              <TouchableOpacity onPress={() => setShowSettingsModal(false)}>
+                <X size={24} color={colors.text.primary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.form} showsVerticalScrollIndicator={false}>
+              <View style={styles.sectionDivider}>
+                <Text style={styles.sectionDividerText}>Defaults (used if ad has no override)</Text>
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Default CPM (USD per 1,000 views)</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={settingsForm.defaultCpm}
+                  onChangeText={(text) => setSettingsForm((p) => ({ ...p, defaultCpm: text }))}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Default CPC (USD per click)</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={settingsForm.defaultCpc}
+                  onChangeText={(text) => setSettingsForm((p) => ({ ...p, defaultCpc: text }))}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Default Max Multiplier</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={settingsForm.defaultMaxMultiplier}
+                  onChangeText={(text) => setSettingsForm((p) => ({ ...p, defaultMaxMultiplier: text }))}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+
+              <View style={styles.sectionDivider}>
+                <Text style={styles.sectionDividerText}>Competition / Bidding</Text>
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Competitor Step (e.g. 0.10 = +10%)</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={settingsForm.competitorStep}
+                  onChangeText={(text) => setSettingsForm((p) => ({ ...p, competitorStep: text }))}
+                  keyboardType="decimal-pad"
+                />
+                <Text style={styles.helperText}>
+                  Applied per competing paid+approved ad in the same placement+niche group.
+                </Text>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setShowSettingsModal(false)}>
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalButton, styles.saveButton]} onPress={saveSystemSettings}>
+                <Text style={styles.saveButtonText}>Save</Text>
               </TouchableOpacity>
             </View>
           </KeyboardAvoidingView>

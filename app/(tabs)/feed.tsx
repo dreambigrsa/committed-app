@@ -864,15 +864,20 @@ export default function FeedScreen() {
       color: colors.text.secondary,
       fontWeight: '600' as const,
     },
-    adCTAButton: {
+    adButtonRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 6,
-      backgroundColor: colors.primary,
       paddingHorizontal: 16,
-      paddingVertical: 10,
+      paddingVertical: 12,
+      gap: 12,
+    },
+    adCTAButton: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primary,
+      paddingVertical: 12,
       borderRadius: 8,
-      alignSelf: 'flex-start',
     },
     adCTAButtonText: {
       color: colors.text.white,
@@ -882,7 +887,7 @@ export default function FeedScreen() {
     adContent: {
       paddingHorizontal: 16,
       paddingTop: 12,
-      paddingBottom: 16,
+      paddingBottom: 12,
     },
     adTitle: {
       fontSize: 16,
@@ -906,11 +911,14 @@ export default function FeedScreen() {
     },
     adInsightsButton: {
       paddingHorizontal: 12,
-      paddingVertical: 8,
+      paddingVertical: 12,
       borderRadius: 8,
       backgroundColor: colors.background.secondary,
       borderWidth: 1,
       borderColor: colors.border.light,
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     adInsightsButtonText: {
       fontSize: 13,
@@ -1583,29 +1591,7 @@ export default function FeedScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Ad image */}
-        <TouchableOpacity
-          activeOpacity={0.95}
-          onPress={() => handleAdPress(ad)}
-        >
-          {!failedAdImages.current.has(ad.id) ? (
-            <Image 
-              source={{ uri: ad.imageUrl }} 
-              style={styles.adImage} 
-              contentFit="cover"
-              onError={() => {
-                failedAdImages.current.add(ad.id);
-                console.warn('Failed to load card ad image:', ad.id);
-              }}
-            />
-          ) : (
-            <View style={[styles.adImage, { backgroundColor: colors.background.secondary, justifyContent: 'center', alignItems: 'center' }]}>
-              <ImageIcon size={32} color={colors.text.tertiary} />
-            </View>
-          )}
-        </TouchableOpacity>
-        
-        {/* Facebook-style description with "See more" */}
+        {/* Facebook-style description with "See more" - ABOVE the image */}
         <View style={styles.adContent}>
           {ad.title && (
             <Text style={styles.adTitle}>{ad.title}</Text>
@@ -1641,15 +1627,47 @@ export default function FeedScreen() {
           )}
         </View>
 
-        {/* CTA Button (if exists) */}
-        {cta.url && (
-          <TouchableOpacity
-            style={styles.adCTAButton}
-            onPress={() => handleAdPress(ad)}
-          >
-            <Text style={styles.adCTAButtonText}>{cta.label || 'Learn More'}</Text>
-          </TouchableOpacity>
-        )}
+        {/* Ad image */}
+        <TouchableOpacity
+          activeOpacity={0.95}
+          onPress={() => handleAdPress(ad)}
+        >
+          {!failedAdImages.current.has(ad.id) ? (
+            <Image 
+              source={{ uri: ad.imageUrl }} 
+              style={styles.adImage} 
+              contentFit="cover"
+              onError={() => {
+                failedAdImages.current.add(ad.id);
+                console.warn('Failed to load card ad image:', ad.id);
+              }}
+            />
+          ) : (
+            <View style={[styles.adImage, { backgroundColor: colors.background.secondary, justifyContent: 'center', alignItems: 'center' }]}>
+              <ImageIcon size={32} color={colors.text.tertiary} />
+            </View>
+          )}
+        </TouchableOpacity>
+
+        {/* Button row: See insights on left, CTA on right */}
+        <View style={styles.adButtonRow}>
+          {isAdOwner && (
+            <TouchableOpacity
+              style={styles.adInsightsButton}
+              onPress={() => router.push('/ads' as any)}
+            >
+              <Text style={styles.adInsightsButtonText}>See insights & ads</Text>
+            </TouchableOpacity>
+          )}
+          {cta.url && (
+            <TouchableOpacity
+              style={styles.adCTAButton}
+              onPress={() => handleAdPress(ad)}
+            >
+              <Text style={styles.adCTAButtonText}>{cta.label || 'Learn More'}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
         {/* Facebook-style engagement: Likes, Comments, Shares */}
         <View style={styles.adEngagementRow}>

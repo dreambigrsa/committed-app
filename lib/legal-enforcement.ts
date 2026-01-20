@@ -101,22 +101,35 @@ export async function saveUserAcceptance(
   context: 'signup' | 'relationship_registration' | 'update' | 'manual'
 ): Promise<boolean> {
   try {
-    // Refresh session to ensure it's active
-    const { data: { session }, error: sessionError } = await supabase.auth.refreshSession();
-    
-    if (sessionError) {
-      console.error('Session error when saving acceptance:', sessionError);
-      throw new Error('Session error. Please log in again.');
-    }
-    
-    if (!session || !session.user) {
-      console.error('No active session when trying to save legal acceptance');
-      throw new Error('No active session. Please log in again.');
-    }
-    
-    if (session.user.id !== userId) {
-      console.error(`Session user ID (${session.user.id}) doesn't match provided userId (${userId})`);
-      throw new Error('User session mismatch. Please log in again.');
+    // During signup, session might not be immediately available, so we're more lenient
+    // For other contexts, verify session is active (fixes 401 errors)
+    if (context !== 'signup') {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error('Session error when saving acceptance:', sessionError);
+        return false;
+      }
+      
+      if (!session || !session.user) {
+        console.error('No active session when trying to save legal acceptance');
+        return false;
+      }
+      
+      if (session.user.id !== userId) {
+        console.error(`Session user ID (${session.user.id}) doesn't match provided userId (${userId})`);
+        return false;
+      }
+    } else {
+      // During signup, try to get session but don't fail if not available yet
+      // Wait a moment for session to be established
+      await new Promise(resolve => setTimeout(resolve, 300));
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session && session.user && session.user.id !== userId) {
+        console.warn(`Session user ID (${session.user.id}) doesn't match provided userId (${userId}) during signup`);
+        // Don't return false - continue anyway since we have userId
+      }
     }
 
     // First check if acceptance already exists

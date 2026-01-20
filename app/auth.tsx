@@ -106,24 +106,37 @@ export default function AuthScreen() {
     router.push(`/legal/${document.slug}` as any);
   };
 
-  const saveLegalAcceptances = async (userId: string) => {
+  const saveLegalAcceptances = async (userId: string, isSignupContext: boolean = false) => {
     try {
-      // First verify user session is active (fixes 401 errors)
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) {
-        console.warn('Session error when saving legal acceptances:', sessionError);
-        throw new Error(`Authentication error: ${sessionError.message}`);
-      }
-      
-      if (!session || !session.user) {
-        console.warn('No active session when trying to save legal acceptances');
-        throw new Error('No active session. Please log in again.');
-      }
-      
-      if (session.user.id !== userId) {
-        console.warn(`Session user ID (${session.user.id}) doesn't match provided userId (${userId})`);
-        throw new Error('Session mismatch. Please log in again.');
+      // During signup, session might not be immediately available, so we're more lenient
+      // For non-signup contexts, verify session is active (fixes 401 errors)
+      if (!isSignupContext) {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.warn('Session error when saving legal acceptances:', sessionError);
+          throw new Error(`Authentication error: ${sessionError.message}`);
+        }
+        
+        if (!session || !session.user) {
+          console.warn('No active session when trying to save legal acceptances');
+          throw new Error('No active session. Please log in again.');
+        }
+        
+        if (session.user.id !== userId) {
+          console.warn(`Session user ID (${session.user.id}) doesn't match provided userId (${userId})`);
+          throw new Error('Session mismatch. Please log in again.');
+        }
+      } else {
+        // During signup, try to get session but don't fail if not available yet
+        // Wait a moment for session to be established
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session && session.user && session.user.id !== userId) {
+          console.warn(`Session user ID (${session.user.id}) doesn't match provided userId (${userId}) during signup`);
+          // Don't throw - continue anyway since we have userId
+        }
       }
 
       const acceptancesToSave = Object.entries(legalAcceptances)
@@ -271,8 +284,9 @@ export default function AuthScreen() {
             
             if (userRecordExists) {
               // User record exists - save legal acceptances
+              // Pass isSignupContext=true since we're in signup flow
               try {
-                await saveLegalAcceptances(user.id);
+                await saveLegalAcceptances(user.id, true);
                 
                 // Quick verify
                 await new Promise(resolve => setTimeout(resolve, 300));

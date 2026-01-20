@@ -202,8 +202,8 @@ export default function AuthScreen() {
         // If it's an RLS error, provide helpful message
         if (error.code === '42501') {
           console.error('RLS Policy Error: The database RLS policies for user_legal_acceptances are missing or incorrect.');
-          console.error('⚠️ URGENT: Run migrations/FIX-RLS-FINAL.sql in Supabase SQL Editor');
-          console.error('This version uses a SECURITY DEFINER function to handle signup cases.');
+          console.error('⚠️ URGENT: Run migrations/FIX-RLS-ULTIMATE.sql in Supabase SQL Editor');
+          console.error('This version checks public.users table instead of auth.users (avoids RLS issues).');
           console.error('This is a database configuration issue that must be fixed in Supabase dashboard.');
         }
         
@@ -323,8 +323,8 @@ export default function AuthScreen() {
                     '⚠️ Database Configuration Required\n\n' +
                     'Your account was created, but we need to fix a database setting.\n\n' +
                     'Please run this SQL in Supabase SQL Editor:\n' +
-                    'File: migrations/FIX-RLS-FINAL.sql\n\n' +
-                    'This version uses a helper function to handle signup cases.\n' +
+                    'File: migrations/FIX-RLS-ULTIMATE.sql\n\n' +
+                    'This version checks public.users table (simple and reliable).\n' +
                     'This is a one-time setup that must be done in Supabase dashboard.'
                   );
                 }

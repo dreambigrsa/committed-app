@@ -11,6 +11,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'expo-image';
 import { Upload, X } from 'lucide-react-native';
+import * as PaymentAdminService from '@/lib/payment-admin-service';
 
 export default function PromoteScreen() {
   const { colors } = useTheme();
@@ -19,7 +20,7 @@ export default function PromoteScreen() {
   const adIdParam = params.adId as string | undefined;
   const postIdParam = params.postId as string | undefined;
   const reelIdParam = params.reelId as string | undefined;
-  const { currentUser, createAdvertisement, updateAdvertisement } = useApp();
+  const { currentUser, createAdvertisement, updateAdvertisement, createNotification } = useApp();
 
   const [loading, setLoading] = useState(false);
   const [isBoostingContent, setIsBoostingContent] = useState<boolean>(!!postIdParam || !!reelIdParam);
@@ -55,15 +56,18 @@ export default function PromoteScreen() {
     ageMax: '65',
     interests: '',
   });
+  const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
+  const [selectedMethod, setSelectedMethod] = useState<any>(null);
   const [payment, setPayment] = useState<{
-    method: 'manual' | 'bank' | 'mobile_money';
+    methodId: string;
     reference: string;
     proofUrl: string;
   }>({
-    method: 'manual',
+    methodId: '',
     reference: '',
     proofUrl: '',
   });
+  const [paymentProofUri, setPaymentProofUri] = useState<string | null>(null);
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [uploadingProof, setUploadingProof] = useState(false);
@@ -87,17 +91,28 @@ export default function PromoteScreen() {
     if (!result.canceled && result.assets[0]) {
       setUploadingProof(true);
       try {
-        const fileName = `payment_proof_${currentUser?.id}_${Date.now()}.jpg`;
-        
-        // Convert URI to Uint8Array
-        const base64 = await FileSystem.readAsStringAsync(result.assets[0].uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        
-        const binaryString = atob(base64);
-        const uint8Array = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          uint8Array[i] = binaryString.charCodeAt(i);
+        if (!currentUser) {
+          throw new Error('User not authenticated');
+        }
+        setPaymentProofUri(result.assets[0].uri);
+        const fileName = `payment_proof_${currentUser.id}_${Date.now()}.jpg`;
+
+        let uint8Array: Uint8Array;
+        if (Platform.OS === 'web') {
+          const response = await fetch(result.assets[0].uri);
+          const blob = await response.blob();
+          const arrayBuffer = await blob.arrayBuffer();
+          uint8Array = new Uint8Array(arrayBuffer);
+        } else {
+          const base64 = await FileSystem.readAsStringAsync(result.assets[0].uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+
+          const binaryString = atob(base64);
+          uint8Array = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            uint8Array[i] = binaryString.charCodeAt(i);
+          }
         }
 
         const { error } = await supabase.storage
@@ -118,6 +133,7 @@ export default function PromoteScreen() {
       } catch (error: any) {
         console.error('Failed to upload payment proof:', error);
         Alert.alert('Error', error.message || 'Failed to upload payment proof');
+        setPaymentProofUri(null);
       } finally {
         setUploadingProof(false);
       }
@@ -127,6 +143,22 @@ export default function PromoteScreen() {
   useEffect(() => {
     setIsBoostingContent(!!postIdParam || !!reelIdParam);
   }, [postIdParam, reelIdParam]);
+
+  useEffect(() => {
+    const loadPaymentMethods = async () => {
+      try {
+        const methods = await PaymentAdminService.getPaymentMethods();
+        setPaymentMethods(methods);
+        if (methods.length > 0) {
+          setSelectedMethod(methods[0]);
+          setPayment((p) => ({ ...p, methodId: methods[0].id }));
+        }
+      } catch (e) {
+        console.error('Failed to load payment methods:', e);
+      }
+    };
+    loadPaymentMethods();
+  }, []);
 
   useEffect(() => {
     const loadAd = async () => {
@@ -172,17 +204,20 @@ export default function PromoteScreen() {
             ageMax: String(data.targeting.ageMax || '65'),
             interests: data.targeting.interests || '',
           });
+          const selected = paymentMethods.find((m) => m.id === data.targeting.paymentMethod) || null;
+          setSelectedMethod(selected);
           setPayment({
-            method: (data.targeting.paymentMethod as any) || 'manual',
+            methodId: data.targeting.paymentMethod || '',
             reference: data.billing_txn_id || '',
             proofUrl: data.targeting.paymentProofUrl || '',
           });
+          setPaymentProofUri(data.targeting.paymentProofUrl || null);
         }
       }
       setLoading(false);
     };
     loadAd();
-  }, [adIdParam]);
+  }, [adIdParam, paymentMethods]);
 
   useEffect(() => {
     const loadContentDefaults = async () => {
@@ -290,6 +325,14 @@ export default function PromoteScreen() {
       }
     }
     if (currentStep === 4) {
+      if (!selectedMethod?.id) {
+        Alert.alert('Payment method', 'Select a payment method.');
+        return false;
+      }
+      if (!payment.proofUrl) {
+        Alert.alert('Payment proof', 'Upload proof of payment.');
+        return false;
+      }
       if (!payment.reference) {
         Alert.alert('Payment reference', 'Provide a payment reference/transaction ID.');
         return false;
@@ -334,20 +377,61 @@ export default function PromoteScreen() {
         ageMin: Number(targeting.ageMin) || 18,
         ageMax: Number(targeting.ageMax) || 65,
         interests: targeting.interests,
-        paymentMethod: payment.method,
+        paymentMethod: selectedMethod?.id || payment.methodId,
         paymentProofUrl: payment.proofUrl,
       },
-      billingProvider: payment.method,
+      billingProvider: selectedMethod?.payment_type || 'manual',
       billingTxnId: payment.reference,
       billingStatus: form.billingStatus || 'pending',
     };
     try {
+      let adId = adIdParam;
       if (adIdParam) {
         await updateAdvertisement(adIdParam, payload);
       } else {
-        await createAdvertisement(payload as any);
+        const created = await createAdvertisement(payload as any);
+        adId = created?.id;
       }
-      Alert.alert('Submitted', 'Your ad was submitted for review.');
+
+      if (adId && selectedMethod?.id && payment.proofUrl) {
+        const { data: submission, error } = await supabase
+          .from('payment_submissions')
+          .insert({
+            user_id: currentUser.id,
+            advertisement_id: adId,
+            payment_method_id: selectedMethod.id,
+            amount: Number(form.totalBudget || 0),
+            currency: 'USD',
+            payment_proof_url: payment.proofUrl,
+            transaction_reference: payment.reference.trim() || null,
+            payment_date: new Date().toISOString().split('T')[0],
+            notes: null,
+            status: 'pending',
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        const { data: admins } = await supabase
+          .from('users')
+          .select('id')
+          .in('role', ['admin', 'super_admin', 'moderator']);
+
+        if (admins) {
+          for (const admin of admins) {
+            await createNotification(
+              admin.id,
+              'payment_submission',
+              'Ad Payment Submitted',
+              `${currentUser.fullName} submitted ad payment proof for review.`,
+              { advertisementId: adId, submissionId: submission?.id }
+            );
+          }
+        }
+      }
+
+      Alert.alert('Submitted', 'Your ad payment was submitted for review.');
       router.back();
     } catch (e: any) {
       Alert.alert('Error', e.message || 'Failed to save ad');
@@ -557,16 +641,57 @@ export default function PromoteScreen() {
         {step === 4 && (
           <>
             <Section title="Payment" colors={colors}>
-              <Segment
-                options={[
-                  { value: 'manual', label: 'Manual (in-app/admin)' },
-                  { value: 'bank', label: 'Bank' },
-                  { value: 'mobile_money', label: 'Mobile Money' },
-                ]}
-                value={payment.method}
-                onChange={(v) => setPayment((p) => ({ ...p, method: v as any }))}
-                colors={colors}
-              />
+              <View style={{ marginBottom: 16 }}>
+                <Text style={{ fontSize: 14, fontWeight: '600', marginBottom: 8, color: colors.text.primary }}>
+                  Select Payment Method
+                </Text>
+                {paymentMethods.map((method) => (
+                  <TouchableOpacity
+                    key={method.id}
+                    style={[
+                      styles.methodCard,
+                      selectedMethod?.id === method.id && styles.methodCardSelected,
+                    ]}
+                    onPress={() => {
+                      setSelectedMethod(method);
+                      setPayment((p) => ({ ...p, methodId: method.id }));
+                    }}
+                  >
+                    <View style={styles.methodHeader}>
+                      <Text style={styles.methodIcon}>{method.icon_emoji || '💳'}</Text>
+                      <View style={styles.methodInfo}>
+                        <Text style={styles.methodName}>{method.name}</Text>
+                        {method.description && (
+                          <Text style={styles.methodDescription}>{method.description}</Text>
+                        )}
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {selectedMethod && (
+                <View style={styles.instructionsCard}>
+                  {selectedMethod.account_details && (
+                    <View style={styles.accountDetails}>
+                      <Text style={styles.accountDetailsTitle}>Account Details:</Text>
+                      {Object.entries(selectedMethod.account_details).map(([key, value]) => (
+                        <View key={key} style={styles.accountDetailRow}>
+                          <Text style={styles.accountDetailLabel}>
+                            {key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}:
+                          </Text>
+                          <Text style={styles.accountDetailValue}>{String(value)}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                  {selectedMethod.instructions && (
+                    <View style={styles.instructions}>
+                      <Text style={styles.instructionsTitle}>Instructions:</Text>
+                      <Text style={styles.instructionsText}>{selectedMethod.instructions}</Text>
+                    </View>
+                  )}
+                </View>
+              )}
               <Field
                 label="Payment reference / transaction ID"
                 value={payment.reference}
@@ -578,10 +703,13 @@ export default function PromoteScreen() {
                 <Text style={{ fontSize: 13, fontWeight: '600', marginBottom: 6 }}>Proof of payment</Text>
                 {payment.proofUrl ? (
                   <View style={styles.proofContainer}>
-                    <Image source={{ uri: payment.proofUrl }} style={styles.proofImage} contentFit="cover" />
+                    <Image source={{ uri: paymentProofUri || payment.proofUrl }} style={styles.proofImage} contentFit="cover" />
                     <TouchableOpacity
                       style={styles.removeProofButton}
-                      onPress={() => setPayment((p) => ({ ...p, proofUrl: '' }))}
+                      onPress={() => {
+                        setPayment((p) => ({ ...p, proofUrl: '' }));
+                        setPaymentProofUri(null);
+                      }}
                     >
                       <X size={16} color={colors.text.white} />
                     </TouchableOpacity>
@@ -618,7 +746,7 @@ export default function PromoteScreen() {
                 <Text style={styles.reviewLine}>Schedule: {form.startDate ? new Date(form.startDate).toDateString() : '-'} → {form.endDate ? new Date(form.endDate).toDateString() : '-'}</Text>
                 <Text style={styles.reviewLine}>CTA: {form.ctaType}</Text>
                 <Text style={styles.reviewLine}>Targeting: {targeting.locations || 'anywhere'} | {targeting.interests || 'broad'} | {targeting.gender} | {targeting.ageMin}-{targeting.ageMax}</Text>
-                <Text style={styles.reviewLine}>Payment: {payment.method} / ref {payment.reference || '-'}</Text>
+                <Text style={styles.reviewLine}>Payment: {selectedMethod?.name || 'Manual'} / ref {payment.reference || '-'}</Text>
               </View>
             </Section>
           </>
@@ -790,6 +918,22 @@ const createStyles = (colors: any) =>
     navSecondaryText: { color: colors.text.primary, fontWeight: '700', fontSize: 16 },
     reviewContainer: { backgroundColor: colors.background.primary, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: colors.border.light },
     reviewLine: { fontSize: 14, marginBottom: 10, color: colors.text.primary, lineHeight: 20 },
+    methodCard: { backgroundColor: colors.background.secondary, padding: 16, borderRadius: 12, marginBottom: 12, borderWidth: 2, borderColor: 'transparent' },
+    methodCardSelected: { borderColor: colors.primary },
+    methodHeader: { flexDirection: 'row', alignItems: 'center' },
+    methodIcon: { fontSize: 28, marginRight: 12 },
+    methodInfo: { flex: 1 },
+    methodName: { fontSize: 15, fontWeight: '600', color: colors.text.primary, marginBottom: 4 },
+    methodDescription: { fontSize: 13, color: colors.text.secondary },
+    instructionsCard: { backgroundColor: colors.background.secondary, padding: 16, borderRadius: 12, marginBottom: 12 },
+    accountDetails: { marginBottom: 12 },
+    accountDetailsTitle: { fontSize: 14, fontWeight: '600', color: colors.text.primary, marginBottom: 8 },
+    accountDetailRow: { flexDirection: 'row', marginBottom: 6 },
+    accountDetailLabel: { fontSize: 12, fontWeight: '600', color: colors.text.secondary, width: 120 },
+    accountDetailValue: { fontSize: 12, color: colors.text.primary, flex: 1 },
+    instructions: { marginBottom: 8 },
+    instructionsTitle: { fontSize: 14, fontWeight: '600', color: colors.text.primary, marginBottom: 6 },
+    instructionsText: { fontSize: 13, color: colors.text.secondary, lineHeight: 18 },
     uploadButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 12, backgroundColor: colors.background.primary, borderWidth: 2, borderColor: colors.border.light, borderStyle: 'dashed' },
     uploadButtonText: { fontSize: 15, fontWeight: '600', color: colors.primary },
     proofContainer: { position: 'relative', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: colors.border.light },

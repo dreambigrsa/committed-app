@@ -23,18 +23,22 @@ export default function AdminPaymentVerificationsScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
+  const [submissionType, setSubmissionType] = useState<'subscriptions' | 'ads'>('subscriptions');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     loadSubmissions();
-  }, [statusFilter]);
+  }, [statusFilter, submissionType]);
 
   const loadSubmissions = async () => {
     try {
       setIsLoading(true);
-      const data = await PaymentAdminService.getPaymentSubmissions(statusFilter);
+      const data =
+        submissionType === 'ads'
+          ? await PaymentAdminService.getAdPaymentSubmissions(statusFilter)
+          : await PaymentAdminService.getPaymentSubmissions(statusFilter);
       setSubmissions(data);
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to load payment submissions');
@@ -55,11 +59,19 @@ export default function AdminPaymentVerificationsScreen() {
             style: 'destructive',
             onPress: async (reason?: string) => {
               try {
-                await PaymentAdminService.verifyPayment(
-                  submissionId,
-                  'rejected',
-                  reason || 'Payment verification failed'
-                );
+                if (submissionType === 'ads') {
+                  await PaymentAdminService.verifyAdPayment(
+                    submissionId,
+                    'rejected',
+                    reason || 'Payment verification failed'
+                  );
+                } else {
+                  await PaymentAdminService.verifyPayment(
+                    submissionId,
+                    'rejected',
+                    reason || 'Payment verification failed'
+                  );
+                }
                 Alert.alert('Success', 'Payment rejected');
                 loadSubmissions();
               } catch (error: any) {
@@ -80,8 +92,13 @@ export default function AdminPaymentVerificationsScreen() {
             text: 'Approve',
             onPress: async () => {
               try {
-                await PaymentAdminService.verifyPayment(submissionId, 'approved');
-                Alert.alert('Success', 'Payment approved and subscription activated');
+                if (submissionType === 'ads') {
+                  await PaymentAdminService.verifyAdPayment(submissionId, 'approved');
+                  Alert.alert('Success', 'Payment approved and ad activated');
+                } else {
+                  await PaymentAdminService.verifyPayment(submissionId, 'approved');
+                  Alert.alert('Success', 'Payment approved and subscription activated');
+                }
                 loadSubmissions();
               } catch (error: any) {
                 Alert.alert('Error', error.message || 'Failed to approve payment');
@@ -109,6 +126,7 @@ export default function AdminPaymentVerificationsScreen() {
     const user = item.user;
     const plan = item.subscription_plan;
     const method = item.payment_method;
+    const advertisement = item.advertisement;
 
     return (
       <View style={styles.submissionCard}>
@@ -156,14 +174,25 @@ export default function AdminPaymentVerificationsScreen() {
         </View>
 
         <View style={styles.submissionContent}>
-          <View style={styles.detailRow}>
-            <DollarSign size={16} color={colors.text.secondary} />
-            <Text style={styles.detailLabel}>Plan:</Text>
-            <Text style={styles.detailValue}>{plan?.name || 'N/A'}</Text>
-            <Text style={styles.detailValue}>
-              ${plan?.price_monthly ? `${plan.price_monthly}/mo` : plan?.price_yearly ? `${plan.price_yearly}/yr` : '0'}
-            </Text>
-          </View>
+          {submissionType === 'ads' ? (
+            <View style={styles.detailRow}>
+              <DollarSign size={16} color={colors.text.secondary} />
+              <Text style={styles.detailLabel}>Ad:</Text>
+              <Text style={styles.detailValue}>{advertisement?.title || 'N/A'}</Text>
+              <Text style={styles.detailValue}>
+                ${advertisement?.total_budget || item.amount || '0'}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.detailRow}>
+              <DollarSign size={16} color={colors.text.secondary} />
+              <Text style={styles.detailLabel}>Plan:</Text>
+              <Text style={styles.detailValue}>{plan?.name || 'N/A'}</Text>
+              <Text style={styles.detailValue}>
+                ${plan?.price_monthly ? `${plan.price_monthly}/mo` : plan?.price_yearly ? `${plan.price_yearly}/yr` : '0'}
+              </Text>
+            </View>
+          )}
 
           <View style={styles.detailRow}>
             <CreditCard size={16} color={colors.text.secondary} />
@@ -265,25 +294,48 @@ export default function AdminPaymentVerificationsScreen() {
       
       {/* Status Filter */}
       <View style={styles.filterContainer}>
-        {(['all', 'pending', 'approved', 'rejected'] as const).map((status) => (
-          <TouchableOpacity
-            key={status}
-            style={[
-              styles.filterChip,
-              statusFilter === status && styles.filterChipActive,
-            ]}
-            onPress={() => setStatusFilter(status)}
-          >
-            <Text
+        <View style={styles.typeToggle}>
+          {(['subscriptions', 'ads'] as const).map((type) => (
+            <TouchableOpacity
+              key={type}
               style={[
-                styles.filterText,
-                statusFilter === status && styles.filterTextActive,
+                styles.typeChip,
+                submissionType === type && styles.typeChipActive,
               ]}
+              onPress={() => setSubmissionType(type)}
             >
-              {status.charAt(0).toUpperCase() + status.slice(1)}
-            </Text>
-          </TouchableOpacity>
-        ))}
+              <Text
+                style={[
+                  styles.typeChipText,
+                  submissionType === type && styles.typeChipTextActive,
+                ]}
+              >
+                {type === 'subscriptions' ? 'Subscriptions' : 'Ads'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <View style={styles.statusToggle}>
+          {(['all', 'pending', 'approved', 'rejected'] as const).map((status) => (
+            <TouchableOpacity
+              key={status}
+              style={[
+                styles.filterChip,
+                statusFilter === status && styles.filterChipActive,
+              ]}
+              onPress={() => setStatusFilter(status)}
+            >
+              <Text
+                style={[
+                  styles.filterText,
+                  statusFilter === status && styles.filterTextActive,
+                ]}
+              >
+                {status.charAt(0).toUpperCase() + status.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
 
       {isLoading ? (
@@ -301,9 +353,9 @@ export default function AdminPaymentVerificationsScreen() {
             <View style={styles.emptyContainer}>
               <DollarSign size={64} color={colors.text.tertiary} />
               <Text style={styles.emptyText}>
-                {statusFilter === 'pending'
-                  ? 'No pending payments to verify'
-                  : `No ${statusFilter} payments`}
+              {statusFilter === 'pending'
+                ? `No pending ${submissionType === 'ads' ? 'ad' : 'subscription'} payments to verify`
+                : `No ${statusFilter} ${submissionType === 'ads' ? 'ad' : 'subscription'} payments`}
               </Text>
             </View>
           }
@@ -331,12 +383,39 @@ const createStyles = (colors: any) =>
       color: colors.text.primary,
     },
     filterContainer: {
-      flexDirection: 'row',
       paddingHorizontal: 20,
       paddingVertical: 12,
-      gap: 8,
+      gap: 10,
       borderBottomWidth: 1,
       borderBottomColor: colors.border.light,
+    },
+    statusToggle: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    typeToggle: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    typeChip: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 16,
+      backgroundColor: colors.background.secondary,
+      borderWidth: 1,
+      borderColor: colors.border.light,
+    },
+    typeChipActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    typeChipText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text.primary,
+    },
+    typeChipTextActive: {
+      color: '#fff',
     },
     filterChip: {
       paddingHorizontal: 16,

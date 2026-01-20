@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -21,7 +21,7 @@ const ONBOARDING_VERSION = '1.0.0';
 
 export default function OnboardingScreen() {
   const router = useRouter();
-  const { currentUser } = useApp();
+  const { currentUser, hasCompletedOnboarding } = useApp();
   const { colors: themeColors } = useTheme();
   const styles = createStyles(themeColors);
 
@@ -30,6 +30,40 @@ export default function OnboardingScreen() {
   const [location, setLocation] = useState('');
   const [saving, setSaving] = useState(false);
   const fadeAnim = useRef(new Animated.Value(1)).current;
+
+  // Check on mount if onboarding is already completed - if so, redirect immediately
+  useEffect(() => {
+    const checkOnboardingStatus = async () => {
+      // If hasCompletedOnboarding is already true, redirect immediately
+      if (hasCompletedOnboarding === true) {
+        console.log('Onboarding already completed, redirecting...');
+        router.replace('/(tabs)/home');
+        return;
+      }
+
+      // If status is null, check directly from database
+      if (hasCompletedOnboarding === null && currentUser) {
+        try {
+          const { data: onboardingData } = await supabase
+            .from('user_onboarding_data')
+            .select('has_completed_onboarding')
+            .eq('user_id', currentUser.id)
+            .maybeSingle();
+          
+          if (onboardingData?.has_completed_onboarding === true) {
+            console.log('Onboarding already completed (checked from DB), redirecting...');
+            router.replace('/(tabs)/home');
+            return;
+          }
+        } catch (error) {
+          console.error('Error checking onboarding status:', error);
+          // If error, continue showing onboarding screen
+        }
+      }
+    };
+
+    checkOnboardingStatus();
+  }, [hasCompletedOnboarding, currentUser, router]);
 
   const steps = [
     {

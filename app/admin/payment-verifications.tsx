@@ -45,9 +45,11 @@ export default function AdminPaymentVerificationsScreen() {
   const loadSubmissions = async () => {
     try {
       setIsLoading(true);
+      const getAdsSubmissions =
+        PaymentAdminService.getAdPaymentSubmissions ?? PaymentAdminService.getPaymentSubmissions;
       const data =
         submissionType === 'ads'
-          ? await PaymentAdminService.getAdPaymentSubmissions(statusFilter)
+          ? await getAdsSubmissions(statusFilter)
           : await PaymentAdminService.getPaymentSubmissions(statusFilter);
       setSubmissions(data);
     } catch (error: any) {
@@ -69,8 +71,10 @@ export default function AdminPaymentVerificationsScreen() {
             style: 'destructive',
             onPress: async (reason?: string) => {
               try {
+                const verifyAdsPayment =
+                  PaymentAdminService.verifyAdPayment ?? PaymentAdminService.verifyPayment;
                 if (submissionType === 'ads') {
-                  await PaymentAdminService.verifyAdPayment(
+                  await verifyAdsPayment(
                     submissionId,
                     'rejected',
                     reason || 'Payment verification failed'
@@ -102,8 +106,10 @@ export default function AdminPaymentVerificationsScreen() {
             text: 'Approve',
             onPress: async () => {
               try {
+                const verifyAdsPayment =
+                  PaymentAdminService.verifyAdPayment ?? PaymentAdminService.verifyPayment;
                 if (submissionType === 'ads') {
-                  await PaymentAdminService.verifyAdPayment(submissionId, 'approved');
+                  await verifyAdsPayment(submissionId, 'approved');
                   Alert.alert('Success', 'Payment approved and ad activated');
                 } else {
                   await PaymentAdminService.verifyPayment(submissionId, 'approved');

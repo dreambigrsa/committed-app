@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -39,6 +39,7 @@ import {
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import colors from '@/constants/colors';
+import { supabase } from '@/lib/supabase';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - 48) / 2; // 2 columns with padding
@@ -49,6 +50,8 @@ export default function AdminDashboardScreen() {
   const styles = createStyles(themeColors);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const [pendingPaymentsCount, setPendingPaymentsCount] = useState(0);
+  const [pendingAdPaymentsCount, setPendingAdPaymentsCount] = useState(0);
 
   React.useEffect(() => {
     Animated.parallel([
@@ -64,6 +67,31 @@ export default function AdminDashboardScreen() {
         useNativeDriver: true,
       }),
     ]).start();
+  }, []);
+
+  useEffect(() => {
+    const loadPendingPayments = async () => {
+      try {
+        const [{ count: totalPending }, { count: adPending }] = await Promise.all([
+          supabase
+            .from('payment_submissions')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'pending'),
+          supabase
+            .from('payment_submissions')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'pending')
+            .not('advertisement_id', 'is', null),
+        ]);
+
+        setPendingPaymentsCount(totalPending || 0);
+        setPendingAdPaymentsCount(adPending || 0);
+      } catch (error) {
+        console.error('Failed to load pending payment counts:', error);
+      }
+    };
+
+    loadPendingPayments();
   }, []);
 
   if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'super_admin' && currentUser.role !== 'moderator')) {
@@ -455,6 +483,8 @@ export default function AdminDashboardScreen() {
               <View style={styles.cardsGrid}>
                 {category.items.map((item, itemIndex) => {
                   const Icon = item.icon;
+                  const showPaymentBadge = item.route === '/admin/payment-verifications' && pendingPaymentsCount > 0;
+                  const pendingSubscriptionCount = Math.max(pendingPaymentsCount - pendingAdPaymentsCount, 0);
                   return (
                     <TouchableOpacity
                       key={item.route}
@@ -472,6 +502,22 @@ export default function AdminDashboardScreen() {
                             {item.description}
                           </Text>
                         </View>
+                        {showPaymentBadge && (
+                          <View style={styles.paymentBadgeContainer}>
+                            <View style={styles.paymentBadge}>
+                              <Text style={styles.paymentBadgeText}>{pendingPaymentsCount}</Text>
+                            </View>
+                            <Text style={styles.paymentBadgeLabel}>Pending</Text>
+                            <View style={styles.paymentBadgeBreakdown}>
+                              {pendingAdPaymentsCount > 0 && (
+                                <Text style={styles.paymentBadgeBreakdownText}>Ads {pendingAdPaymentsCount}</Text>
+                              )}
+                              {pendingSubscriptionCount > 0 && (
+                                <Text style={styles.paymentBadgeBreakdownText}>Subs {pendingSubscriptionCount}</Text>
+                              )}
+                            </View>
+                          </View>
+                        )}
                         <ChevronRight size={20} color={themeColors.text.tertiary} />
                       </View>
                     </TouchableOpacity>
@@ -598,6 +644,40 @@ const createStyles = (colors: any) => StyleSheet.create({
     borderRadius: 14,
     padding: 16,
     borderLeftWidth: 4,
+  },
+  paymentBadgeContainer: {
+    alignItems: 'flex-end',
+    marginRight: 10,
+  },
+  paymentBadge: {
+    backgroundColor: colors.danger,
+    minWidth: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  paymentBadgeText: {
+    color: colors.text.white,
+    fontSize: 12,
+    fontWeight: '700' as const,
+  },
+  paymentBadgeLabel: {
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: '600' as const,
+    color: colors.text.secondary,
+  },
+  paymentBadgeBreakdown: {
+    marginTop: 2,
+    flexDirection: 'row',
+    gap: 6,
+  },
+  paymentBadgeBreakdownText: {
+    fontSize: 10,
+    fontWeight: '600' as const,
+    color: colors.text.tertiary,
   },
   iconContainer: {
     width: 44,

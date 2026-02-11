@@ -21,13 +21,16 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   );
 }
 
-// Configure Supabase client with AsyncStorage for auth persistence
+// On web, detect session in URL so auth callback (/auth-callback?code=...) auto-logs in
+// On native, we explicitly call exchangeCodeForSession in auth-callback.tsx
+const isWeb = typeof window !== 'undefined';
+
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     storage: AsyncStorage,
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false,
+    detectSessionInUrl: isWeb,
   },
 });
 

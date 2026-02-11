@@ -8,16 +8,17 @@ The auth callback URL is where Supabase redirects users after they:
 - Complete OAuth authentication
 - Complete any authentication flow
 
-For mobile apps, this should be a **deep link** that opens your app, not a web URL.
+Your app supports **both** native (mobile) and web. The redirect URL is chosen per platform:
+- **Native (iOS/Android):** `committed://auth-callback` — opens the mobile app
+- **Web:** `https://committed-5mxf.onrender.com/auth-callback` — stays in browser
 
 ---
 
-## Your App's Auth Callback URL
-
-Based on your `app.json` configuration:
+## Your App's Auth Callback URLs
 
 **Scheme:** `committed`  
-**Auth Callback URL:** `committed://auth-callback`
+**Native:** `committed://auth-callback`  
+**Web:** `https://committed-5mxf.onrender.com/auth-callback`
 
 ---
 
@@ -27,25 +28,25 @@ Based on your `app.json` configuration:
 
 1. Go to **Supabase Dashboard**
 2. Navigate to: **Authentication → URL Configuration**
-3. Set **Site URL** to:
+3. Set **Site URL** to (use web URL so desktop users can verify via browser):
    ```
-   committed://auth-callback
+   https://committed-5mxf.onrender.com/auth-callback
    ```
 
 ### Step 2: Add Redirect URLs
 
-In the same section, add these **Redirect URLs**:
+In the same section, add **all** of these **Redirect URLs**:
 
 ```
 committed://auth-callback
-committed://verify-email
+https://committed-5mxf.onrender.com/auth-callback
 committed://*
 ```
 
 **Why multiple URLs?**
-- `committed://auth-callback` - Main auth callback (email verification, password reset, OAuth)
-- `committed://verify-email` - Specific email verification redirect
-- `committed://*` - Wildcard to allow any route in your app (for flexibility)
+- `committed://auth-callback` - Native app deep link (email link on phone opens app)
+- `https://committed-5mxf.onrender.com/auth-callback` - Web app (email link on desktop)
+- `committed://*` - Wildcard for native app flexibility
 
 ---
 
@@ -85,31 +86,12 @@ Your app is already configured correctly:
 
 ## Important Notes
 
-### ❌ Don't Use Backend URL
+### Both URLs Are Required
 
-**Wrong:**
-```
-https://committed-5mxf.onrender.com/auth-callback
-```
+- **Native app:** Use `committed://auth-callback` — opens the mobile app when user clicks link on phone
+- **Web app:** Use `https://committed-5mxf.onrender.com/auth-callback` — when user clicks link on desktop, they stay in browser and get logged in
 
-**Why?** This is your backend API URL. It's for:
-- API endpoints
-- Webhooks
-- Server-to-server communication
-
-**It won't open your mobile app!**
-
-### ✅ Use Deep Link URL
-
-**Correct:**
-```
-committed://auth-callback
-```
-
-**Why?** This is your app's deep link scheme. It:
-- Opens your mobile app
-- Routes to the correct screen
-- Handles authentication automatically
+The app picks the correct URL automatically via `getAuthRedirectUrl()` in `lib/auth-redirect.ts`.
 
 ---
 
@@ -164,12 +146,12 @@ committed://auth-callback
 | Setting | Value |
 |---------|-------|
 | **App Scheme** | `committed` |
-| **Auth Callback URL** | `committed://auth-callback` |
-| **Supabase Site URL** | `committed://auth-callback` |
-| **Supabase Redirect URLs** | `committed://auth-callback`, `committed://verify-email`, `committed://*` |
+| **Supabase Site URL** | `https://committed-5mxf.onrender.com/auth-callback` |
+| **Supabase Redirect URLs** | `committed://auth-callback`, `https://committed-5mxf.onrender.com/auth-callback`, `committed://*` |
 
 ---
 
-**Your code is already correct!** ✅  
-**Just configure Supabase Dashboard with the URLs above.** ⚙️
+**Required:** Add both redirect URLs in Supabase Dashboard.  
+**Native users** (phone): Link opens app via `committed://auth-callback`.  
+**Web users** (desktop): Link opens web app at `/auth-callback` and auto-logs them in.
 

@@ -17,6 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
+import { getAuthRedirectUrl } from '@/lib/auth-redirect';
 import colors from '@/constants/colors';
 
 export default function VerifyEmailScreen() {
@@ -236,7 +237,7 @@ export default function VerifyEmailScreen() {
         const { error: otpError } = await supabase.auth.signInWithOtp({
           email: email,
           options: {
-            emailRedirectTo: 'committed://auth-callback',
+            emailRedirectTo: getAuthRedirectUrl(),
           },
         });
         
@@ -253,7 +254,7 @@ export default function VerifyEmailScreen() {
         type: 'signup',
         email: email,
         options: {
-          emailRedirectTo: 'committed://auth-callback',
+          emailRedirectTo: getAuthRedirectUrl(),
         },
       });
 
@@ -265,7 +266,7 @@ export default function VerifyEmailScreen() {
           const { error: otpError } = await supabase.auth.signInWithOtp({
             email: email,
             options: {
-              emailRedirectTo: 'committed://auth-callback',
+              emailRedirectTo: getAuthRedirectUrl(),
             },
           });
           

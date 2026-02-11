@@ -8,6 +8,7 @@ import { checkUserLegalAcceptances } from '@/lib/legal-enforcement';
 import { registerForPushNotificationsAsync, showLocalNotification } from '@/lib/push-notifications';
 import { setNotificationPreferences } from '@/lib/notification-preferences';
 import { normalizePhoneNumber, comparePhoneNumbers } from '@/lib/phone-normalization';
+import { getAuthRedirectUrl } from '@/lib/auth-redirect';
 import { queueRelationshipChange, syncOfflineQueue, getOfflineQueue, RelationshipConflict } from '@/lib/relationship-sync';
 
 export const [AppContext, useApp] = createContextHook(() => {
@@ -58,6 +59,9 @@ export const [AppContext, useApp] = createContextHook(() => {
 
   // Onboarding state
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState<boolean | null>(null);
+
+  // Password recovery: true when user arrived via reset-password link (PASSWORD_RECOVERY event)
+  const [isPasswordRecoveryFlow, setIsPasswordRecoveryFlow] = useState(false);
   
   // Helper function to show ban modal
   const showBanModal = useCallback((restriction: {
@@ -102,7 +106,13 @@ export const [AppContext, useApp] = createContextHook(() => {
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
         setSession(newSession);
-        
+        // Password reset: user clicked reset link and arrived at auth-callback
+        if (event === 'PASSWORD_RECOVERY') {
+          setIsPasswordRecoveryFlow(true);
+          if (newSession?.user) await loadUserData(newSession.user.id);
+          return;
+        }
+        setIsPasswordRecoveryFlow(false);
         // Handle email confirmation
         if (event === 'SIGNED_IN' && newSession?.user) {
           const emailConfirmed = !!newSession.user.email_confirmed_at;
@@ -908,7 +918,8 @@ export const [AppContext, useApp] = createContextHook(() => {
           data: {
             full_name: fullName,
             phone_number: normalizedPhone,
-          }
+          },
+          emailRedirectTo: getAuthRedirectUrl(),
         }
       });
 
@@ -1275,7 +1286,7 @@ export const [AppContext, useApp] = createContextHook(() => {
   const resetPassword = useCallback(async (email: string) => {
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: 'committed://auth-callback',
+        redirectTo: getAuthRedirectUrl(),
       });
 
       if (error) throw error;
@@ -7189,6 +7200,9 @@ export const [AppContext, useApp] = createContextHook(() => {
     loadUserStatus,
     // Onboarding
     hasCompletedOnboarding,
+    // Password recovery (reset-password link flow)
+    isPasswordRecoveryFlow,
+    clearRecoveryFlow: useCallback(() => setIsPasswordRecoveryFlow(false), []),
     checkOnboardingStatus: useCallback(async (userId: string): Promise<boolean> => {
       try {
         const { data, error } = await supabase

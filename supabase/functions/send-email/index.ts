@@ -72,37 +72,103 @@ serve(async (req: Request) => {
       }, req);
     }
 
-    // Send Email via Resend
+    // Send Email via Resend - Premium design with app branding
     const emailBody = {
       from: `${fromName} <${fromEmail}>`,
       to: [email],
       subject: 'Your Committed Verification Code',
-      html: `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          </head>
-          <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-              <h1 style="color: white; margin: 0;">Committed</h1>
-            </div>
-            <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
-              <h2 style="color: #333; margin-top: 0;">Verification Code</h2>
-              <p>Your verification code is:</p>
-              <div style="background: white; border: 2px solid #667eea; border-radius: 8px; padding: 20px; text-align: center; margin: 20px 0;">
-                <span style="font-size: 32px; font-weight: bold; color: #667eea; letter-spacing: 4px;">${code}</span>
-              </div>
-              <p style="color: #666; font-size: 14px;">This code will expire in 10 minutes.</p>
-              <p style="color: #666; font-size: 14px; margin-top: 30px;">If you didn't request this code, please ignore this email.</p>
-            </div>
-            <div style="text-align: center; margin-top: 20px; color: #999; font-size: 12px;">
-              <p>&copy; ${new Date().getFullYear()} Committed. All rights reserved.</p>
-            </div>
-          </body>
-        </html>
-      `,
+      html: `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <!--[if mso]>
+  <noscript>
+    <xml>
+      <o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings>
+    </xml>
+  </noscript>
+  <![endif]-->
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+    .preheader { display: none !important; visibility: hidden; opacity: 0; height: 0; width: 0; max-height: 0; overflow: hidden; }
+    @media only screen and (max-width: 600px) {
+      .container { width: 100% !important; padding: 16px !important; }
+      .code-box { padding: 24px 16px !important; }
+      .code-digits { font-size: 28px !important; letter-spacing: 6px !important; }
+    }
+  </style>
+</head>
+<body style="margin: 0; padding: 0; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; background-color: #F1F5F9; font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+  <!-- Preheader: visible in inbox preview -->
+  <div class="preheader" style="display: none; max-height: 0; overflow: hidden;">
+    Your verification code is ${code}. Valid for 10 minutes. — Committed
+  </div>
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #F1F5F9;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" class="container" style="max-width: 600px; width: 100%; margin: 0 auto; background-color: #FFFFFF; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);">
+          <!-- Header -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #1A73E8 0%, #1557B0 100%); padding: 36px 40px; text-align: center;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                <tr>
+                  <td align="center">
+                    <h1 style="margin: 0; font-size: 28px; font-weight: 700; color: #FFFFFF; letter-spacing: -0.5px;">Committed</h1>
+                    <p style="margin: 8px 0 0; font-size: 14px; color: rgba(255,255,255,0.9); font-weight: 500;">Trust · Love · Commitment</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- Content -->
+          <tr>
+            <td style="padding: 48px 40px 40px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                <tr>
+                  <td align="center">
+                    <div style="display: inline-block; background: #E8F0FE; color: #1A73E8; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.2px; padding: 8px 16px; border-radius: 8px; margin-bottom: 24px;">Verification Code</div>
+                    <h2 style="margin: 0 0 8px; font-size: 24px; font-weight: 700; color: #1F2937;">Welcome back</h2>
+                    <p style="margin: 0; font-size: 16px; color: #6B7280; line-height: 1.6;">Use the code below to verify your email address and continue.</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td align="center" style="padding-top: 32px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="background: linear-gradient(145deg, #F8FAFC 0%, #F1F5F9 100%); border: 1px solid #E2E8F0; border-radius: 12px; padding: 28px 40px;" class="code-box">
+                      <tr>
+                        <td align="center">
+                          <span style="font-size: 36px; font-weight: 700; color: #1A73E8; letter-spacing: 8px; font-variant-numeric: tabular-nums;" class="code-digits">${code}</span>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td align="center" style="padding-top: 24px;">
+                    <p style="margin: 0; font-size: 14px; color: #9CA3AF;">This code expires in <strong style="color: #6B7280;">10 minutes</strong></p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-top: 32px; border-top: 1px solid #F1F5F9; margin-top: 24px;">
+                    <p style="margin: 0; font-size: 13px; color: #9CA3AF; line-height: 1.6;">If you didn't request this code, you can safely ignore this email. Someone may have entered your email address by mistake.</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #F8FAFC; padding: 24px 40px; text-align: center; border-top: 1px solid #F1F5F9;">
+              <p style="margin: 0; font-size: 12px; color: #94A3B8;">&copy; ${new Date().getFullYear()} Committed. All rights reserved.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`,
       text: `Your Committed verification code is: ${code}. This code will expire in 10 minutes.`,
     };
 

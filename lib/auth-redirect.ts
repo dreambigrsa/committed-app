@@ -11,7 +11,8 @@ const DEEP_LINK_SCHEME = 'committed';
 
 /**
  * Returns the auth callback URL for the current platform.
- * - Native (iOS/Android): committed://auth-callback — opens the mobile app
+ * - Native: committed://localhost/auth-callback — use localhost as host so
+ *   Expo Router parses path as /auth-callback (not as host, which would route to /)
  * - Web: https://committed-5mxf.onrender.com/auth-callback — stays in browser
  *
  * Must match Supabase Redirect URLs whitelist.
@@ -20,5 +21,5 @@ export function getAuthRedirectUrl(): string {
   if (Platform.OS === 'web') {
     return `${WEB_ORIGIN}${AUTH_CALLBACK_PATH}`;
   }
-  return `${DEEP_LINK_SCHEME}://auth-callback`;
+  return `${DEEP_LINK_SCHEME}://localhost${AUTH_CALLBACK_PATH}`;
 }

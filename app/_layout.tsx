@@ -1,4 +1,5 @@
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
+import * as Linking from "expo-linking";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -7,11 +8,31 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import NotificationToast from "../components/NotificationToast";
 import BanMessageModal from "@/components/BanMessageModal";
 import LegalAcceptanceEnforcer from "@/components/LegalAcceptanceEnforcer";
+import { setPendingAuthUrl } from "@/lib/pending-auth-url";
 
 SplashScreen.preventAutoHideAsync();
 
 function RootLayoutNav() {
+  const router = useRouter();
   const { banModalVisible, banModalData, setBanModalVisible, currentUser } = useApp();
+
+  // When app is already open (e.g. on forgot-password screen) and user opens reset link,
+  // the url event fires here. Navigate to auth-callback and pass the URL so it gets processed.
+  useEffect(() => {
+    const sub = Linking.addEventListener("url", ({ url }) => {
+      const isAuthCallback =
+        url.includes("auth-callback") ||
+        url.includes("auth/callback") ||
+        url.includes("code=") ||
+        url.includes("type=recovery") ||
+        url.includes("access_token=");
+      if (isAuthCallback) {
+        setPendingAuthUrl(url);
+        router.replace("/auth-callback");
+      }
+    });
+    return () => sub.remove();
+  }, [router]);
 
   return (
     <>

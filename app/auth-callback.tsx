@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import * as Linking from "expo-linking";
 import { Platform } from "react-native";
 import { supabase } from "@/lib/supabase";
+import { getAndClearPendingAuthUrl } from "@/lib/pending-auth-url";
 import { useRouter } from "expo-router";
 import { View, ActivityIndicator } from "react-native";
 import { useApp } from "@/contexts/AppContext";
@@ -38,17 +39,19 @@ export default function AuthCallback() {
       processUrl(url);
     });
 
-    // Cold start: get URL from deep link (native) or current page (web)
-    const getUrl = async () => {
-      const url = await Linking.getInitialURL();
-      // On web, Linking may not include search/hash; use window.location if available
+    // Get URL: pending (app was open, we navigated here from layout), cold start, or web
+    const getUrl = async (): Promise<string | null> => {
+      const pending = getAndClearPendingAuthUrl();
+      if (pending) return pending;
+      const initial = await Linking.getInitialURL();
+      if (initial) return initial;
       if (typeof window !== "undefined" && window.location?.href) {
         const full = window.location.href;
         if (full.includes("code=") || full.includes("access_token=") || full.includes("#")) {
           return full;
         }
       }
-      return url;
+      return null;
     };
 
     getUrl().then((url) => {

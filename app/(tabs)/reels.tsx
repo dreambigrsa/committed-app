@@ -22,6 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import ReportContentModal from '@/components/ReportContentModal';
+import LinkifiedText from '@/components/LinkifiedText';
 import { Reel, Advertisement, Sticker } from '@/types';
 import StickerPicker from '@/components/StickerPicker';
 import * as WebBrowser from 'expo-web-browser';
@@ -1199,9 +1200,9 @@ export default function ReelsScreen() {
                   </View>
                 </View>
               ) : (
-                <Text style={styles.caption} numberOfLines={3}>
-                  {reel.caption}
-                </Text>
+                <LinkifiedText style={styles.caption} linkStyle={styles.captionLink} numberOfLines={3}>
+                  {reel.caption || ''}
+                </LinkifiedText>
               )}
                 </View>
               </View>
@@ -1570,6 +1571,13 @@ const createStyles = (colors: any, overlayBottomPadding: number) => StyleSheet.c
     textShadowRadius: 4,
     marginTop: 8,
     paddingRight: 8,
+  },
+  captionLink: {
+    color: '#7DD3FC',
+    textDecorationLine: 'underline',
+    textShadowColor: 'rgba(0, 0, 0, 0.9)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   actionButton: {
     alignItems: 'center',

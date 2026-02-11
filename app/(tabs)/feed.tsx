@@ -28,6 +28,7 @@ import StatusStoriesBar from '@/components/StatusStoriesBar';
 import FacebookStyleStoriesBar from '@/components/FacebookStyleStoriesBar';
 import * as WebBrowser from 'expo-web-browser';
 import ReportContentModal from '@/components/ReportContentModal';
+import LinkifiedText from '@/components/LinkifiedText';
 import * as ImagePicker from 'expo-image-picker';
 // @ts-ignore - legacy path works at runtime, TypeScript definitions may not include it
 import * as FileSystem from 'expo-file-system/legacy';
@@ -406,6 +407,10 @@ export default function FeedScreen() {
       lineHeight: 22,
       paddingHorizontal: 16,
       marginBottom: 12,
+    },
+    postContentLink: {
+      color: '#1877F2',
+      textDecorationLine: 'underline',
     },
     mediaWrapper: {
       position: 'relative',
@@ -2330,7 +2335,9 @@ export default function FeedScreen() {
         ) : (
           <>
             {post.content.length > 0 && (
-              <Text style={styles.postContent}>{post.content}</Text>
+              <LinkifiedText style={styles.postContent} linkStyle={styles.postContentLink}>
+                {post.content}
+              </LinkifiedText>
             )}
             {renderPostMedia(post)}
           </>

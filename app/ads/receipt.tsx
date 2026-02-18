@@ -61,7 +61,7 @@ export default function AdReceiptScreen() {
           setLogoDataUri(dataUri);
         } else {
           const base64 = await FileSystem.readAsStringAsync(asset.localUri || asset.uri, {
-            encoding: FileSystem.EncodingType.Base64,
+            encoding: 'base64',
           });
           setLogoDataUri(`data:image/png;base64,${base64}`);
         }

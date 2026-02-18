@@ -42,7 +42,7 @@ export default function AuthScreen() {
   // Logged-in user on auth screen: redirect to resolved route (or pending deep link). Never landing.
   useEffect(() => {
     if (!currentUser) return;
-    const timer = setTimeout(() => {
+      const timer = setTimeout(() => {
       const { getResolvedRoute } = require('@/lib/auth-gate');
       const { getAndClearPendingRouteIfContent } = require('@/lib/pending-route');
       let route = getResolvedRoute({
@@ -58,8 +58,8 @@ export default function AuthScreen() {
         if (pending) route = pending;
       }
       if (route !== '/' && route !== '/auth') router.replace(route as any);
-    }, 100);
-    return () => clearTimeout(timer);
+      }, 100);
+      return () => clearTimeout(timer);
   }, [currentUser, legalAcceptanceStatus, hasCompletedOnboarding, router]);
 
   useEffect(() => {
@@ -154,7 +154,7 @@ export default function AuthScreen() {
           throw new Error('Session expired. Please log in again.');
         }
         if (session?.user && session.user.id !== userId) {
-          console.warn(`Session user ID (${session.user.id}) doesn't match provided userId (${userId}) during signup`);
+            console.warn(`Session user ID (${session.user.id}) doesn't match provided userId (${userId}) during signup`);
         }
       }
 

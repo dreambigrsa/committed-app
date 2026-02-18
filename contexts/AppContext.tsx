@@ -169,8 +169,8 @@ export const [AppContext, useApp] = createContextHook(() => {
       setIsLoading(false);
     } finally {
       if (!initialSession?.user) {
-        setIsLoading(false);
-      }
+      setIsLoading(false);
+    }
     }
   }, [clearSession]);
 
@@ -966,7 +966,7 @@ export const [AppContext, useApp] = createContextHook(() => {
       if (referralCode && referralCode.trim()) {
         userMeta.referral_code = referralCode.trim();
       }
-
+      
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,

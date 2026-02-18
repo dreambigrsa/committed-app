@@ -118,7 +118,7 @@ export default function VerifyEmailScreen() {
       };
       loadEmail();
       checkEmailVerification(false);
-
+      
       interval = setInterval(() => {
         if (isMounted) checkEmailVerification(false);
       }, 3000);
@@ -134,12 +134,12 @@ export default function VerifyEmailScreen() {
     try {
       setIsChecking(true);
       const { data: { session: currentSession } } = await supabase.auth.getSession();
-
+      
       if (currentSession?.user) {
         setEmail(currentSession.user.email || '');
         const emailConfirmed = !!currentSession.user.email_confirmed_at;
         setIsVerified(emailConfirmed);
-
+        
         if (emailConfirmed) {
           if (!currentUser || hasCompletedOnboarding === null) {
             return;
@@ -155,7 +155,7 @@ export default function VerifyEmailScreen() {
           if (route === '/(tabs)/home') {
             const pending = getAndClearPendingRouteIfContent();
             if (pending) route = pending as any;
-          }
+                  }
           if (route !== '/verify-email') router.replace(route as any);
         } else {
           if (showMessage) {
@@ -182,11 +182,11 @@ export default function VerifyEmailScreen() {
       return;
     }
     if (resendCooldownUntil > Date.now()) return;
-
+    
     setIsResending(true);
     try {
       const { data: { session: s } } = await supabase.auth.getSession();
-
+      
       if (!s?.user) {
         const { error: otpError } = await supabase.auth.signInWithOtp({
           email,
@@ -197,7 +197,7 @@ export default function VerifyEmailScreen() {
         alert('✅ Verification email sent! Check your inbox (and spam folder).');
         return;
       }
-
+      
       const { error } = await supabase.auth.resend({
         type: 'signup',
         email,
@@ -213,8 +213,8 @@ export default function VerifyEmailScreen() {
           if (!otpError) {
             setResendCooldownUntil(Date.now() + RESEND_COOLDOWN_SECONDS * 1000);
             alert('✅ Verification email sent! Check your inbox (and spam folder).');
-            return;
-          }
+          return;
+        }
         }
         if (error.message?.includes('rate limit') || error.message?.includes('too many')) {
           alert('Too many requests. Please wait a few minutes before trying again.');
@@ -222,7 +222,7 @@ export default function VerifyEmailScreen() {
         }
         if (error.message?.includes('already confirmed')) {
           checkEmailVerification(true);
-          return;
+        return;
         }
         throw error;
       }

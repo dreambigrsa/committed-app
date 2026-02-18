@@ -1,5 +1,7 @@
 # ✅ Production Ready Checklist
 
+**See also:** `REMAINING-TODOS.md` for a single list of what’s done and what’s left (migrations, deploy, testing).
+
 ## 🔒 Crash Prevention Fixes Applied
 
 ### 1. ✅ Media Operations (ImagePicker/MediaLibrary)
@@ -157,5 +159,8 @@ All critical crash points have been fixed. The app now:
 - Supports partial success scenarios
 - Has comprehensive error logging
 
-**Remaining Action:** Run the 2 SQL migrations in Supabase SQL Editor.
+**Remaining actions:**
+1. Run the 2 SQL migrations in Supabase SQL Editor (see **Database Migrations Required** above).
+2. Optionally deploy the admin-delete-user Edge Function: `npx supabase functions deploy admin-delete-user`
+3. Optionally run through the **Testing Checklist** above.
 

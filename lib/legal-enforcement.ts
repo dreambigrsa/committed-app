@@ -129,9 +129,9 @@ export async function saveUserAcceptance(
       const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
       if (sessionErr) {
         console.warn('Session error during signup legal check:', sessionErr.message);
-      }
+        }
       if (session?.user && session.user.id !== userId) {
-        console.warn(`Session user ID (${session.user.id}) doesn't match provided userId (${userId}) during signup`);
+          console.warn(`Session user ID (${session.user.id}) doesn't match provided userId (${userId}) during signup`);
       }
     }
 

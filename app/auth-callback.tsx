@@ -22,9 +22,9 @@ export default function AuthCallback() {
       // On native: we must call exchangeCodeForSession (Supabase doesn't auto-detect deep links)
       // On web: Supabase auto-exchanges via detectSessionInUrl - do NOT call again (code is single-use)
       if (Platform.OS !== "web") {
-        try {
+      try {
           const { error } = await supabase.auth.exchangeCodeForSession(url);
-          if (error) {
+        if (error) {
             console.log("Auth callback exchange error:", error.message);
             router.replace("/auth");
             return;

@@ -92,32 +92,32 @@ export default function LoadingScreen({ visible = true }: LoadingScreenProps) {
   return (
     <View style={styles.container}>
       <Animated.View style={[styles.logoWrapper, { opacity: logoFadeAnim }]}>
-        <View style={styles.logoContainer}>
-          <Animated.View
-            style={[
-              styles.shieldContainer,
-              {
-                transform: [
-                  { scale: pulseAnim },
-                  { rotate: rotateInterpolate },
-                ],
-              },
-            ]}
-          >
-            <Shield size={80} color={colors.text.white} strokeWidth={2} />
-          </Animated.View>
-          <Animated.View
-            style={[
-              styles.heartBadge,
-              {
-                transform: [{ scale: heartScaleAnim }],
-              },
-            ]}
-          >
-            <Heart size={32} color={colors.danger} fill={colors.danger} />
-          </Animated.View>
-        </View>
-      </Animated.View>
+      <View style={styles.logoContainer}>
+        <Animated.View
+          style={[
+            styles.shieldContainer,
+            {
+              transform: [
+                { scale: pulseAnim },
+                { rotate: rotateInterpolate },
+              ],
+            },
+          ]}
+        >
+          <Shield size={80} color={colors.text.white} strokeWidth={2} />
+        </Animated.View>
+        <Animated.View
+          style={[
+            styles.heartBadge,
+            {
+              transform: [{ scale: heartScaleAnim }],
+            },
+          ]}
+        >
+          <Heart size={32} color={colors.danger} fill={colors.danger} />
+        </Animated.View>
+      </View>
+    </Animated.View>
     </View>
   );
 }

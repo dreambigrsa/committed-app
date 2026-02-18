@@ -12,7 +12,7 @@ import {
   Switch,
 } from 'react-native';
 import { Stack } from 'expo-router';
-import { Plus, Trash2, Save, Shield, Calendar } from 'lucide-react-native';
+import { Plus, Trash2, Shield, Calendar } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
@@ -33,7 +33,7 @@ export default function AdminDatingDateOptionsScreen() {
   const styles = createStyles(colors);
   
   const [selectedType, setSelectedType] = useState<string>('dress_code');
-  const [editingOption, setEditingOption] = useState<string | null>(null);
+  const [_editingOption, _setEditingOption] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newOption, setNewOption] = useState({ value: '', label: '', order: '0', description: '', icon: '' });
   const [optionsData, setOptionsData] = useState<any>(null);

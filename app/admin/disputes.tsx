@@ -77,7 +77,7 @@ export default function AdminDisputesScreen() {
 
       Alert.alert('Success', 'Dispute resolved');
       loadDisputes();
-    } catch (error) {
+    } catch (_error) {
       Alert.alert('Error', 'Failed to resolve dispute');
     }
   };

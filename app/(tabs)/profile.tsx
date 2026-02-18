@@ -42,7 +42,7 @@ export default function ProfileScreen() {
   const relationship = getCurrentUserRelationship();
   const [isUploading, setIsUploading] = useState(false);
   const [isProfessional, setIsProfessional] = useState(false);
-  const [isCheckingProfessional, setIsCheckingProfessional] = useState(true);
+  const [, setIsCheckingProfessional] = useState(true);
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;

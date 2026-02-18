@@ -24,7 +24,6 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { Post, Advertisement, Sticker, Comment as PostComment, ReelComment } from '@/types';
 import StickerPicker from '@/components/StickerPicker';
 import StatusIndicator from '@/components/StatusIndicator';
-import StatusStoriesBar from '@/components/StatusStoriesBar';
 import FacebookStyleStoriesBar from '@/components/FacebookStyleStoriesBar';
 import * as WebBrowser from 'expo-web-browser';
 import ReportContentModal from '@/components/ReportContentModal';
@@ -32,15 +31,13 @@ import LinkifiedText from '@/components/LinkifiedText';
 import * as ImagePicker from 'expo-image-picker';
 // @ts-ignore - legacy path works at runtime, TypeScript definitions may not include it
 import * as FileSystem from 'expo-file-system/legacy';
-import { useNavigation } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 
 const { width } = Dimensions.get('window');
 
 export default function FeedScreen() {
   const router = useRouter();
-  const navigation = useNavigation();
-  const { currentUser, posts, toggleLike, getComments, getActiveAds, getPersonalizedFeed, getSmartAds, recordAdImpression, recordAdClick, recordAdEngagement, addComment, editComment, deleteComment, toggleCommentLike, editPost, deletePost, sharePost, adminDeletePost, adminRejectPost, reportContent, getUserStatus, userStatuses, getReelComments, toggleReelLike, addReelComment, shareReel } = useApp();
+  const { currentUser, posts, toggleLike, getComments, getActiveAds, getSmartAds, recordAdImpression, recordAdClick, recordAdEngagement, addComment, editComment, deleteComment, toggleCommentLike, editPost, deletePost, sharePost, adminDeletePost, adminRejectPost, reportContent, getUserStatus, getReelComments, toggleReelLike, addReelComment, shareReel } = useApp();
   const { colors } = useTheme();
   const [showComments, setShowComments] = useState<string | null>(null);
   const [smartAds, setSmartAds] = useState<Advertisement[]>([]);
@@ -65,7 +62,7 @@ export default function FeedScreen() {
   const [adOriginalPosts, setAdOriginalPosts] = useState<Record<string, Post | null>>({});
   const [adOriginalReels, setAdOriginalReels] = useState<Record<string, any>>({});
   const [adLikes, setAdLikes] = useState<Record<string, string[]>>({});
-  const [adComments, setAdComments] = useState<Record<string, Array<PostComment | ReelComment>>>({});
+  const [adComments, setAdComments] = useState<Record<string, (PostComment | ReelComment)[]>>({});
   const [expandedAdDescriptions, setExpandedAdDescriptions] = useState<Set<string>>(new Set());
   const [showAdComments, setShowAdComments] = useState<string | null>(null);
 
@@ -178,7 +175,7 @@ export default function FeedScreen() {
         const postMap: Record<string, Post | null> = {};
         const reelMap: Record<string, any> = {};
         const likesMap: Record<string, string[]> = {};
-        const commentsMap: Record<string, Array<PostComment | ReelComment>> = {};
+        const commentsMap: Record<string, (PostComment | ReelComment)[]> = {};
 
         for (const ad of ads) {
           if (ad.promotedPostId) {
@@ -229,7 +226,7 @@ export default function FeedScreen() {
   useEffect(() => {
     const updateAdEngagement = () => {
       const newLikes: Record<string, string[]> = {};
-      const newComments: Record<string, Array<PostComment | ReelComment>> = {};
+      const newComments: Record<string, (PostComment | ReelComment)[]> = {};
       
       smartAds.forEach(ad => {
         if (ad.promotedPostId) {

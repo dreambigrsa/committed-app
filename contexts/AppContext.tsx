@@ -10,6 +10,7 @@ import { setNotificationPreferences } from '@/lib/notification-preferences';
 import { normalizePhoneNumber, comparePhoneNumbers } from '@/lib/phone-normalization';
 import { getAuthRedirectUrl } from '@/lib/auth-redirect';
 import { queueRelationshipChange, syncOfflineQueue, getOfflineQueue, RelationshipConflict } from '@/lib/relationship-sync';
+import { isInvalidRefreshTokenError } from '@/lib/auth-session-utils';
 
 export const [AppContext, useApp] = createContextHook(() => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -85,10 +86,6 @@ export const [AppContext, useApp] = createContextHook(() => {
   }, []);
 
   useEffect(() => {
-    initializeAuth();
-  }, []);
-
-  useEffect(() => {
     if (session?.user) {
       loadUserData(session.user.id);
     } else if (session === null) {
@@ -99,29 +96,67 @@ export const [AppContext, useApp] = createContextHook(() => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
-  const initializeAuth = async () => {
+  /**
+   * Centralized clear session: use on logout, invalid refresh token, or user deleted.
+   * Clears auth storage and state; does NOT clean subscriptions (logout does that).
+   */
+  const clearSession = useCallback(async () => {
+    isLoggingOutRef.current = true;
+    try {
+      await supabase.auth.signOut();
+      console.log('[Auth] clearSession: signed out and clearing state');
+    } catch (e) {
+      console.warn('[Auth] clearSession: signOut error', e);
+    }
+    setCurrentUser(null);
+    setSession(null);
+    setIsLoading(false);
+    isLoggingOutRef.current = false;
+  }, []);
+
+  const initializeAuth = useCallback(async () => {
     let initialSession: Session | null = null;
     try {
-      const { data: { session: s } } = await supabase.auth.getSession();
+      const { data: { session: s }, error } = await supabase.auth.getSession();
+
+      if (error) {
+        if (isInvalidRefreshTokenError(error)) {
+          console.warn('[Auth] Invalid refresh token on hydrate:', error.message);
+          await clearSession();
+          Alert.alert('Session expired', 'Please log in again.');
+          return;
+        }
+        console.warn('[Auth] getSession error:', error.message);
+        setSession(null);
+        setIsLoading(false);
+        return;
+      }
+
+      if (!s?.refresh_token) {
+        setSession(null);
+        setIsLoading(false);
+        return;
+      }
+
       initialSession = s;
       setSession(s);
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+        if (isLoggingOutRef.current) return;
         setSession(newSession);
-        // Password reset: user clicked reset link and arrived at auth-callback
+        if (event === 'SIGNED_OUT' || !newSession) {
+          setIsLoading(false);
+          return;
+        }
         if (event === 'PASSWORD_RECOVERY') {
           setIsPasswordRecoveryFlow(true);
           if (newSession?.user) await loadUserData(newSession.user.id);
           return;
         }
         setIsPasswordRecoveryFlow(false);
-        // Handle email confirmation
         if (event === 'SIGNED_IN' && newSession?.user) {
           const emailConfirmed = !!newSession.user.email_confirmed_at;
-          if (emailConfirmed) {
-            // Email was just confirmed, reload user data
-            await loadUserData(newSession.user.id);
-          }
+          if (emailConfirmed) await loadUserData(newSession.user.id);
         }
       });
 
@@ -129,14 +164,19 @@ export const [AppContext, useApp] = createContextHook(() => {
         subscription.unsubscribe();
       };
     } catch (error) {
-      console.error('Failed to initialize auth:', error);
+      console.error('[Auth] initializeAuth failed:', error);
+      setSession(null);
+      setIsLoading(false);
     } finally {
-      // Only clear loading when there is no session. When session exists, loadUserData (from session effect) will set loading false when done — prevents landing flicker on reopen.
       if (!initialSession?.user) {
         setIsLoading(false);
       }
     }
-  };
+  }, [clearSession]);
+
+  useEffect(() => {
+    initializeAuth();
+  }, [initializeAuth]);
 
   const loadUserData = async (userId: string) => {
     try {
@@ -1183,10 +1223,8 @@ export const [AppContext, useApp] = createContextHook(() => {
         console.error('Error setting offline status:', statusError);
       }
       
-      // Step 5: Clear local state AFTER all cleanup is done
-      // This prevents components from trying to access subscriptions that are being cleaned up
-      setCurrentUser(null);
-      setSession(null);
+      // Step 5: Clear auth state via centralized clearSession, then clear app state
+      await clearSession();
       setRelationships([]);
       setRelationshipRequests([]);
       setPosts([]);
@@ -1236,21 +1274,11 @@ export const [AppContext, useApp] = createContextHook(() => {
         // Ignore cleanup errors
       }
       
-      // Ensure we still clear state even if there's an error
-      setCurrentUser(null);
-      setSession(null);
-      
-      // Final fallback: Force sign out
-      try {
-        await supabase.auth.signOut();
-      } catch (fallbackError) {
-        console.error('Fallback logout error:', fallbackError);
-      }
-      
-      // Reset logout flag even on error
+      // Ensure we still clear auth state even if there's an error
+      await clearSession();
       isLoggingOutRef.current = false;
     }
-  }, [statusRealtimeChannels]);
+  }, [statusRealtimeChannels, clearSession]);
 
   const deleteAccount = useCallback(async () => {
     if (!currentUser) {
@@ -1268,9 +1296,7 @@ export const [AppContext, useApp] = createContextHook(() => {
         throw error;
       }
 
-      // Clear local state
-      setCurrentUser(null);
-      setSession(null);
+      await clearSession();
       setRelationships([]);
       setRelationshipRequests([]);
       setPosts([]);
@@ -1286,15 +1312,12 @@ export const [AppContext, useApp] = createContextHook(() => {
       setAnniversaries([]);
       setReelComments({});
 
-      // Sign out to clear auth session
-      await supabase.auth.signOut();
-
       return true;
     } catch (error: any) {
       console.error('Delete account error:', error);
       throw error;
     }
-  }, [currentUser]);
+  }, [currentUser, clearSession]);
 
   const resetPassword = useCallback(async (email: string) => {
     try {
@@ -7100,6 +7123,7 @@ export const [AppContext, useApp] = createContextHook(() => {
     login,
     signup,
     logout,
+    clearSession,
     deleteAccount,
     resetPassword,
     updateUserProfile,

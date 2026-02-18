@@ -19,10 +19,11 @@ import LegalAcceptanceCheckbox from '@/components/LegalAcceptanceCheckbox';
 import { getStoredReferralCode, clearStoredReferralCode } from '@/lib/referral-storage';
 import { LegalDocument } from '@/types';
 import { checkUserLegalAcceptances } from '@/lib/legal-enforcement';
+import { isInvalidRefreshTokenError } from '@/lib/auth-session-utils';
 
 export default function AuthScreen() {
   const router = useRouter();
-  const { currentUser, signup, login, resetPassword, legalAcceptanceStatus, hasCompletedOnboarding } = useApp();
+  const { currentUser, signup, login, resetPassword, clearSession, legalAcceptanceStatus, hasCompletedOnboarding } = useApp();
   const { colors } = useTheme();
   const [isSignUp, setIsSignUp] = useState<boolean>(true);
   const [showForgotPassword, setShowForgotPassword] = useState<boolean>(false);
@@ -127,6 +128,10 @@ export default function AuthScreen() {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
         if (sessionError) {
+          if (isInvalidRefreshTokenError(sessionError)) {
+            await clearSession();
+            throw new Error('Session expired. Please log in again.');
+          }
           console.warn('Session error when saving legal acceptances:', sessionError);
           throw new Error(`Authentication error: ${sessionError.message}`);
         }
@@ -141,28 +146,15 @@ export default function AuthScreen() {
           throw new Error('Session mismatch. Please log in again.');
         }
       } else {
-        // During signup, wait for session to be established
-        // Don't try to refresh if there's no session yet - just wait
+        // During signup, wait for session to be established. Do not call refreshSession (can trigger Invalid Refresh Token).
         await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Try to get session (don't refresh if it doesn't exist)
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (session && session.user) {
-          // Only refresh if we have a session
-          const { error: refreshError } = await supabase.auth.refreshSession();
-          if (refreshError && refreshError.message !== 'Auth session missing!') {
-            console.warn('Session refresh error during signup:', refreshError);
-          } else {
-            console.log('Session available for legal acceptances');
-          }
-          
-          if (session.user.id !== userId) {
-            console.warn(`Session user ID (${session.user.id}) doesn't match provided userId (${userId}) during signup`);
-          }
-        } else {
-          // No session yet - that's OK, the RLS policy will handle it via the helper function
-          console.log('No session yet during signup - RLS policy will use helper function');
+        const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
+        if (sessionErr && isInvalidRefreshTokenError(sessionErr)) {
+          await clearSession();
+          throw new Error('Session expired. Please log in again.');
+        }
+        if (session?.user && session.user.id !== userId) {
+          console.warn(`Session user ID (${session.user.id}) doesn't match provided userId (${userId}) during signup`);
         }
       }
 

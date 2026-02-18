@@ -6,7 +6,6 @@
 import * as SplashScreen from 'expo-splash-screen';
 import { useRouter, usePathname } from 'expo-router';
 import React, { useEffect, useRef } from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useApp } from '@/contexts/AppContext';
 import { getResolvedRoute } from '@/lib/auth-gate';
 import { getAndClearPendingRoute } from '@/lib/pending-route';
@@ -85,23 +84,10 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
     router,
   ]);
 
-  // While auth is loading, show splash only (no stack)
+  // Single splash when auth is loading — no wrapper with different background
   if (isLoading) {
-    return (
-      <View style={styles.splash}>
-        <LoadingScreen visible />
-      </View>
-    );
+    return <LoadingScreen visible />;
   }
 
   return <>{children}</>;
 }
-
-const styles = StyleSheet.create({
-  splash: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#1A73E8',
-  },
-});

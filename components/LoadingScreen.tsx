@@ -7,24 +7,26 @@ interface LoadingScreenProps {
   visible?: boolean;
 }
 
+/**
+ * Single full-screen splash: one container with theme background, logo animation only.
+ * No navigation logic; receives theme from ThemeProvider.
+ */
 export default function LoadingScreen({ visible = true }: LoadingScreenProps) {
   const { colors } = useTheme();
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const rotateAnim = useRef(new Animated.Value(0)).current;
   const heartScaleAnim = useRef(new Animated.Value(1)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const logoFadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (!visible) return;
 
-    // Fade in
-    Animated.timing(fadeAnim, {
+    Animated.timing(logoFadeAnim, {
       toValue: 1,
-      duration: 300,
+      duration: 400,
       useNativeDriver: true,
     }).start();
 
-    // Pulse animation for the shield
     const pulseAnimation = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
@@ -41,8 +43,6 @@ export default function LoadingScreen({ visible = true }: LoadingScreenProps) {
         }),
       ])
     );
-
-    // Continuous rotation for the shield
     const rotateAnimation = Animated.loop(
       Animated.timing(rotateAnim, {
         toValue: 1,
@@ -51,8 +51,6 @@ export default function LoadingScreen({ visible = true }: LoadingScreenProps) {
         useNativeDriver: true,
       })
     );
-
-    // Heart beat animation
     const heartAnimation = Animated.loop(
       Animated.sequence([
         Animated.timing(heartScaleAnim, {
@@ -80,7 +78,7 @@ export default function LoadingScreen({ visible = true }: LoadingScreenProps) {
       rotateAnimation.stop();
       heartAnimation.stop();
     };
-  }, [visible, pulseAnim, rotateAnim, heartScaleAnim, fadeAnim]);
+  }, [visible]);
 
   if (!visible) return null;
 
@@ -92,33 +90,35 @@ export default function LoadingScreen({ visible = true }: LoadingScreenProps) {
   const styles = createStyles(colors);
 
   return (
-    <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-      <View style={styles.logoContainer}>
-        <Animated.View
-          style={[
-            styles.shieldContainer,
-            {
-              transform: [
-                { scale: pulseAnim },
-                { rotate: rotateInterpolate },
-              ],
-            },
-          ]}
-        >
-          <Shield size={80} color={colors.text.white} strokeWidth={2} />
-        </Animated.View>
-        <Animated.View
-          style={[
-            styles.heartBadge,
-            {
-              transform: [{ scale: heartScaleAnim }],
-            },
-          ]}
-        >
-          <Heart size={32} color={colors.danger} fill={colors.danger} />
-        </Animated.View>
-      </View>
-    </Animated.View>
+    <View style={styles.container}>
+      <Animated.View style={[styles.logoWrapper, { opacity: logoFadeAnim }]}>
+        <View style={styles.logoContainer}>
+          <Animated.View
+            style={[
+              styles.shieldContainer,
+              {
+                transform: [
+                  { scale: pulseAnim },
+                  { rotate: rotateInterpolate },
+                ],
+              },
+            ]}
+          >
+            <Shield size={80} color={colors.text.white} strokeWidth={2} />
+          </Animated.View>
+          <Animated.View
+            style={[
+              styles.heartBadge,
+              {
+                transform: [{ scale: heartScaleAnim }],
+              },
+            ]}
+          >
+            <Heart size={32} color={colors.danger} fill={colors.danger} />
+          </Animated.View>
+        </View>
+      </Animated.View>
+    </View>
   );
 }
 
@@ -127,6 +127,10 @@ const createStyles = (colors: typeof import('@/constants/colors').default) =>
     container: {
       flex: 1,
       backgroundColor: colors.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    logoWrapper: {
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -152,7 +156,7 @@ const createStyles = (colors: typeof import('@/constants/colors').default) =>
       borderRadius: 24,
       padding: 10,
       borderWidth: 3,
-      borderColor: '#1A73E8',
+      borderColor: colors.primary,
     },
   });
 

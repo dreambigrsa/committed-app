@@ -125,24 +125,13 @@ export async function saveUserAcceptance(
       // Don't try to refresh if there's no session yet - just wait
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Try to get session (don't refresh if it doesn't exist)
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (session && session.user) {
-        // Only refresh if we have a session
-        const { error: refreshError } = await supabase.auth.refreshSession();
-        if (refreshError && refreshError.message !== 'Auth session missing!') {
-          console.warn('Session refresh error during signup:', refreshError);
-        } else {
-          console.log('Session available for legal acceptance');
-        }
-        
-        if (session.user.id !== userId) {
-          console.warn(`Session user ID (${session.user.id}) doesn't match provided userId (${userId}) during signup`);
-        }
-      } else {
-        // No session yet - that's OK, the RLS policy will handle it via the helper function
-        console.log('No session yet during signup - RLS policy will use helper function');
+      // Get session only; do not call refreshSession (can trigger Invalid Refresh Token).
+      const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
+      if (sessionErr) {
+        console.warn('Session error during signup legal check:', sessionErr.message);
+      }
+      if (session?.user && session.user.id !== userId) {
+        console.warn(`Session user ID (${session.user.id}) doesn't match provided userId (${userId}) during signup`);
       }
     }
 

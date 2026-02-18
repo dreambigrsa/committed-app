@@ -5,8 +5,13 @@
 
 import { supabase } from './supabase';
 
-const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-const ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+// Use same fallbacks as lib/supabase.ts so the function URL is never empty (empty => relative URL => 404)
+const SUPABASE_URL =
+  process.env.EXPO_PUBLIC_SUPABASE_URL ||
+  'https://dizcuexznganwgddsrfo.supabase.co';
+const ANON_KEY =
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRpemN1ZXh6bmdhbndnZGRzcmZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUyNjcxODcsImV4cCI6MjA4MDg0MzE4N30.cvnt9KN4rz2u9yQbDQjFcA_Q7WDz2M_lGln3RCJ-hJQ';
 
 export type AdminDeleteUserResult =
   | { success: true; deletedUserId: string }

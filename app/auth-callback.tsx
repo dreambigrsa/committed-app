@@ -6,11 +6,14 @@ import { getAndClearPendingAuthUrl } from "@/lib/pending-auth-url";
 import { useRouter } from "expo-router";
 import { View, ActivityIndicator } from "react-native";
 import { useApp } from "@/contexts/AppContext";
+import { getResolvedRoute } from "@/lib/auth-gate";
+import { getAndClearPendingRouteIfContent } from "@/lib/pending-route";
 
 export default function AuthCallback() {
   const router = useRouter();
-  const { currentUser, hasCompletedOnboarding, isLoading, isPasswordRecoveryFlow } = useApp();
+  const { session, currentUser, hasCompletedOnboarding, isLoading, isPasswordRecoveryFlow, legalAcceptanceStatus } = useApp();
   const [isProcessing, setIsProcessing] = useState(true);
+  const emailVerified = Boolean(currentUser?.verifications?.email);
 
   useEffect(() => {
     const processUrl = async (url: string) => {
@@ -32,7 +35,8 @@ export default function AuthCallback() {
           return;
         }
       }
-      // Session established (or will be via detectSessionInUrl on web); wait for user + redirect
+      // Session established (native: exchangeCodeForSession; web: detectSessionInUrl). Allow redirect effect to run.
+      setIsProcessing(false);
     };
 
     const subscription = Linking.addEventListener("url", ({ url }) => {
@@ -62,37 +66,36 @@ export default function AuthCallback() {
     return () => subscription.remove();
   }, []);
 
-  // Once user data is loaded, redirect appropriately
+  // Central gate: redirect only after auth hydration (tokens stored, user + legal + onboarding loaded).
   useEffect(() => {
     if (!isProcessing || isLoading) return;
-    
     if (currentUser) {
-      // Password reset: user clicked reset link → send to set-new-password screen
       if (isPasswordRecoveryFlow) {
         router.replace("/reset-password");
         setIsProcessing(false);
         return;
       }
-      if (hasCompletedOnboarding === null) {
-        // Still loading onboarding status
-        return;
+      if (hasCompletedOnboarding === null) return;
+      let route = getResolvedRoute({
+        session,
+        currentUser,
+        legalAcceptanceStatus,
+        hasCompletedOnboarding,
+        isPasswordRecoveryFlow,
+        emailVerified,
+      });
+      if (route === '/(tabs)/home') {
+        const pending = getAndClearPendingRouteIfContent();
+        if (pending) route = pending as any;
       }
-      if (hasCompletedOnboarding === false) {
-        router.replace("/onboarding");
-      } else if (hasCompletedOnboarding === true) {
-        router.replace("/(tabs)/home");
-      }
+      router.replace(route as any);
       setIsProcessing(false);
     } else {
-      // No user after processing, might be an error
-      // Give it a bit more time, then redirect to auth
       setTimeout(() => {
-        if (!currentUser) {
-          router.replace("/auth");
-        }
+        if (!currentUser) router.replace("/auth");
       }, 2000);
     }
-  }, [currentUser, hasCompletedOnboarding, isLoading, isProcessing, isPasswordRecoveryFlow, router]);
+  }, [currentUser, hasCompletedOnboarding, isLoading, isProcessing, isPasswordRecoveryFlow, legalAcceptanceStatus, session, emailVerified, router]);
 
   return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1A73E8' }}>

@@ -40,12 +40,16 @@ In the same section, add **all** of these **Redirect URLs**:
 ```
 committed://auth-callback
 https://committed-5mxf.onrender.com/auth-callback
+https://committed-5mxf.onrender.com
+https://committed-5mxf.onrender.com/reset-password
 committed://*
 ```
 
 **Why multiple URLs?**
 - `committed://auth-callback` - Native app deep link (email link on phone opens app)
 - `https://committed-5mxf.onrender.com/auth-callback` - Web app (email link on desktop)
+- `https://committed-5mxf.onrender.com` - Web root (password reset may land here with hash; app redirects to auth-callback then reset-password)
+- `https://committed-5mxf.onrender.com/reset-password` - Web reset page (allowed redirect target)
 - `committed://*` - Wildcard for native app flexibility
 
 ---
@@ -63,9 +67,9 @@ committed://*
 ### Password Reset Flow
 
 1. User requests password reset → Supabase sends reset email
-2. User clicks link → Link contains: `committed://auth-callback?code=...`
-3. App opens → Processes reset token
-4. User sets new password → Completes reset
+2. User clicks link → Link contains: `committed://auth-callback?code=...` (native) or `https://.../#access_token=...&type=recovery` (web)
+3. App opens / lands on web → Layout redirects recovery hash to `/auth-callback`; auth-callback or index redirects to `/reset-password`
+4. User sets new password → `updateUser({ password })`; then sign out and redirect to `/auth` to sign in with new password
 
 ---
 

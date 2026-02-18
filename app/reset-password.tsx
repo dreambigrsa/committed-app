@@ -120,12 +120,16 @@ export default function ResetPasswordScreen() {
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw error;
       clearRecoveryFlow();
-      // Navigate first so user is on home even if Alert is dismissed; session persists so they're already logged in
-      router.replace('/(tabs)/home');
-      Alert.alert('Success', "Your password has been updated. You're logged in.", [{ text: 'OK' }]);
+      // Sign out so recovery token is not reused; user must log in with new password.
+      await supabase.auth.signOut();
+      router.replace('/auth');
+      Alert.alert('Success', 'Your password has been updated. Please sign in with your new password.', [{ text: 'OK' }]);
     } catch (error: any) {
       console.error('Reset password error:', error);
-      Alert.alert('Error', error.message || 'Failed to update password. Please try again.');
+      const message = error?.message?.toLowerCase?.().includes('expired')
+        ? 'This reset link has expired. Please request a new password reset.'
+        : (error?.message || 'Failed to update password. Please try again.');
+      Alert.alert('Error', message);
     } finally {
       setIsLoading(false);
     }

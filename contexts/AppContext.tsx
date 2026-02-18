@@ -100,9 +100,11 @@ export const [AppContext, useApp] = createContextHook(() => {
   }, [session]);
 
   const initializeAuth = async () => {
+    let initialSession: Session | null = null;
     try {
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
-      setSession(currentSession);
+      const { data: { session: s } } = await supabase.auth.getSession();
+      initialSession = s;
+      setSession(s);
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
         setSession(newSession);
@@ -129,7 +131,10 @@ export const [AppContext, useApp] = createContextHook(() => {
     } catch (error) {
       console.error('Failed to initialize auth:', error);
     } finally {
-      setIsLoading(false);
+      // Only clear loading when there is no session. When session exists, loadUserData (from session effect) will set loading false when done — prevents landing flicker on reopen.
+      if (!initialSession?.user) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -901,24 +906,32 @@ export const [AppContext, useApp] = createContextHook(() => {
     }
   }, []);
 
-  const signup = useCallback(async (fullName: string, email: string, phoneNumber: string, password: string) => {
+  const signup = useCallback(async (
+    fullName: string,
+    email: string,
+    phoneNumber: string,
+    password: string,
+    referralCode?: string | null
+  ) => {
     try {
-      // Normalize phone number before storing
       const normalizedPhone = normalizePhoneNumber(phoneNumber);
       if (!normalizedPhone) {
         throw new Error('Invalid phone number format. Please enter a valid phone number.');
       }
 
-      console.log('Signing up user:', { fullName, email, phoneNumber: normalizedPhone });
-      
+      const userMeta: Record<string, unknown> = {
+        full_name: fullName,
+        phone_number: normalizedPhone,
+      };
+      if (referralCode && referralCode.trim()) {
+        userMeta.referral_code = referralCode.trim();
+      }
+
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: {
-            full_name: fullName,
-            phone_number: normalizedPhone,
-          },
+          data: userMeta,
           emailRedirectTo: getAuthRedirectUrl(),
         }
       });
@@ -7077,8 +7090,13 @@ export const [AppContext, useApp] = createContextHook(() => {
   }, [session, currentUser, statusRealtimeChannels]);
 
   return {
+    session,
     currentUser,
     isLoading,
+    authLoading: isLoading,
+    isAuthenticated: !!session,
+    user: currentUser,
+    accessToken: session?.access_token ?? null,
     login,
     signup,
     logout,

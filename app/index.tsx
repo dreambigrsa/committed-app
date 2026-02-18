@@ -28,50 +28,23 @@ import { useApp } from '@/contexts/AppContext';
 import LoadingScreen from '@/components/LoadingScreen';
 
 export default function LandingScreen() {
+  const { session, isLoading } = useApp();
   const router = useRouter();
-  const { currentUser, hasCompletedOnboarding, isLoading } = useApp();
   const { colors } = useTheme();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
 
   useEffect(() => {
-    if (currentUser) {
-      // If user is authenticated but data is still loading, show loading screen
-      // Don't show landing page content
-      if (isLoading || hasCompletedOnboarding === null) {
-        return; // LoadingScreen will be shown
-      }
-      
-      // Once data is loaded, redirect immediately
-      if (hasCompletedOnboarding === false) {
-        router.replace('/onboarding');
-      } else if (hasCompletedOnboarding === true) {
-        router.replace('/(tabs)/home');
-      }
-    }
-  }, [currentUser, hasCompletedOnboarding, isLoading, router]);
-
-  useEffect(() => {
-    // Only run animations if we're not showing the loading screen
-    if (!(currentUser && (isLoading || hasCompletedOnboarding === null))) {
+    if (!session) {
       Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 800,
-          useNativeDriver: true,
-        }),
+        Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+        Animated.timing(slideAnim, { toValue: 0, duration: 800, useNativeDriver: true }),
       ]).start();
     }
-  }, [fadeAnim, slideAnim, currentUser, isLoading, hasCompletedOnboarding]);
+  }, [fadeAnim, slideAnim, session]);
 
-  // Show loading screen while user data is loading or onboarding status is being checked
-  // This must come AFTER all hooks are called
-  if (currentUser && (isLoading || hasCompletedOnboarding === null)) {
+  // AppGate is the only place that redirects. If we have session we show splash until AppGate replaces route — never show landing to logged-in users.
+  if (session || isLoading) {
     return <LoadingScreen visible={true} />;
   }
 

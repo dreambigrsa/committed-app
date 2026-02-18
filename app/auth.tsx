@@ -16,12 +16,13 @@ import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import LegalAcceptanceCheckbox from '@/components/LegalAcceptanceCheckbox';
+import { getStoredReferralCode, clearStoredReferralCode } from '@/lib/referral-storage';
 import { LegalDocument } from '@/types';
 import { checkUserLegalAcceptances } from '@/lib/legal-enforcement';
 
 export default function AuthScreen() {
   const router = useRouter();
-  const { currentUser, signup, login, resetPassword } = useApp();
+  const { currentUser, signup, login, resetPassword, legalAcceptanceStatus, hasCompletedOnboarding } = useApp();
   const { colors } = useTheme();
   const [isSignUp, setIsSignUp] = useState<boolean>(true);
   const [showForgotPassword, setShowForgotPassword] = useState<boolean>(false);
@@ -37,16 +38,28 @@ export default function AuthScreen() {
   const [legalAcceptances, setLegalAcceptances] = useState<Record<string, boolean>>({});
   const [loadingLegalDocs, setLoadingLegalDocs] = useState(false);
 
+  // Logged-in user on auth screen: redirect to resolved route (or pending deep link). Never landing.
   useEffect(() => {
-    if (currentUser) {
-      // Small delay to ensure user data and onboarding status are loaded
-      // before redirecting - index.tsx will handle the redirect based on onboarding status
-      const timer = setTimeout(() => {
-        router.replace('/');
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [currentUser, router]);
+    if (!currentUser) return;
+    const timer = setTimeout(() => {
+      const { getResolvedRoute } = require('@/lib/auth-gate');
+      const { getAndClearPendingRouteIfContent } = require('@/lib/pending-route');
+      let route = getResolvedRoute({
+        session: true,
+        currentUser,
+        legalAcceptanceStatus,
+        hasCompletedOnboarding,
+        isPasswordRecoveryFlow: false,
+        emailVerified: currentUser.verifications?.email ?? false,
+      });
+      if (route === '/(tabs)/home') {
+        const pending = getAndClearPendingRouteIfContent();
+        if (pending) route = pending;
+      }
+      if (route !== '/' && route !== '/auth') router.replace(route as any);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [currentUser, legalAcceptanceStatus, hasCompletedOnboarding, router]);
 
   useEffect(() => {
     if (isSignUp && !showForgotPassword) {
@@ -306,7 +319,15 @@ export default function AuthScreen() {
           return;
         }
 
-        const user = await signup(formData.fullName, formData.email, formData.phoneNumber, formData.password);
+        const referralCode = await getStoredReferralCode();
+        const user = await signup(
+          formData.fullName,
+          formData.email,
+          formData.phoneNumber,
+          formData.password,
+          referralCode ?? undefined
+        );
+        if (referralCode) await clearStoredReferralCode();
         
         // Save legal acceptances after successful signup
         // Wait a moment for user record to be created by trigger
@@ -389,14 +410,10 @@ export default function AuthScreen() {
           // Redirect immediately - verify-email screen will render instantly
           // Don't clear loading until after redirect completes
           if (!emailConfirmed) {
-              // Redirect to email verification screen
               router.replace('/verify-email');
-              // Keep loading visible during transition, then clear it
               setTimeout(() => setIsLoading(false), 300);
             } else {
-              // Email already confirmed, redirect to index which will check onboarding
-              router.replace('/');
-              // Clear loading after redirect starts
+              router.replace('/(tabs)/home');
               setTimeout(() => setIsLoading(false), 300);
             }
         } catch (redirectError) {
@@ -433,12 +450,10 @@ export default function AuthScreen() {
                 router.replace('/(tabs)/home');
               }
             } else {
-              // Fallback to index if we can't get user
-              router.replace('/');
+              router.replace('/(tabs)/home');
             }
           } catch (error) {
-            // If error, fallback to index
-            router.replace('/');
+            router.replace('/(tabs)/home');
           }
         }, 300);
       }

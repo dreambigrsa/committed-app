@@ -1,41 +1,94 @@
 import { Stack, useRouter } from "expo-router";
 import * as Linking from "expo-linking";
-import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
+import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { AppContext, useApp } from "@/contexts/AppContext";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import NotificationToast from "../components/NotificationToast";
 import BanMessageModal from "@/components/BanMessageModal";
 import LegalAcceptanceEnforcer from "@/components/LegalAcceptanceEnforcer";
+import AppGate from "@/components/AppGate";
 import { setPendingAuthUrl } from "@/lib/pending-auth-url";
-
-SplashScreen.preventAutoHideAsync();
+import { setPendingRoute } from "@/lib/pending-route";
+import { parseDeepLink } from "@/lib/deep-links";
+import { setStoredReferralCode } from "@/lib/referral-storage";
 
 function RootLayoutNav() {
   const router = useRouter();
-  const { banModalVisible, banModalData, setBanModalVisible, currentUser } = useApp();
+  const { banModalVisible, banModalData, setBanModalVisible, currentUser, isLoading, session } = useApp();
+  const isAuthenticated = !!session;
 
-  // When app is already open (e.g. on forgot-password screen) and user opens reset link,
-  // the url event fires here. Navigate to auth-callback and pass the URL so it gets processed.
+  // Web cold start: recovery hash → auth-callback so hash is processed.
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return;
+    const href = window.location.href;
+    const hash = window.location.hash || "";
+    const hasRecovery = hash.includes("type=recovery") || hash.includes("access_token=");
+    const isAuthCallbackPath = href.includes("/auth-callback");
+    if (hasRecovery && !isAuthCallbackPath) {
+      router.replace("/auth-callback" + hash);
+    }
+  }, []);
+
+  // Deep link handler: run only after auth hydration to avoid races. Auth links handled immediately; post/reel when authenticated or store as pending.
+  const handleUrl = (url: string, afterHydration: boolean) => {
+    const parsed = parseDeepLink(url);
+    if (!parsed) return;
+    if (parsed.type === "auth") {
+      setPendingAuthUrl(url);
+      router.replace("/auth-callback");
+      return;
+    }
+    if (parsed.type === "referral" && parsed.referralCode) {
+      setStoredReferralCode(parsed.referralCode).catch(() => {});
+      if (afterHydration) router.replace("/");
+      return;
+    }
+    if (parsed.type === "post" && parsed.postId) {
+      const route = `/post/${parsed.postId}`;
+      if (afterHydration && isAuthenticated) {
+        router.replace(route as any);
+      } else {
+        setPendingRoute(route);
+      }
+      return;
+    }
+    if (parsed.type === "reel" && parsed.reelId) {
+      const route = `/reel/${parsed.reelId}`;
+      if (afterHydration && isAuthenticated) {
+        router.replace(route as any);
+      } else {
+        setPendingRoute(route);
+      }
+      return;
+    }
+  };
+
   useEffect(() => {
     const sub = Linking.addEventListener("url", ({ url }) => {
-      const isAuthCallback =
-        url.includes("auth-callback") ||
-        url.includes("auth/callback") ||
-        url.includes("code=") ||
-        url.includes("type=recovery") ||
-        url.includes("access_token=");
-      if (isAuthCallback) {
-        setPendingAuthUrl(url);
-        router.replace("/auth-callback");
-      }
+      handleUrl(url, !isLoading);
     });
     return () => sub.remove();
-  }, [router]);
+  }, [router, isLoading, isAuthenticated]);
+
+  // Cold start: process initial URL only after auth hydration to prevent flicker and wrong route.
+  useEffect(() => {
+    if (isLoading) return;
+    (async () => {
+      const initial = await Linking.getInitialURL();
+      if (initial) {
+        handleUrl(initial, true);
+        return;
+      }
+      if (Platform.OS === "web" && typeof window !== "undefined" && window.location?.href) {
+        handleUrl(window.location.href, true);
+      }
+    })();
+  }, [isLoading]);
 
   return (
-    <>
+    <AppGate>
       <Stack screenOptions={{ headerBackTitle: "Back" }}>
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="auth" options={{ headerShown: false }} />
@@ -76,15 +129,11 @@ function RootLayoutNav() {
         />
       )}
       <LegalAcceptanceEnforcer />
-    </>
+    </AppGate>
   );
 }
 
 export default function RootLayout() {
-  useEffect(() => {
-    SplashScreen.hideAsync();
-  }, []);
-
   return (
     <AppContext>
       <ThemeProvider>

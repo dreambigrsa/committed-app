@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
@@ -8,9 +8,11 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Dimensions,
   Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Heart, X, Star, Settings, Users, Sparkles, Zap, RotateCcw, Crown, Sliders, RefreshCw } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import * as DatingService from '@/lib/dating-service';
@@ -19,7 +21,9 @@ import { useApp } from '@/contexts/AppContext';
 import DatingSwipeCard from '@/components/DatingSwipeCard';
 import MatchCelebrationModal from '@/components/MatchCelebrationModal';
 import PremiumModal from '@/components/PremiumModal';
+import { DatingDiscoveryUser } from '@/types';
 
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MAX_VISIBLE_CARDS = 3;
 
 export default function DatingScreen() {

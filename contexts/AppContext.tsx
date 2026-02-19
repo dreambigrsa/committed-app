@@ -4,17 +4,18 @@ import { AppState, AppStateStatus, Alert } from 'react-native';
 import { User, Relationship, RelationshipRequest, Post, Reel, Comment, Conversation, Message, Advertisement, Notification, CheatingAlert, Follow, Dispute, CoupleCertificate, Anniversary, ReportedContent, ReelComment, NotificationType, MessageWarning, InfidelityReport, TriggerWord, LegalDocument, UserStatus, UserStatusType, StatusVisibility } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { Session, RealtimeChannel } from '@supabase/supabase-js';
+import { useAuth } from '@/contexts/AuthContext';
 import { checkUserLegalAcceptances } from '@/lib/legal-enforcement';
 import { registerForPushNotificationsAsync, showLocalNotification } from '@/lib/push-notifications';
 import { setNotificationPreferences } from '@/lib/notification-preferences';
 import { normalizePhoneNumber, comparePhoneNumbers } from '@/lib/phone-normalization';
 import { getAuthRedirectUrl } from '@/lib/auth-redirect';
 import { queueRelationshipChange, syncOfflineQueue, getOfflineQueue, RelationshipConflict } from '@/lib/relationship-sync';
-import { isInvalidRefreshTokenError } from '@/lib/auth-session-utils';
 
 export const [AppContext, useApp] = createContextHook(() => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
+  const { user: authUser } = useAuth();
   const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [relationshipRequests, setRelationshipRequests] = useState<RelationshipRequest[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
@@ -85,106 +86,33 @@ export const [AppContext, useApp] = createContextHook(() => {
     return false;
   }, []);
 
+  // Auth state comes from AuthContext. Load app data when auth user exists.
   useEffect(() => {
-    if (session?.user) {
-      setIsLoading(true);
-      loadUserData(session.user.id);
-    } else if (session === null) {
-      setCurrentUser(null);
-      setIsLoading(false);
+    if (authUser?.isPasswordRecovery) {
+      setIsPasswordRecoveryFlow(true);
+    } else {
+      setIsPasswordRecoveryFlow(false);
+    }
+  }, [authUser?.isPasswordRecovery]);
+
+  useEffect(() => {
+    if (authUser?.id) {
+      supabase.auth.getSession().then(({ data: { session: s } }) => {
+        setSession(s);
+      });
+      loadUserData(authUser.id);
     } else {
       setCurrentUser(null);
+      setSession(null);
       setIsLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session]);
-
-  /**
-   * Centralized clear session: use on logout, invalid refresh token, or user deleted.
-   * Clears auth storage and state; does NOT clean subscriptions (logout does that).
-   */
-  const clearSession = useCallback(async () => {
-    isLoggingOutRef.current = true;
-    try {
-      await supabase.auth.signOut();
-      console.log('[Auth] clearSession: signed out and clearing state');
-    } catch (e) {
-      console.warn('[Auth] clearSession: signOut error', e);
-    }
-    setCurrentUser(null);
-    setSession(null);
-    setIsLoading(false);
-    isLoggingOutRef.current = false;
-  }, []);
-
-  const initializeAuth = useCallback(async () => {
-    console.log('[Auth] restore started');
-    setIsLoading(true);
-    let hadSession = false;
-    try {
-      const { data: { session: s }, error } = await supabase.auth.getSession();
-      console.log('[Auth] token present:', !!s?.refresh_token);
-
-      if (error) {
-        if (isInvalidRefreshTokenError(error)) {
-          console.warn('[Auth] Invalid refresh token on hydrate:', error.message);
-          await clearSession();
-          Alert.alert('Session expired', 'Please log in again.');
-          return;
-        }
-        console.warn('[Auth] getSession error:', error.message);
-        setSession(null);
-        return;
-      }
-
-      if (!s?.refresh_token) {
-        setSession(null);
-        return;
-      }
-
-      hadSession = true;
-      setSession(s);
-
-      supabase.auth.onAuthStateChange((event, newSession) => {
-        if (isLoggingOutRef.current) return;
-        setSession(newSession);
-        if (event === 'SIGNED_OUT' || !newSession) {
-          setIsLoading(false);
-          return;
-        }
-        if (event === 'PASSWORD_RECOVERY') {
-          setIsPasswordRecoveryFlow(true);
-          if (newSession?.user) void loadUserData(newSession.user.id);
-          return;
-        }
-        setIsPasswordRecoveryFlow(false);
-        if (event === 'SIGNED_IN' && newSession?.user) {
-          const emailConfirmed = !!newSession.user.email_confirmed_at;
-          if (emailConfirmed) void loadUserData(newSession.user.id);
-        }
-      });
-    } catch (error) {
-      console.log('[Auth] restore error:', error);
-      setSession(null);
-      setCurrentUser(null);
-    } finally {
-      if (!hadSession) {
-        console.log('[Auth] loading finished (init, no session)');
-        setIsLoading(false);
-      }
-    }
-  }, [clearSession]);
-
-  useEffect(() => {
-    initializeAuth();
-    // Run once on mount; do not add deps to avoid re-running and loops
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authUser?.id]);
 
   const loadUserData = async (userId: string) => {
     try {
       setIsLoading(true);
-      console.log('[Auth] user fetch started:', userId);
+      console.log('Loading user data for:', userId);
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('*')
@@ -192,13 +120,13 @@ export const [AppContext, useApp] = createContextHook(() => {
         .single();
 
       if (userError && userError.code === 'PGRST116') {
-        console.log('[Auth] user not in DB, creating record...');
+        console.log('User not found in database. Creating user record...');
         await createUserRecord(userId);
         return;
       }
 
       if (userError) {
-        console.error('[Auth] user fetch error:', userError?.message || userError);
+        console.error('User data error:', JSON.stringify(userError, null, 2));
         throw userError;
       }
       
@@ -875,16 +803,8 @@ export const [AppContext, useApp] = createContextHook(() => {
 
 
     } catch (error: any) {
-      console.error('[Auth] loadUserData error:', error?.message || error);
-      try {
-        await clearSession();
-      } catch (e) {
-        setCurrentUser(null);
-        setSession(null);
-        setIsLoading(false);
-      }
+      console.error('Failed to load user data:', error?.message || error);
     } finally {
-      console.log('[Auth] loading finished (user)');
       setIsLoading(false);
     }
   };
@@ -957,32 +877,24 @@ export const [AppContext, useApp] = createContextHook(() => {
     }
   }, []);
 
-  const signup = useCallback(async (
-    fullName: string,
-    email: string,
-    phoneNumber: string,
-    password: string,
-    referralCode?: string | null
-  ) => {
+  const signup = useCallback(async (fullName: string, email: string, phoneNumber: string, password: string) => {
     try {
+      // Normalize phone number before storing
       const normalizedPhone = normalizePhoneNumber(phoneNumber);
       if (!normalizedPhone) {
         throw new Error('Invalid phone number format. Please enter a valid phone number.');
       }
 
-      const userMeta: Record<string, unknown> = {
-        full_name: fullName,
-        phone_number: normalizedPhone,
-      };
-      if (referralCode && referralCode.trim()) {
-        userMeta.referral_code = referralCode.trim();
-      }
+      console.log('Signing up user:', { fullName, email, phoneNumber: normalizedPhone });
       
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: userMeta,
+          data: {
+            full_name: fullName,
+            phone_number: normalizedPhone,
+          },
           emailRedirectTo: getAuthRedirectUrl(),
         }
       });
@@ -1234,8 +1146,10 @@ export const [AppContext, useApp] = createContextHook(() => {
         console.error('Error setting offline status:', statusError);
       }
       
-      // Step 5: Clear auth state via centralized clearSession, then clear app state
-      await clearSession();
+      // Step 5: Clear local state AFTER all cleanup is done
+      // This prevents components from trying to access subscriptions that are being cleaned up
+      setCurrentUser(null);
+      setSession(null);
       setRelationships([]);
       setRelationshipRequests([]);
       setPosts([]);
@@ -1285,11 +1199,21 @@ export const [AppContext, useApp] = createContextHook(() => {
         // Ignore cleanup errors
       }
       
-      // Ensure we still clear auth state even if there's an error
-      await clearSession();
+      // Ensure we still clear state even if there's an error
+      setCurrentUser(null);
+      setSession(null);
+      
+      // Final fallback: Force sign out
+      try {
+        await supabase.auth.signOut();
+      } catch (fallbackError) {
+        console.error('Fallback logout error:', fallbackError);
+      }
+      
+      // Reset logout flag even on error
       isLoggingOutRef.current = false;
     }
-  }, [statusRealtimeChannels, clearSession]);
+  }, [statusRealtimeChannels]);
 
   const deleteAccount = useCallback(async () => {
     if (!currentUser) {
@@ -1307,7 +1231,9 @@ export const [AppContext, useApp] = createContextHook(() => {
         throw error;
       }
 
-      await clearSession();
+      // Clear local state
+      setCurrentUser(null);
+      setSession(null);
       setRelationships([]);
       setRelationshipRequests([]);
       setPosts([]);
@@ -1323,12 +1249,15 @@ export const [AppContext, useApp] = createContextHook(() => {
       setAnniversaries([]);
       setReelComments({});
 
+      // Sign out to clear auth session
+      await supabase.auth.signOut();
+
       return true;
     } catch (error: any) {
       console.error('Delete account error:', error);
       throw error;
     }
-  }, [currentUser, clearSession]);
+  }, [currentUser]);
 
   const resetPassword = useCallback(async (email: string) => {
     try {
@@ -7124,18 +7053,11 @@ export const [AppContext, useApp] = createContextHook(() => {
   }, [session, currentUser, statusRealtimeChannels]);
 
   return {
-    session,
     currentUser,
     isLoading,
-    authLoading: isLoading,
-    isAuthenticated: !!session,
-    user: currentUser,
-    accessToken: session?.access_token ?? null,
-    refreshToken: session?.refresh_token ?? null,
     login,
     signup,
     logout,
-    clearSession,
     deleteAccount,
     resetPassword,
     updateUserProfile,

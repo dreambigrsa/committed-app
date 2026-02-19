@@ -26,7 +26,7 @@ export default function AdminDatingInterestsScreen() {
   const [interests, setInterests] = useState<any[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [_editingInterest, _setEditingInterest] = useState<string | null>(null);
+  const [editingInterest, setEditingInterest] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newInterest, setNewInterest] = useState({ name: '', icon: '', category: 'hobbies' });
 

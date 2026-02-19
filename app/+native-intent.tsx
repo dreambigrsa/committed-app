@@ -1,6 +1,6 @@
 export function redirectSystemPath({
   path,
-  initial: _initial,
+  initial,
 }: { path: string; initial: boolean }) {
   return path || '/';
 }

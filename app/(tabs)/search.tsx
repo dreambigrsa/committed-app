@@ -22,7 +22,7 @@ import StatusIndicator from '@/components/StatusIndicator';
 
 export default function SearchScreen() {
   const router = useRouter();
-  const { searchUsers, getUserRelationship, searchByFace, userStatuses } = useApp();
+  const { searchUsers, getUserRelationship, searchByFace, getUserStatus, userStatuses } = useApp();
   const { colors } = useTheme();
   const [query, setQuery] = useState<string>('');
 
@@ -182,60 +182,60 @@ export default function SearchScreen() {
                 <Text style={styles.userAvatarText}>{item.fullName?.charAt(0) || '?'}</Text>
               </View>
             )}
-            {item.id && userStatuses[item.id] ? (
+            {item.id && userStatuses[item.id] && (
               <StatusIndicator 
                 status={userStatuses[item.id].statusType} 
                 size="small" 
                 showBorder={true}
               />
-            ) : null}
+            )}
           </View>
 
           <View style={styles.userInfo}>
             <View style={styles.userNameRow}>
-              <Text style={styles.userName}>{item.fullName ?? 'Unknown'}</Text>
-              {item.username ? (
+              <Text style={styles.userName}>{item.fullName}</Text>
+              {item.username && (
                 <Text style={styles.username}>@{item.username}</Text>
-              ) : null}
-              {isNonRegistered ? (
+              )}
+              {isNonRegistered && (
                 <View style={styles.nonRegisteredBadge}>
                   <Text style={styles.nonRegisteredText}>Not Registered</Text>
                 </View>
-              ) : null}
-              {item.verifications?.phone ? (
+              )}
+              {item.verifications?.phone && (
                 <CheckCircle2 size={16} color={colors.secondary} />
-              ) : null}
+              )}
             </View>
 
-            {item.phoneNumber ? (
+            {item.phoneNumber && (
               <Text style={styles.phoneNumber}>{item.phoneNumber}</Text>
-            ) : null}
+            )}
 
             {/* Show relationship info for face search results */}
-            {isFaceSearchResult && faceSearchRelationship ? (
+            {isFaceSearchResult && faceSearchRelationship && (
               <>
                 <Text style={styles.relationshipInfo}>
                   {faceSearchRelationship.status === 'verified' ? '❤️ ' : '⏳ '}
                   In a {getRelationshipTypeLabel(faceSearchRelationship.type).toLowerCase()} with{' '}
-                  {item.userName ?? 'Unknown'}
+                  {item.userName || 'Unknown'}
                 </Text>
-                {faceSearchRelationship.status === 'verified' ? (
+                {faceSearchRelationship.status === 'verified' && (
                   <View style={styles.verifiedBadge}>
                     <Text style={styles.verifiedBadgeText}>
                       Verified Relationship
                     </Text>
                   </View>
-                ) : null}
-                {item.similarityScore != null ? (
+                )}
+                {item.similarityScore && (
                   <Text style={styles.similarityScore}>
-                    Match: {Math.round(Number(item.similarityScore) * 100)}%
+                    Match: {Math.round(item.similarityScore * 100)}%
                   </Text>
-                ) : null}
+                )}
               </>
-            ) : null}
+            )}
 
             {/* Show relationship info for non-registered partners */}
-            {isNonRegistered && item.relationshipType && !isFaceSearchResult ? (
+            {isNonRegistered && item.relationshipType && !isFaceSearchResult && (
               <View style={styles.relationshipInfoContainer}>
                 <Text style={styles.relationshipInfo}>
                   {item.relationshipStatus === 'verified' ? '❤️ ' : '⏳ '}
@@ -246,7 +246,7 @@ export default function SearchScreen() {
                   {item.relationshipStatus === 'verified' ? ' (Verified)' : ''}
                 </Text>
               </View>
-            ) : null}
+            )}
 
             {/* Show relationship info for registered users */}
             {relationship && !isNonRegistered && !isFaceSearchResult ? (
@@ -254,19 +254,19 @@ export default function SearchScreen() {
                 <Text style={styles.relationshipInfo}>
                   {relationship.status === 'verified' ? '❤️ ' : '⏳ '}
                   In a {getRelationshipTypeLabel(relationship.type).toLowerCase()} with{' '}
-                  {relationship.partnerName ?? 'Unknown'}
+                  {relationship.partnerName}
                 </Text>
-                {relationship.status === 'verified' ? (
+                {relationship.status === 'verified' && (
                   <View style={styles.verifiedBadge}>
                     <Text style={styles.verifiedBadgeText}>
                       Verified Relationship
                     </Text>
                   </View>
-                ) : null}
+                )}
               </>
-            ) : !isNonRegistered && !isFaceSearchResult ? (
+            ) : !isNonRegistered && !isFaceSearchResult && (
               <Text style={styles.noRelationship}>No registered relationship</Text>
-            ) : null}
+            )}
           </View>
         </View>
       </TouchableOpacity>
@@ -282,7 +282,7 @@ export default function SearchScreen() {
         </Text>
       </View>
 
-      {disclaimerDoc ? (
+      {disclaimerDoc && (
         <TouchableOpacity
           style={styles.disclaimerBanner}
           onPress={() => router.push(`/legal/${disclaimerDoc.slug}` as any)}
@@ -294,7 +294,7 @@ export default function SearchScreen() {
           </Text>
           <ChevronRight size={18} color={colors.primary} />
         </TouchableOpacity>
-      ) : null}
+      )}
 
       <View style={styles.searchContainer}>
         {/* Search Mode Toggle */}
@@ -338,11 +338,11 @@ export default function SearchScreen() {
               onChangeText={handleSearch}
               autoCorrect={false}
             />
-            {query.length > 0 ? (
+            {query.length > 0 && (
               <TouchableOpacity onPress={clearSearch} style={styles.clearButton}>
                 <X size={20} color={colors.text.tertiary} />
               </TouchableOpacity>
-            ) : null}
+            )}
           </View>
         ) : (
           <View style={styles.faceSearchContainer}>

@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Stack } from 'expo-router';
 import { Image } from 'expo-image';
-import { Search, Shield, Ban, CheckCircle, Trash2, Users, Heart, Sparkles } from 'lucide-react-native';
+import { Search, Shield, Ban, CheckCircle, XCircle, Eye, Trash2, Users, Heart, Sparkles } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
@@ -331,7 +331,7 @@ export default function AdminDatingScreen() {
   const [trialDays, setTrialDays] = useState('7');
   const [badgeType, setBadgeType] = useState<'verified' | 'good_conversationalist' | 'replies_fast' | 'respectful_member' | 'active_member' | 'premium'>('verified');
 
-  const _deactivateProfile = async (profileId: string, _userId: string) => {
+  const deactivateProfile = async (profileId: string, userId: string) => {
     Alert.alert(
       'Deactivate Profile',
       'Are you sure you want to deactivate this dating profile?',

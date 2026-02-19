@@ -14,6 +14,7 @@ import { Stack, useRouter } from 'expo-router';
 import { CheckCircle2, ArrowRight, Sparkles, Users, Shield, MapPin, X } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import colors from '@/constants/colors';
 
@@ -21,7 +22,8 @@ const ONBOARDING_VERSION = '1.0.0';
 
 export default function OnboardingScreen() {
   const router = useRouter();
-  const { currentUser, hasCompletedOnboarding, authLoading } = useApp();
+  const { currentUser } = useApp();
+  const { updateUser } = useAuth();
   const { colors: themeColors } = useTheme();
   const styles = createStyles(themeColors);
 
@@ -31,39 +33,7 @@ export default function OnboardingScreen() {
   const [saving, setSaving] = useState(false);
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
-  // Check on mount if onboarding is already completed - if so, redirect immediately
-  useEffect(() => {
-    const checkOnboardingStatus = async () => {
-      // If hasCompletedOnboarding is already true, redirect immediately
-      if (hasCompletedOnboarding === true) {
-        console.log('Onboarding already completed, redirecting...');
-        router.replace('/(tabs)/home');
-        return;
-      }
-
-      // If status is null, check directly from database
-      if (hasCompletedOnboarding === null && currentUser) {
-        try {
-          const { data: onboardingData } = await supabase
-            .from('user_onboarding_data')
-            .select('has_completed_onboarding')
-            .eq('user_id', currentUser.id)
-            .maybeSingle();
-          
-          if (onboardingData?.has_completed_onboarding === true) {
-            console.log('Onboarding already completed (checked from DB), redirecting...');
-            router.replace('/(tabs)/home');
-            return;
-          }
-        } catch (error) {
-          console.error('Error checking onboarding status:', error);
-          // If error, continue showing onboarding screen
-        }
-      }
-    };
-
-    checkOnboardingStatus();
-  }, [hasCompletedOnboarding, currentUser, router]);
+  // No redirects - AppGate handles routing when completedOnboarding changes
 
   const steps = [
     {
@@ -216,7 +186,7 @@ export default function OnboardingScreen() {
       return;
     }
 
-    if (!authLoading && !currentUser) {
+    if (!currentUser) {
       Alert.alert('Error', 'Please log in to continue.');
       return;
     }
@@ -242,8 +212,7 @@ export default function OnboardingScreen() {
 
       if (error) throw error;
 
-      // Navigate to home
-      router.replace('/(tabs)/home');
+      updateUser({ completedOnboarding: true });
     } catch (error: any) {
       console.error('Error saving onboarding data:', error);
       Alert.alert('Error', 'Failed to save onboarding data. Please try again.');

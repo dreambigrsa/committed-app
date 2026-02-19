@@ -18,7 +18,6 @@ import { supabase } from '@/lib/supabase';
 import colors from '@/constants/colors';
 import { User } from '@/types';
 import * as SampleUsersService from '@/lib/sample-users-service';
-import { adminDeleteUser } from '@/lib/admin-users-service';
 
 export default function AdminUsersScreen() {
   const { currentUser } = useApp();
@@ -224,15 +223,14 @@ export default function AdminUsersScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              const result = await adminDeleteUser(userId);
-              if (result.success) {
-                Alert.alert('Success', 'User has been permanently deleted');
-                await loadUsers();
-              } else {
-                Alert.alert('Error', result.error || 'Failed to delete user');
-              }
-            } catch (error: any) {
-              Alert.alert('Error', error?.message || 'Failed to delete user');
+              await supabase
+                .from('users')
+                .delete()
+                .eq('id', userId);
+              Alert.alert('Success', 'User has been deleted');
+              loadUsers();
+            } catch (error) {
+              Alert.alert('Error', 'Failed to delete user');
             }
           },
         },

@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
-import { Heart, MessageCircle, Share2, Volume2, VolumeX, Plus, Film, MoreVertical, Edit2, Trash2, X, Flag, Smile, Image as ImageIcon, ExternalLink } from 'lucide-react-native';
+import { Heart, MessageCircle, Share2, Volume2, VolumeX, Plus, Film, MoreVertical, Edit2, Trash2, X, UserPlus, Flag, Smile, Image as ImageIcon } from 'lucide-react-native';
 import { useRouter, useFocusEffect, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/contexts/AppContext';
@@ -26,6 +26,7 @@ import LinkifiedText from '@/components/LinkifiedText';
 import { Reel, Advertisement, Sticker } from '@/types';
 import StickerPicker from '@/components/StickerPicker';
 import * as WebBrowser from 'expo-web-browser';
+import { ExternalLink } from 'lucide-react-native';
 import StatusIndicator from '@/components/StatusIndicator';
 
 const { width, height } = Dimensions.get('window');
@@ -34,7 +35,7 @@ export default function ReelsScreen() {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
-  const { currentUser, reels, toggleReelLike, editReel, deleteReel, shareReel, adminDeleteReel, adminRejectReel, followUser, unfollowUser, isFollowing: checkIsFollowing, addReelComment, getReelComments, editReelComment, deleteReelComment, toggleReelCommentLike, reportContent, getActiveAds, getSmartAds, recordAdImpression, recordAdClick, userStatuses, legalAcceptanceStatus } = useApp();
+  const { currentUser, reels, toggleReelLike, editReel, deleteReel, shareReel, adminDeleteReel, adminRejectReel, followUser, unfollowUser, isFollowing: checkIsFollowing, addReelComment, getReelComments, editReelComment, deleteReelComment, toggleReelCommentLike, reportContent, getActiveAds, getSmartAds, recordAdImpression, recordAdClick, getUserStatus, userStatuses, legalAcceptanceStatus } = useApp();
   const { colors } = useTheme();
   
   const [currentIndex, setCurrentIndex] = useState<number>(0);
@@ -56,7 +57,7 @@ export default function ReelsScreen() {
   const [smartAds, setSmartAds] = useState<Advertisement[]>([]);
   const [activeVideoAd, setActiveVideoAd] = useState<{ reelId: string; ad: Advertisement; canSkip: boolean; skipDelay: number } | null>(null);
   const [activeBannerCardAd, setActiveBannerCardAd] = useState<{ reelId: string; ad: Advertisement; canSkip: boolean; skipDelay: number } | null>(null);
-  const [, setVideoAdPlaybackTime] = useState<number>(0);
+  const [videoAdPlaybackTime, setVideoAdPlaybackTime] = useState<number>(0);
   const [skipCountdown, setSkipCountdown] = useState<number>(0);
   const [bannerCardSkipCountdown, setBannerCardSkipCountdown] = useState<number>(0);
   const videoRefs = useRef<{ [key: string]: Video | null }>({});
@@ -992,7 +993,7 @@ export default function ReelsScreen() {
               onPlaybackStatusUpdate={(status: AVPlaybackStatus) => {
                 if (status.isLoaded) {
                   const currentTime = status.positionMillis || 0;
-                  const _duration = status.durationMillis || 0;
+                  const duration = status.durationMillis || 0;
                   setVideoAdPlaybackTime(currentTime);
                   
                   // Countdown is handled by useEffect, which controls button visibility

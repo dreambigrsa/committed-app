@@ -18,7 +18,7 @@ import { supabase } from '@/lib/supabase';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { currentUser, authLoading, isLoading, getCurrentUserRelationship, getPendingRequests } = useApp();
+  const { currentUser, isLoading, getCurrentUserRelationship, getPendingRequests } = useApp();
   const { colors } = useTheme();
   const relationship = getCurrentUserRelationship();
   const pendingRequests = getPendingRequests();
@@ -115,7 +115,7 @@ export default function HomeScreen() {
     }
   }, [fadeAnim, slideAnim, scaleAnim, heartPulseAnim, heartFadeAnim, relationship]);
 
-  if (authLoading) {
+  if (isLoading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background.secondary }]}>
         <View style={styles.loadingContainer}>

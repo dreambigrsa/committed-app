@@ -1,3 +1,6 @@
+/**
+ * Landing screen - UI only. No auth redirects. AppGate handles routing.
+ */
 import React, { useRef, useEffect } from 'react';
 import {
   View,
@@ -24,29 +27,27 @@ import {
   Sparkles,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useApp } from '@/contexts/AppContext';
-import LoadingScreen from '@/components/LoadingScreen';
 
 export default function LandingScreen() {
-  const { session, isLoading } = useApp();
   const router = useRouter();
   const { colors } = useTheme();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
 
   useEffect(() => {
-    if (!session) {
-      Animated.parallel([
-        Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
-        Animated.timing(slideAnim, { toValue: 0, duration: 800, useNativeDriver: true }),
-      ]).start();
-    }
-  }, [fadeAnim, slideAnim, session]);
-
-  // AppGate is the only place that redirects. If we have session we show splash until AppGate replaces route — never show landing to logged-in users.
-  if (session || isLoading) {
-    return <LoadingScreen visible={true} />;
-  }
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [fadeAnim, slideAnim]);
 
   const features = [
     {

@@ -12,121 +12,97 @@ import {
   Platform,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
-import { Mail, CheckCircle, ArrowLeft, RefreshCw, Sparkles, Shield, Heart, Edit3 } from 'lucide-react-native';
+import { Mail, CheckCircle, ArrowLeft, RefreshCw, Sparkles, Shield, Heart } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { getAuthRedirectUrl } from '@/lib/auth-redirect';
-import { getResolvedRoute } from '@/lib/auth-gate';
-import { getAndClearPendingRouteIfContent } from '@/lib/pending-route';
 import colors from '@/constants/colors';
-
-const RESEND_COOLDOWN_SECONDS = 60;
 
 export default function VerifyEmailScreen() {
   const router = useRouter();
-  const {
-    session,
-    currentUser,
-    hasCompletedOnboarding,
-    legalAcceptanceStatus,
-  } = useApp();
+  const { currentUser, hasCompletedOnboarding } = useApp();
   const { colors: themeColors } = useTheme();
   const [isChecking, setIsChecking] = useState(true);
   const [isVerified, setIsVerified] = useState(false);
   const [isResending, setIsResending] = useState(false);
-  const [resendCooldownUntil, setResendCooldownUntil] = useState<number>(0);
   const [email, setEmail] = useState<string>('');
   const [emailLoaded, setEmailLoaded] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
-  const emailVerified = Boolean(currentUser?.verifications?.email ?? session?.user?.email_confirmed_at);
-
-  // Listen to auth state: when session has email_confirmed_at (e.g. user returned from link), redirect via gate.
-  useEffect(() => {
-    if (!session?.user?.email_confirmed_at || !currentUser) return;
-    if (hasCompletedOnboarding === null) return; // Wait for hydration
-    let route = getResolvedRoute({
-      session,
-      currentUser,
-      legalAcceptanceStatus,
-      hasCompletedOnboarding,
-      isPasswordRecoveryFlow: false,
-      emailVerified: true,
-    });
-    if (route === '/(tabs)/home') {
-      const pending = getAndClearPendingRouteIfContent();
-      if (pending) route = pending as any;
-    }
-    if (route !== '/verify-email') {
-      setIsVerified(true);
-      router.replace(route as any);
-    }
-  }, [session?.user?.email_confirmed_at, currentUser, hasCompletedOnboarding, legalAcceptanceStatus, router]);
-
-  // Resend cooldown ticker
-  useEffect(() => {
-    if (resendCooldownUntil <= 0) return;
-    const t = setInterval(() => {
-      const now = Date.now();
-      if (now >= resendCooldownUntil) {
-        setResendCooldownUntil(0);
-      }
-    }, 1000);
-    return () => clearInterval(t);
-  }, [resendCooldownUntil]);
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | null = null;
     let isMounted = true;
 
-    const checkAndRedirectIfVerified = async () => {
+    // Check if email is already verified - refresh session so AppGate can route
+    const checkVerified = async () => {
       try {
-        const { data: { session: s } } = await supabase.auth.getSession();
-        if (s?.user?.email_confirmed_at) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user?.email_confirmed_at) {
           setIsVerified(true);
+          await supabase.auth.refreshSession();
           return true;
         }
         return false;
-      } catch (error) {
-        console.error('Error checking email verification on mount:', error);
+      } catch {
         return false;
       }
     };
 
-    checkAndRedirectIfVerified().then((redirected) => {
-      if (redirected || !isMounted) return;
+    checkVerified().then((verified) => {
+      if (verified || !isMounted) return;
 
+      // Email not verified - proceed with normal screen setup
+      // Start animations immediately so screen appears right away
       Animated.parallel([
-        Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
-        Animated.timing(slideAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 600,
+          useNativeDriver: true,
+        }),
       ]).start();
 
+      // Get email from session immediately for display
       const loadEmail = async () => {
         if (!isMounted) return;
         try {
-          const { data: { session: s } } = await supabase.auth.getSession();
-          if (s?.user?.email) {
-            setEmail(s.user.email);
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user?.email) {
+            setEmail(session.user.email);
             setEmailLoaded(true);
           }
         } catch (error) {
           console.error('Error loading email:', error);
-          if (isMounted) setEmailLoaded(true);
+          if (isMounted) {
+            setEmailLoaded(true); // Set to true even on error so screen shows
+          }
         }
       };
-      loadEmail();
-      checkEmailVerification(false);
       
+      loadEmail();
+      checkEmailVerification();
+      
+      // Check every 3 seconds if email is verified
       interval = setInterval(() => {
-        if (isMounted) checkEmailVerification(false);
+        if (isMounted) {
+          checkEmailVerification();
+        }
       }, 3000);
     });
 
+    // Cleanup
     return () => {
       isMounted = false;
-      if (interval) clearInterval(interval);
+      if (interval) {
+        clearInterval(interval);
+      }
     };
   }, []);
 
@@ -141,28 +117,16 @@ export default function VerifyEmailScreen() {
         setIsVerified(emailConfirmed);
         
         if (emailConfirmed) {
-          if (!currentUser || hasCompletedOnboarding === null) {
-            return;
-          }
-          let route = getResolvedRoute({
-            session: currentSession,
-            currentUser,
-            legalAcceptanceStatus,
-            hasCompletedOnboarding,
-            isPasswordRecoveryFlow: false,
-            emailVerified: true,
-          });
-          if (route === '/(tabs)/home') {
-            const pending = getAndClearPendingRouteIfContent();
-            if (pending) route = pending as any;
-                  }
-          if (route !== '/verify-email') router.replace(route as any);
+          // Refresh session so AuthContext updates; AppGate will route
+          supabase.auth.refreshSession().catch(() => {});
         } else {
+          // Email not verified yet
           if (showMessage) {
-            alert('Email not verified yet.\n\nCheck your inbox and click the verification link. If you just clicked it, wait a few seconds and try again.');
+            alert('Email not verified yet.\n\nPlease check your inbox and click the verification link in the email. If you just clicked it, wait a few seconds and try again.');
           }
         }
       } else {
+        // No session - user needs to log in
         if (showMessage) {
           alert('Session expired. Please log in again.');
           router.replace('/auth');
@@ -170,7 +134,9 @@ export default function VerifyEmailScreen() {
       }
     } catch (error) {
       console.error('Error checking email verification:', error);
-      if (showMessage) alert('Error checking verification status. Please try again.');
+      if (showMessage) {
+        alert('Error checking verification status. Please try again.');
+      }
     } finally {
       setIsChecking(false);
     }
@@ -181,58 +147,90 @@ export default function VerifyEmailScreen() {
       alert('Email address not found. Please try signing up again.');
       return;
     }
-    if (resendCooldownUntil > Date.now()) return;
     
     setIsResending(true);
     try {
-      const { data: { session: s } } = await supabase.auth.getSession();
+      // First, try to get the current session to check user status
+      const { data: { session } } = await supabase.auth.getSession();
       
-      if (!s?.user) {
+      if (!session?.user) {
+        // No session, try using signInWithOtp to resend verification
         const { error: otpError } = await supabase.auth.signInWithOtp({
-          email,
-          options: { emailRedirectTo: getAuthRedirectUrl() },
+          email: email,
+          options: {
+            emailRedirectTo: getAuthRedirectUrl(),
+          },
         });
-        if (otpError) throw otpError;
-        setResendCooldownUntil(Date.now() + RESEND_COOLDOWN_SECONDS * 1000);
-        alert('✅ Verification email sent! Check your inbox (and spam folder).');
+        
+        if (otpError) {
+          throw otpError;
+        }
+        
+        alert('✅ Verification email sent!\n\nPlease check your inbox (and spam folder) for the verification link.');
         return;
       }
       
-      const { error } = await supabase.auth.resend({
+      // If user has a session but email is not confirmed, use resend
+      const { data, error } = await supabase.auth.resend({
         type: 'signup',
-        email,
-        options: { emailRedirectTo: getAuthRedirectUrl() },
+        email: email,
+        options: {
+          emailRedirectTo: getAuthRedirectUrl(),
+        },
       });
 
       if (error) {
+        console.error('Resend email error:', error);
+        
+        // If resend fails, try signInWithOtp as fallback
         if (error.message?.includes('not found') || error.message?.includes('invalid')) {
           const { error: otpError } = await supabase.auth.signInWithOtp({
-            email,
-            options: { emailRedirectTo: getAuthRedirectUrl() },
+            email: email,
+            options: {
+              emailRedirectTo: getAuthRedirectUrl(),
+            },
           });
-          if (!otpError) {
-            setResendCooldownUntil(Date.now() + RESEND_COOLDOWN_SECONDS * 1000);
-            alert('✅ Verification email sent! Check your inbox (and spam folder).');
+          
+          if (otpError) {
+            throw otpError;
+          }
+          
+          alert('✅ Verification email sent!\n\nPlease check your inbox (and spam folder) for the verification link.');
           return;
         }
-        }
+        
+        // Handle specific error cases
         if (error.message?.includes('rate limit') || error.message?.includes('too many')) {
           alert('Too many requests. Please wait a few minutes before trying again.');
-          return;
+        } else if (error.message?.includes('already confirmed')) {
+          // Email already confirmed, check again
+          await checkEmailVerification();
+          alert('Your email is already verified!');
+        } else {
+          throw error;
         }
-        if (error.message?.includes('already confirmed')) {
-          checkEmailVerification(true);
         return;
-        }
-        throw error;
       }
 
-      setResendCooldownUntil(Date.now() + RESEND_COOLDOWN_SECONDS * 1000);
-      alert('✅ Verification email sent! Check your inbox (and spam folder).');
+      // Success - show confirmation
+      alert('✅ Verification email sent!\n\nPlease check your inbox (and spam folder) for the verification link. Click the link to verify your email.');
     } catch (error: any) {
       console.error('Error resending verification email:', error);
-      const msg = error?.message?.includes('rate limit') ? 'Too many requests. Wait a few minutes.' : (error?.message || 'Failed to resend. Please try again.');
-      alert(msg);
+      
+      // More detailed error messages
+      let errorMessage = 'Failed to resend verification email.';
+      
+      if (error.message) {
+        if (error.message.includes('rate limit')) {
+          errorMessage = 'Too many requests. Please wait a few minutes before trying again.';
+        } else if (error.message.includes('not found')) {
+          errorMessage = 'User not found. Please try signing up again.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      alert(errorMessage + '\n\nIf this problem persists, please contact support.');
     } finally {
       setIsResending(false);
     }
@@ -281,22 +279,7 @@ export default function VerifyEmailScreen() {
               </Text>
               <TouchableOpacity
                 style={styles.continueButton}
-                onPress={() => {
-                  if (!currentUser || hasCompletedOnboarding === null) return;
-                  let route = getResolvedRoute({
-                    session,
-                    currentUser,
-                    legalAcceptanceStatus,
-                    hasCompletedOnboarding,
-                    isPasswordRecoveryFlow: false,
-                    emailVerified: true,
-                  });
-                  if (route === '/(tabs)/home') {
-                    const pending = getAndClearPendingRouteIfContent();
-                    if (pending) route = pending as any;
-                  }
-                  router.replace(route as any);
-                }}
+                onPress={() => router.replace('/')}
               >
                 <Text style={styles.continueButtonText}>Continue to App</Text>
               </TouchableOpacity>
@@ -405,30 +388,18 @@ export default function VerifyEmailScreen() {
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[styles.secondaryButton, (isResending || resendCooldownUntil > Date.now()) && styles.buttonDisabled]}
+                    style={styles.secondaryButton}
                     onPress={resendVerificationEmail}
-                    disabled={isResending || resendCooldownUntil > Date.now()}
+                    disabled={isResending}
                   >
                     {isResending ? (
                       <ActivityIndicator size="small" color={safeThemeColors.primary} />
-                    ) : resendCooldownUntil > Date.now() ? (
-                      <Text style={styles.secondaryButtonText}>
-                        Resend in {Math.ceil((resendCooldownUntil - Date.now()) / 1000)}s
-                      </Text>
                     ) : (
                       <>
                         <RefreshCw size={20} color={safeThemeColors.primary} />
                         <Text style={styles.secondaryButtonText}>Resend Email</Text>
                       </>
                     )}
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.changeEmailButton}
-                    onPress={() => router.replace('/auth')}
-                  >
-                    <Edit3 size={18} color={safeThemeColors.primary} />
-                    <Text style={styles.changeEmailButtonText}>Change email</Text>
                   </TouchableOpacity>
                 </View>
 
@@ -664,21 +635,6 @@ const createStyles = (colors: typeof import('@/constants/colors').default) => St
   },
   secondaryButtonText: {
     fontSize: 16,
-    fontWeight: '600' as const,
-    color: colors.primary,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  changeEmailButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-  },
-  changeEmailButtonText: {
-    fontSize: 15,
     fontWeight: '600' as const,
     color: colors.primary,
   },

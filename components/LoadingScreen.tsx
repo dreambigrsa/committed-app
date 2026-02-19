@@ -7,26 +7,24 @@ interface LoadingScreenProps {
   visible?: boolean;
 }
 
-/**
- * Single full-screen splash: one container with theme background, logo animation only.
- * No navigation logic; receives theme from ThemeProvider.
- */
 export default function LoadingScreen({ visible = true }: LoadingScreenProps) {
   const { colors } = useTheme();
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const rotateAnim = useRef(new Animated.Value(0)).current;
   const heartScaleAnim = useRef(new Animated.Value(1)).current;
-  const logoFadeAnim = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (!visible) return;
 
-    Animated.timing(logoFadeAnim, {
+    // Fade in
+    Animated.timing(fadeAnim, {
       toValue: 1,
-      duration: 400,
+      duration: 300,
       useNativeDriver: true,
     }).start();
 
+    // Pulse animation for the shield
     const pulseAnimation = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
@@ -43,6 +41,8 @@ export default function LoadingScreen({ visible = true }: LoadingScreenProps) {
         }),
       ])
     );
+
+    // Continuous rotation for the shield
     const rotateAnimation = Animated.loop(
       Animated.timing(rotateAnim, {
         toValue: 1,
@@ -51,6 +51,8 @@ export default function LoadingScreen({ visible = true }: LoadingScreenProps) {
         useNativeDriver: true,
       })
     );
+
+    // Heart beat animation
     const heartAnimation = Animated.loop(
       Animated.sequence([
         Animated.timing(heartScaleAnim, {
@@ -78,7 +80,7 @@ export default function LoadingScreen({ visible = true }: LoadingScreenProps) {
       rotateAnimation.stop();
       heartAnimation.stop();
     };
-  }, [visible]);
+  }, [visible, pulseAnim, rotateAnim, heartScaleAnim, fadeAnim]);
 
   if (!visible) return null;
 
@@ -90,8 +92,7 @@ export default function LoadingScreen({ visible = true }: LoadingScreenProps) {
   const styles = createStyles(colors);
 
   return (
-    <View style={styles.container}>
-      <Animated.View style={[styles.logoWrapper, { opacity: logoFadeAnim }]}>
+    <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
       <View style={styles.logoContainer}>
         <Animated.View
           style={[
@@ -118,7 +119,6 @@ export default function LoadingScreen({ visible = true }: LoadingScreenProps) {
         </Animated.View>
       </View>
     </Animated.View>
-    </View>
   );
 }
 
@@ -127,10 +127,6 @@ const createStyles = (colors: typeof import('@/constants/colors').default) =>
     container: {
       flex: 1,
       backgroundColor: colors.primary,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    logoWrapper: {
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -156,7 +152,7 @@ const createStyles = (colors: typeof import('@/constants/colors').default) =>
       borderRadius: 24,
       padding: 10,
       borderWidth: 3,
-      borderColor: colors.primary,
+      borderColor: '#1A73E8',
     },
   });
 

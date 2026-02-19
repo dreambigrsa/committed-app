@@ -16,14 +16,12 @@ import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import LegalAcceptanceCheckbox from '@/components/LegalAcceptanceCheckbox';
-import { getStoredReferralCode, clearStoredReferralCode } from '@/lib/referral-storage';
 import { LegalDocument } from '@/types';
 import { checkUserLegalAcceptances } from '@/lib/legal-enforcement';
-import { isInvalidRefreshTokenError } from '@/lib/auth-session-utils';
 
 export default function AuthScreen() {
   const router = useRouter();
-  const { currentUser, signup, login, resetPassword, clearSession, legalAcceptanceStatus, hasCompletedOnboarding } = useApp();
+  const { signup, login, resetPassword } = useApp();
   const { colors } = useTheme();
   const [isSignUp, setIsSignUp] = useState<boolean>(true);
   const [showForgotPassword, setShowForgotPassword] = useState<boolean>(false);
@@ -39,7 +37,7 @@ export default function AuthScreen() {
   const [legalAcceptances, setLegalAcceptances] = useState<Record<string, boolean>>({});
   const [loadingLegalDocs, setLoadingLegalDocs] = useState(false);
 
-  // No screen-level auth redirect: AppGate is the only place that routes by auth state.
+  // No redirects - AppGate handles routing based on auth state
 
   useEffect(() => {
     if (isSignUp && !showForgotPassword) {
@@ -107,10 +105,6 @@ export default function AuthScreen() {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
         if (sessionError) {
-          if (isInvalidRefreshTokenError(sessionError)) {
-            await clearSession();
-            throw new Error('Session expired. Please log in again.');
-          }
           console.warn('Session error when saving legal acceptances:', sessionError);
           throw new Error(`Authentication error: ${sessionError.message}`);
         }
@@ -125,15 +119,28 @@ export default function AuthScreen() {
           throw new Error('Session mismatch. Please log in again.');
         }
       } else {
-        // During signup, wait for session to be established. Do not call refreshSession (can trigger Invalid Refresh Token).
+        // During signup, wait for session to be established
+        // Don't try to refresh if there's no session yet - just wait
         await new Promise(resolve => setTimeout(resolve, 1000));
-        const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
-        if (sessionErr && isInvalidRefreshTokenError(sessionErr)) {
-          await clearSession();
-          throw new Error('Session expired. Please log in again.');
-        }
-        if (session?.user && session.user.id !== userId) {
+        
+        // Try to get session (don't refresh if it doesn't exist)
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session && session.user) {
+          // Only refresh if we have a session
+          const { error: refreshError } = await supabase.auth.refreshSession();
+          if (refreshError && refreshError.message !== 'Auth session missing!') {
+            console.warn('Session refresh error during signup:', refreshError);
+          } else {
+            console.log('Session available for legal acceptances');
+          }
+          
+          if (session.user.id !== userId) {
             console.warn(`Session user ID (${session.user.id}) doesn't match provided userId (${userId}) during signup`);
+          }
+        } else {
+          // No session yet - that's OK, the RLS policy will handle it via the helper function
+          console.log('No session yet during signup - RLS policy will use helper function');
         }
       }
 
@@ -290,15 +297,7 @@ export default function AuthScreen() {
           return;
         }
 
-        const referralCode = await getStoredReferralCode();
-        const user = await signup(
-          formData.fullName,
-          formData.email,
-          formData.phoneNumber,
-          formData.password,
-          referralCode ?? undefined
-        );
-        if (referralCode) await clearStoredReferralCode();
+        const user = await signup(formData.fullName, formData.email, formData.phoneNumber, formData.password);
         
         // Save legal acceptances after successful signup
         // Wait a moment for user record to be created by trigger
@@ -372,7 +371,31 @@ export default function AuthScreen() {
           }
         }
         
-        // Do NOT navigate here. Session is set by Supabase → AppContext hydrates → AppGate shows Splash then redirects to verify-email or home.
+        // Always redirect, even if there were errors above
+        // Check if email confirmation is required and redirect immediately
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const emailConfirmed = !!session?.user?.email_confirmed_at;
+          
+          // Redirect immediately - verify-email screen will render instantly
+          // Don't clear loading until after redirect completes
+          if (!emailConfirmed) {
+              // Redirect to email verification screen
+              router.replace('/verify-email');
+              // Keep loading visible during transition, then clear it
+              setTimeout(() => setIsLoading(false), 300);
+            } else {
+              // Email already confirmed, redirect to index which will check onboarding
+              router.replace('/');
+              // Clear loading after redirect starts
+              setTimeout(() => setIsLoading(false), 300);
+            }
+        } catch (redirectError) {
+          console.error('Error during redirect after signup:', redirectError);
+          // Fallback: always go to verify-email if we can't check status
+          router.replace('/verify-email');
+          setTimeout(() => setIsLoading(false), 300);
+        }
       } else {
         if (!formData.email || !formData.password) {
           alert('Please enter email and password');
@@ -381,7 +404,34 @@ export default function AuthScreen() {
         }
 
         await login(formData.email, formData.password);
-        // Do NOT navigate here. Session updates → AppContext hydrates → AppGate redirects.
+        
+        // Wait for user data to load, then redirect directly to appropriate page
+        // Don't go through landing page to avoid flash
+        setTimeout(async () => {
+          try {
+            // Check onboarding status directly
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user?.id) {
+              const { data: onboardingData } = await supabase
+                .from('user_onboarding_data')
+                .select('has_completed_onboarding')
+                .eq('user_id', session.user.id)
+                .single();
+              
+              if (onboardingData?.has_completed_onboarding === false) {
+                router.replace('/onboarding');
+              } else {
+                router.replace('/(tabs)/home');
+              }
+            } else {
+              // Fallback to index if we can't get user
+              router.replace('/');
+            }
+          } catch (error) {
+            // If error, fallback to index
+            router.replace('/');
+          }
+        }, 300);
       }
     } catch (error: any) {
       console.error('Auth error:', error);

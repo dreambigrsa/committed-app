@@ -26,7 +26,7 @@ type Step = 1 | 2 | 3 | 4;
 
 export default function BecomeProfessionalScreen() {
   const router = useRouter();
-  const { currentUser, authLoading } = useApp();
+  const { currentUser } = useApp();
   const { colors: themeColors } = useTheme();
   const styles = createStyles(themeColors);
 
@@ -266,7 +266,7 @@ export default function BecomeProfessionalScreen() {
     }
   };
 
-  if (!authLoading && !currentUser) {
+  if (!currentUser) {
     return (
       <SafeAreaView style={styles.container}>
         <Stack.Screen options={{ title: 'Become a Professional', headerShown: true }} />

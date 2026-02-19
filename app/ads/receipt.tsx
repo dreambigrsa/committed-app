@@ -60,9 +60,8 @@ export default function AdReceiptScreen() {
           });
           setLogoDataUri(dataUri);
         } else {
-          // encoding 'base64' is supported by expo-file-system on web and mobile (same as EncodingType.Base64)
           const base64 = await FileSystem.readAsStringAsync(asset.localUri || asset.uri, {
-            encoding: 'base64',
+            encoding: FileSystem.EncodingType.Base64,
           });
           setLogoDataUri(`data:image/png;base64,${base64}`);
         }
@@ -200,7 +199,7 @@ export default function AdReceiptScreen() {
         UTI: '.pdf',
         mimeType: 'application/pdf',
       });
-    } catch (_error) {
+    } catch (error) {
       Alert.alert('Error', 'Unable to generate receipt PDF.');
     }
   };

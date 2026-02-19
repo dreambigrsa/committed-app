@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter, usePathname } from 'expo-router';
 import { InteractionManager } from 'react-native';
 import { useApp } from '@/contexts/AppContext';
+import { useAuth } from '@/contexts/AuthContext';
 import LegalAcceptanceModal from './LegalAcceptanceModal';
 import { LegalDocument } from '@/types';
 import { checkUserLegalAcceptances } from '@/lib/legal-enforcement';
@@ -9,6 +10,7 @@ import { supabase } from '@/lib/supabase';
 
 export default function LegalAcceptanceEnforcer() {
   const { currentUser, legalAcceptanceStatus, setLegalAcceptanceStatus } = useApp();
+  const { updateUser } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [modalVisible, setModalVisible] = useState(false);
@@ -101,30 +103,10 @@ export default function LegalAcceptanceEnforcer() {
         const status = await checkUserLegalAcceptances(currentUser.id);
         setLegalAcceptanceStatus(status);
         
-        // If status shows all required are accepted, ensure modal stays closed
+        // If status shows all required are accepted, update AuthContext; AppGate will route
         if (status.hasAllRequired) {
           setModalVisible(false);
-          
-          // After accepting documents, check if onboarding is needed
-          // This ensures the onboarding flow happens after document acceptance
-          try {
-            const { data: onboardingData } = await supabase
-              .from('user_onboarding_data')
-              .select('has_completed_onboarding')
-              .eq('user_id', currentUser.id)
-              .maybeSingle();
-            
-            if (!onboardingData?.has_completed_onboarding) {
-              // User hasn't completed onboarding, redirect to onboarding
-              setTimeout(() => {
-                router.replace('/onboarding');
-              }, 300);
-              return;
-            }
-          } catch (error) {
-            console.error('Error checking onboarding status:', error);
-            // Continue normally if check fails
-          }
+          updateUser({ acceptedLegalDocs: true });
         }
       } catch (error) {
         console.error('Error refreshing legal acceptance status:', error);

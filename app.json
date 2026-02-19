@@ -33,7 +33,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.committed.app",
-      "versionCode": 3,
+      "versionCode": 1,
       "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "android.permission.POST_NOTIFICATIONS",
@@ -115,7 +115,7 @@
       },
       "openaiApiKey": {},
       "eas": {
-        "projectId": "0b0e57a4-a99f-4657-af27-bdae2daa44e0"
+        "projectId": "fa44efe3-e3b3-4a21-8f98-7cae81aa4f8a"
       }
     }
   }

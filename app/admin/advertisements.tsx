@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { Stack } from 'expo-router';
 import { Image } from 'expo-image';
-import { Plus, Edit2, Trash2, X, CheckCircle2, PauseCircle, Play, XCircle, DollarSign } from 'lucide-react-native';
+import { Plus, Edit2, Trash2, BarChart3, ExternalLink, X, CheckCircle2, PauseCircle, Play, XCircle, DollarSign } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
 import colors from '@/constants/colors';
@@ -159,7 +159,7 @@ export default function AdminAdvertisementsScreen() {
           .in('advertisement_id', adIds);
 
         // Get click counts from tracking table
-        const { data: clicksData, error: _clicksError } = await supabase
+        const { data: clicksData, error: clicksError } = await supabase
           .from('advertisement_clicks')
           .select('advertisement_id')
           .in('advertisement_id', adIds);

@@ -11,16 +11,14 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { Lock, Eye, EyeOff } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useApp } from '@/contexts/AppContext';
-import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function ResetPasswordScreen() {
-  const router = useRouter();
   const { colors } = useTheme();
-  const { clearRecoveryFlow } = useApp();
+
+  const { updatePassword, signOut } = useAuth();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -117,12 +115,8 @@ export default function ResetPasswordScreen() {
 
     setIsLoading(true);
     try {
-      const { error } = await supabase.auth.updateUser({ password: newPassword });
-      if (error) throw error;
-      clearRecoveryFlow();
-      // Sign out so recovery token is not reused; user must log in with new password.
-      await supabase.auth.signOut();
-      router.replace('/auth');
+      await updatePassword(newPassword);
+      await signOut();
       Alert.alert('Success', 'Your password has been updated. Please sign in with your new password.', [{ text: 'OK' }]);
     } catch (error: any) {
       console.error('Reset password error:', error);

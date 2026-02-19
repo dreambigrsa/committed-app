@@ -1,36 +1,32 @@
+/**
+ * Auth callback - Processes OAuth/email links. No redirects - AppGate handles routing.
+ */
 import { useEffect, useState } from "react";
 import * as Linking from "expo-linking";
 import { Platform } from "react-native";
 import { supabase } from "@/lib/supabase";
 import { getAndClearPendingAuthUrl } from "@/lib/pending-auth-url";
-import { useRouter } from "expo-router";
-import { View, ActivityIndicator } from "react-native";
+import { View, ActivityIndicator, StyleSheet } from "react-native";
 
-export default function AuthCallback() {
-  const router = useRouter();
+export default function AuthCallbackScreen() {
   const [isProcessing, setIsProcessing] = useState(true);
 
   useEffect(() => {
     const processUrl = async (url: string) => {
-      if (!url) return;
-      setIsProcessing(true);
-      // On native: we must call exchangeCodeForSession (Supabase doesn't auto-detect deep links)
-      // On web: Supabase auto-exchanges via detectSessionInUrl - do NOT call again (code is single-use)
+      if (!url) {
+        setIsProcessing(false);
+        return;
+      }
       if (Platform.OS !== "web") {
-      try {
+        try {
           const { error } = await supabase.auth.exchangeCodeForSession(url);
-        if (error) {
-            console.log("Auth callback exchange error:", error.message);
-            router.replace("/auth");
-            return;
+          if (error) {
+            console.warn("Auth callback exchange error:", error.message);
           }
-        } catch (error) {
-          console.error("Error processing auth callback:", error);
-          router.replace("/auth");
-          return;
+        } catch (e) {
+          console.warn("Auth callback error:", e);
         }
       }
-      // Session established (native: exchangeCodeForSession; web: detectSessionInUrl). Allow redirect effect to run.
       setIsProcessing(false);
     };
 
@@ -38,7 +34,6 @@ export default function AuthCallback() {
       processUrl(url);
     });
 
-    // Get URL: pending (app was open, we navigated here from layout), cold start, or web
     const getUrl = async (): Promise<string | null> => {
       const pending = getAndClearPendingAuthUrl();
       if (pending) return pending;
@@ -55,18 +50,24 @@ export default function AuthCallback() {
 
     getUrl().then((url) => {
       if (url) processUrl(url);
-      else setIsProcessing(false); // No URL to process
+      else setIsProcessing(false);
     });
 
     return () => subscription.remove();
   }, []);
 
-  // No redirect here: AppGate is the single place that routes by auth. Session update will trigger hydrate → AppGate redirects.
-
   return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1A73E8' }}>
+    <View style={styles.container}>
       <ActivityIndicator size="large" color="#FFFFFF" />
     </View>
   );
 }
 
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#1A73E8",
+  },
+});

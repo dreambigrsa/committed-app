@@ -7,9 +7,6 @@ module.exports = defineConfig([
     ignores: ["dist/*"],
     rules: {
       "react/no-unescaped-entities": "off",
-      "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
-      "react-hooks/exhaustive-deps": "warn",
-      "import/no-named-as-default": "warn",
     },
   }
 ]);

@@ -101,6 +101,9 @@ export const [AppContext, useApp] = createContextHook(() => {
     if (authUser?.id) {
       supabase.auth.getSession().then(({ data: { session: s } }) => {
         setSession(s);
+      }).catch((err: any) => {
+        const msg = (err?.message ?? String(err)) ?? '';
+        if (!msg.includes('aborted') && !msg.includes('signal')) console.error('getSession error:', err);
       });
       loadUserData(authUser.id);
     } else {

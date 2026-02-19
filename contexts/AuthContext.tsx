@@ -128,7 +128,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setAccessToken(null);
         setRefreshToken(null);
       }
-    } catch (err) {
+    } catch (err: any) {
+      const msg = (err?.message ?? String(err)) ?? '';
+      if (msg.includes('aborted') || msg.includes('signal')) {
+        // Supabase auth lock aborted (e.g. navigation/unmount); ignore to avoid uncaught error
+        return;
+      }
       console.error('restoreSession error:', err);
       setUser(null);
       setAccessToken(null);
@@ -160,7 +165,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (newSession) {
         setAccessToken(newSession.access_token);
         setRefreshToken(newSession.refresh_token ?? null);
-        await hydrateFromSession(newSession, { isPasswordRecovery: event === 'PASSWORD_RECOVERY' });
+        try {
+          await hydrateFromSession(newSession, { isPasswordRecovery: event === 'PASSWORD_RECOVERY' });
+        } catch (err: any) {
+          const msg = (err?.message ?? String(err)) ?? '';
+          if (!msg.includes('aborted') && !msg.includes('signal')) console.error('onAuthStateChange hydrate error:', err);
+        }
       } else {
         setUser(null);
         setAccessToken(null);
@@ -254,7 +264,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (data.session) {
         await hydrateFromSession(data.session);
       }
-    } catch (err) {
+    } catch (err: any) {
+      const msg = (err?.message ?? String(err)) ?? '';
+      if (msg.includes('aborted') || msg.includes('signal')) return;
       console.error('Token refresh failed:', err);
       setUser(null);
       setAccessToken(null);

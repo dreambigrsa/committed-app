@@ -6,7 +6,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const SCHEME = 'committed';
-const WEB_ORIGIN = 'https://committed-5mxf.onrender.com';
+
+function getWebOriginDefault(): string {
+  if (typeof globalThis !== 'undefined' && (globalThis as any).location?.origin)
+    return (globalThis as any).location.origin;
+  return (process.env.EXPO_PUBLIC_WEB_ORIGIN ?? '').trim();
+}
 const PENDING_LINK_KEY = '@committed/pending_deep_link';
 const INTENDED_ROUTE_KEY = '@committed/intended_route';
 const DEBUG = __DEV__;
@@ -35,7 +40,8 @@ export function parseDeepLink(url: string): ParsedDeepLink | null {
   if (!url || typeof url !== 'string') return null;
   try {
     const rawUrl = url;
-    const normalized = url.replace(/^committed:\/\//i, `${WEB_ORIGIN}/`).replace(/^committed:\//i, `${WEB_ORIGIN}/`);
+    const base = getWebOriginDefault() || 'https://committed.app';
+    const normalized = url.replace(/^committed:\/\//i, `${base}/`).replace(/^committed:\//i, `${base}/`);
     const u = new URL(normalized);
     const path = (u.pathname || '/').replace(/^\/+/, '').replace(/\/+$/, '');
     const params: Record<string, string> = {};
@@ -149,29 +155,33 @@ export async function clearIntendedRoute(): Promise<void> {
 // --- Build shareable links (app + web) ---
 
 export function getWebOrigin(): string {
-  return WEB_ORIGIN;
+  const o = getWebOriginDefault();
+  return o || 'https://committed.app';
 }
 
 export function buildPostLink(postId: string): { app: string; web: string } {
   if (!postId) return { app: '', web: '' };
+  const base = getWebOriginDefault() || 'https://committed.app';
   return {
     app: `${SCHEME}://post/${postId}`,
-    web: `${WEB_ORIGIN}/post/${postId}`,
+    web: `${base}/post/${postId}`,
   };
 }
 
 export function buildReelLink(reelId: string): { app: string; web: string } {
   if (!reelId) return { app: '', web: '' };
+  const base = getWebOriginDefault() || 'https://committed.app';
   return {
     app: `${SCHEME}://reel/${reelId}`,
-    web: `${WEB_ORIGIN}/reel/${reelId}`,
+    web: `${base}/reel/${reelId}`,
   };
 }
 
 export function buildReferralLink(code: string): { app: string; web: string } {
   if (!code) return { app: '', web: '' };
+  const base = getWebOriginDefault() || 'https://committed.app';
   return {
     app: `${SCHEME}://referral?ref=${encodeURIComponent(code)}`,
-    web: `${WEB_ORIGIN}/referral/${encodeURIComponent(code)}`,
+    web: `${base}/referral/${encodeURIComponent(code)}`,
   };
 }

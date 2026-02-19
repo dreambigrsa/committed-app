@@ -16,6 +16,7 @@ import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import LegalAcceptanceCheckbox from '@/components/LegalAcceptanceCheckbox';
+import MessageModal from '@/components/MessageModal';
 import { LegalDocument } from '@/types';
 import { checkUserLegalAcceptances } from '@/lib/legal-enforcement';
 
@@ -36,6 +37,21 @@ export default function AuthScreen() {
   const [legalDocuments, setLegalDocuments] = useState<LegalDocument[]>([]);
   const [legalAcceptances, setLegalAcceptances] = useState<Record<string, boolean>>({});
   const [loadingLegalDocs, setLoadingLegalDocs] = useState(false);
+  const [messageModal, setMessageModal] = useState<{
+    visible: boolean;
+    variant: 'success' | 'error' | 'info';
+    title: string;
+    message: string;
+    buttonText?: string;
+    onCloseExtra?: () => void;
+  }>({ visible: false, variant: 'success', title: '', message: '' });
+
+  const closeMessageModal = () => {
+    setMessageModal((prev) => {
+      prev.onCloseExtra?.();
+      return { ...prev, visible: false };
+    });
+  };
 
   // No redirects - AppGate handles routing based on auth state
 
@@ -253,17 +269,35 @@ export default function AuthScreen() {
     setIsLoading(true);
     try {
       if (!formData.email) {
-        alert('Please enter your email address');
+        setMessageModal({
+          visible: true,
+          variant: 'error',
+          title: 'Email required',
+          message: 'Please enter your email address so we can send you a reset link.',
+          buttonText: 'OK',
+        });
         setIsLoading(false);
         return;
       }
 
       await resetPassword(formData.email);
-      alert('Password reset link sent! Please check your email.');
-      setShowForgotPassword(false);
+      setMessageModal({
+        visible: true,
+        variant: 'success',
+        title: 'Check your email',
+        message: `We've sent a password reset link to ${formData.email}. Check your inbox and spam folder, then click the link to set a new password.`,
+        buttonText: 'OK',
+        onCloseExtra: () => setShowForgotPassword(false),
+      });
     } catch (error: any) {
       console.error('Reset password error:', error);
-      alert(error.message || 'Failed to send reset link. Please try again.');
+      setMessageModal({
+        visible: true,
+        variant: 'error',
+        title: 'Couldn\'t send reset link',
+        message: error.message || 'Failed to send reset link. Please try again.',
+        buttonText: 'OK',
+      });
     } finally {
       setIsLoading(false);
     }
@@ -274,13 +308,25 @@ export default function AuthScreen() {
     try {
       if (isSignUp) {
         if (!formData.fullName || !formData.email || !formData.phoneNumber || !formData.password) {
-          alert('Please fill in all fields');
+          setMessageModal({
+            visible: true,
+            variant: 'error',
+            title: 'Missing information',
+            message: 'Please fill in all fields to create your account.',
+            buttonText: 'OK',
+          });
           setIsLoading(false);
           return;
         }
 
         if (formData.password.length < 6) {
-          alert('Password must be at least 6 characters');
+          setMessageModal({
+            visible: true,
+            variant: 'error',
+            title: 'Password too short',
+            message: 'Password must be at least 6 characters.',
+            buttonText: 'OK',
+          });
           setIsLoading(false);
           return;
         }
@@ -292,7 +338,13 @@ export default function AuthScreen() {
         );
 
         if (requiredDocs.length > 0 && !allRequiredAccepted) {
-          alert('Please accept all required legal documents to continue');
+          setMessageModal({
+            visible: true,
+            variant: 'error',
+            title: 'Legal documents',
+            message: 'Please accept all required legal documents to continue.',
+            buttonText: 'OK',
+          });
           setIsLoading(false);
           return;
         }
@@ -348,16 +400,16 @@ export default function AuthScreen() {
                 const errorMessage = error?.message || JSON.stringify(error);
                 console.warn('Failed to save legal acceptances (user can accept later):', errorMessage);
                 
-                // If it's an RLS error, show a helpful alert
+                // If it's an RLS error, show a helpful modal
                 if (error?.code === '42501') {
-                  alert(
-                    '⚠️ Database Configuration Required\n\n' +
-                    'Your account was created, but we need to fix a database setting.\n\n' +
-                    'Please run this SQL in Supabase SQL Editor:\n' +
-                    'File: migrations/FIX-RLS-WITH-FUNCTION.sql\n\n' +
-                    'This creates a function that bypasses RLS during signup.\n' +
-                    'This is a one-time setup that must be done in Supabase dashboard.'
-                  );
+                  setMessageModal({
+                    visible: true,
+                    variant: 'info',
+                    title: 'Database configuration required',
+                    message:
+                      'Your account was created, but a database setting needs to be updated. Please run the SQL in migrations/FIX-RLS-WITH-FUNCTION.sql in your Supabase SQL Editor. This is a one-time setup.',
+                    buttonText: 'OK',
+                  });
                 }
                 // Don't block signup
               }
@@ -398,7 +450,13 @@ export default function AuthScreen() {
         }
       } else {
         if (!formData.email || !formData.password) {
-          alert('Please enter email and password');
+          setMessageModal({
+            visible: true,
+            variant: 'error',
+            title: 'Email and password required',
+            message: 'Please enter your email and password to sign in.',
+            buttonText: 'OK',
+          });
           setIsLoading(false);
           return;
         }
@@ -445,8 +503,14 @@ export default function AuthScreen() {
       } else if (error.code === 'PGRST116') {
         errorMessage = 'Database setup incomplete. Please check DATABASE-FIX-INSTRUCTIONS.md';
       }
-      
-      alert(errorMessage);
+
+      setMessageModal({
+        visible: true,
+        variant: 'error',
+        title: 'Something went wrong',
+        message: errorMessage,
+        buttonText: 'OK',
+      });
     } finally {
       setIsLoading(false);
     }
@@ -658,6 +722,15 @@ export default function AuthScreen() {
           )}
         </View>
       </ScrollView>
+
+      <MessageModal
+        visible={messageModal.visible}
+        onClose={closeMessageModal}
+        variant={messageModal.variant}
+        title={messageModal.title}
+        message={messageModal.message}
+        buttonText={messageModal.buttonText}
+      />
     </KeyboardAvoidingView>
   );
 }

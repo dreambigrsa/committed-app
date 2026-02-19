@@ -48,7 +48,7 @@ export default function BecomeProfessionalScreen() {
   const [location, setLocation] = useState('');
   const [credentials, setCredentials] = useState<string[]>([]);
   const [credentialInput, setCredentialInput] = useState('');
-  const [credentialDocuments, setCredentialDocuments] = useState<Array<{ type: string; url: string; verified: boolean }>>([]);
+  const [credentialDocuments, setCredentialDocuments] = useState<{ type: string; url: string; verified: boolean }[]>([]);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;

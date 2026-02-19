@@ -492,9 +492,10 @@ export default function MessagesScreen() {
                 <TouchableOpacity
                   style={styles.deleteConversationButton}
                   onPress={() => handleDeleteConversation(conversation.id)}
+                  disabled={isDeleting}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                  <Trash2 size={20} color={colors.danger} />
+                  <Trash2 size={20} color={isDeleting ? colors.text.tertiary : colors.danger} />
                 </TouchableOpacity>
               </View>
             );

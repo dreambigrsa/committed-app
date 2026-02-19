@@ -9,7 +9,7 @@ import {
   SafeAreaView,
 } from 'react-native';
 import { X, Check } from 'lucide-react-native';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 
 interface BanUserModalProps {
   visible: boolean;

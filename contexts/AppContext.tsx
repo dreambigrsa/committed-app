@@ -17,7 +17,7 @@ import { getStoredReferralCode, clearStoredReferralCode } from '@/lib/referral-s
 export const [AppContext, useApp] = createContextHook(() => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const { user: authUser } = useAuth();
+  const { user: authUser, session: authSession } = useAuth();
   const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [relationshipRequests, setRelationshipRequests] = useState<RelationshipRequest[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
@@ -99,22 +99,17 @@ export const [AppContext, useApp] = createContextHook(() => {
 
   useEffect(() => {
     if (authUser?.id) {
-      supabase.auth.getSession().then(({ data: { session: s } }) => {
-        setSession(s);
-      }).catch((err: any) => {
-        const msg = (err?.message ?? String(err)) ?? '';
-        if (!msg.includes('aborted') && !msg.includes('signal')) console.error('getSession error:', err);
-      });
-      loadUserData(authUser.id);
+      setSession(authSession);
+      loadUserData(authUser.id, authSession ?? undefined);
     } else {
       setCurrentUser(null);
       setSession(null);
       setIsLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authUser?.id]);
+  }, [authUser?.id, authSession]);
 
-  const loadUserData = async (userId: string) => {
+  const loadUserData = async (userId: string, sessionForCreate?: Session) => {
     try {
       setIsLoading(true);
       console.log('Loading user data for:', userId);
@@ -126,7 +121,7 @@ export const [AppContext, useApp] = createContextHook(() => {
 
       if (userError && userError.code === 'PGRST116') {
         console.log('User not found in database. Creating user record...');
-        await createUserRecord(userId);
+        await createUserRecord(userId, sessionForCreate ?? session);
         return;
       }
 
@@ -830,26 +825,27 @@ export const [AppContext, useApp] = createContextHook(() => {
     }
   };
 
-  const createUserRecord = async (userId: string) => {
+  const createUserRecord = async (userId: string, sessionToUse?: Session | null) => {
+    const sess = sessionToUse ?? session;
     try {
-      if (!session?.user) {
+      if (!sess?.user) {
         console.error('No session available to create user record');
         return;
       }
 
       console.log('Creating user record for:', userId);
-      console.log('Session user data:', JSON.stringify(session.user, null, 2));
+      console.log('Session user data:', JSON.stringify(sess.user, null, 2));
 
       const { data: insertData, error: insertError } = await supabase
         .from('users')
         .insert({
           id: userId,
-          full_name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
-          email: session.user.email || '',
-          phone_number: session.user.user_metadata?.phone_number || session.user.phone || '',
-          role: session.user.email === 'nashiezw@gmail.com' ? 'super_admin' : 'user',
+          full_name: sess.user.user_metadata?.full_name || sess.user.email?.split('@')[0] || 'User',
+          email: sess.user.email || '',
+          phone_number: sess.user.user_metadata?.phone_number || sess.user.phone || '',
+          role: sess.user.email === 'nashiezw@gmail.com' ? 'super_admin' : 'user',
           phone_verified: false,
-          email_verified: !!session.user.email_confirmed_at,
+          email_verified: !!sess.user.email_confirmed_at,
           id_verified: false,
         })
         .select()
@@ -2973,125 +2969,93 @@ export const [AppContext, useApp] = createContextHook(() => {
 
   const deleteConversation = useCallback(async (conversationId: string) => {
     if (!currentUser) return false;
-    
+
+    if (__DEV__) {
+      console.log('[deleteConversation] Starting delete for conversationId:', conversationId);
+    }
+
     try {
-      // First, get the conversation to find its participants
       const { data: conversationData } = await supabase
         .from('conversations')
         .select('participant_ids')
         .eq('id', conversationId)
         .single();
 
-      if (!conversationData) {
-        console.error('Conversation not found');
-        // Still try to delete by ID
-        const { error } = await supabase
+      const participantIds = conversationData?.participant_ids || [];
+      const participantIdsSorted = [...participantIds].sort();
+
+      let conversationIdsToDelete: string[];
+
+      if (conversationData && participantIds.length > 0) {
+        const { data: allUserConversations, error: queryError } = await supabase
           .from('conversations')
-          .delete()
-          .eq('id', conversationId);
-        if (error) {
-          console.error('Error deleting conversation:', error);
+          .select('id, participant_ids')
+          .contains('participant_ids', [currentUser.id]);
+
+        if (queryError) {
+          if (__DEV__) console.log('[deleteConversation] Query error:', queryError);
           return false;
         }
-        // Update local state
+
+        const exactMatches = allUserConversations?.filter((conv: any) => {
+          const convParticipants = conv.participant_ids || [];
+          if (convParticipants.length !== participantIds.length) return false;
+          const convSorted = [...convParticipants].sort();
+          return convSorted.every((id: string, i: number) => id === participantIdsSorted[i]);
+        }) || [];
+        conversationIdsToDelete = exactMatches.map((c: any) => c.id);
+      } else {
+        conversationIdsToDelete = [conversationId];
+      }
+
+      if (conversationIdsToDelete.length === 0) {
+        if (__DEV__) console.log('[deleteConversation] No matching conversations (already deleted?)');
         setConversations(prev => prev.filter(c => c.id !== conversationId));
         setMessages(prev => {
-          const updated = { ...prev };
-          delete updated[conversationId];
-          return updated;
+          const next = { ...prev };
+          delete next[conversationId];
+          return next;
         });
         return true;
       }
 
-      const participantIds = conversationData.participant_ids || [];
-      const participantIdsSorted = [...participantIds].sort();
-      
-      // Find ALL conversations with the same participants (to handle duplicates)
-      // Query all conversations for current user, then filter for exact participant matches
-      const { data: allUserConversations, error: queryError } = await supabase
+      // 1) Delete messages first (DB only - do not update UI until both succeed)
+      const { error: messagesError } = await supabase
+        .from('messages')
+        .delete()
+        .in('conversation_id', conversationIdsToDelete);
+
+      if (messagesError) {
+        if (__DEV__) console.log('[deleteConversation] Messages delete failed:', messagesError);
+        console.error('Error deleting messages:', messagesError);
+        return false;
+      }
+
+      // 2) Delete conversations and verify rows were actually deleted
+      const { data: deletedRows, error: conversationError } = await supabase
         .from('conversations')
-        .select('id, participant_ids')
-        .contains('participant_ids', [currentUser.id]);
+        .delete()
+        .in('id', conversationIdsToDelete)
+        .select('id');
 
-      if (queryError) {
-        console.error('Error querying matching conversations:', queryError);
+      if (conversationError) {
+        if (__DEV__) console.log('[deleteConversation] Conversations delete failed:', conversationError);
+        console.error('Error deleting conversations:', conversationError);
+        return false;
       }
 
-      // Filter to get exact matches (order-independent) - same participants
-      const exactMatches = allUserConversations?.filter((conv: any) => {
-        const convParticipants = conv.participant_ids || [];
-        if (convParticipants.length !== participantIds.length) return false;
-        const convSorted = [...convParticipants].sort();
-        return convSorted.every((id, i) => id === participantIdsSorted[i]);
-      }) || [];
-
-      const conversationIdsToDelete = exactMatches.map((c: any) => c.id);
-      
-      // Update local state immediately for better UX - remove ALL conversations with these participants
-      setConversations(prev => {
-        return prev.filter(c => {
-          const cParticipants = c.participants || [];
-          if (cParticipants.length !== participantIds.length) return true;
-          const cSorted = [...cParticipants].sort();
-          return !cSorted.every((id, i) => id === participantIdsSorted[i]);
-        });
-      });
-
-      // Delete messages for all matching conversations FIRST
-      if (conversationIdsToDelete.length > 0) {
-        const { error: messagesError } = await supabase
-          .from('messages')
-          .delete()
-          .in('conversation_id', conversationIdsToDelete);
-
-        if (messagesError) {
-          console.error('Error deleting messages:', messagesError);
-          // Continue with conversation deletion even if messages deletion fails
-        }
+      const deletedCount = deletedRows?.length ?? 0;
+      if (deletedCount === 0) {
+        if (__DEV__) console.log('[deleteConversation] No rows deleted (RLS or not found). Run add-conversations-messages-delete-policies.sql in Supabase.');
+        return false;
       }
 
-      // Delete ALL conversations with the same participants (to handle duplicates)
-      if (conversationIdsToDelete.length > 0) {
-        const { error: conversationError } = await supabase
-          .from('conversations')
-          .delete()
-          .in('id', conversationIdsToDelete);
-
-        if (conversationError) {
-          console.error('Error deleting conversations:', conversationError);
-          console.error('Conversation IDs attempted:', conversationIdsToDelete);
-          // Still update local state to remove from UI even if DB deletion fails
-          setConversations(prev => prev.filter(c => !conversationIdsToDelete.includes(c.id)));
-          setMessages(prev => {
-            const updated = { ...prev };
-            conversationIdsToDelete.forEach(convId => {
-              delete updated[convId];
-            });
-            return updated;
-          });
-          return false;
-        }
-      } else {
-        // Fallback: delete just this conversation
-        const { error: conversationError } = await supabase
-          .from('conversations')
-          .delete()
-          .eq('id', conversationId);
-
-        if (conversationError) {
-          console.error('Error deleting conversation:', conversationError);
-          // Still update local state to remove from UI even if DB deletion fails
-          setConversations(prev => prev.filter(c => c.id !== conversationId));
-          setMessages(prev => {
-            const updated = { ...prev };
-            delete updated[conversationId];
-            return updated;
-          });
-          return false;
-        }
+      if (__DEV__) {
+        console.log('[deleteConversation] Deleted', deletedCount, 'conversation(s):', conversationIdsToDelete);
       }
 
-      // Also remove messages from local state for all deleted conversations
+      // 3) Only after successful DB delete: remove from local state
+      setConversations(prev => prev.filter(c => !conversationIdsToDelete.includes(c.id)));
       setMessages(prev => {
         const updated = { ...prev };
         conversationIdsToDelete.forEach(convId => {
@@ -3161,14 +3125,21 @@ export const [AppContext, useApp] = createContextHook(() => {
 
       if (deleteForEveryone && isSender) {
         // Delete for everyone - mark as deleted for both
-        await supabase
+        const { data: updateData, error: updateErr } = await supabase
           .from('messages')
           .update({
             deleted_for_sender: true,
             deleted_for_receiver: true,
             content: 'This message was deleted',
           })
-          .eq('id', messageId);
+          .eq('id', messageId)
+          .select('id');
+
+        if (updateErr || !updateData?.length) {
+          console.error('Failed to delete message for everyone:', updateErr || 'No rows updated (check RLS)');
+          if (updateErr) throw updateErr;
+          return false;
+        }
 
         // Update conversation last message
         const { lastMessage, lastMessageAt } = await getLastNonDeletedMessage(conversationId, currentUser.id);
@@ -3211,14 +3182,16 @@ export const [AppContext, useApp] = createContextHook(() => {
       } else {
         // Delete for me only
         if (isSender) {
-          const { error: updateError } = await supabase
+          const { data: updateData, error: updateError } = await supabase
             .from('messages')
             .update({ deleted_for_sender: true })
-            .eq('id', messageId);
+            .eq('id', messageId)
+            .select('id');
 
-          if (updateError) {
-            console.error('Failed to delete message for sender:', JSON.stringify(updateError, null, 2));
-            throw updateError;
+          if (updateError || !updateData?.length) {
+            console.error('Failed to delete message for sender:', updateError || 'No rows updated (check RLS)');
+            if (updateError) throw updateError;
+            return false;
           }
 
           // Update conversation last message if this was the last message
@@ -3257,14 +3230,16 @@ export const [AppContext, useApp] = createContextHook(() => {
             return prev;
           });
         } else if (isReceiver) {
-          const { error: updateError } = await supabase
+          const { data: updateData, error: updateError } = await supabase
             .from('messages')
             .update({ deleted_for_receiver: true })
-            .eq('id', messageId);
+            .eq('id', messageId)
+            .select('id');
 
-          if (updateError) {
-            console.error('Failed to delete message for receiver:', JSON.stringify(updateError, null, 2));
-            throw updateError;
+          if (updateError || !updateData?.length) {
+            console.error('Failed to delete message for receiver:', updateError || 'No rows updated (check RLS)');
+            if (updateError) throw updateError;
+            return false;
           }
 
           // Update conversation last message if this was the last message
@@ -5933,24 +5908,24 @@ export const [AppContext, useApp] = createContextHook(() => {
     if (!currentUser) return;
     const id = postId?.trim();
     if (!id) return;
-
+    
     const post = posts.find(p => p.id === id);
-    if (!post) return;
+      if (!post) return;
 
     const { app: appLink, web: webLink } = buildPostLink(id);
     const downloadUrl = 'https://dreambig.org.za/committed';
-    const preview = post.content ? `${post.content.substring(0, 100)}...` : 'View this post in Committed';
+      const preview = post.content ? `${post.content.substring(0, 100)}...` : 'View this post in Committed';
     const shareText = `${preview}\n\nOpen in app: ${appLink}\nOr in browser: ${webLink}\nDownload Committed: ${downloadUrl}`;
-
+      
     try {
       const Share = require('react-native').Share;
       if (!Share?.share) {
-        const copied = await tryCopyToClipboard(shareText);
+          const copied = await tryCopyToClipboard(shareText);
         if (copied) Alert.alert('Copied!', 'Post link copied to clipboard.');
         else Alert.alert('Share Unavailable', 'Sharing is not available on this device.');
         return;
       }
-
+      
       const result = await Share.share({
         message: shareText,
         url: appLink,
@@ -5964,10 +5939,10 @@ export const [AppContext, useApp] = createContextHook(() => {
       const fallbackText = `${post.content ? post.content.substring(0, 100) + '...' : 'View this post'}\n\nOpen in app: ${appLink}\nOr in browser: ${webLink}`;
       try {
         const copied = await tryCopyToClipboard(fallbackText);
-        if (copied) {
+            if (copied) {
           Alert.alert('Link copied', 'Share was not available. Post link copied to clipboard.');
-          return;
-        }
+              return;
+            }
       } catch (_) {}
       if (isSharePermissionDenied(error)) {
         Alert.alert('Share unavailable', 'Your browser or device denied the share. You can copy the link from the post instead.');
@@ -5981,7 +5956,7 @@ export const [AppContext, useApp] = createContextHook(() => {
     if (!currentUser) return;
     const id = reelId?.trim();
     if (!id) return;
-
+    
     try {
       const reel = reels.find(r => r.id === id);
       if (!reel) return;
@@ -5990,15 +5965,15 @@ export const [AppContext, useApp] = createContextHook(() => {
       const downloadUrl = 'https://dreambig.org.za/committed';
       const preview = reel.caption ? `${reel.caption.substring(0, 100)}...` : 'View this reel in Committed';
       const shareText = `${preview}\n\nOpen in app: ${appLink}\nOr in browser: ${webLink}\nDownload Committed: ${downloadUrl}`;
-
+      
       const Share = require('react-native').Share;
       if (!Share?.share) {
-        const copied = await tryCopyToClipboard(shareText);
+          const copied = await tryCopyToClipboard(shareText);
         if (copied) Alert.alert('Copied!', 'Reel link copied to clipboard.');
         else Alert.alert('Share Unavailable', 'Sharing is not available on this device.');
         return;
       }
-
+      
       const result = await Share.share({
         message: shareText,
         url: appLink,
@@ -6016,10 +5991,10 @@ export const [AppContext, useApp] = createContextHook(() => {
         : `View this reel\n\nOpen in app: ${appLinkF}\nOr in browser: ${webLinkF}`;
       try {
         const copied = await tryCopyToClipboard(fallbackText);
-        if (copied) {
+            if (copied) {
           Alert.alert('Link copied', 'Share was not available. Reel link copied to clipboard.');
-          return;
-        }
+              return;
+            }
       } catch (_) {}
       if (isSharePermissionDenied(error)) {
         Alert.alert('Share unavailable', 'Your browser or device denied the share. You can copy the link from the reel instead.');

@@ -28,10 +28,10 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
 import { createProfessionalBooking } from '@/lib/professional-bookings';
-import { findMatchingProfessionals } from '@/lib/professional-matching';
+import { findMatchingProfessionals , ProfessionalMatch } from '@/lib/professional-matching';
 import { supabase } from '@/lib/supabase';
 import { ProfessionalRole, ProfessionalProfile } from '@/types';
-import { ProfessionalMatch } from '@/lib/professional-matching';
+
 import colors from '@/constants/colors';
 
 type LocationType = 'online' | 'in_person' | 'phone' | 'video';

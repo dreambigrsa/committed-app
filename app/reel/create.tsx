@@ -16,7 +16,7 @@ import {
 import { Stack, useRouter } from 'expo-router';
 import { X, Video as VideoIcon, Upload, Trash2, Sparkles } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Video, ResizeMode } from 'expo-av';

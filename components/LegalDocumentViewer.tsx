@@ -16,9 +16,11 @@ import { LegalDocument } from '@/types';
 interface LegalDocumentViewerProps {
   document: LegalDocument | null;
   isLoading?: boolean;
+  /** When true, back button returns to legal acceptance modal */
+  fromAcceptance?: boolean;
 }
 
-export default function LegalDocumentViewer({ document, isLoading }: LegalDocumentViewerProps) {
+export default function LegalDocumentViewer({ document, isLoading, fromAcceptance }: LegalDocumentViewerProps) {
   const router = useRouter();
   const { colors } = useTheme();
   const styles = createStyles(colors);
@@ -87,12 +89,12 @@ export default function LegalDocumentViewer({ document, isLoading }: LegalDocume
 
     // Simple HTML parser that handles common tags
     const parseHTML = (html: string) => {
-      const result: Array<{ type: string; content: string; tag?: string; level?: number }> = [];
+      const result: { type: string; content: string; tag?: string; level?: number }[] = [];
       
       // Match HTML tags and text
       const regex = /(<\/?[a-zA-Z][^>]*>)|([^<]+)/g;
       let match;
-      let stack: Array<{ tag: string; level: number }> = [];
+      let stack: { tag: string; level: number }[] = [];
 
       while ((match = regex.exec(html)) !== null) {
         if (match[1]) {
@@ -318,7 +320,7 @@ export default function LegalDocumentViewer({ document, isLoading }: LegalDocume
             backgroundColor: colors.background.primary,
           },
           headerTintColor: colors.text.primary,
-          headerBackTitle: 'Back',
+          headerBackTitle: fromAcceptance ? 'Back to accept' : 'Back',
         }}
       />
       <ScrollView

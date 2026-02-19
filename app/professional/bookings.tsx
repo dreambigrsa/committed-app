@@ -30,7 +30,7 @@ import { useApp } from '@/contexts/AppContext';
 import { getProfessionalBookings, rescheduleBooking, cancelBooking, confirmBooking, completeBooking } from '@/lib/professional-bookings';
 import { ProfessionalSession } from '@/types';
 import { supabase } from '@/lib/supabase';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 
 export default function ProfessionalBookingsScreen() {
   const router = useRouter();

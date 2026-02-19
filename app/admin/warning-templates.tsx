@@ -14,7 +14,7 @@ import {
 import { Stack } from 'expo-router';
 import { Edit2, Save, X, FileText, AlertTriangle, AlertCircle, Info } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 import { WarningTemplate } from '@/types';
 
 export default function WarningTemplatesManagementScreen() {

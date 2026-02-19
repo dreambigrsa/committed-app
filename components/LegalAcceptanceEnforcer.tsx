@@ -29,10 +29,10 @@ export default function LegalAcceptanceEnforcer() {
       setIsViewingDocument(true);
       setModalVisible(false);
     } else if (isViewingDocument && !pathname?.startsWith('/legal/')) {
-      // User came back from viewing a document
+      // User came back from viewing a document — show modal again so they can accept
       setIsViewingDocument(false);
-      // Show modal again after a short delay
       timeoutRef.current = setTimeout(() => {
+        if (pathname?.startsWith('/legal/')) return;
         const shouldShow =
           currentUser &&
           legalAcceptanceStatus !== null &&
@@ -41,7 +41,7 @@ export default function LegalAcceptanceEnforcer() {
             legalAcceptanceStatus.needsReAcceptance.length > 0);
         setModalVisible(!!shouldShow);
         timeoutRef.current = null;
-      }, 300);
+      }, 400);
     }
 
     return () => {
@@ -53,40 +53,45 @@ export default function LegalAcceptanceEnforcer() {
   }, [pathname, isViewingDocument, currentUser, legalAcceptanceStatus]);
 
   const handleViewDocument = (document: LegalDocument) => {
-    if (!document || !document.slug) {
-      console.error('Invalid document or missing slug:', document);
+    if (!document) {
+      console.error('Invalid document:', document);
+      return;
+    }
+    if (!document.slug || typeof document.slug !== 'string') {
+      console.error('Document missing slug:', document);
+      if (typeof alert !== 'undefined') {
+        alert('This document cannot be opened right now. Please try again or contact support.');
+      }
       return;
     }
 
-    console.log('Viewing legal document:', document.slug);
-    
-    // Hide modal first to allow navigation
+    const slug = document.slug.trim();
+    if (!slug) {
+      if (typeof alert !== 'undefined') {
+        alert('This document cannot be opened right now. Please try again or contact support.');
+      }
+      return;
+    }
+
+    // Hide modal first so the stack screen can show and back works
     setModalVisible(false);
     setIsViewingDocument(true);
-    
-    // Clear any existing timeout
+
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
-    
-    // Use InteractionManager to ensure navigation happens after modal animation completes
+
     InteractionManager.runAfterInteractions(() => {
-      // Small delay to ensure modal is completely closed
+      const route = `/legal/${slug}?from=acceptance`;
       setTimeout(() => {
-        const route = `/legal/${document.slug}`;
-        console.log('Navigating to:', route);
-        
         try {
-          // Use push to allow back navigation
           router.push(route as any);
         } catch (error) {
           console.error('Error navigating to legal document:', error);
-          // Reset state if navigation fails
           setIsViewingDocument(false);
-          // Don't show modal again immediately - let the pathname effect handle it
         }
-      }, 200);
+      }, 350);
     });
   };
 
@@ -114,32 +119,58 @@ export default function LegalAcceptanceEnforcer() {
     }
   };
 
+  const isOnResetPassword = pathname === '/reset-password';
+  const isOnLegalRoute = pathname?.startsWith('/legal/');
+
+  // Don't show on reset-password or when viewing a legal document; allow app use so they can open /legal from Settings etc.
   useEffect(() => {
-    // Only show modal if not currently viewing a document
-    if (!isViewingDocument) {
-      // Only show if:
-      // 1. User is logged in
-      // 2. Status has been checked (not null)
-      // 3. User doesn't have all required documents
-      // 4. There are actually missing or needs-reacceptance documents
-      const shouldShow =
-        currentUser &&
-        legalAcceptanceStatus !== null &&
+    if (isOnResetPassword || isOnLegalRoute) {
+      setModalVisible(false);
+      return;
+    }
+    if (!isViewingDocument && currentUser && legalAcceptanceStatus !== null) {
+      // Re-verify from DB once when status says we might show, so we don't show if they already accepted
+      const mightShow =
         !legalAcceptanceStatus.hasAllRequired &&
         (legalAcceptanceStatus.missingDocuments.length > 0 ||
           legalAcceptanceStatus.needsReAcceptance.length > 0);
-      setModalVisible(!!shouldShow);
+      if (!mightShow) {
+        setModalVisible(false);
+        return;
+      }
+      let cancelled = false;
+      checkUserLegalAcceptances(currentUser.id).then((status) => {
+        if (cancelled) return;
+        setLegalAcceptanceStatus(status);
+        if (status.hasAllRequired) {
+          setModalVisible(false);
+          updateUser({ acceptedLegalDocs: true });
+        } else {
+          setModalVisible(
+            status.missingDocuments.length > 0 || status.needsReAcceptance.length > 0
+          );
+        }
+      }).catch(() => {
+        if (!cancelled) setModalVisible(false);
+      });
+      return () => { cancelled = true; };
     }
-  }, [currentUser, legalAcceptanceStatus, isViewingDocument]);
+  }, [currentUser, legalAcceptanceStatus, isViewingDocument, isOnResetPassword, isOnLegalRoute]);
 
   const showModal = Boolean(
     !isViewingDocument &&
+    !isOnResetPassword &&
+    !isOnLegalRoute &&
     currentUser &&
     legalAcceptanceStatus !== null &&
     !legalAcceptanceStatus.hasAllRequired &&
     (legalAcceptanceStatus.missingDocuments.length > 0 ||
       legalAcceptanceStatus.needsReAcceptance.length > 0)
   );
+
+  const handleDismiss = () => {
+    setModalVisible(false);
+  };
 
   return (
     <LegalAcceptanceModal
@@ -148,6 +179,7 @@ export default function LegalAcceptanceEnforcer() {
       needsReAcceptance={legalAcceptanceStatus?.needsReAcceptance || []}
       onComplete={handleComplete}
       onViewDocument={handleViewDocument}
+      onDismiss={handleDismiss}
     />
   );
 }

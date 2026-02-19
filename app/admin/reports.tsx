@@ -13,7 +13,7 @@ import { Stack } from 'expo-router';
 import { AlertTriangle, CheckCircle, XCircle, Eye, Ban } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 import { ReportedContent } from '@/types';
 import BanUserModal from '@/components/BanUserModal';
 

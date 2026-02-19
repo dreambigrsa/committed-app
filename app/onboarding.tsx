@@ -9,6 +9,7 @@ import {
   TextInput,
   Alert,
   Animated,
+  ActivityIndicator,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { CheckCircle2, ArrowRight, Sparkles, Users, Shield, MapPin, X } from 'lucide-react-native';
@@ -18,12 +19,21 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import colors from '@/constants/colors';
 
+/** User id to use for onboarding: currentUser (AppContext) or auth user (AuthContext) when coming from verification. */
+function useOnboardingUserId(): { userId: string | null; isSessionReady: boolean } {
+  const { currentUser } = useApp();
+  const { user: authUser, authLoading } = useAuth();
+  const userId = currentUser?.id ?? authUser?.id ?? null;
+  const isSessionReady = !authLoading;
+  return { userId, isSessionReady };
+}
+
 const ONBOARDING_VERSION = '1.0.0';
 
 export default function OnboardingScreen() {
   const router = useRouter();
-  const { currentUser } = useApp();
   const { updateUser } = useAuth();
+  const { userId, isSessionReady } = useOnboardingUserId();
   const { colors: themeColors } = useTheme();
   const styles = createStyles(themeColors);
 
@@ -186,7 +196,11 @@ export default function OnboardingScreen() {
       return;
     }
 
-    if (!currentUser) {
+    if (!isSessionReady) {
+      Alert.alert('Please wait', 'Session is loading. Try again in a moment.');
+      return;
+    }
+    if (!userId) {
       Alert.alert('Error', 'Please log in to continue.');
       return;
     }
@@ -194,11 +208,11 @@ export default function OnboardingScreen() {
     try {
       setSaving(true);
 
-      // Save onboarding data
+      // Save onboarding data (use userId from Auth or App context so verification→onboarding works)
       const { error } = await supabase
         .from('user_onboarding_data')
         .upsert({
-          user_id: currentUser.id,
+          user_id: userId,
           has_completed_onboarding: true,
           onboarding_version: ONBOARDING_VERSION,
           ai_explanation_viewed: true,
@@ -224,6 +238,29 @@ export default function OnboardingScreen() {
   const currentStep = steps[step];
   const CurrentIcon = currentStep.icon;
   const isLastStep = step === steps.length - 1;
+
+  if (!isSessionReady) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={[styles.content, { justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
+          <ActivityIndicator size="large" color={themeColors.primary} />
+          <Text style={[styles.stepTitle, { marginTop: 16 }]}>Loading...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+  if (!userId) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={[styles.content, { justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
+          <Text style={styles.stepTitle}>Please log in to continue</Text>
+          <TouchableOpacity style={[styles.nextButton, styles.nextButtonActive]} onPress={() => router.replace('/auth')}>
+            <Text style={styles.nextButtonText}>Go to sign in</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>

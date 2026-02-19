@@ -13,12 +13,18 @@ const SUPABASE_URL =
   'https://dizcuexznganwgddsrfo.supabase.co';
 const SUPABASE_ANON_KEY =
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+  (typeof globalThis !== 'undefined' && (globalThis as any).EXPO_PUBLIC_SUPABASE_ANON_KEY) ||
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRpemN1ZXh6bmdhbndnZGRzcmZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUyNjcxODcsImV4cCI6MjA4MDg0MzE4N30.cvnt9KN4rz2u9yQbDQjFcA_Q7WDz2M_lGln3RCJ-hJQ';
 
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.length < 20) {
   console.error(
-    '[Supabase] Missing config. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY for production builds.'
+    '[Supabase] Missing or invalid config. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY (e.g. in .env or app config).'
   );
+}
+
+/** For auth API calls that bypass the SDK (e.g. update password to avoid lock bug). */
+export function getSupabaseAuthConfig(): { url: string; anonKey: string } {
+  return { url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY };
 }
 
 // On web, detect session in URL so auth callback (/auth-callback?code=...) auto-logs in

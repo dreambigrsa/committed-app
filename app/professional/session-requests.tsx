@@ -15,9 +15,9 @@ import { CheckCircle2, XCircle, Clock, User, MessageSquare, Shield } from 'lucid
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
 import { getPendingSessionRequests, acceptProfessionalSession, declineProfessionalSession } from '@/lib/professional-sessions';
-import { ProfessionalSession } from '@/types';
+import { ProfessionalSession , ProfessionalProfile } from '@/types';
 import { supabase } from '@/lib/supabase';
-import { ProfessionalProfile } from '@/types';
+
 
 export default function ProfessionalSessionRequestsScreen() {
   const router = useRouter();

@@ -10,13 +10,13 @@ import {
   Alert,
   TextInput,
   ActivityIndicator,
-} from 'react-native';
+ Clipboard } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { ArrowLeft, Shield, Key, Copy, CheckCircle2, XCircle } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
-import { Clipboard } from 'react-native';
+
 
 export default function TwoFactorAuthScreen() {
   const router = useRouter();

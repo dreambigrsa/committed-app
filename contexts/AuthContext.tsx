@@ -1,11 +1,14 @@
 /**
- * AuthContext - Single source of truth for session state only.
- * NEVER navigates. NEVER reads storage directly in screens.
- * All routing flows through AppGate.
+ * AuthContext - Single source of truth for auth/session.
+ * Only place that calls getSession() on startup. All other code uses this context.
+ * NEVER navigates. Deep link handling runs only after authLoading === false.
  */
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { updatePasswordViaApi, UpdatePasswordTimeoutError, UpdatePasswordAbortedError } from '@/lib/supabase-auth-api';
 import { checkUserLegalAcceptances } from '@/lib/legal-enforcement';
+import { hasPendingPasswordRecovery, setPendingPasswordRecovery } from '@/lib/pending-password-recovery';
 
 // Minimal auth user for routing decisions
 export interface AuthUser {
@@ -21,10 +24,12 @@ export interface AuthUser {
 
 interface AuthState {
   user: AuthUser | null;
+  session: Session | null;
   accessToken: string | null;
   refreshToken: string | null;
   isAuthenticated: boolean;
   authLoading: boolean;
+  authReady: boolean;
 }
 
 interface AuthContextValue extends AuthState {
@@ -42,12 +47,14 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
 
   const isAuthenticated = user !== null;
+  const authReady = !authLoading;
 
   const hydrateFromSession = useCallback(
     async (
@@ -55,6 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       opts?: { isPasswordRecovery?: boolean }
     ) => {
       try {
+        setSession(session as Session);
         setAccessToken(session.access_token);
         setRefreshToken(session.refresh_token ?? null);
 
@@ -69,14 +77,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .single();
 
         if (!userData) {
-          // User record may not exist yet (e.g. right after signup). Use session for routing.
+          // User record may not exist yet (e.g. right after signup). Still check legal acceptances
+          // so we don't show the legal modal when they've already accepted (e.g. after password reset).
+          const acceptanceStatus = await checkUserLegalAcceptances(session.user.id);
           setUser({
             id: session.user.id,
             email: session.user.email || '',
             fullName: (session.user as any).user_metadata?.full_name || '',
             phoneNumber: (session.user as any).user_metadata?.phone_number || '',
             emailVerified: !!session.user.email_confirmed_at,
-            acceptedLegalDocs: false,
+            acceptedLegalDocs: acceptanceStatus.hasAllRequired,
             completedOnboarding: false,
             isPasswordRecovery: opts?.isPasswordRecovery ?? isPasswordRecovery,
           });
@@ -103,6 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (err) {
         console.error('AuthContext hydrate error:', err);
         setUser(null);
+        setSession(null);
         setAccessToken(null);
         setRefreshToken(null);
       }
@@ -112,34 +123,64 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const restoreSession = useCallback(async () => {
     setAuthLoading(true);
+    const forceStopRef = { done: false };
+    const forceStopLoading = () => {
+      if (forceStopRef.done) return;
+      forceStopRef.done = true;
+      setAuthLoading(false);
+      if (__DEV__) console.log('[Auth] Loading forced stop (timeout)');
+    };
+    const timeoutId = setTimeout(forceStopLoading, 4000);
+
     try {
-      const { data: { session }, error } = await supabase.auth.getSession();
+      const { data: { session: s }, error } = await supabase.auth.getSession();
       if (error) {
         console.error('Session restore error:', error);
         setUser(null);
+        setSession(null);
         setAccessToken(null);
         setRefreshToken(null);
+        setAuthLoading(false);
         return;
       }
-      if (session) {
-        await hydrateFromSession(session);
+      if (s) {
+        setSession(s);
+        setAuthLoading(false);
+        // Session may have been set from URL. Use pending recovery flag (set at first URL sight) so we
+        // always send to /reset-password and never home.
+        const isRecovery =
+          hasPendingPasswordRecovery() ||
+          (typeof window !== 'undefined' && window.location?.href?.includes('type=recovery'));
+        hydrateFromSession(s, { isPasswordRecovery: !!isRecovery }).catch((err: any) => {
+          const msg = (err?.message ?? String(err)) ?? '';
+          if (!msg.includes('aborted') && !msg.includes('signal')) console.error('hydrateFromSession error:', err);
+          setUser(null);
+          setSession(null);
+          setAccessToken(null);
+          setRefreshToken(null);
+        });
       } else {
         setUser(null);
+        setSession(null);
         setAccessToken(null);
         setRefreshToken(null);
+        setAuthLoading(false);
       }
     } catch (err: any) {
       const msg = (err?.message ?? String(err)) ?? '';
       if (msg.includes('aborted') || msg.includes('signal')) {
-        // Supabase auth lock aborted (e.g. navigation/unmount); ignore to avoid uncaught error
+        setAuthLoading(false);
         return;
       }
       console.error('restoreSession error:', err);
       setUser(null);
+      setSession(null);
       setAccessToken(null);
       setRefreshToken(null);
-    } finally {
       setAuthLoading(false);
+    } finally {
+      clearTimeout(timeoutId);
+      forceStopLoading();
     }
   }, [hydrateFromSession]);
 
@@ -157,22 +198,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (event === 'SIGNED_OUT' || (event === 'TOKEN_REFRESHED' && !newSession)) {
         setUser(null);
+        setSession(null);
         setAccessToken(null);
         setRefreshToken(null);
         return;
       }
 
       if (newSession) {
+        setSession(newSession);
         setAccessToken(newSession.access_token);
         setRefreshToken(newSession.refresh_token ?? null);
+        const isRecovery =
+          event === 'PASSWORD_RECOVERY' || hasPendingPasswordRecovery() ||
+          (typeof window !== 'undefined' && window.location?.href?.includes('type=recovery'));
         try {
-          await hydrateFromSession(newSession, { isPasswordRecovery: event === 'PASSWORD_RECOVERY' });
+          await hydrateFromSession(newSession, { isPasswordRecovery: !!isRecovery });
         } catch (err: any) {
           const msg = (err?.message ?? String(err)) ?? '';
           if (!msg.includes('aborted') && !msg.includes('signal')) console.error('onAuthStateChange hydrate error:', err);
         }
       } else {
         setUser(null);
+        setSession(null);
         setAccessToken(null);
         setRefreshToken(null);
       }
@@ -210,6 +257,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (error) throw error;
         if (data.user && !data.session) {
           setUser(null);
+          setSession(null);
           setAccessToken(null);
           setRefreshToken(null);
         } else if (data.session) {
@@ -227,12 +275,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await supabase.auth.signOut();
       setUser(null);
+      setSession(null);
       setAccessToken(null);
       setRefreshToken(null);
       setIsPasswordRecovery(false);
     } catch (err) {
       console.error('SignOut error:', err);
       setUser(null);
+      setSession(null);
       setAccessToken(null);
       setRefreshToken(null);
     } finally {
@@ -247,9 +297,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updatePassword = useCallback(async (newPassword: string) => {
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if (error) throw error;
+    // Use direct Auth API to avoid Supabase SDK updateUser() lock bug (never resolves on success).
+    const { data: { session: s } } = await supabase.auth.getSession();
+    const token = s?.access_token ?? null;
+    if (!token) {
+      throw new Error('No session. This reset link may have expired. Please request a new password reset.');
+    }
+    await updatePasswordViaApi(token, newPassword, { timeoutMs: 25000 });
     setIsPasswordRecovery(false);
+    setPendingPasswordRecovery(false);
+    // Optionally refresh session so client state is in sync (no await to avoid blocking).
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setSession(session);
+        setAccessToken(session.access_token);
+      }
+    }).catch(() => {});
   }, []);
 
   const updateUser = useCallback((partial: Partial<AuthUser>) => {
@@ -269,6 +332,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (msg.includes('aborted') || msg.includes('signal')) return;
       console.error('Token refresh failed:', err);
       setUser(null);
+      setSession(null);
       setAccessToken(null);
       setRefreshToken(null);
     }
@@ -276,10 +340,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const value: AuthContextValue = {
     user,
+    session,
     accessToken,
     refreshToken,
     isAuthenticated,
     authLoading,
+    authReady,
     signIn,
     signUp,
     signOut,

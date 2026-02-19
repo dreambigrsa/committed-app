@@ -11,7 +11,7 @@ import { Stack } from 'expo-router';
 import { BarChart3, Users, Heart, Film, MessageSquare, TrendingUp } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 
 export default function AdminAnalyticsScreen() {
   const { currentUser } = useApp();

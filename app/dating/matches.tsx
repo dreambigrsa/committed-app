@@ -12,13 +12,12 @@ import {
   Dimensions,
   Alert,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter , Stack } from 'expo-router';
 import { MessageSquare, Sparkles, Heart, ArrowLeft, Calendar } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
 import * as DatingService from '@/lib/dating-service';
 import { Image as ExpoImage } from 'expo-image';
-import { Stack } from 'expo-router';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 

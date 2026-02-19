@@ -20,7 +20,7 @@ import {
   Animated,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Send, Trash2, Image as ImageIcon, FileText, X, Settings, Download, ZoomIn, Flag, MoreVertical, Smile, ChevronUp, ChevronDown } from 'lucide-react-native';
+import { ArrowLeft, Send, Trash2, Image as ImageIcon, FileText, X, Settings, Download, ZoomIn, Flag, MoreVertical, Smile, ChevronUp, ChevronDown , ExternalLink , Users, Shield } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { Video, ResizeMode } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
@@ -31,15 +31,13 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/contexts/AppContext';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import ReportContentModal from '@/components/ReportContentModal';
 import StickerPicker from '@/components/StickerPicker';
-import { Sticker, Advertisement } from '@/types';
+import { Sticker, Advertisement , UserStatus , ProfessionalSession } from '@/types';
 import * as WebBrowser from 'expo-web-browser';
-import { ExternalLink } from 'lucide-react-native';
 import StatusIndicator from '@/components/StatusIndicator';
-import { UserStatus } from '@/types';
 import { getSignedUrlForMedia } from '@/lib/status-queries';
 import { getOrCreateAIUser, getAIResponse, shouldAIRespondInObserverMode } from '@/lib/ai-service';
 import RequestLiveHelpModal from '@/components/RequestLiveHelpModal';
@@ -48,8 +46,6 @@ import ProfessionalHelpSuggestionModal from '@/components/ProfessionalHelpSugges
 import SessionManagementModal from '@/components/SessionManagementModal';
 import PremiumModal from '@/components/PremiumModal';
 import { getActiveSession } from '@/lib/professional-sessions';
-import { ProfessionalSession } from '@/types';
-import { Users, Shield } from 'lucide-react-native';
 import { monitorActiveSessionForNonAgreement } from '@/lib/session-monitor';
 import { escalateSession } from '@/lib/escalation-service';
 
@@ -579,7 +575,7 @@ export default function ConversationDetailScreen() {
         subscription.unsubscribe();
       };
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [conversationId, currentUser]);
 
   // Load other participant's status

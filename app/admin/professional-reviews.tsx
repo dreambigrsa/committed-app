@@ -12,7 +12,7 @@ import {
   TextInput,
 } from 'react-native';
 import { Stack } from 'expo-router';
-import { Star, Filter, CheckCircle2, XCircle, Flag, AlertCircle } from 'lucide-react-native';
+import { Star, CheckCircle2, XCircle, Flag, AlertCircle } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { ProfessionalReview, ReviewModerationStatus } from '@/types';

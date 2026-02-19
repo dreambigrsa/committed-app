@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { LegalDocument } from '@/types';
+import { isAbortLikeError } from './abort-error';
 
 export interface AcceptanceStatus {
   hasAllRequired: boolean;
@@ -102,107 +103,88 @@ export async function saveUserAcceptance(
 ): Promise<boolean> {
   try {
     // During signup, session might not be immediately available, so we're more lenient
-    // For other contexts, verify session is active (fixes 401 errors)
-    if (context !== 'signup') {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) {
-        console.error('Session error when saving acceptance:', sessionError);
-        return false;
-      }
-      
-      if (!session || !session.user) {
-        console.error('No active session when trying to save legal acceptance');
-        return false;
-      }
-      
-      if (session.user.id !== userId) {
-        console.error(`Session user ID (${session.user.id}) doesn't match provided userId (${userId})`);
-        return false;
-      }
-    } else {
-      // During signup, wait for session to be established
-      // Don't try to refresh if there's no session yet - just wait
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Try to get session (don't refresh if it doesn't exist)
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (session && session.user) {
-        // Only refresh if we have a session
-        const { error: refreshError } = await supabase.auth.refreshSession();
-        if (refreshError && refreshError.message !== 'Auth session missing!') {
-          console.warn('Session refresh error during signup:', refreshError);
-        } else {
-          console.log('Session available for legal acceptance');
+    // For other contexts, verify session is active (fixes 401 errors).
+    // Supabase auth getSession/refreshSession can throw "signal is aborted" — catch and skip check.
+    try {
+      if (context !== 'signup') {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+        if (sessionError) {
+          console.error('Session error when saving acceptance:', sessionError);
+          return false;
         }
-        
+
+        if (!session || !session.user) {
+          console.error('No active session when trying to save legal acceptance');
+          return false;
+        }
+
         if (session.user.id !== userId) {
-          console.warn(`Session user ID (${session.user.id}) doesn't match provided userId (${userId}) during signup`);
+          console.error(`Session user ID (${session.user.id}) doesn't match provided userId (${userId})`);
+          return false;
         }
       } else {
-        // No session yet - that's OK, the RLS policy will handle it via the helper function
-        console.log('No session yet during signup - RLS policy will use helper function');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (session && session.user) {
+          const { error: refreshError } = await supabase.auth.refreshSession();
+          if (refreshError && refreshError.message !== 'Auth session missing!') {
+            console.warn('Session refresh error during signup:', refreshError);
+          } else {
+            if (__DEV__) console.log('Session available for legal acceptance');
+          }
+
+          if (session.user.id !== userId) {
+            console.warn(`Session user ID (${session.user.id}) doesn't match provided userId (${userId}) during signup`);
+          }
+        } else {
+          if (__DEV__) console.log('No session yet during signup - RLS policy will use helper function');
+        }
+      }
+    } catch (sessionErr: unknown) {
+      if (isAbortLikeError(sessionErr)) {
+        if (__DEV__) console.log('Legal save: session check skipped (abort)');
+        // Continue to DB insert/update; RLS may still allow it
+      } else {
+        console.error('Session check error when saving acceptance:', sessionErr);
+        return false;
       }
     }
 
-    // First check if acceptance already exists
-    const { data: existing, error: checkError } = await supabase
+    // Upsert: insert or update on (user_id, document_id) to avoid duplicate key errors
+    const row = {
+      user_id: userId,
+      document_id: documentId,
+      document_version: documentVersion,
+      context,
+      accepted_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase
       .from('user_legal_acceptances')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('document_id', documentId)
-      .maybeSingle();
+      .upsert(row, { onConflict: 'user_id,document_id' });
 
-    if (checkError && checkError.code !== 'PGRST116') {
-      console.error('Error checking existing acceptance:', checkError);
-      // Don't fail if it's just "not found" - continue to insert
-    }
-
-    if (existing) {
-      // Update existing acceptance
-      const { error } = await supabase
-        .from('user_legal_acceptances')
-        .update({
-          document_version: documentVersion,
-          context,
-          accepted_at: new Date().toISOString(),
-        })
-        .eq('id', existing.id);
-
-      if (error) {
-        console.error('Error updating acceptance:', error);
-        if (error.code === '42501') {
-          console.error('RLS Policy Error: Please run migrations/fix-legal-acceptances-rls-quick.sql in Supabase');
-        }
-        throw error;
+    if (error) {
+      if (error.code === '23505') {
+        // Duplicate key - row exists but RLS may have hidden it on select; retry as update by id if needed
+        console.warn('Legal acceptance duplicate key (race/RLS), row already saved:', documentId);
+        return true;
       }
-    } else {
-      // Insert new acceptance
-      const { error } = await supabase
-        .from('user_legal_acceptances')
-        .insert({
-          user_id: userId,
-          document_id: documentId,
-          document_version: documentVersion,
-          context,
-        });
-
-      if (error) {
-        console.error('Error inserting acceptance:', error);
-        if (error.code === '42501') {
-          console.error('⚠️ RLS Policy Error: The user_legal_acceptances table is missing INSERT policy.');
-          console.error('URGENT: Run migrations/FIX-RLS-WITH-FUNCTION.sql in Supabase SQL Editor');
-          console.error('This version creates a database function that bypasses RLS during signup.');
-          console.error('This is a database configuration issue - the SQL must be run in Supabase dashboard.');
-        }
-        throw error;
+      console.error('Error upserting acceptance:', error);
+      if (error.code === '42501') {
+        console.error('RLS Policy Error: Please run migrations for user_legal_acceptances.');
       }
+      throw error;
     }
     return true;
   } catch (error: any) {
+    if (isAbortLikeError(error)) {
+      if (__DEV__) console.log('Legal save: request aborted');
+      return false;
+    }
     console.error('Error saving acceptance:', error);
-    // Re-throw the error so the caller can handle it properly
     throw error;
   }
 }

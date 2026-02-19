@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  Pressable,
 } from 'react-native';
 import { Check, FileText, ExternalLink } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -46,19 +47,19 @@ export default function LegalAcceptanceCheckbox({
         
         <View style={styles.content}>
           <View style={styles.headerRow}>
-            <TouchableOpacity
-              style={styles.titleRow}
-              onPress={() => {
-                onViewDocument(document);
-              }}
-              activeOpacity={0.7}
+            <Pressable
+              style={({ pressed }) => [styles.titleRow, pressed && { opacity: 0.7 }]}
+              onPress={() => onViewDocument(document)}
+              hitSlop={{ top: 8, bottom: 8, left: 0, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={`${document.title}, view full document`}
             >
               <FileText size={18} color={isAccepted ? colors.primary : colors.text.secondary} />
               <Text style={styles.title}>
                 {required && <Text style={styles.requiredStar}>* </Text>}
                 {document.title}
               </Text>
-            </TouchableOpacity>
+            </Pressable>
             {required && (
               <View style={styles.requiredBadge}>
                 <Text style={styles.requiredBadgeText}>Required</Text>
@@ -68,16 +69,17 @@ export default function LegalAcceptanceCheckbox({
           
           <View style={styles.metaRow}>
             <Text style={styles.versionText}>Version {document.version}</Text>
-            <TouchableOpacity
-              style={styles.viewLink}
-              onPress={() => {
-                onViewDocument(document);
-              }}
-              activeOpacity={0.7}
+            <Pressable
+              style={({ pressed }) => [styles.viewLink, pressed && styles.viewLinkPressed]}
+              onPress={() => onViewDocument(document)}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityRole="link"
+              accessibilityLabel="View full document"
+              accessibilityHint="Opens the full document so you can read it, then you can go back to accept"
             >
               <Text style={styles.viewLinkText}>View Full Document</Text>
               <ExternalLink size={14} color={colors.primary} />
-            </TouchableOpacity>
+            </Pressable>
           </View>
         </View>
       </View>
@@ -184,6 +186,9 @@ const createStyles = (colors: any, isAccepted: boolean) => StyleSheet.create({
     gap: 6,
     paddingVertical: 4,
     paddingHorizontal: 8,
+  },
+  viewLinkPressed: {
+    opacity: 0.7,
   },
   viewLinkText: {
     fontSize: 13,

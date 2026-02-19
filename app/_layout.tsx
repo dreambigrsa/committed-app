@@ -12,7 +12,9 @@ import NotificationToast from "../components/NotificationToast";
 import BanMessageModal from "@/components/BanMessageModal";
 import LegalAcceptanceEnforcer from "@/components/LegalAcceptanceEnforcer";
 import { setPendingAuthUrl } from "@/lib/pending-auth-url";
+import { setPendingPasswordRecovery } from "@/lib/pending-password-recovery";
 import { setPendingDeepLink, isAuthLink } from "@/lib/deep-link-service";
+import { isAbortLikeError } from "@/lib/abort-error";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -27,6 +29,7 @@ function RootLayoutNav() {
         const href = window.location.href;
         if (href && (href.includes("post/") || href.includes("reel/") || href.includes("referral") || href.includes("access_token=") || href.includes("type=recovery") || href.includes("code="))) {
           if (href.includes("type=recovery") || href.includes("access_token=")) {
+            if (href.includes("type=recovery")) setPendingPasswordRecovery(true);
             const isAuthCallbackPath = href.includes("/auth-callback");
             if (!isAuthCallbackPath) router.replace("/auth-callback" + (window.location.hash || ""));
           } else {
@@ -37,6 +40,7 @@ function RootLayoutNav() {
       }
       if (!initial) return;
       if (isAuthLink(initial)) {
+        if (initial.includes("type=recovery")) setPendingPasswordRecovery(true);
         setPendingAuthUrl(initial);
         router.replace("/auth-callback");
       } else {
@@ -109,9 +113,57 @@ function StackContent() {
   );
 }
 
+function isAuthAbortError(e: unknown): boolean {
+  return isAbortLikeError(e);
+}
+
 export default function RootLayout() {
   useEffect(() => {
     SplashScreen.hideAsync();
+  }, []);
+
+  // Supabase auth-js can throw "signal is aborted without reason" from a setTimeout in locks.js;
+  // it escapes our promise catches. Suppress it so onboarding and other flows don't show a red box.
+  useEffect(() => {
+    let teardown: (() => void) | undefined;
+
+    // React Native: ErrorUtils reports setTimeout/async errors (e.g. from locks.js); suppresses red box.
+    const ErrorUtils = (globalThis as any).ErrorUtils;
+    if (ErrorUtils?.getGlobalHandler) {
+      const prev = ErrorUtils.getGlobalHandler();
+      ErrorUtils.setGlobalHandler((error: Error, isFatal?: boolean) => {
+        if (isAuthAbortError(error)) return;
+        prev?.(error, isFatal);
+      });
+      teardown = () => ErrorUtils.setGlobalHandler(prev);
+    }
+
+    // Web: promise rejections and window errors
+    if (typeof (globalThis as any).addEventListener === 'function') {
+      const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+        if (isAuthAbortError(event?.reason)) {
+          event.preventDefault();
+          event.stopPropagation?.();
+        }
+      };
+      const onError = (event: ErrorEvent) => {
+        if (event?.message && isAbortLikeError(new Error(event.message))) {
+          event.preventDefault();
+          return true;
+        }
+        return false;
+      };
+      (globalThis as any).addEventListener('unhandledrejection', onUnhandledRejection, true);
+      (globalThis as any).addEventListener('error', onError, true);
+      const prevTeardown = teardown;
+      teardown = () => {
+        (globalThis as any).removeEventListener('unhandledrejection', onUnhandledRejection, true);
+        (globalThis as any).removeEventListener('error', onError, true);
+        prevTeardown?.();
+      };
+    }
+
+    return () => teardown?.();
   }, []);
 
   return (

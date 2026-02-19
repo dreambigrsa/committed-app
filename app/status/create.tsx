@@ -120,7 +120,7 @@ export default function CreateStatusScreen() {
   const [lastStatusMediaUrl, setLastStatusMediaUrl] = useState<string | null>(null);
   const [selectedMedia, setSelectedMedia] = useState<MediaLibrary.Asset | null>(null);
   const [showStickerPicker, setShowStickerPicker] = useState(false);
-  const [selectedStickers, setSelectedStickers] = useState<Array<{ id: string; imageUrl: string; positionX?: number; positionY?: number; scale?: number; rotation?: number }>>([]);
+  const [selectedStickers, setSelectedStickers] = useState<{ id: string; imageUrl: string; positionX?: number; positionY?: number; scale?: number; rotation?: number }[]>([]);
   const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [showMutedStories, setShowMutedStories] = useState(false);
   const [showOverlayEditor, setShowOverlayEditor] = useState(false);

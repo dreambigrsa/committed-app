@@ -20,7 +20,7 @@ import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { ProfessionalRole } from '@/types';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 
 export default function AdminProfessionalRolesScreen() {
   const { currentUser } = useApp();

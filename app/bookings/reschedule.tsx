@@ -18,7 +18,7 @@ import { useApp } from '@/contexts/AppContext';
 import { rescheduleBooking } from '@/lib/professional-bookings';
 import { supabase } from '@/lib/supabase';
 import { ProfessionalSession } from '@/types';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 
 export default function RescheduleBookingScreen() {
   const router = useRouter();

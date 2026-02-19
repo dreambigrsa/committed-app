@@ -22,7 +22,7 @@ interface RequestLiveHelpModalProps {
   onClose: () => void;
   conversationId: string;
   userId: string;
-  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>;
+  conversationHistory: { role: 'user' | 'assistant'; content: string }[];
   onSessionCreated?: () => void;
 }
 

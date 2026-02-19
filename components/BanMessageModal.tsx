@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Modal, View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Alert } from 'react-native';
 import { AlertCircle, XCircle, Send, Shield } from 'lucide-react-native';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 
 interface BanMessageModalProps {

@@ -12,7 +12,7 @@ import {
 import { Stack, useRouter } from 'expo-router';
 import { Mail, ArrowLeft } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { sendEmailCode, createVerificationCode } from '@/lib/verification-services';
 

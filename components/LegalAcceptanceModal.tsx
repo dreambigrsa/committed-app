@@ -15,6 +15,7 @@ import LegalAcceptanceCheckbox from './LegalAcceptanceCheckbox';
 import { saveUserAcceptance } from '@/lib/legal-enforcement';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
+import { isAbortLikeError } from '@/lib/abort-error';
 
 interface LegalAcceptanceModalProps {
   visible: boolean;
@@ -22,6 +23,8 @@ interface LegalAcceptanceModalProps {
   needsReAcceptance: LegalDocument[];
   onComplete: () => void;
   onViewDocument: (document: LegalDocument) => void;
+  /** Allow closing without accepting so user can navigate (e.g. to read documents in app). */
+  onDismiss?: () => void;
 }
 
 export default function LegalAcceptanceModal({
@@ -30,6 +33,7 @@ export default function LegalAcceptanceModal({
   needsReAcceptance,
   onComplete,
   onViewDocument,
+  onDismiss,
 }: LegalAcceptanceModalProps) {
   const { colors } = useTheme();
   const { currentUser } = useApp();
@@ -93,20 +97,21 @@ export default function LegalAcceptanceModal({
               }
             });
             setAcceptances(existingAcceptances);
-            
+
             // If all required documents are already accepted, auto-close
-            const allRequiredAlreadyAccepted = requiredDocIds.length > 0 && 
+            const allRequiredAlreadyAccepted = requiredDocIds.length > 0 &&
               requiredDocIds.every(docId => existingAcceptances[docId] === true);
-            
+
             if (allRequiredAlreadyAccepted) {
-              // All documents already accepted - close modal and let onComplete handle next steps
               setTimeout(() => {
                 onComplete();
               }, 300);
             }
           }
         } catch (error) {
-          console.error('Error checking existing acceptances:', error);
+          if (!isAbortLikeError(error)) {
+            console.error('Error checking existing acceptances:', error);
+          }
         }
       })();
     } else if (documentIds.length === 0) {
@@ -134,6 +139,9 @@ export default function LegalAcceptanceModal({
     }
 
     setIsSaving(true);
+    const SAFETY_MS = 25000;
+    let safetyTimeout: ReturnType<typeof setTimeout> | null = null;
+
     try {
       const acceptancesToSave = Object.entries(acceptances)
         .filter(([_, accepted]) => accepted)
@@ -145,22 +153,37 @@ export default function LegalAcceptanceModal({
           };
         });
 
-      // Save all acceptances sequentially to better handle errors
+      safetyTimeout = setTimeout(() => setIsSaving(false), SAFETY_MS);
+
       for (const { documentId, version } of acceptancesToSave) {
-        await saveUserAcceptance(
+        const ok = await saveUserAcceptance(
           currentUser.id,
           documentId,
           version,
           needsReAcceptance.find((d) => d.id === documentId) ? 'update' : 'manual'
         );
+        if (!ok) {
+          throw new Error('Failed to save one or more acceptances. Please try again.');
+        }
       }
 
-      // All saves succeeded - call onComplete
+      if (safetyTimeout) {
+        clearTimeout(safetyTimeout);
+        safetyTimeout = null;
+      }
       onComplete();
     } catch (error: any) {
-      console.error('Failed to save acceptances:', error);
-      const errorMessage = error?.message || 'Failed to save acceptances. Please try again.';
-      alert(errorMessage);
+      if (safetyTimeout) {
+        clearTimeout(safetyTimeout);
+        safetyTimeout = null;
+      }
+      if (isAbortLikeError(error)) {
+        alert('Request was cancelled. Please try again.');
+      } else {
+        console.error('Failed to save acceptances:', error);
+        const errorMessage = error?.message || 'Failed to save acceptances. Please try again.';
+        alert(errorMessage);
+      }
     } finally {
       setIsSaving(false);
     }
@@ -173,15 +196,26 @@ export default function LegalAcceptanceModal({
       presentationStyle="pageSheet"
       transparent={false}
       onRequestClose={() => {
-        // Prevent closing modal if required documents not accepted
-        if (requiredDocs.length > 0 && !allRequiredAccepted) {
-          return;
+        if (requiredDocs.length > 0 && !allRequiredAccepted && onDismiss) {
+          onDismiss();
         }
       }}
     >
       <View style={styles.container}>
         {/* Hero Header */}
         <View style={styles.heroHeader}>
+          {onDismiss ? (
+            <View style={styles.headerRow}>
+              <View style={styles.headerSpacer} />
+              <TouchableOpacity
+                style={styles.dismissButton}
+                onPress={onDismiss}
+                accessibilityLabel="Close and view documents later"
+              >
+                <Text style={styles.dismissButtonText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
           <View style={styles.iconContainer}>
             <Shield size={32} color={colors.primary} />
           </View>
@@ -193,6 +227,11 @@ export default function LegalAcceptanceModal({
               ? 'To continue, please accept the required legal documents below.'
               : 'Some legal documents have been updated. Please review and accept the new versions.'}
           </Text>
+          {onDismiss && (
+            <TouchableOpacity style={styles.viewFirstLink} onPress={onDismiss}>
+              <Text style={styles.viewFirstLinkText}>View documents first</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         <ScrollView 
@@ -327,6 +366,36 @@ const createStyles = (colors: any) => StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 12,
     elevation: 5,
+  },
+  headerRow: {
+    position: 'absolute',
+    top: 20,
+    right: 24,
+    left: 24,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  headerSpacer: {
+    flex: 1,
+  },
+  dismissButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  dismissButtonText: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: colors.primary,
+  },
+  viewFirstLink: {
+    marginTop: 12,
+    paddingVertical: 8,
+  },
+  viewFirstLinkText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: colors.primary,
+    textDecorationLine: 'underline',
   },
   iconContainer: {
     width: 80,

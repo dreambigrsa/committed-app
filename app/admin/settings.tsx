@@ -13,7 +13,7 @@ import {
 import { Stack } from 'expo-router';
 import { Settings as SettingsIcon, Save, Shield, KeyRound, TestTubeDiagonal, Sparkles, ChevronDown, ChevronUp, Search } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { refreshOpenAIKeyCache } from '@/lib/ai-service';
 
@@ -227,7 +227,7 @@ export default function AdminSettingsScreen() {
   useEffect(() => {
     if (!isSuperAdmin) return;
     loadPromptSuggestions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [isSuperAdmin]);
 
   const handleApproveSuggestion = async (suggestion: any) => {

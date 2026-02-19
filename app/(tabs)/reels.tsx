@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
-import { Heart, MessageCircle, Share2, Volume2, VolumeX, Plus, Film, MoreVertical, Edit2, Trash2, X, UserPlus, Flag, Smile, Image as ImageIcon } from 'lucide-react-native';
+import { Heart, MessageCircle, Share2, Volume2, VolumeX, Plus, Film, MoreVertical, Edit2, Trash2, X, UserPlus, Flag, Smile, Image as ImageIcon , ExternalLink } from 'lucide-react-native';
 import { useRouter, useFocusEffect, usePathname, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/contexts/AppContext';
@@ -26,7 +26,6 @@ import LinkifiedText from '@/components/LinkifiedText';
 import { Reel, Advertisement, Sticker } from '@/types';
 import StickerPicker from '@/components/StickerPicker';
 import * as WebBrowser from 'expo-web-browser';
-import { ExternalLink } from 'lucide-react-native';
 import StatusIndicator from '@/components/StatusIndicator';
 
 const { width, height } = Dimensions.get('window');

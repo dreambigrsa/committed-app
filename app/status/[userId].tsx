@@ -1477,7 +1477,7 @@ export default function StatusViewerScreen() {
               style={styles.mediaWrapper}
               onLayout={(e) => {
                 // reserved for future exact centering; we store but don't strictly need it right now
-                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                 
                 const { width: _w, height: _h } = e.nativeEvent.layout;
               }}
             >

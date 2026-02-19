@@ -38,7 +38,7 @@ import {
 } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 
 const { width } = Dimensions.get('window');

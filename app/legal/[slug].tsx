@@ -5,15 +5,18 @@ import { LegalDocument } from '@/types';
 import { supabase } from '@/lib/supabase';
 
 export default function LegalPage() {
-  const { slug } = useLocalSearchParams<{ slug: string }>();
+  const params = useLocalSearchParams<{ slug: string; from?: string }>();
+  const slug = typeof params.slug === 'string' ? params.slug : Array.isArray(params.slug) ? params.slug[0] : '';
+  const fromAcceptance = params.from === 'acceptance';
   const [document, setDocument] = useState<LegalDocument | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    loadDocument();
+    if (slug) loadDocument();
   }, [slug]);
 
   const loadDocument = async () => {
+    if (!slug) return;
     try {
       setIsLoading(true);
       const { data, error } = await supabase
@@ -48,6 +51,12 @@ export default function LegalPage() {
     }
   };
 
-  return <LegalDocumentViewer document={document} isLoading={isLoading} />;
+  return (
+    <LegalDocumentViewer
+      document={document}
+      isLoading={isLoading}
+      fromAcceptance={fromAcceptance}
+    />
+  );
 }
 

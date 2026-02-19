@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Video, ResizeMode } from 'expo-av';
-import { useRouter } from 'expo-router';
+import { useRouter , useNavigation } from 'expo-router';
 import { Heart, MessageCircle, Share2, Plus, X, ExternalLink, MoreVertical, Edit2, Trash2, Image as ImageIcon, Flag, Smile, Camera, FileText, Video as VideoIcon } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -32,7 +32,6 @@ import LinkifiedText from '@/components/LinkifiedText';
 import * as ImagePicker from 'expo-image-picker';
 // @ts-ignore - legacy path works at runtime, TypeScript definitions may not include it
 import * as FileSystem from 'expo-file-system/legacy';
-import { useNavigation } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 
 const { width } = Dimensions.get('window');
@@ -65,7 +64,7 @@ export default function FeedScreen() {
   const [adOriginalPosts, setAdOriginalPosts] = useState<Record<string, Post | null>>({});
   const [adOriginalReels, setAdOriginalReels] = useState<Record<string, any>>({});
   const [adLikes, setAdLikes] = useState<Record<string, string[]>>({});
-  const [adComments, setAdComments] = useState<Record<string, Array<PostComment | ReelComment>>>({});
+  const [adComments, setAdComments] = useState<Record<string, (PostComment | ReelComment)[]>>({});
   const [expandedAdDescriptions, setExpandedAdDescriptions] = useState<Set<string>>(new Set());
   const [showAdComments, setShowAdComments] = useState<string | null>(null);
 
@@ -178,7 +177,7 @@ export default function FeedScreen() {
         const postMap: Record<string, Post | null> = {};
         const reelMap: Record<string, any> = {};
         const likesMap: Record<string, string[]> = {};
-        const commentsMap: Record<string, Array<PostComment | ReelComment>> = {};
+        const commentsMap: Record<string, (PostComment | ReelComment)[]> = {};
 
         for (const ad of ads) {
           if (ad.promotedPostId) {
@@ -229,7 +228,7 @@ export default function FeedScreen() {
   useEffect(() => {
     const updateAdEngagement = () => {
       const newLikes: Record<string, string[]> = {};
-      const newComments: Record<string, Array<PostComment | ReelComment>> = {};
+      const newComments: Record<string, (PostComment | ReelComment)[]> = {};
       
       smartAds.forEach(ad => {
         if (ad.promotedPostId) {

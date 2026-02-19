@@ -13,7 +13,7 @@ import { Stack } from 'expo-router';
 import { Shield, CheckCircle, XCircle, Clock } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 import { Dispute } from '@/types';
 
 export default function AdminDisputesScreen() {
@@ -77,7 +77,7 @@ export default function AdminDisputesScreen() {
 
       Alert.alert('Success', 'Dispute resolved');
       loadDisputes();
-    } catch (error) {
+    } catch (_error) {
       Alert.alert('Error', 'Failed to resolve dispute');
     }
   };

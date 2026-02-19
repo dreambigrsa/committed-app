@@ -28,7 +28,7 @@ import {
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
 import { regenerateAllFaceEmbeddings } from '@/lib/faceSearch';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 
 interface FaceMatchingProvider {
   id: string;

@@ -29,7 +29,7 @@ import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
 import { ProfessionalProfile, ProfessionalStatus } from '@/types';
 import { getEffectiveProfessionalStatus, EffectiveProfessionalStatus } from '@/lib/professional-availability';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const STATUS_CARD_WIDTH = (SCREEN_WIDTH - 60) / 2; // Account for padding and gap

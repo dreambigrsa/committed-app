@@ -8,7 +8,7 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
-} from 'react-native';
+ Platform } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { IdCard, ArrowLeft, Upload, CheckCircle2, XCircle, Clock, AlertCircle } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
@@ -17,7 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 // @ts-ignore - legacy path works at runtime
 import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'expo-image';
-import { Platform } from 'react-native';
+
 import { supabase } from '@/lib/supabase';
 
 interface VerificationDocument {

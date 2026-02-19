@@ -76,8 +76,8 @@ export default function ProfileSetupScreen() {
   const [ageRangeMin, setAgeRangeMin] = useState('18');
   const [ageRangeMax, setAgeRangeMax] = useState('99');
   const [maxDistanceKm, setMaxDistanceKm] = useState('50');
-  const [photos, setPhotos] = useState<Array<{ id?: string; url: string; isPrimary: boolean }>>([]);
-  const [videos, setVideos] = useState<Array<{ id?: string; url: string; thumbnailUrl?: string; duration?: number; isPrimary: boolean }>>([]);
+  const [photos, setPhotos] = useState<{ id?: string; url: string; isPrimary: boolean }[]>([]);
+  const [videos, setVideos] = useState<{ id?: string; url: string; thumbnailUrl?: string; duration?: number; isPrimary: boolean }[]>([]);
   const [isActive, setIsActive] = useState(true);
   
   // New comprehensive profile features
@@ -99,7 +99,7 @@ export default function ProfileSetupScreen() {
   const [work, setWork] = useState('');
   const [smoke, setSmoke] = useState<'yes' | 'no' | 'sometimes' | 'prefer_not_to_say' | ''>('');
   const [drink, setDrink] = useState<'yes' | 'no' | 'sometimes' | 'prefer_not_to_say' | ''>('');
-  const [prompts, setPrompts] = useState<Array<{ question: string; answer: string }>>([]);
+  const [prompts, setPrompts] = useState<{ question: string; answer: string }[]>([]);
 
   useEffect(() => {
     if (existingProfile) {

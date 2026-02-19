@@ -28,7 +28,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
 import { getUserBookings, rescheduleBooking, cancelBooking } from '@/lib/professional-bookings';
 import { ProfessionalSession } from '@/types';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 
 export default function BookingsScreen() {
   const router = useRouter();

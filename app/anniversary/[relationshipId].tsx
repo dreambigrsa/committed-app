@@ -15,7 +15,7 @@ import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { Calendar, Heart, Plus, Bell, X } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useApp } from '@/contexts/AppContext';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 
 interface Anniversary {

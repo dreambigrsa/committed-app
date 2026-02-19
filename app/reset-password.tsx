@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,20 +9,36 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { Lock, Eye, EyeOff } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
+import MessageModal from '@/components/MessageModal';
+import { UpdatePasswordTimeoutError, UpdatePasswordAbortedError } from '@/lib/supabase-auth-api';
+
+const MAX_SUBMIT_MS = 30000; // Safety: stop loading and allow retry after 30s
+const MIN_PASSWORD_LENGTH = 6;
+const RECOMMENDED_PASSWORD_LENGTH = 8;
 
 export default function ResetPasswordScreen() {
   const { colors } = useTheme();
-
+  const router = useRouter();
   const { updatePassword, signOut } = useAuth();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [messageModal, setMessageModal] = useState<{
+    visible: boolean;
+    variant: 'success' | 'error';
+    title: string;
+    message: string;
+    showRetry?: boolean;
+  }>({ visible: false, variant: 'error', title: '', message: '' });
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const completedRef = useRef(false);
+  const handleSubmitRef = useRef<() => void>(() => {});
   const styles = StyleSheet.create({
     container: {
       flex: 1,
@@ -99,35 +115,113 @@ export default function ResetPasswordScreen() {
     },
   });
 
+  const clearLoadingAndShowError = (title: string, message: string) => {
+    setIsLoading(false);
+    setMessageModal({ visible: true, variant: 'error', title, message });
+  };
+
   const handleSubmit = async () => {
     if (!newPassword || !confirmPassword) {
-      Alert.alert('Error', 'Please fill in both password fields');
+      setMessageModal({
+        visible: true,
+        variant: 'error',
+        title: 'Missing fields',
+        message: 'Please fill in both password fields.',
+      });
       return;
     }
-    if (newPassword.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters');
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      setMessageModal({
+        visible: true,
+        variant: 'error',
+        title: 'Password too short',
+        message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters. We recommend ${RECOMMENDED_PASSWORD_LENGTH} or more for security.`,
+      });
       return;
     }
     if (newPassword !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
+      setMessageModal({
+        visible: true,
+        variant: 'error',
+        title: 'Passwords don\'t match',
+        message: 'New password and confirm password must match.',
+      });
       return;
     }
 
     setIsLoading(true);
+    setMessageModal((prev) => ({ ...prev, visible: false }));
+    completedRef.current = false;
+
+    // Safety: always stop loading and give feedback after MAX_SUBMIT_MS; allow retry
+    timeoutRef.current = setTimeout(() => {
+      timeoutRef.current = null;
+      if (completedRef.current) return;
+      completedRef.current = true;
+      setIsLoading(false);
+      setMessageModal({
+        visible: true,
+        variant: 'error',
+        title: 'Request timed out',
+        message: 'The request took too long. Check your connection and try again, or request a new reset link from the sign-in screen.',
+        showRetry: true,
+      });
+    }, MAX_SUBMIT_MS);
+
+    const submitStart = __DEV__ ? Date.now() : 0;
     try {
       await updatePassword(newPassword);
+      if (__DEV__) {
+        console.log('[ResetPassword] updatePassword completed in_ms=', Date.now() - submitStart);
+      }
       await signOut();
-      Alert.alert('Success', 'Your password has been updated. Please sign in with your new password.', [{ text: 'OK' }]);
-    } catch (error: any) {
-      console.error('Reset password error:', error);
-      const message = error?.message?.toLowerCase?.().includes('expired')
-        ? 'This reset link has expired. Please request a new password reset.'
-        : (error?.message || 'Failed to update password. Please try again.');
-      Alert.alert('Error', message);
-    } finally {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      if (completedRef.current) return;
+      completedRef.current = true;
       setIsLoading(false);
+      setMessageModal({
+        visible: true,
+        variant: 'success',
+        title: 'Password updated',
+        message: 'Your password has been updated. Please sign in with your new password.',
+      });
+    } catch (error: any) {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      if (completedRef.current) return;
+      completedRef.current = true;
+      console.error('Reset password error:', error);
+      const raw = error?.message ?? (typeof error === 'string' ? error : '') ?? '';
+      const lower = raw.toLowerCase();
+      let title = 'Couldn\'t update password';
+      let message: string;
+      let showRetry = false;
+
+      if (error?.name === 'UpdatePasswordTimeoutError' || error?.message === 'UPDATE_PASSWORD_TIMEOUT') {
+        title = 'Request timed out';
+        message = 'The request took too long. Check your connection and try again.';
+        showRetry = true;
+      } else if (error?.name === 'UpdatePasswordAbortedError' || lower.includes('cancelled')) {
+        title = 'Request cancelled';
+        message = 'Request was cancelled. You can try again.';
+      } else if (lower.includes('expired') || raw.includes('reset link')) {
+        message = 'This reset link has expired. Please request a new password reset from the sign-in screen.';
+      } else if (lower.includes('api key') || lower.includes('apikey') || lower.includes('configuration')) {
+        message = 'There was a configuration issue. Please try again later or request a new reset link.';
+      } else {
+        message = raw || 'Failed to update password. Please try again or request a new reset link.';
+      }
+      setIsLoading(false);
+      setMessageModal({ visible: true, variant: 'error', title, message, showRetry });
     }
   };
+
+  handleSubmitRef.current = handleSubmit;
 
   return (
     <KeyboardAvoidingView
@@ -204,6 +298,22 @@ export default function ResetPasswordScreen() {
           )}
         </TouchableOpacity>
       </ScrollView>
+
+      <MessageModal
+        visible={messageModal.visible}
+        onClose={() => {
+          setMessageModal((prev) => {
+            if (prev.variant === 'success') router.replace('/auth');
+            return { ...prev, visible: false };
+          });
+        }}
+        variant={messageModal.variant}
+        title={messageModal.title}
+        message={messageModal.message}
+        buttonText="OK"
+        secondaryButtonText={messageModal.showRetry ? 'Retry' : undefined}
+        onSecondaryPress={messageModal.showRetry ? () => handleSubmitRef.current() : undefined}
+      />
     </KeyboardAvoidingView>
   );
 }

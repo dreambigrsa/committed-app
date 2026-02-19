@@ -17,7 +17,7 @@ import { Video, ResizeMode } from 'expo-av';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CheckCircle2, Heart, Shield, UserPlus, UserMinus, MessageCircle, Grid, Film, X, UserX, MoreVertical, Flag } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 import { User, Post, Reel } from '@/types';
 import { supabase } from '@/lib/supabase';
 import ReportContentModal from '@/components/ReportContentModal';

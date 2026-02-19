@@ -15,7 +15,7 @@ import { Download, Award, Share2, CheckCircle2 } from 'lucide-react-native';
 import { Image } from 'expo-image';
 
 import { useApp } from '@/contexts/AppContext';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 
 export default function CertificateScreen() {

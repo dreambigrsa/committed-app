@@ -16,7 +16,7 @@ import { Video, ResizeMode } from 'expo-av';
 import { CheckCircle, XCircle, RefreshCw, Video as VideoIcon, Trash2 } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 
 interface ReviewReel {
   id: string;

@@ -12,47 +12,53 @@ import NotificationToast from "../components/NotificationToast";
 import BanMessageModal from "@/components/BanMessageModal";
 import LegalAcceptanceEnforcer from "@/components/LegalAcceptanceEnforcer";
 import { setPendingAuthUrl } from "@/lib/pending-auth-url";
+import { setPendingDeepLink, isAuthLink } from "@/lib/deep-link-service";
 
 SplashScreen.preventAutoHideAsync();
 
 function RootLayoutNav() {
   const router = useRouter();
 
-  // Web cold start: redirect recovery hash to auth-callback
+  // Cold start: capture initial URL (auth -> auth-callback; content/referral -> store for AppGate)
   useEffect(() => {
-    if (Platform.OS === "web" && typeof window !== "undefined") {
-      const href = window.location.href;
-      const hash = window.location.hash || "";
-      const hasRecovery = hash.includes("type=recovery") || hash.includes("access_token=");
-      const isAuthCallbackPath = href.includes("/auth-callback");
-      if (hasRecovery && !isAuthCallbackPath) {
-        router.replace("/auth-callback" + hash);
+    (async () => {
+      const initial = await Linking.getInitialURL();
+      if (Platform.OS === "web" && typeof window !== "undefined" && !initial) {
+        const href = window.location.href;
+        if (href && (href.includes("post/") || href.includes("reel/") || href.includes("referral") || href.includes("access_token=") || href.includes("type=recovery") || href.includes("code="))) {
+          if (href.includes("type=recovery") || href.includes("access_token=")) {
+            const isAuthCallbackPath = href.includes("/auth-callback");
+            if (!isAuthCallbackPath) router.replace("/auth-callback" + (window.location.hash || ""));
+          } else {
+            setPendingDeepLink(href);
+          }
+          return;
+        }
       }
-    }
+      if (!initial) return;
+      if (isAuthLink(initial)) {
+        setPendingAuthUrl(initial);
+        router.replace("/auth-callback");
+      } else {
+        setPendingDeepLink(initial);
+      }
+    })();
   }, [router]);
 
-  // Deep link: auth callbacks (reset, verify)
+  // Background / already open: same split — auth vs content/referral
   useEffect(() => {
     const sub = Linking.addEventListener("url", ({ url }) => {
-      const isAuth =
-        url.includes("auth-callback") ||
-        url.includes("auth/callback") ||
-        url.includes("code=") ||
-        url.includes("type=recovery") ||
-        url.includes("access_token=");
-      if (isAuth) {
+      if (isAuthLink(url)) {
         setPendingAuthUrl(url);
         router.replace("/auth-callback");
+      } else {
+        setPendingDeepLink(url);
       }
     });
     return () => sub.remove();
   }, [router]);
 
-  return (
-    <AppContext>
-      <StackContent />
-    </AppContext>
-  );
+  return <StackContent />;
 }
 
 function StackContent() {
@@ -110,13 +116,15 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <ThemeProvider>
-        <GestureHandlerRootView style={{ flex: 1 }}>
-          <AppGate>
-            <RootLayoutNav />
-          </AppGate>
-        </GestureHandlerRootView>
-      </ThemeProvider>
+      <AppContext>
+        <ThemeProvider>
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <AppGate>
+              <RootLayoutNav />
+            </AppGate>
+          </GestureHandlerRootView>
+        </ThemeProvider>
+      </AppContext>
     </AuthProvider>
   );
 }

@@ -11,6 +11,8 @@ import { setNotificationPreferences } from '@/lib/notification-preferences';
 import { normalizePhoneNumber, comparePhoneNumbers } from '@/lib/phone-normalization';
 import { getAuthRedirectUrl } from '@/lib/auth-redirect';
 import { queueRelationshipChange, syncOfflineQueue, getOfflineQueue, RelationshipConflict } from '@/lib/relationship-sync';
+import { buildPostLink, buildReelLink } from '@/lib/deep-link-service';
+import { getStoredReferralCode, clearStoredReferralCode } from '@/lib/referral-storage';
 
 export const [AppContext, useApp] = createContextHook(() => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -147,6 +149,22 @@ export const [AppContext, useApp] = createContextHook(() => {
           createdAt: userData.created_at,
         };
         setCurrentUser(user);
+
+        // Attach stored referral code (from deep link) to this user once; persist across email verification.
+        (async () => {
+          try {
+            const code = await getStoredReferralCode();
+            if (!code?.trim()) return;
+            const { data, error } = await supabase
+              .from('users')
+              .update({ referred_by_code: code.trim() })
+              .eq('id', user.id)
+              .is('referred_by_code', null)
+              .select('id')
+              .maybeSingle();
+            if (!error && data) await clearStoredReferralCode();
+          } catch (_) {}
+        })();
 
         // Load notification prefs early so foreground notifications respect sound settings.
         hydrateNotificationPreferences(user.id).catch(() => {});
@@ -5898,78 +5916,51 @@ export const [AppContext, useApp] = createContextHook(() => {
 
   const sharePost = useCallback(async (postId: string) => {
     if (!currentUser) return;
-    
+    const id = postId?.trim();
+    if (!id) return;
+
     try {
-      const post = posts.find(p => p.id === postId);
+      const post = posts.find(p => p.id === id);
       if (!post) return;
 
-      // Deep link (opens the app if installed). No domain ownership required.
-      const deepLink = `committed://post/${postId}`;
-      // Fallback download page (opens in browser if app not installed).
-      const downloadUrl = `https://dreambig.org.za/committed`;
+      const { app: appLink, web: webLink } = buildPostLink(id);
+      const downloadUrl = 'https://dreambig.org.za/committed';
       const preview = post.content ? `${post.content.substring(0, 100)}...` : 'View this post in Committed';
-      const shareText = `${preview}\n\nOpen in app: ${deepLink}\nDownload Committed: ${downloadUrl}`;
-      
-      // Use React Native Share API
+      const shareText = `${preview}\n\nOpen in app: ${appLink}\nOr in browser: ${webLink}\nDownload Committed: ${downloadUrl}`;
+
       const Share = require('react-native').Share;
-      
-      // Check if Share is available
-      if (!Share || !Share.share) {
-        console.warn('Share API not available');
-        // Fallback: try to copy to clipboard
-        try {
-          const copied = await tryCopyToClipboard(shareText);
-          if (copied) {
-            Alert.alert('Copied!', 'Post link copied to clipboard. You can paste it anywhere.');
-            return;
-          }
-        } catch (clipboardError) {
-          console.warn('Clipboard not available:', clipboardError);
-        }
-        Alert.alert('Share Unavailable', 'Sharing is not available on this device.');
+      if (!Share?.share) {
+        const copied = await tryCopyToClipboard(shareText);
+        if (copied) Alert.alert('Copied!', 'Post link copied to clipboard.');
+        else Alert.alert('Share Unavailable', 'Sharing is not available on this device.');
         return;
       }
-      
+
       const result = await Share.share({
         message: shareText,
-        url: deepLink,
+        url: appLink,
         title: `Post by ${post.userName}`,
       });
-      
-      // Check if share was successful (not cancelled)
       if (result.action === Share.sharedAction) {
-        await logActivity('share_post', 'post', postId);
-      } else if (result.action === Share.dismissedAction) {
-        // User dismissed the share dialog - this is not an error
-        console.log('Share dismissed by user');
+        await logActivity('share_post', 'post', id);
       }
     } catch (error: any) {
       console.error('Share post error:', error);
-      
-      // Handle specific permission errors gracefully
       if (error?.name === 'NotAllowedError' || error?.message?.includes('Permission denied') || error?.message?.includes('NotAllowedError')) {
-        // Try fallback: copy to clipboard
         try {
-          const post = posts.find(p => p.id === postId);
+          const post = posts.find(p => p.id === id);
           if (post) {
-            const deepLink = `committed://post/${postId}`;
-            const downloadUrl = `https://dreambig.org.za/committed`;
-            const preview = post.content ? `${post.content.substring(0, 100)}...` : 'View this post in Committed';
-            const shareText = `${preview}\n\nOpen in app: ${deepLink}\nDownload Committed: ${downloadUrl}`;
-
+            const { app: appLink, web: webLink } = buildPostLink(id);
+            const shareText = `${post.content ? post.content.substring(0, 100) + '...' : 'View this post'}\n\nOpen in app: ${appLink}\nOr in browser: ${webLink}`;
             const copied = await tryCopyToClipboard(shareText);
             if (copied) {
-              Alert.alert('Copied!', 'Share is not available. Post link copied to clipboard instead.');
+              Alert.alert('Copied!', 'Post link copied to clipboard instead.');
               return;
             }
           }
-        } catch (clipboardError) {
-          console.error('Clipboard fallback failed:', clipboardError);
-        }
-        
-        Alert.alert('Share Unavailable', 'Sharing is not available on this device. Please try copying the link manually.');
+        } catch (_) {}
+        Alert.alert('Share Unavailable', 'Sharing is not available. Try copying the link manually.');
       } else {
-        // Other errors
         Alert.alert('Share Error', 'Unable to share post. Please try again.');
       }
     }
@@ -5977,78 +5968,51 @@ export const [AppContext, useApp] = createContextHook(() => {
 
   const shareReel = useCallback(async (reelId: string) => {
     if (!currentUser) return;
-    
+    const id = reelId?.trim();
+    if (!id) return;
+
     try {
-      const reel = reels.find(r => r.id === reelId);
+      const reel = reels.find(r => r.id === id);
       if (!reel) return;
 
-      // Deep link (opens the app if installed). No domain ownership required.
-      const deepLink = `committed://reel/${reelId}`;
-      // Fallback download page (opens in browser if app not installed).
-      const downloadUrl = `https://dreambig.org.za/committed`;
+      const { app: appLink, web: webLink } = buildReelLink(id);
+      const downloadUrl = 'https://dreambig.org.za/committed';
       const preview = reel.caption ? `${reel.caption.substring(0, 100)}...` : 'View this reel in Committed';
-      const shareText = `${preview}\n\nOpen in app: ${deepLink}\nDownload Committed: ${downloadUrl}`;
-      
-      // Use React Native Share API
+      const shareText = `${preview}\n\nOpen in app: ${appLink}\nOr in browser: ${webLink}\nDownload Committed: ${downloadUrl}`;
+
       const Share = require('react-native').Share;
-      
-      // Check if Share is available
-      if (!Share || !Share.share) {
-        console.warn('Share API not available');
-        // Fallback: try to copy to clipboard
-        try {
-          const copied = await tryCopyToClipboard(shareText);
-          if (copied) {
-            Alert.alert('Copied!', 'Reel link copied to clipboard. You can paste it anywhere.');
-            return;
-          }
-        } catch (clipboardError) {
-          console.warn('Clipboard not available:', clipboardError);
-        }
-        Alert.alert('Share Unavailable', 'Sharing is not available on this device.');
+      if (!Share?.share) {
+        const copied = await tryCopyToClipboard(shareText);
+        if (copied) Alert.alert('Copied!', 'Reel link copied to clipboard.');
+        else Alert.alert('Share Unavailable', 'Sharing is not available on this device.');
         return;
       }
-      
+
       const result = await Share.share({
         message: shareText,
-        url: deepLink,
+        url: appLink,
         title: `Reel by ${reel.userName}`,
       });
-      
-      // Check if share was successful (not cancelled)
       if (result.action === Share.sharedAction) {
-        await logActivity('share_reel', 'reel', reelId);
-      } else if (result.action === Share.dismissedAction) {
-        // User dismissed the share dialog - this is not an error
-        console.log('Share dismissed by user');
+        await logActivity('share_reel', 'reel', id);
       }
     } catch (error: any) {
       console.error('Share reel error:', error);
-      
-      // Handle specific permission errors gracefully
       if (error?.name === 'NotAllowedError' || error?.message?.includes('Permission denied') || error?.message?.includes('NotAllowedError')) {
-        // Try fallback: copy to clipboard
         try {
-          const reel = reels.find(r => r.id === reelId);
+          const reel = reels.find(r => r.id === id);
           if (reel) {
-            const deepLink = `committed://reel/${reelId}`;
-            const downloadUrl = `https://dreambig.org.za/committed`;
-            const preview = reel.caption ? `${reel.caption.substring(0, 100)}...` : 'View this reel in Committed';
-            const shareText = `${preview}\n\nOpen in app: ${deepLink}\nDownload Committed: ${downloadUrl}`;
-
+            const { app: appLink, web: webLink } = buildReelLink(id);
+            const shareText = `${reel.caption ? reel.caption.substring(0, 100) + '...' : 'View this reel'}\n\nOpen in app: ${appLink}\nOr in browser: ${webLink}`;
             const copied = await tryCopyToClipboard(shareText);
             if (copied) {
-              Alert.alert('Copied!', 'Share is not available. Reel link copied to clipboard instead.');
+              Alert.alert('Copied!', 'Reel link copied to clipboard instead.');
               return;
             }
           }
-        } catch (clipboardError) {
-          console.error('Clipboard fallback failed:', clipboardError);
-        }
-        
-        Alert.alert('Share Unavailable', 'Sharing is not available on this device. Please try copying the link manually.');
+        } catch (_) {}
+        Alert.alert('Share Unavailable', 'Sharing is not available. Try copying the link manually.');
       } else {
-        // Other errors
         Alert.alert('Share Error', 'Unable to share reel. Please try again.');
       }
     }

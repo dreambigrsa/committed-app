@@ -1,61 +1,124 @@
 /**
- * DeepLinkService - Centralized deep link parsing and intended route storage.
- * Links are processed AFTER auth hydration. If user not logged in, intended route is stored.
+ * Centralized deep link parsing, pending storage, and link building.
+ * All deep link logic lives here and in AppGate; no parsing in screens.
+ * Process links only after auth is ready (authLoading === false).
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+const SCHEME = 'committed';
+const WEB_ORIGIN = 'https://committed-5mxf.onrender.com';
+const PENDING_LINK_KEY = '@committed/pending_deep_link';
 const INTENDED_ROUTE_KEY = '@committed/intended_route';
+const DEBUG = __DEV__;
+
+export type DeepLinkType = 'referral' | 'post' | 'reel' | 'verify-email' | 'auth-callback' | 'unknown';
 
 export interface ParsedDeepLink {
-  type: 'referral' | 'post' | 'reel' | 'verify-email' | 'auth-callback' | 'unknown';
+  type: DeepLinkType;
+  postId?: string;
+  reelId?: string;
+  referralCode?: string;
   params: Record<string, string>;
-  path?: string;
+  rawUrl: string;
 }
 
-const SCHEME = 'committed';
+function log(...args: unknown[]) {
+  if (DEBUG) {
+    console.log('[DeepLink]', ...args);
+  }
+}
 
+/**
+ * Parse incoming URL into type + IDs. Handles app scheme and web URLs.
+ */
 export function parseDeepLink(url: string): ParsedDeepLink | null {
   if (!url || typeof url !== 'string') return null;
   try {
-    const clean = url.replace(/^committed:\/\//, '').replace(/^https?:\/\/[^/]*\//, '');
-    const [pathPart, qs] = clean.split('?');
-    const hashPart = url.includes('#') ? url.split('#')[1] || '' : '';
+    const rawUrl = url;
+    const normalized = url.replace(/^committed:\/\//i, `${WEB_ORIGIN}/`).replace(/^committed:\//i, `${WEB_ORIGIN}/`);
+    const u = new URL(normalized);
+    const path = (u.pathname || '/').replace(/^\/+/, '').replace(/\/+$/, '');
     const params: Record<string, string> = {};
-    if (qs) {
-      qs.split('&').forEach((pair) => {
+    u.searchParams.forEach((v, k) => { params[k] = v; });
+    if (u.hash) {
+      u.hash.replace(/^#/, '').split('&').forEach((pair) => {
         const [k, v] = pair.split('=').map(decodeURIComponent);
         if (k && v) params[k] = v;
       });
     }
-    if (hashPart) {
-      hashPart.split('&').forEach((pair) => {
-        const [k, v] = pair.split('=').map(decodeURIComponent);
-        if (k && v) params[k] = v;
-      });
-    }
-    const path = pathPart || '';
 
-    if (params.token || path.includes('verify')) {
-      return { type: 'verify-email', params, path };
+    const pathLower = path.toLowerCase();
+
+    // Auth: verify-email or auth-callback (code, access_token, type=recovery)
+    if (params.token || pathLower.includes('verify') || params.type === 'recovery' || params.access_token) {
+      return {
+        type: params.type === 'recovery' || params.access_token ? 'auth-callback' : 'verify-email',
+        params,
+        rawUrl,
+      };
     }
-    if (params.code || params.access_token || params.type === 'recovery') {
-      return { type: 'auth-callback', params, path };
+    if (params.code && (pathLower.includes('auth') || pathLower.includes('callback'))) {
+      return { type: 'auth-callback', params, rawUrl };
     }
-    if (path.startsWith('referral') || params.code) {
-      return { type: 'referral', params: { ...params, code: params.code || params.ref }, path };
+
+    // Referral: path /referral or /referral/CODE, or query ref= / referral= (do not use code= to avoid OAuth clash)
+    const refCode = params.ref || params.referral || (pathLower.startsWith('referral/') ? path.split('/')[1] : null);
+    if (pathLower.startsWith('referral') || pathLower === 'referral' || refCode) {
+      const code = pathLower.startsWith('referral/') ? decodeURIComponent((path.split('/')[1] || '').trim()) : refCode;
+      if (code && code.length > 0) {
+        return { type: 'referral', referralCode: code, params: { ...params, ref: code }, rawUrl };
+      }
     }
-    const postMatch = path.match(/post\/([^/]+)/) || url.match(/post\/([^/]+)/);
-    if (postMatch) {
-      return { type: 'post', params: { ...params, postId: postMatch[1] }, path };
+
+    // Post: /post/:id or path contains post/
+    const postMatch = path.match(/^post\/([^/]+)/i) || path.match(/post\/([^/]+)/i);
+    if (postMatch && postMatch[1]) {
+      return { type: 'post', postId: postMatch[1], params, rawUrl };
     }
-    const reelMatch = path.match(/reel\/([^/]+)/) || url.match(/reel\/([^/]+)/);
-    if (reelMatch) {
-      return { type: 'reel', params: { ...params, reelId: reelMatch[1] }, path };
+
+    // Reel: /reel/:id or path contains reel/
+    const reelMatch = path.match(/^reel\/([^/]+)/i) || path.match(/reel\/([^/]+)/i);
+    if (reelMatch && reelMatch[1]) {
+      return { type: 'reel', reelId: reelMatch[1], params, rawUrl };
     }
-    return { type: 'unknown', params, path };
-  } catch {
+
+    return { type: 'unknown', params, rawUrl };
+  } catch (e) {
+    if (DEBUG) console.warn('[DeepLink] parse error', e);
     return null;
   }
+}
+
+/**
+ * Returns true if URL is auth-related (should go to auth-callback, not stored as content deep link).
+ */
+export function isAuthLink(url: string): boolean {
+  const parsed = parseDeepLink(url);
+  return parsed?.type === 'auth-callback' || parsed?.type === 'verify-email' || !!url?.includes('access_token=') || !!url?.includes('type=recovery') || !!url?.includes('code=');
+}
+
+// In-memory pending (one at a time; cleared when processed)
+let pendingParsed: ParsedDeepLink | null = null;
+let lastHandledUrl: string | null = null;
+
+export function setPendingDeepLink(url: string): void {
+  const parsed = parseDeepLink(url);
+  if (!parsed) return;
+  if (parsed.type === 'auth-callback' || parsed.type === 'verify-email') return;
+  if (lastHandledUrl === url) return;
+  log('setPendingDeepLink', parsed.type, parsed);
+  pendingParsed = parsed;
+}
+
+export function getAndClearPendingDeepLink(): ParsedDeepLink | null {
+  const p = pendingParsed;
+  if (p) lastHandledUrl = p.rawUrl;
+  pendingParsed = null;
+  return p;
+}
+
+export function markDeepLinkHandled(url: string): void {
+  lastHandledUrl = url;
 }
 
 export async function getIntendedRoute(): Promise<string | null> {
@@ -69,8 +132,9 @@ export async function getIntendedRoute(): Promise<string | null> {
 export async function setIntendedRoute(route: string): Promise<void> {
   try {
     await AsyncStorage.setItem(INTENDED_ROUTE_KEY, route);
+    log('setIntendedRoute', route);
   } catch (e) {
-    console.warn('Failed to store intended route:', e);
+    if (DEBUG) console.warn('[DeepLink] setIntendedRoute failed', e);
   }
 }
 
@@ -80,4 +144,34 @@ export async function clearIntendedRoute(): Promise<void> {
   } catch {
     // no-op
   }
+}
+
+// --- Build shareable links (app + web) ---
+
+export function getWebOrigin(): string {
+  return WEB_ORIGIN;
+}
+
+export function buildPostLink(postId: string): { app: string; web: string } {
+  if (!postId) return { app: '', web: '' };
+  return {
+    app: `${SCHEME}://post/${postId}`,
+    web: `${WEB_ORIGIN}/post/${postId}`,
+  };
+}
+
+export function buildReelLink(reelId: string): { app: string; web: string } {
+  if (!reelId) return { app: '', web: '' };
+  return {
+    app: `${SCHEME}://reel/${reelId}`,
+    web: `${WEB_ORIGIN}/reel/${reelId}`,
+  };
+}
+
+export function buildReferralLink(code: string): { app: string; web: string } {
+  if (!code) return { app: '', web: '' };
+  return {
+    app: `${SCHEME}://referral?ref=${encodeURIComponent(code)}`,
+    web: `${WEB_ORIGIN}/referral/${encodeURIComponent(code)}`,
+  };
 }

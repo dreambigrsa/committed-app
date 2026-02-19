@@ -17,7 +17,7 @@ import {
 import { Image } from 'expo-image';
 import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
 import { Heart, MessageCircle, Share2, Volume2, VolumeX, Plus, Film, MoreVertical, Edit2, Trash2, X, UserPlus, Flag, Smile, Image as ImageIcon } from 'lucide-react-native';
-import { useRouter, useFocusEffect, usePathname } from 'expo-router';
+import { useRouter, useFocusEffect, usePathname, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -34,6 +34,7 @@ const { width, height } = Dimensions.get('window');
 export default function ReelsScreen() {
   const router = useRouter();
   const pathname = usePathname();
+  const params = useLocalSearchParams<{ reelId?: string }>();
   const insets = useSafeAreaInsets();
   const { currentUser, reels, toggleReelLike, editReel, deleteReel, shareReel, adminDeleteReel, adminRejectReel, followUser, unfollowUser, isFollowing: checkIsFollowing, addReelComment, getReelComments, editReelComment, deleteReelComment, toggleReelCommentLike, reportContent, getActiveAds, getSmartAds, recordAdImpression, recordAdClick, getUserStatus, userStatuses, legalAcceptanceStatus } = useApp();
   const { colors } = useTheme();
@@ -60,6 +61,7 @@ export default function ReelsScreen() {
   const [videoAdPlaybackTime, setVideoAdPlaybackTime] = useState<number>(0);
   const [skipCountdown, setSkipCountdown] = useState<number>(0);
   const [bannerCardSkipCountdown, setBannerCardSkipCountdown] = useState<number>(0);
+  const [requestedReelUnavailable, setRequestedReelUnavailable] = useState(false);
   const videoRefs = useRef<{ [key: string]: Video | null }>({});
   const adVideoRefs = useRef<{ [key: string]: Video | null }>({});
   const scrollViewRef = useRef<ScrollView>(null);
@@ -255,6 +257,34 @@ export default function ReelsScreen() {
       };
     }, [currentReelId])
   );
+
+  // Deep link: open specific reel when reelId query param is set
+  const initialReelIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const qReelId = params.reelId ? String(params.reelId).trim() : null;
+    if (!qReelId) return;
+    if (reels.length === 0) return;
+    if (initialReelIdRef.current) return;
+    initialReelIdRef.current = qReelId;
+    const idx = reels.findIndex((r) => r.id === qReelId);
+    if (idx >= 0) {
+      setRequestedReelUnavailable(false);
+      setCurrentReelId(qReelId);
+      setCurrentIndex(idx);
+      scrollViewRef.current?.scrollTo({ y: idx * height, animated: false });
+    } else {
+      setRequestedReelUnavailable(true);
+    }
+  }, [params.reelId, reels]);
+
+  useEffect(() => {
+    if (!requestedReelUnavailable) return;
+    Alert.alert(
+      'Content unavailable',
+      'This reel may have been removed or is no longer available.',
+      [{ text: 'OK', onPress: () => setRequestedReelUnavailable(false) }]
+    );
+  }, [requestedReelUnavailable]);
 
   useEffect(() => {
     // Initialize: play first video if available

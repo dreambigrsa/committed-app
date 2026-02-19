@@ -87,9 +87,12 @@ export const [AppContext, useApp] = createContextHook(() => {
 
   useEffect(() => {
     if (session?.user) {
+      setIsLoading(true);
       loadUserData(session.user.id);
     } else if (session === null) {
-      // Session cleared (logout)
+      setCurrentUser(null);
+      setIsLoading(false);
+    } else {
       setCurrentUser(null);
       setIsLoading(false);
     }
@@ -115,9 +118,12 @@ export const [AppContext, useApp] = createContextHook(() => {
   }, []);
 
   const initializeAuth = useCallback(async () => {
-    let initialSession: Session | null = null;
+    console.log('[Auth] restore started');
+    setIsLoading(true);
+    let hadSession = false;
     try {
       const { data: { session: s }, error } = await supabase.auth.getSession();
+      console.log('[Auth] token present:', !!s?.refresh_token);
 
       if (error) {
         if (isInvalidRefreshTokenError(error)) {
@@ -128,20 +134,18 @@ export const [AppContext, useApp] = createContextHook(() => {
         }
         console.warn('[Auth] getSession error:', error.message);
         setSession(null);
-        setIsLoading(false);
         return;
       }
 
       if (!s?.refresh_token) {
         setSession(null);
-        setIsLoading(false);
         return;
       }
 
-      initialSession = s;
+      hadSession = true;
       setSession(s);
 
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+      supabase.auth.onAuthStateChange((event, newSession) => {
         if (isLoggingOutRef.current) return;
         setSession(newSession);
         if (event === 'SIGNED_OUT' || !newSession) {
@@ -150,38 +154,37 @@ export const [AppContext, useApp] = createContextHook(() => {
         }
         if (event === 'PASSWORD_RECOVERY') {
           setIsPasswordRecoveryFlow(true);
-          if (newSession?.user) await loadUserData(newSession.user.id);
+          if (newSession?.user) void loadUserData(newSession.user.id);
           return;
         }
         setIsPasswordRecoveryFlow(false);
         if (event === 'SIGNED_IN' && newSession?.user) {
           const emailConfirmed = !!newSession.user.email_confirmed_at;
-          if (emailConfirmed) await loadUserData(newSession.user.id);
+          if (emailConfirmed) void loadUserData(newSession.user.id);
         }
       });
-
-      return () => {
-        subscription.unsubscribe();
-      };
     } catch (error) {
-      console.error('[Auth] initializeAuth failed:', error);
+      console.log('[Auth] restore error:', error);
       setSession(null);
-      setIsLoading(false);
+      setCurrentUser(null);
     } finally {
-      if (!initialSession?.user) {
-      setIsLoading(false);
-    }
+      if (!hadSession) {
+        console.log('[Auth] loading finished (init, no session)');
+        setIsLoading(false);
+      }
     }
   }, [clearSession]);
 
   useEffect(() => {
     initializeAuth();
-  }, [initializeAuth]);
+    // Run once on mount; do not add deps to avoid re-running and loops
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const loadUserData = async (userId: string) => {
     try {
       setIsLoading(true);
-      console.log('Loading user data for:', userId);
+      console.log('[Auth] user fetch started:', userId);
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('*')
@@ -189,13 +192,13 @@ export const [AppContext, useApp] = createContextHook(() => {
         .single();
 
       if (userError && userError.code === 'PGRST116') {
-        console.log('User not found in database. Creating user record...');
+        console.log('[Auth] user not in DB, creating record...');
         await createUserRecord(userId);
         return;
       }
 
       if (userError) {
-        console.error('User data error:', JSON.stringify(userError, null, 2));
+        console.error('[Auth] user fetch error:', userError?.message || userError);
         throw userError;
       }
       
@@ -872,8 +875,16 @@ export const [AppContext, useApp] = createContextHook(() => {
 
 
     } catch (error: any) {
-      console.error('Failed to load user data:', error?.message || error);
+      console.error('[Auth] loadUserData error:', error?.message || error);
+      try {
+        await clearSession();
+      } catch (e) {
+        setCurrentUser(null);
+        setSession(null);
+        setIsLoading(false);
+      }
     } finally {
+      console.log('[Auth] loading finished (user)');
       setIsLoading(false);
     }
   };

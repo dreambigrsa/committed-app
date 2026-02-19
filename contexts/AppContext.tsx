@@ -5914,20 +5914,32 @@ export const [AppContext, useApp] = createContextHook(() => {
     return false;
   }, []);
 
+  const isSharePermissionDenied = useCallback((error: any) => {
+    if (!error) return false;
+    const msg = (error?.message ?? String(error)).toLowerCase();
+    const name = (error?.name ?? '').toString();
+    return (
+      name === 'notallowederror' ||
+      msg.includes('permission denied') ||
+      msg.includes('notallowederror') ||
+      (msg.includes('share') && msg.includes('navigator'))
+    );
+  }, []);
+
   const sharePost = useCallback(async (postId: string) => {
     if (!currentUser) return;
     const id = postId?.trim();
     if (!id) return;
 
+    const post = posts.find(p => p.id === id);
+    if (!post) return;
+
+    const { app: appLink, web: webLink } = buildPostLink(id);
+    const downloadUrl = 'https://dreambig.org.za/committed';
+    const preview = post.content ? `${post.content.substring(0, 100)}...` : 'View this post in Committed';
+    const shareText = `${preview}\n\nOpen in app: ${appLink}\nOr in browser: ${webLink}\nDownload Committed: ${downloadUrl}`;
+
     try {
-      const post = posts.find(p => p.id === id);
-      if (!post) return;
-
-      const { app: appLink, web: webLink } = buildPostLink(id);
-      const downloadUrl = 'https://dreambig.org.za/committed';
-      const preview = post.content ? `${post.content.substring(0, 100)}...` : 'View this post in Committed';
-      const shareText = `${preview}\n\nOpen in app: ${appLink}\nOr in browser: ${webLink}\nDownload Committed: ${downloadUrl}`;
-
       const Share = require('react-native').Share;
       if (!Share?.share) {
         const copied = await tryCopyToClipboard(shareText);
@@ -5946,25 +5958,21 @@ export const [AppContext, useApp] = createContextHook(() => {
       }
     } catch (error: any) {
       console.error('Share post error:', error);
-      if (error?.name === 'NotAllowedError' || error?.message?.includes('Permission denied') || error?.message?.includes('NotAllowedError')) {
-        try {
-          const post = posts.find(p => p.id === id);
-          if (post) {
-            const { app: appLink, web: webLink } = buildPostLink(id);
-            const shareText = `${post.content ? post.content.substring(0, 100) + '...' : 'View this post'}\n\nOpen in app: ${appLink}\nOr in browser: ${webLink}`;
-            const copied = await tryCopyToClipboard(shareText);
-            if (copied) {
-              Alert.alert('Copied!', 'Post link copied to clipboard instead.');
-              return;
-            }
-          }
-        } catch (_) {}
-        Alert.alert('Share Unavailable', 'Sharing is not available. Try copying the link manually.');
+      const fallbackText = `${post.content ? post.content.substring(0, 100) + '...' : 'View this post'}\n\nOpen in app: ${appLink}\nOr in browser: ${webLink}`;
+      try {
+        const copied = await tryCopyToClipboard(fallbackText);
+        if (copied) {
+          Alert.alert('Link copied', 'Share was not available. Post link copied to clipboard.');
+          return;
+        }
+      } catch (_) {}
+      if (isSharePermissionDenied(error)) {
+        Alert.alert('Share unavailable', 'Your browser or device denied the share. You can copy the link from the post instead.');
       } else {
         Alert.alert('Share Error', 'Unable to share post. Please try again.');
       }
     }
-  }, [currentUser, posts, logActivity]);
+  }, [currentUser, posts, logActivity, tryCopyToClipboard, isSharePermissionDenied]);
 
   const shareReel = useCallback(async (reelId: string) => {
     if (!currentUser) return;
@@ -5998,25 +6006,25 @@ export const [AppContext, useApp] = createContextHook(() => {
       }
     } catch (error: any) {
       console.error('Share reel error:', error);
-      if (error?.name === 'NotAllowedError' || error?.message?.includes('Permission denied') || error?.message?.includes('NotAllowedError')) {
-        try {
-          const reel = reels.find(r => r.id === id);
-          if (reel) {
-            const { app: appLink, web: webLink } = buildReelLink(id);
-            const shareText = `${reel.caption ? reel.caption.substring(0, 100) + '...' : 'View this reel'}\n\nOpen in app: ${appLink}\nOr in browser: ${webLink}`;
-            const copied = await tryCopyToClipboard(shareText);
-            if (copied) {
-              Alert.alert('Copied!', 'Reel link copied to clipboard instead.');
-              return;
-            }
-          }
-        } catch (_) {}
-        Alert.alert('Share Unavailable', 'Sharing is not available. Try copying the link manually.');
+      const reelFallback = reels.find(r => r.id === id);
+      const { app: appLinkF, web: webLinkF } = buildReelLink(id);
+      const fallbackText = reelFallback
+        ? `${reelFallback.caption ? reelFallback.caption.substring(0, 100) + '...' : 'View this reel'}\n\nOpen in app: ${appLinkF}\nOr in browser: ${webLinkF}`
+        : `View this reel\n\nOpen in app: ${appLinkF}\nOr in browser: ${webLinkF}`;
+      try {
+        const copied = await tryCopyToClipboard(fallbackText);
+        if (copied) {
+          Alert.alert('Link copied', 'Share was not available. Reel link copied to clipboard.');
+          return;
+        }
+      } catch (_) {}
+      if (isSharePermissionDenied(error)) {
+        Alert.alert('Share unavailable', 'Your browser or device denied the share. You can copy the link from the reel instead.');
       } else {
         Alert.alert('Share Error', 'Unable to share reel. Please try again.');
       }
     }
-  }, [currentUser, reels, logActivity]);
+  }, [currentUser, reels, logActivity, tryCopyToClipboard, isSharePermissionDenied]);
 
   const adminDeletePost = useCallback(async (postId: string) => {
     if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'super_admin' && currentUser.role !== 'moderator')) {

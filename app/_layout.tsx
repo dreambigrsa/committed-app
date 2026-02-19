@@ -116,15 +116,15 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <AppContext>
-        <ThemeProvider>
-          <GestureHandlerRootView style={{ flex: 1 }}>
+    <AppContext>
+      <ThemeProvider>
+        <GestureHandlerRootView style={{ flex: 1 }}>
             <AppGate>
-              <RootLayoutNav />
+          <RootLayoutNav />
             </AppGate>
-          </GestureHandlerRootView>
-        </ThemeProvider>
-      </AppContext>
+        </GestureHandlerRootView>
+      </ThemeProvider>
+    </AppContext>
     </AuthProvider>
   );
 }

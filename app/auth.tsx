@@ -39,28 +39,7 @@ export default function AuthScreen() {
   const [legalAcceptances, setLegalAcceptances] = useState<Record<string, boolean>>({});
   const [loadingLegalDocs, setLoadingLegalDocs] = useState(false);
 
-  // Logged-in user on auth screen: redirect to resolved route (or pending deep link). Never landing.
-  useEffect(() => {
-    if (!currentUser) return;
-      const timer = setTimeout(() => {
-      const { getResolvedRoute } = require('@/lib/auth-gate');
-      const { getAndClearPendingRouteIfContent } = require('@/lib/pending-route');
-      let route = getResolvedRoute({
-        session: true,
-        currentUser,
-        legalAcceptanceStatus,
-        hasCompletedOnboarding,
-        isPasswordRecoveryFlow: false,
-        emailVerified: currentUser.verifications?.email ?? false,
-      });
-      if (route === '/(tabs)/home') {
-        const pending = getAndClearPendingRouteIfContent();
-        if (pending) route = pending;
-      }
-      if (route !== '/' && route !== '/auth') router.replace(route as any);
-      }, 100);
-      return () => clearTimeout(timer);
-  }, [currentUser, legalAcceptanceStatus, hasCompletedOnboarding, router]);
+  // No screen-level auth redirect: AppGate is the only place that routes by auth state.
 
   useEffect(() => {
     if (isSignUp && !showForgotPassword) {
@@ -393,27 +372,7 @@ export default function AuthScreen() {
           }
         }
         
-        // Always redirect, even if there were errors above
-        // Check if email confirmation is required and redirect immediately
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
-          const emailConfirmed = !!session?.user?.email_confirmed_at;
-          
-          // Redirect immediately - verify-email screen will render instantly
-          // Don't clear loading until after redirect completes
-          if (!emailConfirmed) {
-              router.replace('/verify-email');
-              setTimeout(() => setIsLoading(false), 300);
-            } else {
-              router.replace('/(tabs)/home');
-              setTimeout(() => setIsLoading(false), 300);
-            }
-        } catch (redirectError) {
-          console.error('Error during redirect after signup:', redirectError);
-          // Fallback: always go to verify-email if we can't check status
-          router.replace('/verify-email');
-          setTimeout(() => setIsLoading(false), 300);
-        }
+        // Do NOT navigate here. Session is set by Supabase → AppContext hydrates → AppGate shows Splash then redirects to verify-email or home.
       } else {
         if (!formData.email || !formData.password) {
           alert('Please enter email and password');
@@ -422,32 +381,7 @@ export default function AuthScreen() {
         }
 
         await login(formData.email, formData.password);
-        
-        // Wait for user data to load, then redirect directly to appropriate page
-        // Don't go through landing page to avoid flash
-        setTimeout(async () => {
-          try {
-            // Check onboarding status directly
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.user?.id) {
-              const { data: onboardingData } = await supabase
-                .from('user_onboarding_data')
-                .select('has_completed_onboarding')
-                .eq('user_id', session.user.id)
-                .single();
-              
-              if (onboardingData?.has_completed_onboarding === false) {
-                router.replace('/onboarding');
-              } else {
-                router.replace('/(tabs)/home');
-              }
-            } else {
-              router.replace('/(tabs)/home');
-            }
-          } catch (error) {
-            router.replace('/(tabs)/home');
-          }
-        }, 300);
+        // Do NOT navigate here. Session updates → AppContext hydrates → AppGate redirects.
       }
     } catch (error: any) {
       console.error('Auth error:', error);

@@ -7120,6 +7120,7 @@ export const [AppContext, useApp] = createContextHook(() => {
     isAuthenticated: !!session,
     user: currentUser,
     accessToken: session?.access_token ?? null,
+    refreshToken: session?.refresh_token ?? null,
     login,
     signup,
     logout,

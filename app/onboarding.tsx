@@ -21,7 +21,7 @@ const ONBOARDING_VERSION = '1.0.0';
 
 export default function OnboardingScreen() {
   const router = useRouter();
-  const { currentUser, hasCompletedOnboarding } = useApp();
+  const { currentUser, hasCompletedOnboarding, authLoading } = useApp();
   const { colors: themeColors } = useTheme();
   const styles = createStyles(themeColors);
 
@@ -216,7 +216,7 @@ export default function OnboardingScreen() {
       return;
     }
 
-    if (!currentUser) {
+    if (!authLoading && !currentUser) {
       Alert.alert('Error', 'Please log in to continue.');
       return;
     }

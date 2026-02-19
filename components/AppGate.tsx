@@ -44,7 +44,12 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
 
     const current = pathname || '/';
     if (current === target || (target === '/(tabs)/home' && current.startsWith('/(tabs)'))) return;
-    router.replace(target as any);
+
+    // Defer navigation to avoid "Cannot update component while rendering another"
+    const id = setTimeout(() => {
+      router.replace(target as any);
+    }, 0);
+    return () => clearTimeout(id);
   }, [authLoading, isAuthenticated, user, pathname, router]);
 
   if (authLoading) {

@@ -43,9 +43,6 @@ yarn-error.*
 *.tsbuildinfo
 .vercel
 
-# Next.js build output
-web/.next/
-
 # Archives
 *.zip
 

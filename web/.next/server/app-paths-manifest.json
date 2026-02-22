@@ -1,0 +1,13 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/download/page": "app/download/page.js",
+  "/open/page": "app/open/page.js",
+  "/page": "app/page.js",
+  "/reset-password/page": "app/reset-password/page.js",
+  "/privacy/page": "app/privacy/page.js",
+  "/sign-up/page": "app/sign-up/page.js",
+  "/sign-in/page": "app/sign-in/page.js",
+  "/terms/page": "app/terms/page.js",
+  "/verify-email/page": "app/verify-email/page.js",
+  "/auth-callback/page": "app/auth-callback/page.js"
+}

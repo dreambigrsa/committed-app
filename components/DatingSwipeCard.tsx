@@ -33,7 +33,7 @@ export default function DatingSwipeCard({
   profile,
   onSwipeLeft,
   onSwipeRight,
-  onSuperLike,
+  onSuperLike: _onSuperLike,
   onTap,
   index,
   isTop,
@@ -105,6 +105,7 @@ export default function DatingSwipeCard({
         }),
       ]).start();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- refs are stable
   }, [isTop]);
 
   // Cleanup animations on unmount
@@ -118,6 +119,7 @@ export default function DatingSwipeCard({
       likeOpacity.setValue(0);
       passOpacity.setValue(0);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- refs are stable
   }, []);
 
   // Create PanResponder - use useMemo to recreate when isTop changes
@@ -202,6 +204,7 @@ export default function DatingSwipeCard({
         }
       },
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- animation refs stable
   }, [isTop]); // Recreate when isTop changes
 
   const stopAllAnimations = () => {
@@ -247,10 +250,10 @@ export default function DatingSwipeCard({
     
     stopAllAnimations();
     
-    // Get current values before resetting
-    const currentX = (position.x as any)._value || 0;
-    const currentY = (position.y as any)._value || 0;
-    const currentRotate = (rotate as any)._value || 0;
+    // Get current values before resetting (used for animation from current pos)
+    const _currentX = (position.x as any)._value || 0;
+    const _currentY = (position.y as any)._value || 0;
+    const _currentRotate = (rotate as any)._value || 0;
     
     // Use spring animation for smoother feel
     requestAnimationFrame(() => {
@@ -440,13 +443,13 @@ export default function DatingSwipeCard({
     extrapolate: 'clamp',
   });
 
-  const nextPhoto = () => {
+  const _nextPhoto = () => {
     if (photos.length > 1) {
       setCurrentPhotoIndex((prev) => (prev + 1) % photos.length);
     }
   };
 
-  const prevPhoto = () => {
+  const _prevPhoto = () => {
     if (photos.length > 1) {
       setCurrentPhotoIndex((prev) => (prev - 1 + photos.length) % photos.length);
     }

@@ -9,7 +9,6 @@ import {
   Alert,
   ActivityIndicator,
   FlatList,
-  Image,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { ArrowLeft, Users, UserX, User } from 'lucide-react-native';
@@ -34,6 +33,7 @@ export default function BlockedUsersScreen() {
 
   useEffect(() => {
     loadBlockedUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount
   }, [currentUser]);
 
   const loadBlockedUsers = async () => {

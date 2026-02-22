@@ -33,6 +33,7 @@ export default function SessionsScreen() {
 
   useEffect(() => {
     loadSessions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount
   }, [currentUser]);
 
   const loadSessions = async () => {

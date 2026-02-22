@@ -7,10 +7,9 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
-import { Crown, Check, ArrowLeft, Zap, Heart, Star, RotateCcw, Sparkles, Shield } from 'lucide-react-native';
+import { Crown, Check, Zap, Heart, Star, RotateCcw, Sparkles, Shield } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import * as DatingService from '@/lib/dating-service';
@@ -20,13 +19,13 @@ import { useApp } from '@/contexts/AppContext';
 export default function PremiumScreen() {
   const router = useRouter();
   const { colors } = useTheme();
-  const { currentUser } = useApp();
+  useApp();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [subscription, setSubscription] = useState<any>(null);
   const [plans, setPlans] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSubscribing, setIsSubscribing] = useState(false);
+  const [isSubscribing] = useState(false);
 
   useEffect(() => {
     loadData();

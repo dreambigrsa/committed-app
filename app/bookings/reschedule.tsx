@@ -11,19 +11,16 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import { Calendar, Clock, Save, X } from 'lucide-react-native';
+import { Calendar, Clock, Save } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useApp } from '@/contexts/AppContext';
 import { rescheduleBooking } from '@/lib/professional-bookings';
 import { supabase } from '@/lib/supabase';
 import { ProfessionalSession } from '@/types';
-import { colors } from '@/constants/colors';
 
 export default function RescheduleBookingScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { currentUser } = useApp();
   const { colors: themeColors } = useTheme();
   const styles = createStyles(themeColors);
 
@@ -41,6 +38,7 @@ export default function RescheduleBookingScreen() {
 
   useEffect(() => {
     loadBooking();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load when sessionId changes
   }, [sessionId]);
 
   const loadBooking = async () => {

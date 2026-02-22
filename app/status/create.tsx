@@ -37,14 +37,11 @@ import {
   X, 
   Settings, 
   Music, 
-  Type, 
+  Type,
   Image as ImageIcon, 
   Grid3x3,
   ChevronDown,
-  AtSign,
-  Link as LinkIcon,
   MoreHorizontal,
-  Palette,
   Smile,
   Camera,
   Check,
@@ -54,7 +51,6 @@ import {
   AlignRight,
   Upload,
 } from 'lucide-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import StickerPicker from '@/components/StickerPicker';
 import { Sticker } from '@/types';
 
@@ -84,8 +80,8 @@ export default function CreateStatusScreen() {
   const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);
   const [showVideoTrimmer, setShowVideoTrimmer] = useState(false);
   const [videoToTrim, setVideoToTrim] = useState<MediaLibrary.Asset | null>(null);
-  const [trimStartTime, setTrimStartTime] = useState(0);
-  const [trimEndTime, setTrimEndTime] = useState(15);
+  const [, _setTrimStartTime] = useState(0);
+  const [, _setTrimEndTime] = useState(15);
   const [textStyle, setTextStyle] = useState<FontStyle>('classic');
   const [textEffect, setTextEffect] = useState<TextEffect>('default');
   const [textAlignment, setTextAlignment] = useState<TextAlignment>('center');
@@ -93,10 +89,6 @@ export default function CreateStatusScreen() {
   const [videoError, setVideoError] = useState<string | null>(null);
   const [videoThumbnails, setVideoThumbnails] = useState<Record<string, string>>({});
   
-  // Split text into lines for per-line background rendering
-  // Each line gets its own independent pill-shaped background
-  const textLines = textContent.split('\n');
-
   // Cycle through text effects when Aa button is clicked
   const cycleTextEffect = () => {
     const effects: TextEffect[] = ['default', 'white-bg', 'black-bg', 'outline-white', 'outline-black', 'glow'];
@@ -116,9 +108,9 @@ export default function CreateStatusScreen() {
   };
   const [textBackgroundColor, setTextBackgroundColor] = useState<string>('#1A73E8');
   const [showColorPicker, setShowColorPicker] = useState(false);
-  const [lastStatus, setLastStatus] = useState<any>(null);
-  const [lastStatusMediaUrl, setLastStatusMediaUrl] = useState<string | null>(null);
-  const [selectedMedia, setSelectedMedia] = useState<MediaLibrary.Asset | null>(null);
+  const [, setLastStatus] = useState<any>(null);
+  const [, setLastStatusMediaUrl] = useState<string | null>(null);
+  const [, setSelectedMedia] = useState<MediaLibrary.Asset | null>(null);
   const [showStickerPicker, setShowStickerPicker] = useState(false);
   const [selectedStickers, setSelectedStickers] = useState<{ id: string; imageUrl: string; positionX?: number; positionY?: number; scale?: number; rotation?: number }[]>([]);
   const [showMoreOptions, setShowMoreOptions] = useState(false);
@@ -294,12 +286,14 @@ export default function CreateStatusScreen() {
     loadMediaAssets();
     loadLastStatus();
     loadAlbums();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount
   }, []);
 
   useEffect(() => {
     if (selectedAlbumId) {
       loadMediaAssets();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on album change
   }, [selectedAlbumId]);
 
   const loadAlbums = async () => {
@@ -1315,7 +1309,7 @@ export default function CreateStatusScreen() {
                   {...overlayPan.panHandlers}
                 >
                   <View
-                    onTouchEnd={(e) => {
+                    onTouchEnd={() => {
                       // Only open editor if not dragging
                       if (!overlayDragging.current) {
                         setShowOverlayEditor(true);
@@ -2088,7 +2082,7 @@ export default function CreateStatusScreen() {
     return styles;
   }
 
-  function getEffectPreviewStyle(effect: TextEffect) {
+  function _getEffectPreviewStyle(effect: TextEffect) {
     const styles: any = {
       fontSize: 24,
       fontWeight: '600' as const,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,6 @@ import {
   Modal,
   TextInput,
   Switch,
-  Animated,
 } from 'react-native';
 import { Stack } from 'expo-router';
 import { Briefcase, Plus, Edit, Trash2, X, Save, CheckCircle2, Shield, AlertCircle } from 'lucide-react-native';
@@ -46,6 +45,7 @@ export default function AdminProfessionalRolesScreen() {
 
   useEffect(() => {
     loadRoles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount
   }, []);
 
   const mapRole = (role: any): ProfessionalRole => {
@@ -286,7 +286,7 @@ export default function AdminProfessionalRolesScreen() {
             </View>
           ) : (
             <View style={styles.rolesList}>
-              {roles.map((role: ProfessionalRole | any, index: number) => {
+              {roles.map((role: ProfessionalRole | any, _index: number) => {
                 // Ensure role is properly mapped
                 const mappedRole = role.id ? (role.is_active !== undefined || role.isActive !== undefined ? mapRole(role) : role) : role;
                 const isActive = mappedRole.isActive ?? false;

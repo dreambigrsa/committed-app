@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Stack } from 'expo-router';
 import { Image } from 'expo-image';
-import { Search, Shield, Ban, CheckCircle, XCircle, Eye, Trash2, Users, Heart, Sparkles } from 'lucide-react-native';
+import { Search, Shield, Ban, CheckCircle, Trash2, Users, Heart, Sparkles } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
@@ -36,6 +36,7 @@ export default function AdminDatingScreen() {
     if (activeTab === 'matches') loadMatches();
     if (activeTab === 'likes') loadLikes();
     if (activeTab === 'stats') loadStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load functions are stable
   }, [activeTab]);
 
   const loadProfiles = async () => {
@@ -331,7 +332,8 @@ export default function AdminDatingScreen() {
   const [trialDays, setTrialDays] = useState('7');
   const [badgeType, setBadgeType] = useState<'verified' | 'good_conversationalist' | 'replies_fast' | 'respectful_member' | 'active_member' | 'premium'>('verified');
 
-  const deactivateProfile = async (profileId: string, userId: string) => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for future deactivate UI
+  const _deactivateProfile = async (profileId: string, _userId: string) => {
     Alert.alert(
       'Deactivate Profile',
       'Are you sure you want to deactivate this dating profile?',

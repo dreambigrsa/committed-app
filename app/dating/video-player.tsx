@@ -17,7 +17,7 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 export default function VideoPlayerScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ videoUrl: string }>();
-  const { colors } = useTheme();
+  useTheme();
   const videoRef = useRef<Video>(null);
   const [isLoading, setIsLoading] = useState(true);
 

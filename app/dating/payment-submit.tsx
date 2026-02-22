@@ -43,6 +43,7 @@ export default function PaymentSubmitScreen() {
 
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount
   }, []);
 
   const loadData = async () => {
@@ -183,7 +184,7 @@ export default function PaymentSubmitScreen() {
       setIsSubmitting(true);
 
       // Create payment submission (NOT a subscription - that comes after admin verification)
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('payment_submissions')
         .insert({
           user_id: currentUser.id,

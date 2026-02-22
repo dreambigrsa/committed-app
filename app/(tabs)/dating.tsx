@@ -8,11 +8,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  Dimensions,
   Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Heart, X, Star, Settings, Users, Sparkles, Zap, RotateCcw, Crown, Sliders, RefreshCw } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import * as DatingService from '@/lib/dating-service';
@@ -21,9 +19,6 @@ import { useApp } from '@/contexts/AppContext';
 import DatingSwipeCard from '@/components/DatingSwipeCard';
 import MatchCelebrationModal from '@/components/MatchCelebrationModal';
 import PremiumModal from '@/components/PremiumModal';
-import { DatingDiscoveryUser } from '@/types';
-
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MAX_VISIBLE_CARDS = 3;
 
 export default function DatingScreen() {
@@ -44,7 +39,7 @@ export default function DatingScreen() {
   const [discovery, setDiscovery] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const loadDatingData = async () => {
+  const loadDatingData = useCallback(async () => {
     if (!currentUser) {
       setIsLoading(false);
       return;
@@ -100,18 +95,18 @@ export default function DatingScreen() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [currentUser]);
 
   // Load data on mount
   useEffect(() => {
     loadDatingData();
-  }, [currentUser]);
+  }, [loadDatingData]);
 
   // Reload when screen comes into focus (e.g., after creating profile)
   useFocusEffect(
-    React.useCallback(() => {
+    useCallback(() => {
       loadDatingData();
-    }, [currentUser])
+    }, [loadDatingData])
   );
 
   // Listen for match notifications to show modal
@@ -265,6 +260,7 @@ export default function DatingScreen() {
       duration: 400,
       useNativeDriver: true,
     }).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refs are stable
   }, []);
 
   const handleSwipeComplete = () => {

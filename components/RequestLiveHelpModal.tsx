@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { X, Users, Shield, CheckCircle2, AlertCircle, Loader } from 'lucide-react-native';
+import { X, Users, CheckCircle2, AlertCircle } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { ProfessionalRole } from '@/types';
@@ -57,6 +57,7 @@ export default function RequestLiveHelpModal({
       setConsentGiven(false);
       setAiSummary('');
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- generateSummary on visible
   }, [visible]);
 
   const loadRoles = async () => {

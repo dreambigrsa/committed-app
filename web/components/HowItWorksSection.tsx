@@ -1,8 +1,10 @@
 'use client';
 
 import { useRef } from 'react';
+import Image from 'next/image';
 import { motion, useInView, useReducedMotion } from 'framer-motion';
 import { Fingerprint, Users, Heart, Shield, Lock } from 'lucide-react';
+import { stockImages } from '@/lib/stock-images';
 
 const steps = [
   {
@@ -212,11 +214,18 @@ export default function HowItWorksSection() {
                       {i === 1 && (
                         <div className="mt-6 flex items-center gap-4 rounded-2xl border border-fuchsia-200/40 bg-white/90 p-4 shadow-sm">
                           <div className="flex -space-x-3">
-                            {[1, 2, 3].map((j) => (
+                            {stockImages.connectSafelyAvatars.map((src, j) => (
                               <div
                                 key={j}
-                                className="relative h-12 w-12 overflow-hidden rounded-full border-2 border-white bg-gradient-to-br from-violet-200 to-fuchsia-200 ring-2 ring-emerald-400/30 shadow-sm"
+                                className="relative h-12 w-12 overflow-hidden rounded-full border-2 border-white ring-2 ring-emerald-400/30 shadow-sm"
                               >
+                                <Image
+                                  src={src}
+                                  alt=""
+                                  fill
+                                  className="object-cover"
+                                  sizes="48px"
+                                />
                                 <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500">
                                   <svg className="h-3 w-3 text-white" fill="currentColor" viewBox="0 0 20 20">
                                     <path

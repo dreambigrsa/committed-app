@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   SafeAreaView,
   ActivityIndicator,
   RefreshControl,
@@ -44,12 +43,14 @@ export default function ProfessionalReviewsScreen() {
 
   useEffect(() => {
     loadProfessionalProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount
   }, [currentUser]);
 
   useEffect(() => {
     if (professionalId) {
       loadReviews();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on ID change
   }, [professionalId]);
 
   const loadProfessionalProfile = async () => {

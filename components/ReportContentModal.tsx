@@ -66,7 +66,7 @@ export default function ReportContentModal({
       ]);
       setSelectedReason('');
       setDescription('');
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 'Failed to submit report. Please try again.');
     } finally {
       setIsSubmitting(false);

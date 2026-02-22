@@ -9,17 +9,14 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Animated,
-  Dimensions,
   Alert,
 } from 'react-native';
 import { useRouter , Stack } from 'expo-router';
-import { MessageSquare, Sparkles, Heart, ArrowLeft, Calendar } from 'lucide-react-native';
+import { MessageSquare, Sparkles, Calendar } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
 import * as DatingService from '@/lib/dating-service';
 import { Image as ExpoImage } from 'expo-image';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function MatchesScreen() {
   const router = useRouter();
@@ -57,9 +54,11 @@ export default function MatchesScreen() {
       duration: 400,
       useNativeDriver: true,
     }).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refs are stable
   }, []);
 
-  const handleUnmatch = async (matchId: string) => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for future unmatch UI
+  const _handleUnmatch = async (matchId: string) => {
     try {
       await DatingService.unmatchUser(matchId);
       await loadMatches();
@@ -119,7 +118,7 @@ export default function MatchesScreen() {
     );
   }
 
-  const renderMatch = ({ item, index }: { item: any; index: number }) => {
+  const renderMatch = ({ item, index: _index }: { item: any; index: number }) => {
     const matchedUser = item.matchedUser;
     const photo = item.primaryPhoto || matchedUser?.profile_picture;
 

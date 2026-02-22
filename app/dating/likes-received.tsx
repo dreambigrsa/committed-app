@@ -10,7 +10,7 @@ import {
   Animated,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
-import { Heart, Sparkles, Crown, ArrowLeft, Lock } from 'lucide-react-native';
+import { Heart, Sparkles, Crown, Lock } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import * as DatingService from '@/lib/dating-service';
 import { Image as ExpoImage } from 'expo-image';
@@ -72,6 +72,7 @@ export default function LikesReceivedScreen() {
       duration: 400,
       useNativeDriver: true,
     }).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refs are stable
   }, []);
 
   if (isLoading) {
@@ -135,7 +136,7 @@ export default function LikesReceivedScreen() {
 
   const blurredCount = likes.filter(l => l.isBlurred).length;
 
-  const renderLike = ({ item, index }: { item: any; index: number }) => {
+  const renderLike = ({ item, index: _index }: { item: any; index: number }) => {
     const liker = item.liker;
     const photo = item.primaryPhoto || liker?.profile_picture;
     const isBlurred = item.isBlurred || !isPremium;

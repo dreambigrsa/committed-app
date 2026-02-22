@@ -28,11 +28,9 @@ import {
   Users,
   Tag,
   Calendar,
-  MapPin,
   Shield,
   AlertCircle,
   Search,
-  Filter,
 } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -74,6 +72,7 @@ export default function AdminLegalPoliciesScreen() {
 
   useEffect(() => {
     filterDocuments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- filterDocuments uses documents, searchQuery, filterActive
   }, [documents, searchQuery, filterActive]);
 
   const filterDocuments = () => {

@@ -12,7 +12,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Stack } from 'expo-router';
-import { Save, Plus, Trash2, Clock, ArrowRight } from 'lucide-react-native';
+import { Save, Plus, Trash2, Clock } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { EscalationRule, EscalationTriggerType, EscalationStrategy } from '@/types';
@@ -42,6 +42,7 @@ export default function AdminEscalationRulesScreen() {
 
   useEffect(() => {
     loadRules();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount
   }, []);
 
   const loadRules = async () => {

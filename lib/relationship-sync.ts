@@ -7,8 +7,6 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
-import { Relationship } from '@/types';
-
 const OFFLINE_QUEUE_KEY = '@relationship_offline_queue';
 const SYNC_CONFLICTS_KEY = '@relationship_sync_conflicts';
 
@@ -299,7 +297,7 @@ async function getDeviceId(): Promise<string> {
     }
     
     return deviceId;
-  } catch (error) {
+  } catch (_error) {
     // Fallback to timestamp-based ID
     return `device-${Date.now()}`;
   }

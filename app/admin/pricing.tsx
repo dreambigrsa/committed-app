@@ -460,7 +460,7 @@ export default function AdminPricingScreen() {
               </TouchableOpacity>
             </View>
 
-            {plans.map((plan, index) => {
+            {plans.map((plan, _index) => {
               const isEditing = editingPlan === plan.id;
               const planLimits = limits[plan.name] || [];
               const isFreePlan = plan.name === 'free';

@@ -43,8 +43,6 @@ import {
   Settings,
   X,
   FileText,
-  Briefcase,
-  Radio,
 } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useApp } from '@/contexts/AppContext';
@@ -60,16 +58,16 @@ import { setNotificationPreferences } from '@/lib/notification-preferences';
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { currentUser, deleteAccount, getCurrentUserRelationship, endRelationship, updateUserProfile, getUserStatus, updateUserStatus, updateStatusPrivacy, userStatuses } = useApp();
+  const { currentUser, deleteAccount, getCurrentUserRelationship, endRelationship, updateUserProfile, updateUserStatus, updateStatusPrivacy } = useApp();
   const [legalDocuments, setLegalDocuments] = useState<LegalDocument[]>([]);
-  const { colors, isDark, themeMode, setThemeMode, loadThemePreference, saveThemePreference, visualTheme, loadVisualTheme, saveVisualTheme } = useTheme();
-  const { language, setLanguage: setLanguageContext, loadLanguagePreference, saveLanguagePreference, t } = useLanguage();
+  const { colors, isDark, setThemeMode, loadThemePreference, saveThemePreference, visualTheme, loadVisualTheme, saveVisualTheme } = useTheme();
+  const { language, setLanguage: _setLanguageContext, loadLanguagePreference, saveLanguagePreference, t } = useLanguage();
   const relationship = getCurrentUserRelationship();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   // All hooks must be declared before any early returns
   const [editMode, setEditMode] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [, setIsDeleting] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   // Basic Information
@@ -98,7 +96,7 @@ export default function SettingsScreen() {
     allowSearchByPhone: true,
   });
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
-  const [isProfessional, setIsProfessional] = useState(false);
+  const [, setIsProfessional] = useState(false);
   const [sessions, setSessions] = useState<any[]>([]);
   const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
   
@@ -125,6 +123,7 @@ export default function SettingsScreen() {
       duration: 500,
       useNativeDriver: true,
     }).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refs are stable
   }, []);
 
   // Check for pending end relationship disputes
@@ -178,6 +177,7 @@ export default function SettingsScreen() {
       loadLegalDocuments();
       checkProfessionalStatus();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount
   }, [currentUser, loadThemePreference, loadVisualTheme, loadLanguagePreference]);
 
   const checkProfessionalStatus = async () => {
@@ -436,7 +436,7 @@ export default function SettingsScreen() {
           name: fileName,
         } as any);
 
-        const { data, error } = await supabase.storage
+        const { error } = await supabase.storage
           .from('avatars')
           .upload(filePath, formData, {
             contentType: `image/${fileExt}`,
@@ -623,7 +623,7 @@ export default function SettingsScreen() {
 
   // Language and theme are now saved via their respective context functions
   // This function is kept for backward compatibility but is no longer used
-  const saveAppPreferences = async () => {
+  const _saveAppPreferences = async () => {
     // No-op: Language saved via saveLanguagePreference, theme via saveVisualTheme
   };
 

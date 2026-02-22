@@ -15,7 +15,7 @@ import { Image } from 'expo-image';
 import { Search, Shield, Ban, CheckCircle, XCircle, Edit2, Trash2, X, Users, UserPlus, UserMinus } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 import { User } from '@/types';
 import * as SampleUsersService from '@/lib/sample-users-service';
 import { adminDeleteUser } from '@/lib/admin-users-service';
@@ -74,7 +74,7 @@ export default function AdminUsersScreen() {
                   .limit(1);
                 
                 isBanned = !!(restrictions && restrictions.length > 0);
-              } catch (err) {
+              } catch (_err) {
                 // If we can't check restrictions, rely on database field
                 console.log('Could not check restrictions for user:', u.id);
               }
@@ -254,7 +254,7 @@ export default function AdminUsersScreen() {
 
       Alert.alert('Success', `User ${verificationType} verified`);
       loadUsers();
-    } catch (error) {
+    } catch (_error) {
       Alert.alert('Error', 'Failed to verify user');
     }
   };
@@ -331,7 +331,7 @@ export default function AdminUsersScreen() {
               await supabase.from('users').update({ role: 'user' }).eq('id', userId);
               Alert.alert('Success', 'Role updated to User');
               loadUsers();
-            } catch (error) {
+            } catch (_error) {
               Alert.alert('Error', 'Failed to update role');
             }
           },
@@ -343,7 +343,7 @@ export default function AdminUsersScreen() {
               await supabase.from('users').update({ role: 'moderator' }).eq('id', userId);
               Alert.alert('Success', 'Role updated to Moderator');
               loadUsers();
-            } catch (error) {
+            } catch (_error) {
               Alert.alert('Error', 'Failed to update role');
             }
           },
@@ -355,7 +355,7 @@ export default function AdminUsersScreen() {
               await supabase.from('users').update({ role: 'admin' }).eq('id', userId);
               Alert.alert('Success', 'Role updated to Admin');
               loadUsers();
-            } catch (error) {
+            } catch (_error) {
               Alert.alert('Error', 'Failed to update role');
             }
           },
@@ -367,7 +367,7 @@ export default function AdminUsersScreen() {
               await supabase.from('users').update({ role: 'super_admin' }).eq('id', userId);
               Alert.alert('Success', 'Role updated to Super Admin');
               loadUsers();
-            } catch (error) {
+            } catch (_error) {
               Alert.alert('Error', 'Failed to update role');
             }
           },

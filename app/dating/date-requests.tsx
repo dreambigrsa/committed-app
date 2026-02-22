@@ -11,7 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
-import { Calendar, MapPin, Clock, Check, X, ArrowRight, Edit2, Trash2, Send, Plus } from 'lucide-react-native';
+import { Calendar, MapPin, Clock, Check, X, Plus } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import * as DatingService from '@/lib/dating-service';
 import { Image as ExpoImage } from 'expo-image';
@@ -93,6 +93,7 @@ export default function DateRequestsScreen() {
       duration: 400,
       useNativeDriver: true,
     }).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refs are stable
   }, []);
 
   const formatDateTime = (dateString: string) => {
@@ -117,7 +118,8 @@ export default function DateRequestsScreen() {
     );
   };
 
-  const handleCancelWithConfirm = (requestId: string) => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for future cancel confirmation UI
+  const _handleCancelWithConfirm = (requestId: string) => {
     Alert.alert('Cancel Date Request', 'Are you sure you want to cancel this date request?', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -185,9 +187,8 @@ export default function DateRequestsScreen() {
     }
   }) || [];
 
-  const renderDateRequest = ({ item, index }: { item: any; index: number }) => {
+  const renderDateRequest = ({ item, index: _index }: { item: any; index: number }) => {
     const isReceived = item.to_user_id === currentUserId;
-    const isSent = item.from_user_id === currentUserId;
     const otherUser = isReceived ? item.from_user : item.to_user;
     const photo = otherUser?.profile_picture;
 

@@ -12,11 +12,11 @@ import {
   TextInput,
 } from 'react-native';
 import { Stack } from 'expo-router';
-import { UserCog, Shield, Trash2, Plus, X } from 'lucide-react-native';
+import { Shield, Trash2, Plus, X } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 import { User, UserRole } from '@/types';
 
 export default function AdminRolesScreen() {
@@ -103,7 +103,7 @@ export default function AdminRolesScreen() {
 
       Alert.alert('Success', 'Role updated successfully');
       loadAdmins();
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 'Failed to update role');
     }
   };
@@ -135,7 +135,7 @@ export default function AdminRolesScreen() {
       setShowAddModal(false);
       setSearchEmail('');
       loadAdmins();
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 'Failed to add admin');
     }
   };
@@ -163,7 +163,7 @@ export default function AdminRolesScreen() {
 
               Alert.alert('Success', 'Admin removed successfully');
               loadAdmins();
-            } catch (error) {
+            } catch {
               Alert.alert('Error', 'Failed to remove admin');
             }
           },

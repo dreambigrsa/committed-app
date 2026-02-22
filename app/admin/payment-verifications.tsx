@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  Animated,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { Check, X, Eye, Clock, DollarSign, CreditCard, Shield } from 'lucide-react-native';
@@ -40,6 +39,7 @@ export default function AdminPaymentVerificationsScreen() {
 
   useEffect(() => {
     loadSubmissions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on filter/type change
   }, [statusFilter, submissionType]);
 
   const loadSubmissions = async () => {
@@ -138,7 +138,7 @@ export default function AdminPaymentVerificationsScreen() {
     );
   }
 
-  const renderSubmission = ({ item, index }: { item: any; index: number }) => {
+  const renderSubmission = ({ item, index: _index }: { item: any; index: number }) => {
     const user = item.user;
     const plan = item.subscription_plan;
     const method = item.payment_method;

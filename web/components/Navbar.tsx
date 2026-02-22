@@ -38,14 +38,14 @@ export default function Navbar() {
       <nav className="flex w-full items-center justify-between py-1" aria-label="Main navigation">
         <Link
           href="/"
-          className="flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 rounded-lg"
+          className="flex shrink-0 items-center gap-2 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 rounded-lg"
         >
           <Image
             src="/brand/logo.png"
             alt="Committed"
-            width={140}
-            height={34}
-            className="h-8 w-auto transition-all"
+            width={180}
+            height={45}
+            className="h-11 w-auto transition-all sm:h-12 md:h-10"
             priority
           />
         </Link>
@@ -91,14 +91,14 @@ export default function Navbar() {
 
         <button
           type="button"
-          className={`lg:hidden rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-violet-500 ${
+          className={`lg:hidden rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-violet-500 ${
             isDark ? 'text-white hover:bg-white/15' : 'text-slate-600 hover:bg-slate-100'
           }`}
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
           aria-label="Toggle menu"
         >
-          {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          {open ? <X className="h-8 w-8" /> : <Menu className="h-8 w-8" />}
         </button>
       </nav>
       </div>

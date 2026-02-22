@@ -7,6 +7,9 @@ export const APP_SCHEME = process.env.NEXT_PUBLIC_DEEPLINK_SCHEME || 'committed:
 export const WEB_BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://committed.dreambig.org.za';
 export const APP_STORE_URL = process.env.NEXT_PUBLIC_APP_STORE_URL || '#';
 export const PLAY_STORE_URL = process.env.NEXT_PUBLIC_PLAY_STORE_URL || '#';
+/** Direct APK download (put committed.apk in web/public/downloads/) */
+export const APK_DOWNLOAD_URL =
+  process.env.NEXT_PUBLIC_APK_DOWNLOAD_URL || `${WEB_BASE_URL}/downloads/committed.apk`;
 export const UNIVERSAL_DOWNLOAD_URL = `${WEB_BASE_URL}/download`;
 
 /** @deprecated Use APP_SCHEME */
@@ -73,6 +76,7 @@ export function getStoreUrl(): string {
   const os = getMobileOS();
   if (os === 'ios' && APP_STORE_URL !== '#') return APP_STORE_URL;
   if (os === 'android' && PLAY_STORE_URL !== '#') return PLAY_STORE_URL;
+  if (os === 'android') return APK_DOWNLOAD_URL;
   return UNIVERSAL_DOWNLOAD_URL;
 }
 

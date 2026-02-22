@@ -159,7 +159,7 @@ export async function extractFaceFeatures(imageUrl: string): Promise<string | nu
 /**
  * Extract face features using AWS Rekognition
  */
-async function extractFaceFeaturesAWS(imageData: string, provider: FaceMatchingProvider): Promise<string | null> {
+async function extractFaceFeaturesAWS(_imageData: string, _provider: FaceMatchingProvider): Promise<string | null> {
   try {
     // Note: AWS SDK would need to be installed: npm install aws-sdk
     // For now, this is a placeholder implementation
@@ -318,7 +318,7 @@ async function extractFaceFeaturesGoogle(imageData: string, provider: FaceMatchi
  * This is a simple, free alternative that doesn't require API keys or approval
  * Uses perceptual hashing to create a unique identifier for the face region
  */
-async function extractFaceFeaturesLocal(imageData: string, provider: FaceMatchingProvider): Promise<string | null> {
+async function extractFaceFeaturesLocal(imageData: string, _provider: FaceMatchingProvider): Promise<string | null> {
   try {
     // Convert image to a hash-based identifier
     // This is a simple approach that works without external APIs
@@ -564,10 +564,10 @@ async function compareFaces(
  * Compare faces using AWS Rekognition
  */
 async function compareFacesAWS(
-  faceId1: string,
-  faceId2: string,
-  targetImageUrl: string,
-  provider: FaceMatchingProvider
+  _faceId1: string,
+  _faceId2: string,
+  _targetImageUrl: string,
+  _provider: FaceMatchingProvider
 ): Promise<number> {
   try {
     // Note: AWS SDK would need to be installed
@@ -612,8 +612,8 @@ async function compareFacesAWS(
  * Note: Azure Face IDs expire after 24 hours, so we need to re-detect faces from images
  */
 async function compareFacesAzure(
-  faceId1: string,
-  faceId2: string,
+  _faceId1: string,
+  _faceId2: string,
   targetImageUrl: string,
   provider: FaceMatchingProvider
 ): Promise<number> {
@@ -742,10 +742,10 @@ async function compareFacesAzure(
  * Compare faces using Google Cloud Vision API
  */
 async function compareFacesGoogle(
-  faceId1: string,
-  faceId2: string,
-  targetImageUrl: string,
-  provider: FaceMatchingProvider
+  _faceId1: string,
+  _faceId2: string,
+  _targetImageUrl: string,
+  _provider: FaceMatchingProvider
 ): Promise<number> {
   try {
     // Note: Google Cloud Vision API requires the client library
@@ -762,11 +762,11 @@ async function compareFacesGoogle(
  * Compare faces using Local/Free method
  * Uses image hash comparison - simple but effective for basic face matching
  */
-async function compareFacesLocal(
+async function _compareFacesLocal(
   faceId1: string,
   faceId2: string,
-  targetImageUrl: string,
-  provider: FaceMatchingProvider
+  _targetImageUrl: string,
+  _provider: FaceMatchingProvider
 ): Promise<number> {
   try {
     // For local provider, faceId is actually an image hash

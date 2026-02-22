@@ -39,6 +39,7 @@ export default function AdminPostsReviewScreen() {
 
   useEffect(() => {
     loadPosts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on filter change
   }, [filter]);
 
   const loadPosts = async () => {

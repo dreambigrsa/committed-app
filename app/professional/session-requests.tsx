@@ -15,7 +15,7 @@ import { CheckCircle2, XCircle, Clock, User, MessageSquare, Shield } from 'lucid
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
 import { getPendingSessionRequests, acceptProfessionalSession, declineProfessionalSession } from '@/lib/professional-sessions';
-import { ProfessionalSession , ProfessionalProfile } from '@/types';
+import { ProfessionalSession } from '@/types';
 import { supabase } from '@/lib/supabase';
 
 
@@ -33,6 +33,7 @@ export default function ProfessionalSessionRequestsScreen() {
 
   useEffect(() => {
     loadProfessionalProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount
   }, [currentUser]);
 
   useEffect(() => {
@@ -60,6 +61,7 @@ export default function ProfessionalSessionRequestsScreen() {
         supabase.removeChannel(channel);
       };
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on ID change
   }, [professionalProfileId]);
 
   const loadProfessionalProfile = async () => {

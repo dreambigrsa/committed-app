@@ -6,12 +6,11 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { getUserStatuses } from '@/lib/status-queries';
-import type { Status } from '@/lib/status-queries';
 
 interface StatusAvatarProps {
   userId: string;

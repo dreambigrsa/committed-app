@@ -17,7 +17,7 @@ import { colors } from '@/constants/colors';
 import { Relationship } from '@/types';
 
 export default function AdminRelationshipsScreen() {
-  const { currentUser, endRelationship } = useApp();
+  const { currentUser } = useApp();
   const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -81,7 +81,7 @@ export default function AdminRelationshipsScreen() {
 
       Alert.alert('Success', 'Relationship verified');
       loadRelationships();
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 'Failed to verify relationship');
     }
   };
@@ -107,7 +107,7 @@ export default function AdminRelationshipsScreen() {
 
               Alert.alert('Success', 'Relationship rejected');
               loadRelationships();
-            } catch (error) {
+            } catch {
               Alert.alert('Error', 'Failed to reject relationship');
             }
           },

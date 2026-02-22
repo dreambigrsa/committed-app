@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
 import { Advertisement } from '@/types';
-import { ExternalLink, FileText, Play, PauseCircle, RefreshCw, TrendingUp, Trash2 } from 'lucide-react-native';
+import { ExternalLink, FileText, Play, PauseCircle, RefreshCw, Trash2 } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '@/lib/supabase';

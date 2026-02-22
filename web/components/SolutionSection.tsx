@@ -110,8 +110,8 @@ export default function SolutionSection() {
                   </div>
                   <h3 className="mt-6 font-display text-xl font-bold text-slate-900">{title}</h3>
                   <p className="mt-3 flex-1 text-base leading-relaxed text-slate-600">{desc}</p>
-                  {/* Badge */}
-                  <div className="mt-6 flex items-center gap-2">
+                  {/* Badge — centered on mobile, left-aligned on desktop */}
+                  <div className="mt-6 flex items-center justify-center gap-2 self-center md:justify-start md:self-start">
                     <svg className="h-4 w-4 shrink-0 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
                       <path
                         fillRule="evenodd"

@@ -12,13 +12,13 @@ import {
   TextInput,
 } from 'react-native';
 import { Stack } from 'expo-router';
-import { UserCheck, CheckCircle, XCircle, Clock, Eye, FileText } from 'lucide-react-native';
+import { UserCheck, CheckCircle, XCircle, Clock } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { ProfessionalProfile, ProfessionalApplication } from '@/types';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 
 export default function AdminProfessionalProfilesScreen() {
   const { currentUser } = useApp();
@@ -97,7 +97,7 @@ export default function AdminProfessionalProfilesScreen() {
           onPress: async () => {
             try {
               // Create professional profile from application
-              const { data: profileData, error: profileError } = await supabase
+              const { error: profileError } = await supabase
                 .from('professional_profiles')
                 .insert([{
                   user_id: app.user_id || app.userId,

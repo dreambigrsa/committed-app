@@ -81,14 +81,14 @@ export default function FinalCTASection() {
             />
           </motion.div>
 
-          {/* Trust reassurance row */}
+          {/* Trust reassurance row — aligned block */}
           <motion.div
             variants={itemVariants(reduced)}
             transition={{ duration: 0.2, ease: [0.25, 0.46, 0.45, 0.94] }}
-            className="mt-10 flex flex-wrap items-center justify-center gap-x-8 gap-y-4"
+            className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-x-8"
           >
             {trustItems.map((label) => (
-              <div key={label} className="flex items-center gap-2.5 text-slate-600">
+              <div key={label} className="flex w-full max-w-sm items-center gap-3 text-slate-600 sm:w-auto sm:max-w-none">
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
                   <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
                 </span>

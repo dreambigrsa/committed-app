@@ -12,7 +12,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
@@ -35,7 +34,6 @@ interface StatusStoriesBarProps {
   onStatusPress?: (statusItem: StatusFeedItem) => void;
 }
 
-const { width } = Dimensions.get('window');
 const CARD_WIDTH = 112; // Facebook-style card width
 const CARD_HEIGHT = 200; // Facebook-style card height
 const CARD_MARGIN = 8;
@@ -230,7 +228,7 @@ function OtherUserStoryCard({
   });
 
   // Helper functions for text styling
-  const getTextStyle = (textStyle: string = 'classic') => {
+  const _getTextStyle = (textStyle: string = 'classic') => {
     const fontSize = textStyle === 'typewriter' ? 10 : textStyle === 'elegant' ? 12 : 11;
     const baseStyle: any = {
       fontSize: fontSize,
@@ -250,7 +248,7 @@ function OtherUserStoryCard({
     return baseStyle;
   };
 
-  const getTextEffectStyle = (
+  const _getTextEffectStyle = (
     textEffect: string = 'default',
     backgroundColor: string = '#1A73E8'
   ) => {
@@ -277,8 +275,7 @@ function OtherUserStoryCard({
     return styles;
   };
 
-  // Get preview image or use gradient background
-  const hasMedia = status.media_path && (status.content_type === 'image' || status.content_type === 'video');
+  const _hasMedia = status.media_path && (status.content_type === 'image' || status.content_type === 'video');
   const displayText = status.text_content || '';
   const truncatedText = displayText.length > 30 ? displayText.substring(0, 30) + '...' : displayText;
 
@@ -412,6 +409,7 @@ function YourStoryCard({
     return () => {
       isMounted = false;
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- status.content_type
   }, [status.media_path, status.background_image_path, status.stickers]);
 
   const cardStyles = StyleSheet.create({
@@ -542,7 +540,7 @@ function YourStoryCard({
   });
 
   // Helper functions for text styling
-  const getTextStyle = (textStyle: string = 'classic') => {
+  const _getTextStyle = (textStyle: string = 'classic') => {
     const fontSize = textStyle === 'typewriter' ? 10 : textStyle === 'elegant' ? 12 : 11;
     const baseStyle: any = {
       fontSize: fontSize,
@@ -562,7 +560,7 @@ function YourStoryCard({
     return baseStyle;
   };
 
-  const getTextEffectStyle = (
+  const _getTextEffectStyle = (
     textEffect: string = 'default',
     backgroundColor: string = '#1A73E8'
   ) => {
@@ -590,7 +588,7 @@ function YourStoryCard({
   };
 
   // Get preview image or use gradient background
-  const hasMedia = status.media_path && (status.content_type === 'image' || status.content_type === 'video');
+  const _hasMedia = status.media_path && (status.content_type === 'image' || status.content_type === 'video');
   const isTextStatus = status.content_type === 'text';
   const displayText = status.text_content || 'Your Story';
   const truncatedText = displayText.length > 30 ? displayText.substring(0, 30) + '...' : displayText;
@@ -599,7 +597,7 @@ function YourStoryCard({
     <TouchableOpacity style={{ marginHorizontal: CARD_MARGIN, width: CARD_WIDTH }} onPress={onPress} activeOpacity={0.8}>
       <View style={cardStyles.yourCard}>
         {/* Background - media preview, background image, or gradient/color */}
-        {previewUrl && hasMedia ? (
+        {previewUrl && _hasMedia ? (
           <Image source={{ uri: previewUrl }} style={cardStyles.yourCardImage} contentFit="cover" />
         ) : isTextStatus && backgroundImageUrl ? (
           <Image source={{ uri: backgroundImageUrl }} style={cardStyles.yourCardImage} contentFit="cover" />
@@ -630,7 +628,7 @@ function YourStoryCard({
                   const displayLine = trimmedLine.length > 20 ? trimmedLine.substring(0, 20) + '...' : trimmedLine;
                   
                   // Get text style to match font size exactly
-                  const textStyleObj = getTextStyle(status.text_style || 'classic');
+                  const textStyleObj = _getTextStyle(status.text_style || 'classic');
                   
                   return (
                     <View
@@ -680,8 +678,8 @@ function YourStoryCard({
             }]}>
               <Text
                 style={[
-                  getTextStyle(status.text_style || 'classic'), // Use SAME getTextStyle() function
-                  getTextEffectStyle(status.text_effect || 'default', status.background_color || '#1A73E8'),
+                  _getTextStyle(status.text_style || 'classic'), // Use SAME getTextStyle() function
+                  _getTextEffectStyle(status.text_effect || 'default', status.background_color || '#1A73E8'),
                   {
                     textAlign: status.text_alignment || 'center',
                     color: (status.text_effect === 'white-bg' || status.text_effect === 'black-bg')
@@ -779,7 +777,7 @@ function YourStoryCard({
  */
 function StoryPreviewBubble({
   mediaPath,
-  contentType,
+  contentType: _contentType,
   profilePicture,
   userName,
 }: {

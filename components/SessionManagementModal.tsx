@@ -12,7 +12,7 @@ import {
   ScrollView,
   Dimensions,
 } from 'react-native';
-import { X, Calendar, XCircle, MapPin, Shield, Clock, CheckCircle2, AlertCircle } from 'lucide-react-native';
+import { X, Calendar, XCircle, MapPin, Shield, Clock, CheckCircle2 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ProfessionalSession } from '@/types';
 import { cancelProfessionalSession, endProfessionalSession } from '@/lib/professional-sessions';
@@ -87,6 +87,7 @@ export default function SessionManagementModal({
       setRescheduleNote('');
       setAddressRequest('');
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- refs are stable
   }, [visible]);
 
   const handleClose = () => {

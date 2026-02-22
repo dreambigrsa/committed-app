@@ -3,11 +3,12 @@
 import Image from 'next/image';
 import { motion, useReducedMotion } from 'framer-motion';
 
-const profileImage = 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=500&fit=crop';
+/* Optimized for hero phone mockup: smaller dimensions = faster load */
+const profileImage = 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=280&h=350&fit=crop&q=80';
 const postThumbnails = [
-  'https://images.unsplash.com/photo-1529333166437-7750a6dd5a70?w=200&h=200&fit=crop',
-  'https://images.unsplash.com/photo-1529636798458-92182e662485?w=200&h=200&fit=crop',
-  'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=200&h=200&fit=crop',
+  'https://images.unsplash.com/photo-1529333166437-7750a6dd5a70?w=120&h=120&fit=crop&q=75',
+  'https://images.unsplash.com/photo-1529636798458-92182e662485?w=120&h=120&fit=crop&q=75',
+  'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=120&h=120&fit=crop&q=75',
 ];
 
 const fadeUp = { opacity: 0, y: 8 };
@@ -47,7 +48,8 @@ export default function ProfileScreenMockup() {
               alt="Profile"
               fill
               className="object-cover"
-              sizes="(max-width: 320px) 280px, 300px"
+              sizes="(max-width: 420px) 260px, 280px"
+              priority
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
           </div>
@@ -60,6 +62,7 @@ export default function ProfileScreenMockup() {
                   fill
                   className="object-cover"
                   sizes="64px"
+                  loading="lazy"
                 />
               </div>
               <div>
@@ -142,7 +145,7 @@ export default function ProfileScreenMockup() {
               animate={{ opacity: 1, scale: 1 }}
               transition={{ ...transition, delay: 0.45 + i * 0.05 }}
             >
-              <Image src={src} alt="" width={80} height={80} className="h-full w-full object-cover" />
+              <Image src={src} alt="" width={80} height={80} className="h-full w-full object-cover" loading="lazy" sizes="80px" />
             </motion.div>
           ))}
         </motion.div>

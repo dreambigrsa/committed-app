@@ -136,7 +136,7 @@ export default function AdminPaymentMethodsScreen() {
     if (formData.accountDetails.trim()) {
       try {
         accountDetailsObj = JSON.parse(formData.accountDetails);
-      } catch (e) {
+      } catch {
         Alert.alert('Error', 'Invalid JSON in account details. Please check the format.');
         return;
       }

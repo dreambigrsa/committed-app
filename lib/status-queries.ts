@@ -678,7 +678,7 @@ export async function createStatus(
     textPositionX?: number;
     textPositionY?: number;
     backgroundImageUri?: string | null;
-    stickers?: Array<{ id: string; imageUrl: string; positionX?: number; positionY?: number; scale?: number; rotation?: number }>;
+    stickers?: { id: string; imageUrl: string; positionX?: number; positionY?: number; scale?: number; rotation?: number }[];
   }
 ): Promise<Status | null> {
   const { data: { user } } = await supabase.auth.getUser();
@@ -1200,7 +1200,7 @@ export async function getSignedUrlForMedia(mediaPath: string): Promise<string | 
   // - Legacy: sometimes a file was uploaded to bucket "media" but the DB stored "status-media/<path>"
   //
   // We generate a set of (bucket, path) attempts and try them in order.
-  const attempts: Array<{ bucket: string; path: string }> = [];
+  const attempts: { bucket: string; path: string }[] = [];
 
   const addAttempt = (bucket: string, path: string) => {
     const cleanPath = path.replace(/^\/+/, '');

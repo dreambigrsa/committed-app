@@ -16,7 +16,7 @@ import { Image } from 'expo-image';
 import { Shield, CheckCircle, XCircle, Eye, ArrowLeft } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 
 interface IdVerificationRequest {
   id: string;
@@ -136,7 +136,7 @@ export default function IdVerificationsScreen() {
             setReviewing(true);
             try {
                // Update verification request
-               const { error: updateError, data: updateData } = await supabase
+               const { error: updateError } = await supabase
                  .from('verification_documents')
                  .update({
                    status: 'approved',
@@ -222,7 +222,7 @@ export default function IdVerificationsScreen() {
     }
   };
 
-  const handleReject = (requestId: string) => {
+  const handleReject = (_requestId: string) => {
     setShowRejectModal(true);
   };
 

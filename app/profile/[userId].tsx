@@ -31,7 +31,7 @@ type TabType = 'posts' | 'reels';
 export default function UserProfileScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const router = useRouter();
-  const { currentUser, getUserRelationship, posts: allPosts, reels: allReels, createOrGetConversation, followUser, unfollowUser, isFollowing: checkIsFollowing, blockUser, unblockUser, isBlocked: checkIsBlocked, reportContent, getUserStatus, userStatuses } = useApp();
+  const { currentUser, getUserRelationship, posts: allPosts, reels: allReels, createOrGetConversation, followUser, unfollowUser, isFollowing: checkIsFollowing, blockUser, unblockUser, isBlocked: checkIsBlocked, reportContent, getUserStatus } = useApp();
   
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -60,6 +60,7 @@ export default function UserProfileScreen() {
       checkBlockStatus();
       loadUserStatus();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on userId change
   }, [userId, checkIsFollowing, checkIsBlocked]);
 
   // Load user status
@@ -72,6 +73,7 @@ export default function UserProfileScreen() {
 
   useEffect(() => {
     loadUserStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on userId change
   }, [userId, getUserStatus]);
 
   // Subscribe to real-time status updates and refresh periodically
@@ -104,7 +106,7 @@ export default function UserProfileScreen() {
           table: 'user_status',
           filter: `user_id=eq.${userId}`,
         },
-        async (payload) => {
+        async (_payload) => {
           if (!isMounted) return;
           const status = await getUserStatus(userId);
           if (isMounted) {
@@ -123,6 +125,7 @@ export default function UserProfileScreen() {
 
   useEffect(() => {
     loadUserContent();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on userId/content change
   }, [allPosts, allReels, userId]);
 
   // Sync local isFollowing state with AppContext's isFollowing function

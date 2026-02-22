@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import { Calendar, MapPin, Clock, DollarSign, Shirt, X } from 'lucide-react-native';
+import { Calendar, MapPin, X } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import * as DatingService from '@/lib/dating-service';
 import * as Location from 'expo-location';
@@ -28,11 +28,11 @@ export default function CreateDateRequestScreen() {
 
   const matchId = params.matchId as string;
   const [match, setMatch] = useState<any>(null);
-  const [matches, setMatches] = useState<any[]>([]);
+  const [, setMatches] = useState<any[]>([]);
   const [dateOptions, setDateOptions] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showMatchSelector, setShowMatchSelector] = useState(false);
+  const [, setShowMatchSelector] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -159,7 +159,7 @@ export default function CreateDateRequestScreen() {
           locationLatitude = geocode[0].latitude;
           locationLongitude = geocode[0].longitude;
         }
-      } catch (e) {
+      } catch {
         // Location geocoding failed, continue without coordinates
       }
 

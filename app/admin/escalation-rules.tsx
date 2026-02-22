@@ -42,6 +42,7 @@ export default function AdminEscalationRulesScreen() {
 
   useEffect(() => {
     loadRules();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount
   }, []);
 
   const loadRules = async () => {

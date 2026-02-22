@@ -6,7 +6,6 @@ import {
   Modal,
   TouchableOpacity,
   Animated,
-  Dimensions,
   TextInput,
   Alert,
 } from 'react-native';
@@ -15,8 +14,6 @@ import { X, Sparkles } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useApp } from '@/contexts/AppContext';
-
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface MatchCelebrationModalProps {
   visible: boolean;
@@ -95,6 +92,7 @@ export default function MatchCelebrationModal({
         ]),
       ]).start();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- refs are stable
   }, [visible]);
 
   const handleSendMessage = async (message?: string) => {

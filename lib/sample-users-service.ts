@@ -27,7 +27,7 @@ export const SAMPLE_USERS = [
   { fullName: 'Lungile Ncube', email: 'lungile.ncube@sample.com', phone: '+263771234515', city: 'Bulawayo', country: 'Zimbabwe', age: 30 },
 ];
 
-const DEFAULT_PASSWORD = 'Test123456!';
+const _DEFAULT_PASSWORD = 'Test123456!';
 
 /**
  * Create all sample users using Supabase Edge Function

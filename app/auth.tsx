@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Shield, Heart, ArrowLeft, FileText, Eye, EyeOff } from 'lucide-react-native';
+import { Shield, Heart, ArrowLeft, Eye, EyeOff } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
@@ -485,7 +485,7 @@ export default function AuthScreen() {
               // Fallback to index if we can't get user
               router.replace('/');
             }
-          } catch (error) {
+          } catch (_error) {
             // If error, fallback to index
             router.replace('/');
           }

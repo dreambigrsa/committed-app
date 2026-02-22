@@ -10,10 +10,8 @@ import {
   Modal,
   Alert,
   ActivityIndicator,
-  FlatList,
-  Image as RNImage,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 // @ts-ignore - legacy path works at runtime
@@ -24,16 +22,12 @@ import {
   Trash2,
   X,
   Search,
-  Filter,
   Star,
   StarOff,
   Eye,
   EyeOff,
-  ArrowUp,
-  ArrowDown,
   Smile,
   Package,
-  Upload,
   Save,
   ChevronRight,
   Image as ImageIcon,
@@ -42,10 +36,8 @@ import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { StickerPack, Sticker } from '@/types';
-import colors from '@/constants/colors';
 
 export default function AdminStickersScreen() {
-  const router = useRouter();
   const { currentUser } = useApp();
   const { colors: themeColors } = useTheme();
   const styles = createStyles(themeColors);
@@ -88,6 +80,7 @@ export default function AdminStickersScreen() {
 
   useEffect(() => {
     filterPacks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- filterPacks uses packs, searchQuery, filterActive, filterFeatured
   }, [packs, searchQuery, filterActive, filterFeatured]);
 
   useEffect(() => {

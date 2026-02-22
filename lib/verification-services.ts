@@ -23,7 +23,7 @@ export async function getServiceConfig(serviceType: 'sms' | 'email'): Promise<Se
     console.log(`[getServiceConfig] Fetching ${serviceType} config...`);
     
     // First, try to check if table exists by querying it
-    const { data, error, count } = await supabase
+    const { data, error } = await supabase
       .from('verification_service_configs')
       .select('*', { count: 'exact' })
       .eq('service_type', serviceType)
@@ -264,7 +264,7 @@ export async function createVerificationCode(
           used: false,
         };
         
-        const { data: retryData, error: retryError } = await supabase
+        const { error: retryError } = await supabase
           .from('verification_codes')
           .insert(minimalData)
           .select('id');

@@ -27,10 +27,11 @@ export default function CertificateScreen() {
 
   const [certificate, setCertificate] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isDownloading, setIsDownloading] = useState(false);
+  const [isDownloading] = useState(false);
 
   useEffect(() => {
     loadCertificate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount/relationshipId change
   }, [relationshipId]);
 
   const loadCertificate = async () => {
@@ -41,11 +42,12 @@ export default function CertificateScreen() {
         .eq('relationship_id', relationshipId)
         .single();
 
+      if (error) throw error;
       if (data) {
         setCertificate(data);
       }
-    } catch (error) {
-      console.error('Failed to load certificate:', error);
+    } catch (_error) {
+      console.error('Failed to load certificate:', _error);
     } finally {
       setIsLoading(false);
     }

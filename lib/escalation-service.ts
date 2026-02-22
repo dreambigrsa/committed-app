@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { EscalationRule, ProfessionalSession, ProfessionalProfile } from '@/types';
+import { EscalationRule, ProfessionalProfile } from '@/types';
 import { findMatchingProfessionals } from './professional-matching';
 
 /**

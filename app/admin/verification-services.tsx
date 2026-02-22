@@ -15,7 +15,7 @@ import { Stack } from 'expo-router';
 import { Shield, Phone, Mail, Save, Eye, EyeOff } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 
 interface ServiceConfig {
   id: string;

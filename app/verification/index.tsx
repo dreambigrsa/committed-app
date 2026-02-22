@@ -17,7 +17,7 @@ import {
   ChevronRight,
 } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 
 export default function VerificationScreen() {
   const router = useRouter();

@@ -10,9 +10,9 @@ import {
   ScrollView,
  Platform } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
-import { IdCard, ArrowLeft, Upload, CheckCircle2, XCircle, Clock, AlertCircle } from 'lucide-react-native';
+import { IdCard, ArrowLeft, Upload, CheckCircle2, XCircle, Clock } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 import * as ImagePicker from 'expo-image-picker';
 // @ts-ignore - legacy path works at runtime
 import * as FileSystem from 'expo-file-system/legacy';
@@ -33,7 +33,7 @@ interface VerificationDocument {
 
 export default function IdVerificationScreen() {
   const router = useRouter();
-  const { currentUser, updateUserProfile } = useApp();
+  const { currentUser } = useApp();
   const [idImageUrl, setIdImageUrl] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -42,6 +42,7 @@ export default function IdVerificationScreen() {
 
   useEffect(() => {
     loadVerificationStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount
   }, []);
 
   const loadVerificationStatus = async () => {

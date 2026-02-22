@@ -5,19 +5,20 @@
 
 import { supabase } from './supabase';
 // Import app metadata for dynamic discovery
-import { getAppMetadata, searchRoutes, searchFunctions, getFeatureByName } from './app-metadata';
+import { getAppMetadata } from './app-metadata';
 
 // Import Constants with proper typing
 let Constants: any;
 try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require for optional expo-constants
   Constants = require('expo-constants').default;
-} catch (e) {
+} catch (_e) {
   // Constants might not be available in all contexts
   Constants = null;
 }
 
 const COMMITTED_AI_EMAIL = 'ai@committed.app';
-const COMMITTED_AI_NAME = 'Committed AI';
+const _COMMITTED_AI_NAME = 'Committed AI';
 const OPENAI_SETTINGS_KEY = 'openai_api_key';
 
 // High-signal product knowledge injected into the AI system prompt so the assistant
@@ -192,7 +193,7 @@ export interface UserLearnings {
 export async function getOrCreateAIUser(): Promise<{ id: string } | null> {
   try {
     // First, try to find existing AI user
-    const { data: existingUser, error: findError } = await supabase
+    const { data: existingUser } = await supabase
       .from('users')
       .select('id')
       .eq('email', COMMITTED_AI_EMAIL)
@@ -220,7 +221,7 @@ export async function getOrCreateAIUser(): Promise<{ id: string } | null> {
           return { id: newUser.id };
         }
       }
-    } catch (error) {
+    } catch (_error) {
       console.log('Database function not available or auth user not created yet');
     }
 
@@ -400,7 +401,7 @@ async function uploadImageToStorage(imageUrl: string, prompt: string): Promise<s
     const filename = `ai-generated/${timestamp}_${sanitizedPrompt}.png`;
 
     // Upload to Supabase storage
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from('media')
       .upload(filename, uint8Array, {
         contentType: 'image/png',
@@ -431,7 +432,7 @@ async function uploadImageToStorage(imageUrl: string, prompt: string): Promise<s
  */
 async function generateDocument(
   userRequest: string,
-  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>
+  conversationHistory: { role: 'user' | 'assistant'; content: string }[]
 ): Promise<AIResponse> {
   try {
     const shouldUseDirectOpenAI = __DEV__ && !!(await getOpenAIApiKeyAsync());
@@ -537,7 +538,7 @@ async function uploadDocumentToStorage(content: string, filename: string): Promi
     const storageFilename = `ai-documents/${timestamp}_${filename}`;
 
     // Upload to Supabase storage
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from('media')
       .upload(storageFilename, uint8Array, {
         contentType: 'text/plain',
@@ -564,7 +565,7 @@ async function uploadDocumentToStorage(content: string, filename: string): Promi
 /**
  * Check if this is the first message in the conversation
  */
-export function isFirstMessage(conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>): boolean {
+export function isFirstMessage(conversationHistory: { role: 'user' | 'assistant'; content: string }[]): boolean {
   return conversationHistory.length === 0;
 }
 
@@ -607,8 +608,8 @@ export async function getUserLearnings(userId: string): Promise<UserLearnings | 
  */
 async function analyzeConversationForLearnings(
   userMessage: string,
-  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
-  userId: string
+  conversationHistory: { role: 'user' | 'assistant'; content: string }[],
+  _userId: string
 ): Promise<Partial<UserLearnings>> {
   try {
     // Use OpenAI to analyze the conversation if available
@@ -680,7 +681,7 @@ Latest message: ${userMessage}`;
  */
 function analyzeConversationPatterns(
   userMessage: string,
-  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>
+  conversationHistory: { role: 'user' | 'assistant'; content: string }[]
 ): Partial<UserLearnings> {
   const message = userMessage.toLowerCase();
   const allMessages = conversationHistory.filter(m => m.role === 'user').map(m => m.content.toLowerCase()).join(' ');
@@ -891,7 +892,7 @@ COMMANDS:
  */
 export async function getAIResponse(
   userMessage: string,
-  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
+  conversationHistory: { role: 'user' | 'assistant'; content: string }[] = [],
   isNewConversation: boolean = false,
   userName?: string,
   userUsername?: string,
@@ -1067,7 +1068,7 @@ export async function getAIResponse(
  */
 async function getOpenAIResponse(
   userMessage: string,
-  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
+  conversationHistory: { role: 'user' | 'assistant'; content: string }[],
   apiKey: string,
   userName?: string,
   userUsername?: string,
@@ -1154,7 +1155,7 @@ async function getOpenAIResponse(
 
 async function getOpenAIResponseViaSupabaseFunction(params: {
   userMessage: string;
-  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>;
+  conversationHistory: { role: 'user' | 'assistant'; content: string }[];
   systemPrompt: string;
   userId?: string;
 }): Promise<AIResponse> {
@@ -1220,7 +1221,7 @@ async function getOpenAIResponseViaSupabaseFunction(params: {
  * Creates a concise summary of the user's issue for professional matching
  */
 export async function summarizeConversationForProfessional(
-  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
+  conversationHistory: { role: 'user' | 'assistant'; content: string }[],
   userMessage: string
 ): Promise<string> {
   try {
@@ -1317,7 +1318,7 @@ function getFallbackSummary(userMessage: string): string {
  */
 export async function suggestProfessionalRole(
   conversationSummary: string,
-  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>
+  conversationHistory: { role: 'user' | 'assistant'; content: string }[]
 ): Promise<string | null> {
   try {
     // Get active professional roles
@@ -1330,7 +1331,6 @@ export async function suggestProfessionalRole(
     if (error || !roles || roles.length === 0) return null;
 
     // Simple keyword matching based on role categories and names
-    const lowerSummary = conversationSummary.toLowerCase();
     const combinedText = [
       ...conversationHistory.map(m => m.content),
       conversationSummary,
@@ -1340,7 +1340,6 @@ export async function suggestProfessionalRole(
     for (const role of roles) {
       const rules = role.ai_matching_rules || {};
       const keywords = rules.keywords || [];
-      const categories = rules.categories || [];
 
       // Check if summary matches role keywords
       if (keywords.length > 0) {
@@ -1430,7 +1429,7 @@ export async function suggestProfessionalRole(
  */
 function detectProfessionalHelpNeeded(
   userMessage: string,
-  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>
+  conversationHistory: { role: 'user' | 'assistant'; content: string }[]
 ): { needsHelp: boolean; professionalType?: string; confidence: 'high' | 'medium' | 'low' } {
   const message = userMessage.toLowerCase().trim();
   
@@ -1602,10 +1601,10 @@ export async function shouldAIRespondInObserverMode(
 }
 
 export async function detectNonAgreementAndSuggestAlternative(
-  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
-  conversationId: string,
-  userId: string,
-  sessionId: string
+  conversationHistory: { role: 'user' | 'assistant'; content: string }[],
+  _conversationId: string,
+  _userId: string,
+  _sessionId: string
 ): Promise<{ shouldEscalate: boolean; suggestion?: string }> {
   try {
     // Only analyze if we have recent messages (last 10)
@@ -1694,7 +1693,7 @@ export async function detectNonAgreementAndSuggestAlternative(
  */
 function getFallbackResponse(
   userMessage: string,
-  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
+  conversationHistory: { role: 'user' | 'assistant'; content: string }[],
   userName?: string,
   userUsername?: string,
   learnings?: UserLearnings | null

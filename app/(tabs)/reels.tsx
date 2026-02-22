@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
-import { Heart, MessageCircle, Share2, Volume2, VolumeX, Plus, Film, MoreVertical, Edit2, Trash2, X, UserPlus, Flag, Smile, Image as ImageIcon , ExternalLink } from 'lucide-react-native';
+import { Heart, MessageCircle, Share2, Volume2, VolumeX, Plus, Film, MoreVertical, Edit2, Trash2, X, Flag, Smile, Image as ImageIcon , ExternalLink } from 'lucide-react-native';
 import { useRouter, useFocusEffect, usePathname, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/contexts/AppContext';
@@ -35,7 +35,7 @@ export default function ReelsScreen() {
   const pathname = usePathname();
   const params = useLocalSearchParams<{ reelId?: string }>();
   const insets = useSafeAreaInsets();
-  const { currentUser, reels, toggleReelLike, editReel, deleteReel, shareReel, adminDeleteReel, adminRejectReel, followUser, unfollowUser, isFollowing: checkIsFollowing, addReelComment, getReelComments, editReelComment, deleteReelComment, toggleReelCommentLike, reportContent, getActiveAds, getSmartAds, recordAdImpression, recordAdClick, getUserStatus, userStatuses, legalAcceptanceStatus } = useApp();
+  const { currentUser, reels, toggleReelLike, editReel, deleteReel, shareReel, adminDeleteReel, adminRejectReel, followUser, unfollowUser, isFollowing: checkIsFollowing, addReelComment, getReelComments, editReelComment, deleteReelComment, toggleReelCommentLike, reportContent, getActiveAds, getSmartAds, recordAdImpression, recordAdClick, legalAcceptanceStatus } = useApp();
   const { colors } = useTheme();
   
   const [currentIndex, setCurrentIndex] = useState<number>(0);
@@ -57,7 +57,7 @@ export default function ReelsScreen() {
   const [smartAds, setSmartAds] = useState<Advertisement[]>([]);
   const [activeVideoAd, setActiveVideoAd] = useState<{ reelId: string; ad: Advertisement; canSkip: boolean; skipDelay: number } | null>(null);
   const [activeBannerCardAd, setActiveBannerCardAd] = useState<{ reelId: string; ad: Advertisement; canSkip: boolean; skipDelay: number } | null>(null);
-  const [videoAdPlaybackTime, setVideoAdPlaybackTime] = useState<number>(0);
+  const [, setVideoAdPlaybackTime] = useState<number>(0);
   const [skipCountdown, setSkipCountdown] = useState<number>(0);
   const [bannerCardSkipCountdown, setBannerCardSkipCountdown] = useState<number>(0);
   const [requestedReelUnavailable, setRequestedReelUnavailable] = useState(false);
@@ -226,6 +226,7 @@ export default function ReelsScreen() {
         }
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- animation refs and ad state intentionally omitted to avoid re-running on every anim/ad change
   }, [currentIndex, currentReelId, reels, smartAds]);
 
   // Stop all videos when component unmounts or loses focus
@@ -245,9 +246,10 @@ export default function ReelsScreen() {
         // Screen lost focus - stop all videos
         setIsScreenFocused(false);
         
-        // Stop all videos when leaving the screen - use stopAsync to fully stop playback
-        Object.keys(videoRefs.current).forEach((reelId) => {
-          const video = videoRefs.current[reelId];
+        // Stop all videos when leaving the screen - copy ref for cleanup to avoid stale closure
+        const refs = videoRefs.current;
+        Object.keys(refs).forEach((reelId) => {
+          const video = refs[reelId];
           if (video) {
             video.stopAsync().catch(() => {});
             video.pauseAsync().catch(() => {});
@@ -302,15 +304,17 @@ export default function ReelsScreen() {
     }
     
     return () => {
-      // Cleanup: stop all videos on unmount
-      Object.keys(videoRefs.current).forEach((reelId) => {
-        const video = videoRefs.current[reelId];
+      // Cleanup: stop all videos on unmount - copy ref for cleanup to avoid stale closure
+      const refs = videoRefs.current;
+      Object.keys(refs).forEach((reelId) => {
+        const video = refs[reelId];
         if (video) {
           video.stopAsync().catch(() => {});
           video.pauseAsync().catch(() => {});
         }
       });
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only run when reels load, not when currentReelId changes
   }, [reels.length]);
 
   // Cleanup all intervals and timeouts on unmount
@@ -701,6 +705,7 @@ export default function ReelsScreen() {
         }
       };
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- skipButtonOpacity is animation ref; activeVideoAd id sufficient
   }, [activeVideoAd?.reelId, activeVideoAd?.ad.id]);
 
   // Start countdown timer when banner/card ad is shown
@@ -744,6 +749,7 @@ export default function ReelsScreen() {
       // Clear countdown when ad is dismissed
       setBannerCardSkipCountdown(0);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- activeBannerCardAd?.reelId, ad.id, canSkip cover changes
   }, [activeBannerCardAd?.reelId, activeBannerCardAd?.ad.id, activeBannerCardAd?.canSkip]);
 
   // Render different ad types
@@ -1022,7 +1028,6 @@ export default function ReelsScreen() {
               onPlaybackStatusUpdate={(status: AVPlaybackStatus) => {
                 if (status.isLoaded) {
                   const currentTime = status.positionMillis || 0;
-                  const duration = status.durationMillis || 0;
                   setVideoAdPlaybackTime(currentTime);
                   
                   // Countdown is handled by useEffect, which controls button visibility

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -20,8 +20,6 @@ import {
   Users, 
   Shield, 
   Save,
-  Circle,
-  Loader,
   CheckCircle2,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -29,8 +27,6 @@ import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
 import { ProfessionalProfile, ProfessionalStatus } from '@/types';
 import { getEffectiveProfessionalStatus, EffectiveProfessionalStatus } from '@/lib/professional-availability';
-import { colors } from '@/constants/colors';
-
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const STATUS_CARD_WIDTH = (SCREEN_WIDTH - 60) / 2; // Account for padding and gap
 
@@ -70,6 +66,7 @@ export default function ProfessionalAvailabilityScreen() {
 
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount
   }, []);
 
   const loadData = async () => {

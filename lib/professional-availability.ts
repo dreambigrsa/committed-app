@@ -5,7 +5,6 @@
  */
 
 import { supabase } from './supabase';
-import { UserStatusType } from '@/types';
 
 export interface EffectiveProfessionalStatus {
   status: 'online' | 'busy' | 'away' | 'offline';

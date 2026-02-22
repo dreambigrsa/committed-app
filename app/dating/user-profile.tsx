@@ -12,7 +12,7 @@ import {
   Modal,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Heart, Star, MapPin, Calendar, Users, Video, Image as ImageIcon, Share2, MoreVertical, Shield, CheckCircle2, Crown, Mic, Clock, MessageCircle, TrendingUp, Smile, Coffee, Home, Church, Briefcase, Mountain, Flag } from 'lucide-react-native';
+import { ArrowLeft, Heart, Star, MapPin, Calendar, Users, Video, Image as ImageIcon, Share2, MoreVertical, Shield, CheckCircle2, Crown, Clock, MessageCircle, Smile, Coffee, Home, Church, Briefcase, Mountain, Flag } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
 import { Image as ExpoImage } from 'expo-image';
@@ -36,12 +36,11 @@ export default function UserProfileScreen() {
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'photos' | 'videos'>('photos');
-  const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [badges, setBadges] = useState<any[]>([]);
-  const [compatibility, setCompatibility] = useState<number | null>(null);
+  const [, setCompatibility] = useState<number | null>(null);
   const [conversationStarters, setConversationStarters] = useState<string[]>([]);
   const [isOwnProfile, setIsOwnProfile] = useState(false);
-  const [subscription, setSubscription] = useState<any>(null);
+  const [, setSubscription] = useState<any>(null);
   const [showMenuModal, setShowMenuModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
@@ -49,6 +48,7 @@ export default function UserProfileScreen() {
 
   useEffect(() => {
     loadProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount/params change
   }, [params.userId]);
 
   const loadProfile = async () => {
@@ -213,7 +213,7 @@ export default function UserProfileScreen() {
     }
   };
 
-  const getLastSeenText = (lastActive: string) => {
+  const _getLastSeenText = (lastActive: string) => {
     const now = new Date();
     const lastSeen = new Date(lastActive);
     const diffMs = now.getTime() - lastSeen.getTime();
@@ -249,7 +249,7 @@ export default function UserProfileScreen() {
   const photos = profile.photos || [];
   const videos = profile.videos || [];
   const primaryPhoto = photos.find((p: any) => p.is_primary) || photos[0];
-  const displayPhotos = photos.slice(0, 6);
+  const _displayPhotos = photos.slice(0, 6);
 
   return (
     <SafeAreaView style={styles.container}>

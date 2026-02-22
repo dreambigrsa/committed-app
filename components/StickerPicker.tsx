@@ -76,6 +76,7 @@ export default function StickerPicker({
         }),
       ]).start();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- opacity, translateY refs stable
   }, [visible]);
 
   useEffect(() => {

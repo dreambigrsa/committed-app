@@ -40,6 +40,7 @@ export default function HomeScreen() {
       setIsCheckingProfessional(false);
       setIsProfessional(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- checkProfessionalStatus is stable, load on mount only
   }, [currentUser]);
 
   const checkProfessionalStatus = async () => {

@@ -27,11 +27,9 @@ import {
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
-import { getProfessionalBookings, rescheduleBooking, cancelBooking, confirmBooking, completeBooking } from '@/lib/professional-bookings';
+import { getProfessionalBookings, cancelBooking, confirmBooking, completeBooking } from '@/lib/professional-bookings';
 import { ProfessionalSession } from '@/types';
 import { supabase } from '@/lib/supabase';
-import { colors } from '@/constants/colors';
-
 export default function ProfessionalBookingsScreen() {
   const router = useRouter();
   const { currentUser } = useApp();
@@ -46,12 +44,14 @@ export default function ProfessionalBookingsScreen() {
 
   useEffect(() => {
     loadProfessionalProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount
   }, [currentUser]);
 
   useEffect(() => {
     if (professionalId) {
       loadBookings();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on filter/ID change
   }, [professionalId, filter]);
 
   const loadProfessionalProfile = async () => {

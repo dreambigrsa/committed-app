@@ -113,7 +113,7 @@ function HeroPhoneMockup() {
   return (
     <div
       ref={ref}
-      className="relative mx-auto w-full max-w-[360px] sm:max-w-[400px] lg:max-w-[460px] xl:max-w-[520px]"
+      className="relative mx-auto w-full max-w-[300px] sm:max-w-[340px] lg:max-w-[380px] xl:max-w-[420px]"
       style={{ perspective: '1400px' }}
     >
       {/* Tilt-reactive ambient shadow */}
@@ -204,32 +204,16 @@ function HeroPhoneWithHand() {
 
   return (
     <div className="relative flex items-center justify-center py-4">
-      {/* Strong glow behind phone - clearly visible halo */}
+      {/* Glow behind phone - single layer for performance */}
       <div className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center">
         <motion.div
-          className="absolute h-[100%] w-[90%] max-w-[480px] rounded-full"
+          className="absolute h-[80%] w-[70%] max-w-[320px] rounded-full"
           style={{
-            background: 'radial-gradient(ellipse at center, rgba(139, 92, 246, 0.7) 0%, rgba(167, 139, 250, 0.5) 25%, rgba(236, 72, 153, 0.35) 50%, rgba(139, 92, 246, 0.15) 70%, transparent 85%)',
-            filter: 'blur(40px)',
-          }}
-          animate={reduced ? {} : { opacity: [0.85, 1, 0.85] }}
-          transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-        />
-        <motion.div
-          className="absolute h-[75%] w-[65%] max-w-[360px] rounded-full"
-          style={{
-            background: 'radial-gradient(ellipse at center, rgba(196, 181, 253, 0.9) 0%, rgba(251, 113, 133, 0.6) 40%, rgba(139, 92, 246, 0.3) 65%, transparent 85%)',
-            filter: 'blur(24px)',
+            background: 'radial-gradient(ellipse at center, rgba(139, 92, 246, 0.6) 0%, rgba(236, 72, 153, 0.3) 50%, transparent 75%)',
+            filter: 'blur(32px)',
           }}
           animate={reduced ? {} : { opacity: [0.9, 1, 0.9] }}
-          transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut', delay: 0.3 }}
-        />
-        <div
-          className="absolute h-[55%] w-[45%] max-w-[260px] rounded-full"
-          style={{
-            background: 'radial-gradient(ellipse at center, rgba(221, 214, 254, 1) 0%, rgba(251, 207, 232, 0.8) 35%, transparent 70%)',
-            filter: 'blur(16px)',
-          }}
+          transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
         />
       </div>
 

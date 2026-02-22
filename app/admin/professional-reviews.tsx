@@ -53,6 +53,7 @@ export default function AdminProfessionalReviewsScreen() {
     return () => {
       supabase.removeChannel(channel);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- load on filter change, subscription callback
   }, [filter]);
 
   const loadReviews = async () => {

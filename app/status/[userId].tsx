@@ -29,7 +29,7 @@ import { Video, ResizeMode } from 'expo-av';
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { X, Trash2, Plus, Music, Type, Image as ImageIcon, RefreshCw, Share2, MoreHorizontal, Globe, Lock, MessageCircle, Download, Archive, Link, AlertCircle, AtSign, ChevronUp, Camera } from 'lucide-react-native';
+import { X, Trash2, Plus, Music, Image as ImageIcon, RefreshCw, Share2, MoreHorizontal, Globe, Lock, MessageCircle, Download, Archive, Link, AlertCircle, AtSign, ChevronUp } from 'lucide-react-native';
 import { getUserStatuses, markStatusAsViewed, getSignedUrlForMedia, deleteStatus, getStatusViewers, getStatusViewCount, updateStatusPrivacy, archiveStatus, reactToStatus, removeStatusReaction, getUserReaction, getStatusReactionCounts, type StatusViewer, type Status } from '@/lib/status-queries';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -40,7 +40,7 @@ const PROGRESS_BAR_HEIGHT = 3;
 export default function StatusViewerScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const router = useRouter();
-  const { colors } = useTheme();
+  useTheme();
   const { currentUser, createOrGetConversation, createNotification, sendMessage } = useApp();
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -52,7 +52,7 @@ export default function StatusViewerScreen() {
   const [backgroundImageUrl, setBackgroundImageUrl] = useState<string | null>(null);
   const [stickerUrls, setStickerUrls] = useState<Map<string, string>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [, setIsDeleting] = useState(false);
   const [showPlusMenu, setShowPlusMenu] = useState(false);
   const [showViewers, setShowViewers] = useState(false);
   const [showOwnStatusMenu, setShowOwnStatusMenu] = useState(false);
@@ -63,8 +63,8 @@ export default function StatusViewerScreen() {
   const [loadingViewers, setLoadingViewers] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [userReactions, setUserReactions] = useState<Record<string, 'heart' | 'like' | 'laugh' | null>>({});
-  const [reactionCounts, setReactionCounts] = useState<Record<string, { heart: number; like: number; laugh: number }>>({});
-  const [pausedProgress, setPausedProgress] = useState(0);
+  const [, setReactionCounts] = useState<Record<string, { heart: number; like: number; laugh: number }>>({});
+  const [, setPausedProgress] = useState(0);
   const progressAnim = useRef(new Animated.Value(0)).current;
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -484,6 +484,7 @@ export default function StatusViewerScreen() {
     }
 
     loadStatuses();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on userId change
   }, [userId]);
 
   useEffect(() => {
@@ -510,6 +511,7 @@ export default function StatusViewerScreen() {
         clearInterval(progressInterval.current);
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- complex deps, load on index/status change
   }, [currentIndex, statuses]);
 
   // Handle media ready state based on content type
@@ -567,6 +569,7 @@ export default function StatusViewerScreen() {
         return () => clearTimeout(timer);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- startProgress stable
   }, [isMediaReady, mediaDuration, hasVideoDuration, currentIndex, statuses]);
 
   // Restart progress if duration changes for videos (in case it was set after progress started)
@@ -578,6 +581,7 @@ export default function StatusViewerScreen() {
         startProgress();
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- startProgress stable
   }, [mediaDuration, hasVideoDuration]);
 
   const loadUserReaction = async () => {
@@ -603,6 +607,7 @@ export default function StatusViewerScreen() {
     } else if (!showViewers && isPaused && progressInterval.current === null) {
       resumeProgress();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pause/resume on modal
   }, [showViewers]);
 
   // Pause when own status menu opens, resume when it closes
@@ -612,6 +617,7 @@ export default function StatusViewerScreen() {
     } else if (!showOwnStatusMenu && isPaused && progressInterval.current === null) {
       resumeProgress();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pause/resume on modal
   }, [showOwnStatusMenu]);
 
   const loadViewCount = async () => {
@@ -1475,10 +1481,8 @@ export default function StatusViewerScreen() {
           ) : (status.content_type === 'image' || status.content_type === 'video') && mediaUrl ? (
             <View
               style={styles.mediaWrapper}
-              onLayout={(e) => {
-                // reserved for future exact centering; we store but don't strictly need it right now
-                 
-                const { width: _w, height: _h } = e.nativeEvent.layout;
+              onLayout={() => {
+                // reserved for future exact centering
               }}
             >
               {status.content_type === 'image' ? (

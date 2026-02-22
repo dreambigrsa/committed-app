@@ -13,14 +13,13 @@ import {
   ActivityIndicator,
   Modal,
   ScrollView,
-  Image as RNImage,
   Linking,
   ImageBackground,
   Keyboard,
   Animated,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Send, Trash2, Image as ImageIcon, FileText, X, Settings, Download, ZoomIn, Flag, MoreVertical, Smile, ChevronUp, ChevronDown , ExternalLink , Users, Shield } from 'lucide-react-native';
+import { ArrowLeft, Send, Image as ImageIcon, FileText, X, Settings, Download, Smile, ChevronUp, ChevronDown , ExternalLink , Users, Shield } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { Video, ResizeMode } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
@@ -46,8 +45,6 @@ import ProfessionalHelpSuggestionModal from '@/components/ProfessionalHelpSugges
 import SessionManagementModal from '@/components/SessionManagementModal';
 import PremiumModal from '@/components/PremiumModal';
 import { getActiveSession } from '@/lib/professional-sessions';
-import { monitorActiveSessionForNonAgreement } from '@/lib/session-monitor';
-import { escalateSession } from '@/lib/escalation-service';
 
 /**
  * Status Preview Attachment Component
@@ -230,6 +227,7 @@ export default function ConversationDetailScreen() {
     
     // Load active professional session
     loadActiveSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount/conversationId
   }, [conversationId]);
   
   // Subscribe to session updates
@@ -255,6 +253,7 @@ export default function ConversationDetailScreen() {
     return () => {
       supabase.removeChannel(channel);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount/conversationId
   }, [conversationId]);
   
   const loadActiveSession = async () => {
@@ -287,7 +286,7 @@ export default function ConversationDetailScreen() {
     }
   };
 
-  const submitAiFeedback = async (messageId: string, rating: 1 | -1) => {
+  const submitAiFeedback = useCallback(async (messageId: string, rating: 1 | -1) => {
     if (!currentUser || !conversationId) return;
     try {
       setAiFeedback(prev => ({ ...prev, [String(messageId)]: rating }));
@@ -302,7 +301,7 @@ export default function ConversationDetailScreen() {
       // Non-fatal
       console.error('Failed to submit AI feedback:', e);
     }
-  };
+  }, [currentUser, conversationId]);
 
   // Keyboard listeners
   useEffect(() => {
@@ -357,6 +356,7 @@ export default function ConversationDetailScreen() {
       showSubscription.remove();
       hideSubscription.remove();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyboard listeners, refs stable
   }, []);
 
   // Load advertisements for messages
@@ -401,6 +401,7 @@ export default function ConversationDetailScreen() {
       
       checkConversation();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- getConversation stable
   }, [conversationId, currentUser, conversation]);
 
   useEffect(() => {
@@ -575,7 +576,7 @@ export default function ConversationDetailScreen() {
         subscription.unsubscribe();
       };
     }
-   
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on conversation change
   }, [conversationId, currentUser]);
 
   // Load other participant's status
@@ -615,6 +616,7 @@ export default function ConversationDetailScreen() {
     if (conversationId && currentUser && conversation) {
       loadOtherParticipantStatus();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- getOtherParticipant stable
   }, [conversationId, currentUser, conversation, getUserStatus]);
 
   // Subscribe to status updates for other participant and refresh periodically
@@ -652,7 +654,7 @@ export default function ConversationDetailScreen() {
           table: 'user_status',
           filter: `user_id=eq.${other.id}`,
         },
-        async (payload) => {
+        async (_payload) => {
           if (!isMounted) return;
           const status = await getUserStatus(other.id);
           if (isMounted) {
@@ -667,6 +669,7 @@ export default function ConversationDetailScreen() {
       clearInterval(refreshInterval);
       supabase.removeChannel(channel);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- getOtherParticipant stable
   }, [conversationId, conversation, getUserStatus]);
 
   const loadMessages = async (limit: number = 20) => {
@@ -806,6 +809,7 @@ export default function ConversationDetailScreen() {
     return () => {
       subscription.unsubscribe();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadWarnings on conversation change
   }, [conversationId, currentUser]);
 
   const downloadImage = async (imageUrl: string) => {
@@ -1338,7 +1342,7 @@ export default function ConversationDetailScreen() {
             
             // Show user-friendly error message instead of silently failing
             try {
-              const errorMessage = error?.message || 'Failed to get AI response';
+              const _errorMessage = error?.message || 'Failed to get AI response';
               const { error: insertError } = await supabase
                 .from('messages')
                 .insert({
@@ -1833,7 +1837,7 @@ export default function ConversationDetailScreen() {
     }
   };
 
-  const getLastSeenText = (lastActiveAt: string, statusType?: string, userId?: string) => {
+  const getLastSeenText = (lastActiveAt: string, statusType?: string, _userId?: string) => {
     // Check if this is the AI user - always show as online
     const other = getOtherParticipant();
     if (other && other.name === 'Committed AI') {
@@ -2292,7 +2296,7 @@ export default function ConversationDetailScreen() {
                     } else {
                       router.replace('/(tabs)/messages' as any);
                     }
-                  } catch (error) {
+                  } catch {
                     // Fallback navigation
                     router.replace('/(tabs)/messages' as any);
                   }

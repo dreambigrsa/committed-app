@@ -18,7 +18,7 @@ import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { sendVerificationEmail, verifyEmailToken } from '@/lib/auth-functions';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 
 export default function VerifyEmailScreen() {
   const router = useRouter();

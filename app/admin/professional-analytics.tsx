@@ -10,7 +10,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { Stack } from 'expo-router';
-import { BarChart3, Users, MessageSquare, TrendingUp, Clock, CheckCircle2 } from 'lucide-react-native';
+import { Users, MessageSquare, TrendingUp, CheckCircle2 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 
@@ -37,6 +37,7 @@ export default function AdminProfessionalAnalyticsScreen() {
 
   useEffect(() => {
     loadAnalytics();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on dateRange change
   }, [dateRange]);
 
   const loadAnalytics = async () => {
@@ -54,7 +55,7 @@ export default function AdminProfessionalAnalyticsScreen() {
         sessionsQuery = sessionsQuery.gte('created_at', dateFilter);
       }
 
-      const { data: sessionsData, count: totalSessions } = await sessionsQuery;
+      const { count: totalSessions } = await sessionsQuery;
 
       // Active sessions
       const { count: activeSessions } = await supabase

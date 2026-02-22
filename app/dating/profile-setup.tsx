@@ -88,7 +88,7 @@ export default function ProfileSetupScreen() {
   const [whatMakesMeDifferent, setWhatMakesMeDifferent] = useState('');
   const [weekendStyle, setWeekendStyle] = useState<'homebody' | 'out_with_friends' | 'church_faith' | 'side_hustling' | 'exploring' | ''>('');
   const [dailyQuestionAnswer, setDailyQuestionAnswer] = useState('');
-  const [dailyQuestion, setDailyQuestion] = useState<any>(null);
+  const [dailyQuestion] = useState<any>(null);
   const [intentionTag, setIntentionTag] = useState<'friendship' | 'dating' | 'serious' | 'marriage' | ''>('');
   const [respectFirstBadge, setRespectFirstBadge] = useState(false);
   const [localFood, setLocalFood] = useState('');
@@ -264,7 +264,7 @@ export default function ProfileSetupScreen() {
           }
 
           // Insert photo directly into database using Supabase
-          const { data: photo, error: photoError } = await supabase
+          const { error: photoError } = await supabase
             .from('dating_photos')
             .insert({
               dating_profile_id: profile.id,
@@ -349,7 +349,7 @@ export default function ProfileSetupScreen() {
     }
   };
 
-  const handlePickVideo = async () => {
+  const _handlePickVideo = async () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {

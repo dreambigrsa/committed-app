@@ -8,12 +8,11 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { ArrowLeft, Eye } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
 import * as DatingService from '@/lib/dating-service';
-import UserProfileScreen from './user-profile';
 
 export default function ProfilePreviewScreen() {
   const router = useRouter();

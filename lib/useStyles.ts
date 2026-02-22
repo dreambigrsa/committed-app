@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 import { useTheme } from '@/contexts/ThemeContext';
 
 type ColorType = typeof colors;

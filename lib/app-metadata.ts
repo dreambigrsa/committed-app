@@ -4,9 +4,6 @@
  * This allows the AI to query the app structure in real-time instead of relying on hardcoded knowledge
  */
 
-import { supabase } from './supabase';
-import * as DatingService from './dating-service';
-
 export interface AppRoute {
   path: string;
   name: string;

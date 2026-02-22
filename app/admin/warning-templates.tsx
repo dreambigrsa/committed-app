@@ -18,7 +18,7 @@ import { colors } from '@/constants/colors';
 import { WarningTemplate } from '@/types';
 
 export default function WarningTemplatesManagementScreen() {
-  const { currentUser, getWarningTemplates, updateWarningTemplate } = useApp();
+  const { getWarningTemplates, updateWarningTemplate } = useApp();
   const [templates, setTemplates] = useState<WarningTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -33,6 +33,7 @@ export default function WarningTemplatesManagementScreen() {
 
   useEffect(() => {
     loadTemplates();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount
   }, []);
 
   const loadTemplates = async () => {

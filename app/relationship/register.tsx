@@ -14,11 +14,11 @@ import {
   Modal,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
-import { Heart, X, Search, CheckCircle2, Camera, Upload, Calendar, Info, AlertCircle, CheckCircle, Eye, EyeOff } from 'lucide-react-native';
+import { Heart, X, Search, CheckCircle2, Camera, Calendar, Info, AlertCircle, CheckCircle } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useApp } from '@/contexts/AppContext';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 import { RelationshipType, LegalDocument } from '@/types';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -58,6 +58,7 @@ export default function RegisterRelationshipScreen() {
         useNativeDriver: true,
       }),
     ]).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refs are stable
   }, [step]);
   
   const [formData, setFormData] = useState({
@@ -286,7 +287,7 @@ export default function RegisterRelationshipScreen() {
           }
         }
 
-        const { data, error } = await supabase.storage
+        const { error } = await supabase.storage
           .from('avatars')
           .upload(filePath, bytes, {
             contentType: `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`,
@@ -354,7 +355,7 @@ export default function RegisterRelationshipScreen() {
         ? parseInt(formData.partnerDateOfBirthYear, 10) 
         : undefined;
 
-      const relationship = await createRelationship(
+      const _relationship = await createRelationship(
         formData.partnerName,
         formData.partnerPhone,
         formData.type,

@@ -6,13 +6,12 @@ import {
   SafeAreaView,
   ScrollView,
   TouchableOpacity,
-  Switch,
   Alert,
   TextInput,
   ActivityIndicator,
  Clipboard } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
-import { ArrowLeft, Shield, Key, Copy, CheckCircle2, XCircle } from 'lucide-react-native';
+import { ArrowLeft, Shield, Copy, CheckCircle2, XCircle } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
@@ -28,10 +27,11 @@ export default function TwoFactorAuthScreen() {
   const [secret, setSecret] = useState<string | null>(null);
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
   const [verificationCode, setVerificationCode] = useState('');
-  const [showBackupCodes, setShowBackupCodes] = useState(false);
+  const [, _setShowBackupCodes] = useState(false);
 
   useEffect(() => {
     load2FAStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount
   }, [currentUser]);
 
   const load2FAStatus = async () => {

@@ -26,9 +26,8 @@ import {
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
-import { getUserBookings, rescheduleBooking, cancelBooking } from '@/lib/professional-bookings';
+import { getUserBookings, cancelBooking } from '@/lib/professional-bookings';
 import { ProfessionalSession } from '@/types';
-import { colors } from '@/constants/colors';
 
 export default function BookingsScreen() {
   const router = useRouter();
@@ -45,6 +44,7 @@ export default function BookingsScreen() {
     if (currentUser) {
       loadBookings();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load when user/filter changes
   }, [currentUser, filter]);
 
   const loadBookings = async () => {

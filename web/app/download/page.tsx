@@ -9,6 +9,7 @@ import Footer from '@/components/Footer';
 import OpenAppButton from '@/components/OpenAppButton';
 import {
   APP_STORE_URL,
+  APK_DOWNLOAD_URL,
   PLAY_STORE_URL,
   UNIVERSAL_DOWNLOAD_URL,
   getMobileOS,
@@ -30,8 +31,8 @@ export default function DownloadPage() {
       window.location.href = APP_STORE_URL;
       return;
     }
-    if (os === 'android' && PLAY_STORE_URL && PLAY_STORE_URL !== '#') {
-      window.location.href = PLAY_STORE_URL;
+    if (os === 'android') {
+      window.location.href = PLAY_STORE_URL !== '#' ? PLAY_STORE_URL : APK_DOWNLOAD_URL;
       return;
     }
   }, [mounted]);
@@ -61,6 +62,12 @@ export default function DownloadPage() {
               Open Google Play
             </a>
           )}
+          <a
+            href={APK_DOWNLOAD_URL}
+            className="rounded-xl bg-slate-900 px-6 py-3 font-semibold text-white hover:bg-slate-800"
+          >
+            Direct APK download
+          </a>
         </div>
       </div>
     );
@@ -90,7 +97,17 @@ export default function DownloadPage() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-6 sm:flex-row">
+          <div className="flex flex-col gap-6 sm:flex-row sm:flex-wrap sm:justify-center">
+            <Link
+              href={APK_DOWNLOAD_URL}
+              className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white px-8 py-6 shadow-lg shadow-slate-200/30 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
+            >
+              <Download className="h-10 w-10 text-violet-600" />
+              <div>
+                <p className="font-semibold text-slate-900">Direct APK</p>
+                <p className="text-sm text-slate-600">Android – install without Play Store</p>
+              </div>
+            </Link>
             {PLAY_STORE_URL && PLAY_STORE_URL !== '#' && (
               <Link
                 href={PLAY_STORE_URL}

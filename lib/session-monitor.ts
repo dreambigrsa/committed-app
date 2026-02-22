@@ -53,7 +53,7 @@ export async function checkPendingSessionsForTimeout(): Promise<void> {
  */
 export async function monitorActiveSessionForNonAgreement(
   conversationId: string,
-  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>
+  conversationHistory: { role: 'user' | 'assistant'; content: string }[]
 ): Promise<{ shouldEscalate: boolean; suggestion?: string }> {
   try {
     const session = await getActiveSession(conversationId);

@@ -62,6 +62,7 @@ export default function ProfessionalHelpSuggestionModal({
         }),
       ]).start();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- refs are stable
   }, [visible]);
 
   const handleConfirm = () => {

@@ -10,7 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Heart, Check, X, AlertTriangle, MessageCircle, Bell, UserPlus, CheckCircle2, Trash2, Sparkles, Star, DollarSign, CreditCard, HeartOff } from 'lucide-react-native';
+import { Heart, Check, X, AlertTriangle, MessageCircle, Bell, UserPlus, CheckCircle2, Trash2, Sparkles, Star, CreditCard, HeartOff } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Notification, NotificationType } from '@/types';
@@ -442,7 +442,6 @@ export default function NotificationsScreen() {
   };
 
   const renderNotificationItem = ({ item }: { item: Notification & { source: 'notification' | 'alert' } }) => {
-    const isEndRelationshipRequest = item.type === 'relationship_end_request';
     const isRelationshipRequest = item.type === 'relationship_request';
 
     return (

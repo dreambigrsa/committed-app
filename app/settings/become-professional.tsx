@@ -34,7 +34,7 @@ export default function BecomeProfessionalScreen() {
   const [roles, setRoles] = useState<ProfessionalRole[]>([]);
   const [selectedRole, setSelectedRole] = useState<ProfessionalRole | null>(null);
   const [existingProfile, setExistingProfile] = useState<ProfessionalProfile | null>(null);
-  const [existingApplication, setExistingApplication] = useState<ProfessionalApplication | null>(null);
+  const [, setExistingApplication] = useState<ProfessionalApplication | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -55,6 +55,7 @@ export default function BecomeProfessionalScreen() {
 
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount
   }, []);
 
   useEffect(() => {
@@ -70,6 +71,7 @@ export default function BecomeProfessionalScreen() {
         useNativeDriver: true,
       }),
     ]).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refs are stable
   }, [currentStep]);
 
   const loadData = async () => {
@@ -181,7 +183,7 @@ export default function BecomeProfessionalScreen() {
       const fileName = `${currentUser?.id}/${Date.now()}.${fileExt}`;
       const filePath = `professional-credentials/${fileName}`;
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('professional-credentials')
         .upload(filePath, {
           uri: file.uri,

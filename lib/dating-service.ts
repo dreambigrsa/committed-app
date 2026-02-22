@@ -1,5 +1,4 @@
 import { supabase } from './supabase';
-import type { User } from '@/types';
 
 /**
  * Dating Service - Direct Supabase operations
@@ -95,7 +94,7 @@ export async function createOrUpdateDatingProfile(profileData: {
   work?: string;
   smoke?: 'yes' | 'no' | 'sometimes' | 'prefer_not_to_say';
   drink?: 'yes' | 'no' | 'sometimes' | 'prefer_not_to_say';
-  prompts?: Array<{ question: string; answer: string }>;
+  prompts?: { question: string; answer: string }[];
   headline?: string;
   intro_voice_url?: string;
   values?: string[];

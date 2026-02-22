@@ -15,10 +15,10 @@ import {
 } from 'react-native';
 import { Stack } from 'expo-router';
 import { Image } from 'expo-image';
-import { Plus, Edit2, Trash2, BarChart3, ExternalLink, X, CheckCircle2, PauseCircle, Play, XCircle, DollarSign } from 'lucide-react-native';
+import { Plus, Edit2, Trash2, X, CheckCircle2, PauseCircle, Play, XCircle, DollarSign } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 import { Advertisement } from '@/types';
 
 export default function AdminAdvertisementsScreen() {
@@ -78,6 +78,7 @@ export default function AdminAdvertisementsScreen() {
   useEffect(() => {
     // Once settings are loaded (or if they change), reload ads to apply spend calc
     loadAdvertisements();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount and when settings change
   }, [systemSettings]);
 
   const loadSystemSettings = async () => {
@@ -153,13 +154,13 @@ export default function AdminAdvertisementsScreen() {
         const adIds = adsData.map((ad: any) => ad.id);
 
         // Get impression counts from tracking table
-        const { data: impressionsData, error: impressionsError } = await supabase
+        const { data: impressionsData } = await supabase
           .from('advertisement_impressions')
           .select('advertisement_id')
           .in('advertisement_id', adIds);
 
         // Get click counts from tracking table
-        const { data: clicksData, error: clicksError } = await supabase
+        const { data: clicksData } = await supabase
           .from('advertisement_clicks')
           .select('advertisement_id')
           .in('advertisement_id', adIds);

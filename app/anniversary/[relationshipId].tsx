@@ -11,7 +11,7 @@ import {
   Modal,
   Platform,
 } from 'react-native';
-import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { Calendar, Heart, Plus, Bell, X } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useApp } from '@/contexts/AppContext';
@@ -27,7 +27,6 @@ interface Anniversary {
 }
 
 export default function AnniversaryScreen() {
-  const router = useRouter();
   const params = useLocalSearchParams();
   const relationshipId = params.relationshipId as string;
   const { currentUser, getCurrentUserRelationship } = useApp();
@@ -41,6 +40,7 @@ export default function AnniversaryScreen() {
 
   useEffect(() => {
     loadAnniversaries();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load when relationshipId changes
   }, [relationshipId]);
 
   const loadAnniversaries = useCallback(async () => {

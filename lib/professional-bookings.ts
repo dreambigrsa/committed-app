@@ -189,7 +189,7 @@ export async function rescheduleBooking(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     // Get original session
-    const { data: originalSession, error: fetchError } = await supabase
+    const { error: fetchError } = await supabase
       .from('professional_sessions')
       .select('*')
       .eq('id', request.sessionId)

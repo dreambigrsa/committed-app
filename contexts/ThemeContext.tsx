@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { useColorScheme, Appearance } from 'react-native';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useColorScheme } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import createContextHook from '@nkzw/create-context-hook';
 import { updateGlobalColors } from '@/constants/colors';

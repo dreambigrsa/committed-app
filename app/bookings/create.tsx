@@ -20,7 +20,6 @@ import {
   Phone,
   User,
   Save,
-  X,
   Check,
   DollarSign,
 } from 'lucide-react-native';
@@ -30,9 +29,7 @@ import { useApp } from '@/contexts/AppContext';
 import { createProfessionalBooking } from '@/lib/professional-bookings';
 import { findMatchingProfessionals , ProfessionalMatch } from '@/lib/professional-matching';
 import { supabase } from '@/lib/supabase';
-import { ProfessionalRole, ProfessionalProfile } from '@/types';
-
-import colors from '@/constants/colors';
+import { ProfessionalRole } from '@/types';
 
 type LocationType = 'online' | 'in_person' | 'phone' | 'video';
 
@@ -73,18 +70,21 @@ export default function CreateBookingScreen() {
 
   useEffect(() => {
     loadRoles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount
   }, []);
 
   useEffect(() => {
     if (professionalIdParam && selectedRole) {
       loadProfessionalDetails();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load when params change
   }, [professionalIdParam, selectedRole]);
 
   useEffect(() => {
     if (selectedProfessional) {
       loadPricing();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load when professional selected
   }, [selectedProfessional]);
 
   const loadRoles = async () => {

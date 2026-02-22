@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -21,7 +21,7 @@ export default function DatingDashboardScreen() {
   const [matches, setMatches] = useState<any[]>([]);
   const [likes, setLikes] = useState<any[]>([]);
   const [dateRequests, setDateRequests] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [, setIsLoading] = useState(true);
 
   const loadData = async () => {
     try {

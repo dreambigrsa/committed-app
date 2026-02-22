@@ -15,7 +15,7 @@ import { Stack } from 'expo-router';
 import { AlertCircle, CheckCircle, XCircle, Clock, User, Shield } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 import { BanAppeal } from '@/types';
 
 type AppealStatus = 'all' | 'pending' | 'approved' | 'rejected' | 'under_review';
@@ -33,6 +33,7 @@ export default function AdminBanAppealsScreen() {
 
   useEffect(() => {
     loadAppeals();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount and filter change
   }, [filter]);
 
   const loadAppeals = async () => {

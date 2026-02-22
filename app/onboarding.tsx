@@ -17,8 +17,6 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import colors from '@/constants/colors';
-
 /** User id to use for onboarding: currentUser (AppContext) or auth user (AuthContext) when coming from verification. */
 function useOnboardingUserId(): { userId: string | null; isSessionReady: boolean } {
   const { currentUser } = useApp();

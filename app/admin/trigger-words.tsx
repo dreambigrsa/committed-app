@@ -13,7 +13,7 @@ import {
 import { Stack } from 'expo-router';
 import { Plus, Edit2, Trash2, Shield, X, Save } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
-import colors from '@/constants/colors';
+import { colors } from '@/constants/colors';
 import { TriggerWord } from '@/types';
 
 export default function TriggerWordsManagementScreen() {
@@ -34,6 +34,7 @@ export default function TriggerWordsManagementScreen() {
 
   useEffect(() => {
     loadTriggerWords();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount
   }, []);
 
   const loadTriggerWords = async () => {

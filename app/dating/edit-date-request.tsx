@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import { Calendar, MapPin, Clock, X, Save } from 'lucide-react-native';
+import { Calendar, MapPin, X, Save } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import * as DatingService from '@/lib/dating-service';
 import * as Location from 'expo-location';
@@ -167,7 +167,7 @@ export default function EditDateRequestScreen() {
           locationLatitude = geocode[0].latitude;
           locationLongitude = geocode[0].longitude;
         }
-      } catch (e) {
+      } catch {
         // Location geocoding failed, continue without coordinates
       }
 

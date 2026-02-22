@@ -11,7 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { Stack } from 'expo-router';
-import { Clock, Users, CheckCircle2, XCircle, AlertCircle, Filter } from 'lucide-react-native';
+import { Clock, Users, CheckCircle2, XCircle, AlertCircle } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { ProfessionalSession } from '@/types';
@@ -51,6 +51,7 @@ export default function AdminProfessionalSessionsScreen() {
     return () => {
       supabase.removeChannel(channel);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- load on filter change, subscription callback
   }, [filterStatus, filterType]);
 
   const loadSessions = async () => {

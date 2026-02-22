@@ -40,6 +40,7 @@ export default function AdminReelsReviewScreen() {
 
   useEffect(() => {
     loadReels();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on filter change
   }, [filter]);
 
   const loadReels = async () => {

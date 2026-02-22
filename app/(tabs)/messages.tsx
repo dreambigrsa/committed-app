@@ -24,7 +24,7 @@ import { supabase } from '@/lib/supabase';
 
 export default function MessagesScreen() {
   const router = useRouter();
-  const { currentUser, conversations, deleteConversation, getUserStatus, userStatuses, createOrGetConversation, sendMessage, getMessages } = useApp();
+  const { currentUser, conversations, deleteConversation, getUserStatus, createOrGetConversation, sendMessage, getMessages } = useApp();
   const { colors } = useTheme();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -146,6 +146,7 @@ export default function MessagesScreen() {
       isMounted = false;
       clearInterval(refreshInterval);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- getOtherParticipant is stable (depends on currentUser)
   }, [conversationsWithMessages, currentUser, getUserStatus]);
 
   // Return empty view instead of null to maintain hook count consistency
@@ -259,7 +260,7 @@ export default function MessagesScreen() {
           }
 
           // Try direct insert first (RLS policy should allow AI to send messages)
-          const { data: insertedMessage, error: insertError } = await supabase
+          const { error: insertError } = await supabase
             .from('messages')
             .insert(messageData)
             .select()
@@ -269,7 +270,7 @@ export default function MessagesScreen() {
             // If direct insert fails, try using the RPC function
             console.log('Direct insert failed, trying RPC function:', insertError.message || insertError.code);
             
-            const { data: messageId, error: rpcError } = await supabase
+            const { error: rpcError } = await supabase
               .rpc('send_ai_message', {
                 p_conversation_id: conversation.id,
                 p_receiver_id: currentUser.id,

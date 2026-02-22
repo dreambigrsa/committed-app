@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import {
   APP_STORE_URL,
+  APK_DOWNLOAD_URL,
   PLAY_STORE_URL,
   UNIVERSAL_DOWNLOAD_URL,
   getMobileOS,
@@ -88,6 +89,7 @@ export function DownloadButton({
           downloadUrl={UNIVERSAL_DOWNLOAD_URL}
           appStore={APP_STORE_URL}
           playStore={PLAY_STORE_URL}
+          apkDownload={APK_DOWNLOAD_URL}
         />
       )}
     </>
@@ -99,11 +101,13 @@ function QRModal({
   downloadUrl,
   appStore,
   playStore,
+  apkDownload,
 }: {
   onClose: () => void;
   downloadUrl: string;
   appStore: string;
   playStore: string;
+  apkDownload: string;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -149,11 +153,11 @@ function QRModal({
           {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
           {copied ? 'Copied!' : 'Copy link'}
         </button>
-        <div className="mt-6 flex gap-4">
+        <div className="mt-6 flex flex-wrap gap-3">
           {appStore !== '#' && (
             <a
               href={appStore}
-              className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm font-medium text-slate-700 hover:bg-slate-100"
+              className="flex-1 min-w-[100px] rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm font-medium text-slate-700 hover:bg-slate-100"
             >
               App Store
             </a>
@@ -161,11 +165,18 @@ function QRModal({
           {playStore !== '#' && (
             <a
               href={playStore}
-              className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm font-medium text-slate-700 hover:bg-slate-100"
+              className="flex-1 min-w-[100px] rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm font-medium text-slate-700 hover:bg-slate-100"
             >
               Google Play
             </a>
           )}
+          <a
+            href={apkDownload}
+            download
+            className="flex-1 min-w-[100px] rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm font-medium text-slate-700 hover:bg-slate-100"
+          >
+            Direct APK
+          </a>
         </div>
       </div>
     </div>

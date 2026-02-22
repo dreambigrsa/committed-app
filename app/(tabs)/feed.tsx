@@ -17,14 +17,13 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Video, ResizeMode } from 'expo-av';
-import { useRouter , useNavigation } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Heart, MessageCircle, Share2, Plus, X, ExternalLink, MoreVertical, Edit2, Trash2, Image as ImageIcon, Flag, Smile, Camera, FileText, Video as VideoIcon } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Post, Advertisement, Sticker, Comment as PostComment, ReelComment } from '@/types';
 import StickerPicker from '@/components/StickerPicker';
 import StatusIndicator from '@/components/StatusIndicator';
-import StatusStoriesBar from '@/components/StatusStoriesBar';
 import FacebookStyleStoriesBar from '@/components/FacebookStyleStoriesBar';
 import * as WebBrowser from 'expo-web-browser';
 import ReportContentModal from '@/components/ReportContentModal';
@@ -38,8 +37,7 @@ const { width } = Dimensions.get('window');
 
 export default function FeedScreen() {
   const router = useRouter();
-  const navigation = useNavigation();
-  const { currentUser, posts, toggleLike, getComments, getActiveAds, getPersonalizedFeed, getSmartAds, recordAdImpression, recordAdClick, recordAdEngagement, addComment, editComment, deleteComment, toggleCommentLike, editPost, deletePost, sharePost, adminDeletePost, adminRejectPost, reportContent, getUserStatus, userStatuses, getReelComments, toggleReelLike, addReelComment, shareReel } = useApp();
+  const { currentUser, posts, toggleLike, getComments, getActiveAds, getSmartAds, recordAdImpression, recordAdClick, recordAdEngagement, addComment, editComment, deleteComment, toggleCommentLike, editPost, deletePost, sharePost, adminDeletePost, adminRejectPost, reportContent, getUserStatus, getReelComments, toggleReelLike, addReelComment, shareReel } = useApp();
   const { colors } = useTheme();
   const [showComments, setShowComments] = useState<string | null>(null);
   const [smartAds, setSmartAds] = useState<Advertisement[]>([]);
@@ -144,6 +142,7 @@ export default function FeedScreen() {
     } else {
       setPersonalizedPosts([]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- postStatuses intentionally omitted to avoid loop (we build it incrementally)
   }, [posts, getUserStatus]);
 
   useEffect(() => {

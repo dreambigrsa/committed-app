@@ -14,7 +14,6 @@ import {
 import { X, Star, Send } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
-import { ProfessionalReview } from '@/types';
 
 interface SessionReviewModalProps {
   visible: boolean;

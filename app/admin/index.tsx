@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   SafeAreaView,
   Animated,
-  Dimensions,
 } from 'react-native';
 import { Stack, router } from 'expo-router';
 import {
@@ -32,7 +31,6 @@ import {
   Sparkles,
   Briefcase,
   TrendingUp,
-  Clock,
   Star,
   Calendar,
 } from 'lucide-react-native';
@@ -40,9 +38,6 @@ import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
-
-const { width } = Dimensions.get('window');
-const CARD_WIDTH = (width - 48) / 2; // 2 columns with padding
 
 export default function AdminDashboardScreen() {
   const { currentUser } = useApp();
@@ -67,6 +62,7 @@ export default function AdminDashboardScreen() {
         useNativeDriver: true,
       }),
     ]).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refs are stable
   }, []);
 
   useEffect(() => {
@@ -476,12 +472,12 @@ export default function AdminDashboardScreen() {
 
         {/* Categories */}
         <Animated.View style={[styles.sectionsContainer, { opacity: fadeAnim }]}>
-          {visibleSections.map((category, categoryIndex) => (
+          {visibleSections.map((category, _categoryIndex) => (
             <View key={category.category} style={styles.categorySection}>
               <Text style={styles.categoryTitle}>{category.category.toUpperCase()}</Text>
               
               <View style={styles.cardsGrid}>
-                {category.items.map((item, itemIndex) => {
+                {category.items.map((item, _itemIndex) => {
                   const Icon = item.icon;
                   const showPaymentBadge = item.route === '/admin/payment-verifications' && pendingPaymentsCount > 0;
                   const pendingSubscriptionCount = Math.max(pendingPaymentsCount - pendingAdPaymentsCount, 0);

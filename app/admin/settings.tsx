@@ -11,7 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { Stack } from 'expo-router';
-import { Settings as SettingsIcon, Save, Shield, KeyRound, TestTubeDiagonal, Sparkles, ChevronDown, ChevronUp, Search } from 'lucide-react-native';
+import { Settings as SettingsIcon, Save, Shield, KeyRound, TestTubeDiagonal, Sparkles, Search } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
@@ -38,7 +38,7 @@ export default function AdminSettingsScreen() {
   const hasUnsavedConfigChanges = useMemo(() => JSON.stringify(settings) !== initialSettingsRef.current, [settings]);
   const [searchQuery, setSearchQuery] = useState('');
   const normalizedQuery = searchQuery.trim().toLowerCase();
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({
+  const [, setExpanded] = useState<Record<string, boolean>>({
     openai: true,
     messaging: false,
     ai: true,
@@ -83,7 +83,8 @@ export default function AdminSettingsScreen() {
     Alert.alert('Saved', 'App configuration saved (local).');
   };
 
-  const toggleExpanded = (key: string) => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for future accordion UI
+  const _toggleExpanded = (key: string) => {
     setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
@@ -227,7 +228,7 @@ export default function AdminSettingsScreen() {
   useEffect(() => {
     if (!isSuperAdmin) return;
     loadPromptSuggestions();
-     
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount when super admin
   }, [isSuperAdmin]);
 
   const handleApproveSuggestion = async (suggestion: any) => {

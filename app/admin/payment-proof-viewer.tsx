@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, SafeAreaView, TouchableOpacity, Text } from 'react-native';
+import { View, StyleSheet, SafeAreaView, TouchableOpacity } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { X } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -8,7 +8,7 @@ import { Image as ExpoImage } from 'expo-image';
 export default function PaymentProofViewerScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ imageUrl: string }>();
-  const { colors } = useTheme();
+  useTheme();
 
   const styles = StyleSheet.create({
     container: {

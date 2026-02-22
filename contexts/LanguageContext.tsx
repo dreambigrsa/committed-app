@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import createContextHook from '@nkzw/create-context-hook';
 import { Language, getTranslation } from '@/lib/translations';

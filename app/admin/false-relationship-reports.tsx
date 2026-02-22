@@ -12,7 +12,7 @@ import {
   TextInput,
 } from 'react-native';
 import { Stack } from 'expo-router';
-import { AlertTriangle, CheckCircle, XCircle, Calendar, User, Eye, Shield } from 'lucide-react-native';
+import { AlertTriangle, CheckCircle, XCircle, Eye, Shield } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -31,6 +31,7 @@ export default function AdminFalseRelationshipReportsScreen() {
 
   useEffect(() => {
     loadReports();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount and filter change
   }, [filter]);
 
   const loadReports = async () => {

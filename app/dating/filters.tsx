@@ -20,7 +20,7 @@ import * as Location from 'expo-location';
 export default function DatingFiltersScreen() {
   const router = useRouter();
   const { colors } = useTheme();
-  const { currentUser } = useApp();
+  useApp();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [minAge, setMinAge] = useState('18');
@@ -28,7 +28,7 @@ export default function DatingFiltersScreen() {
   const [maxDistance, setMaxDistance] = useState('50');
   const [locationCity, setLocationCity] = useState('');
   const [locationCountry, setLocationCountry] = useState('');
-  const [useCurrentLocation, setUseCurrentLocation] = useState(true);
+  const [, setUseCurrentLocation] = useState(true);
   const [latitude, setLatitude] = useState<number | undefined>();
   const [longitude, setLongitude] = useState<number | undefined>();
   const [lookingFor, setLookingFor] = useState<'men' | 'women' | 'everyone'>('everyone');
@@ -103,7 +103,7 @@ export default function DatingFiltersScreen() {
         setLocationCity(geocode[0].city || geocode[0].region || '');
         setLocationCountry(geocode[0].country || '');
       }
-    } catch (error: any) {
+    } catch {
       Alert.alert('Error', 'Failed to get location');
     }
   };

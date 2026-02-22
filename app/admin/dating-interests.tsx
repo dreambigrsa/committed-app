@@ -12,7 +12,7 @@ import {
   Switch,
 } from 'react-native';
 import { Stack } from 'expo-router';
-import { Plus, Trash2, Edit2, Shield, Save, X } from 'lucide-react-native';
+import { Plus, Trash2, Shield, X } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
@@ -26,7 +26,6 @@ export default function AdminDatingInterestsScreen() {
   const [interests, setInterests] = useState<any[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [editingInterest, setEditingInterest] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newInterest, setNewInterest] = useState({ name: '', icon: '', category: 'hobbies' });
 

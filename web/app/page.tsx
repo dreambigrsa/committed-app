@@ -1,20 +1,25 @@
 import Link from 'next/link';
 import Image from 'next/image';
+import nextDynamic from 'next/dynamic';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import PremiumDarkHero from '@/components/PremiumDarkHero';
-import SinglesPreview from '@/components/SinglesPreview';
-import CertificatePreview from '@/components/CertificatePreview';
-import HowItWorksSection from '@/components/HowItWorksSection';
-import TrustSafetySection from '@/components/TrustSafetySection';
-import SupportSection from '@/components/SupportSection';
-import ProblemSection from '@/components/ProblemSection';
-import SolutionSection from '@/components/SolutionSection';
-import FinalCTASection from '@/components/FinalCTASection';
-import { AnimatedSection, StaggerContainer, StaggerItem } from '@/components/AnimatedSection';
+import { AnimatedSection } from '@/components/AnimatedSection';
 import { stockImages } from '@/lib/stock-images';
 
+/* Lazy-load below-the-fold sections to reduce initial JS bundle */
+const ProblemSection = nextDynamic(() => import('@/components/ProblemSection'), { ssr: true });
+const SolutionSection = nextDynamic(() => import('@/components/SolutionSection'), { ssr: true });
+const SinglesPreview = nextDynamic(() => import('@/components/SinglesPreview'), { ssr: true });
+const CertificatePreview = nextDynamic(() => import('@/components/CertificatePreview'), { ssr: true });
+const HowItWorksSection = nextDynamic(() => import('@/components/HowItWorksSection'), { ssr: true });
+const TrustSafetySection = nextDynamic(() => import('@/components/TrustSafetySection'), { ssr: true });
+const SupportSection = nextDynamic(() => import('@/components/SupportSection'), { ssr: true });
+const FinalCTASection = nextDynamic(() => import('@/components/FinalCTASection'), { ssr: true });
+
 /* Committed: Trust-first dating & relationship platform. Human, warm, premium, mobile-first. */
+
+export const dynamic = 'force-static';
 
 const singlesItems = [
   'Create verified profile',
@@ -98,6 +103,7 @@ export default function HomePage() {
                       alt="Confident single person"
                       width={600}
                       height={400}
+                      sizes="(max-width: 1024px) 100vw, 600px"
                       className="aspect-[4/3] w-full object-cover"
                     />
                   </div>
@@ -144,6 +150,7 @@ export default function HomePage() {
                       alt="Happy couple together"
                       width={600}
                       height={400}
+                      sizes="(max-width: 1024px) 100vw, 600px"
                       className="aspect-[4/3] w-full object-cover"
                     />
                   </div>

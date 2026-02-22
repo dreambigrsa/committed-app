@@ -33,7 +33,8 @@ export default function FinalCTASection() {
   return (
     <section className="relative overflow-hidden border-t border-slate-200/50 bg-white py-32 md:py-44">
 
-      <div ref={ref} className="relative mx-auto max-w-3xl px-6 text-center md:px-10">
+      <div ref={ref} className="relative mx-auto max-w-6xl px-6 text-center md:px-10">
+        <div className="mx-auto max-w-3xl">
         <motion.div
           initial="hidden"
           animate={inView ? 'visible' : 'hidden'}
@@ -105,6 +106,7 @@ export default function FinalCTASection() {
             Safe. Real. Intentional.
           </motion.p>
         </motion.div>
+        </div>
       </div>
     </section>
   );

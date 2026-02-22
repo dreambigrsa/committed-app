@@ -17,7 +17,7 @@ export default function HeroVerifiedProfileScreen() {
       </div>
 
       {/* Profile header */}
-      <div className="flex-1 overflow-y-auto px-4 pb-2">
+      <div className="flex-1 overflow-y-auto scrollbar-hide px-4 pb-2">
         <div className="relative -mx-2 mt-2 aspect-[4/3] overflow-hidden rounded-2xl">
           <Image
             src={stockImages.profilePortrait}

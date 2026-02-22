@@ -33,7 +33,7 @@ export default function ProblemSection() {
   return (
     <section
       id="problem"
-      className="relative overflow-hidden py-20 md:py-24"
+      className="relative overflow-hidden py-24 md:py-32"
       style={{
         background: 'linear-gradient(180deg, rgba(250, 245, 255, 0.98) 0%, rgba(250, 249, 255, 1) 50%, rgba(253, 244, 255, 0.95) 100%)',
       }}
@@ -47,7 +47,8 @@ export default function ProblemSection() {
         aria-hidden
       />
 
-      <div ref={ref} className="relative mx-auto max-w-4xl px-6 text-center md:px-10">
+      <div ref={ref} className="relative mx-auto max-w-6xl px-6 text-center md:px-10">
+        <div className="mx-auto max-w-3xl">
         <motion.div
           initial="hidden"
           animate={inView ? 'visible' : 'hidden'}
@@ -121,6 +122,7 @@ export default function ProblemSection() {
             Committed makes trust visible — before you connect.
           </motion.p>
         </motion.div>
+        </div>
       </div>
 
       {/* Thin gradient divider at bottom */}

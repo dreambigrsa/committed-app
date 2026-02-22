@@ -30,11 +30,12 @@ export default function Navbar() {
     <header
       className={`sticky z-50 w-full transition-all duration-300 ${
         isDark
-          ? 'top-0 border-b border-white/10 bg-slate-900/90 px-4 py-3 shadow-lg backdrop-blur-xl md:px-8 md:py-4'
-          : 'top-4 left-4 right-4 mx-auto mt-4 max-w-6xl rounded-2xl border border-slate-200/60 bg-white/95 shadow-xl shadow-slate-900/5 backdrop-blur-xl md:left-8 md:right-8 md:mt-6'
+          ? 'top-0 border-b border-white/10 bg-slate-900/90 py-3 shadow-lg backdrop-blur-xl md:py-4'
+          : 'top-4 left-6 right-6 mx-auto mt-4 max-w-6xl rounded-2xl border border-slate-200/60 bg-white/95 py-3 shadow-xl shadow-slate-900/5 backdrop-blur-xl md:left-10 md:right-10 md:mt-6'
       }`}
     >
-      <nav className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6" aria-label="Main navigation">
+      <div className="mx-auto max-w-6xl px-6 md:px-10">
+      <nav className="flex w-full items-center justify-between py-1" aria-label="Main navigation">
         <Link
           href="/"
           className="flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 rounded-lg"
@@ -100,6 +101,7 @@ export default function Navbar() {
           {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
         </button>
       </nav>
+      </div>
 
       <AnimatePresence>
         {open && (
@@ -111,7 +113,7 @@ export default function Navbar() {
             className="overflow-hidden lg:hidden"
           >
             <div
-              className={`border-t px-4 py-6 backdrop-blur-xl ${
+              className={`border-t px-6 py-6 backdrop-blur-xl md:px-10 ${
                 isDark ? 'border-white/20 bg-slate-900/95' : 'border-slate-200/80 bg-white/95'
               }`}
             >

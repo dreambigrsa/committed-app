@@ -1,13 +1,11 @@
 'use client';
 
 import { useRef, useEffect, useCallback } from 'react';
-import Image from 'next/image';
 import { Shield, Heart, ShieldCheck } from 'lucide-react';
 import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import { useReducedMotion } from 'framer-motion';
 import { GetStartedButton, DownloadButton } from '@/components/DownloadCTA';
 import ProfileScreenMockup from '@/components/ProfileScreenMockup';
-import { stockImages } from '@/lib/stock-images';
 
 const TILT_Y_MAX = 16;
 const TILT_X_MAX = 10;
@@ -43,33 +41,47 @@ function usePhoneTilt() {
     const el = ref.current;
     if (!el) return;
 
-    // Desktop: mouse tracking
+    let rafId: number | null = null;
+    let pending = false;
+
+    // Desktop: mouse tracking (throttled via rAF)
     const handleMove = (e: MouseEvent) => {
-      const rect = el.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
-      const x = (e.clientX - centerX) / (rect.width / 2);
-      const y = (e.clientY - centerY) / (rect.height / 2);
-      setTilt(-y * TILT_X_MAX, x * TILT_Y_MAX);
+      if (pending) return;
+      pending = true;
+      rafId = requestAnimationFrame(() => {
+        pending = false;
+        const rect = el.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        const x = (e.clientX - centerX) / (rect.width / 2);
+        const y = (e.clientY - centerY) / (rect.height / 2);
+        setTilt(-y * TILT_X_MAX, x * TILT_Y_MAX);
+      });
     };
 
     const handleLeave = () => setTilt(0, 0);
 
-    // Mobile: gyroscope for true 360° tilt
+    // Mobile: gyroscope (throttled via rAF)
     const handleOrientation = (e: DeviceOrientationEvent) => {
-      const beta = e.beta ?? 0;
-      const gamma = e.gamma ?? 0;
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      if (!isMobile) return;
-      const y = Math.max(-TILT_X_MAX, Math.min(TILT_X_MAX, (beta - 45) * 0.5));
-      const x = Math.max(-TILT_Y_MAX, Math.min(TILT_Y_MAX, gamma * 0.8));
-      setTilt(y, x);
+      if (pending) return;
+      pending = true;
+      rafId = requestAnimationFrame(() => {
+        pending = false;
+        const beta = e.beta ?? 0;
+        const gamma = e.gamma ?? 0;
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        if (!isMobile) return;
+        const y = Math.max(-TILT_X_MAX, Math.min(TILT_X_MAX, (beta - 45) * 0.5));
+        const x = Math.max(-TILT_Y_MAX, Math.min(TILT_Y_MAX, gamma * 0.8));
+        setTilt(y, x);
+      });
     };
 
     window.addEventListener('mousemove', handleMove, { passive: true });
     window.addEventListener('deviceorientation', handleOrientation, { passive: true });
     el.addEventListener('mouseleave', handleLeave);
     return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
       window.removeEventListener('mousemove', handleMove);
       window.removeEventListener('deviceorientation', handleOrientation);
       el.removeEventListener('mouseleave', handleLeave);
@@ -186,26 +198,12 @@ function HeroPhoneMockup() {
   );
 }
 
-/** Phone visual - glow, hand, premium mockup */
+/** Phone visual - glow, premium mockup */
 function HeroPhoneWithHand() {
   const reduced = useReducedMotion();
 
   return (
     <div className="relative flex items-center justify-center py-4">
-      {/* Hand holding phone - behind the mockup */}
-      <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center">
-        <div className="relative h-[120%] w-[140%] max-w-[680px]">
-          <Image
-            src={stockImages.heroHandPhone}
-            alt=""
-            fill
-            className="object-contain object-center"
-            sizes="(max-width: 768px) 400px, 680px"
-            priority
-          />
-        </div>
-      </div>
-
       {/* Strong glow behind phone - clearly visible halo */}
       <div className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center">
         <motion.div
@@ -253,7 +251,7 @@ export default function PremiumDarkHero() {
       <div className="hero-nebula-glow" aria-hidden />
       <div className="grain-overlay grain-overlay-dark" aria-hidden />
 
-      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col items-center justify-center gap-12 px-6 pb-20 pt-28 md:px-10 md:pb-24 lg:flex-row lg:items-center lg:gap-20 lg:px-12 lg:pt-32">
+      <div className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 flex-col items-center justify-center gap-12 px-6 pb-20 pt-28 md:px-10 md:pb-24 lg:flex-row lg:items-center lg:gap-20 lg:pt-32">
         {/* Left: Typography */}
         <div className="order-2 flex flex-1 flex-col items-center text-center lg:order-1 lg:items-start lg:text-left">
           <motion.h1

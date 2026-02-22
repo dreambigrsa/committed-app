@@ -10,32 +10,49 @@ type Props = {
   once?: boolean;
 };
 
+/**
+ * Lightweight scroll-reveal using Intersection Observer + CSS.
+ * Replaces Framer Motion for simple fade/slide to reduce bundle and hydration cost.
+ */
 export function AnimatedSection({ children, className = '', delay = 0, once = true }: Props) {
-  const ref = useRef(null);
-  const inView = useInView(ref, { once, margin: '-80px' });
-  const reduced = useReducedMotion();
+  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(false);
 
-  const variants = reduced
-    ? { hidden: { opacity: 1 }, visible: { opacity: 1 } }
-    : {
-        hidden: { opacity: 0, y: 24 },
-        visible: { opacity: 1, y: 0 },
-      };
+  useEffect(() => {
+    setReducedMotion(window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }, []);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) setVisible(true);
+      },
+      { threshold: 0.05, rootMargin: '-80px 0px' }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [once]);
+
+  const show = reducedMotion || visible;
+  const transitionDelay = show ? `${delay}ms` : '0ms';
 
   return (
-    <motion.div
+    <div
       ref={ref}
-      initial="hidden"
-      animate={inView ? 'visible' : 'hidden'}
-      variants={variants}
-      transition={{ duration: 0.5, delay, ease: [0.25, 0.46, 0.45, 0.94] }}
-      className={className}
+      className={`${className} ${show ? 'animate-section-visible' : 'animate-section-hidden'}`}
+      style={{ transitionDelay } as React.CSSProperties}
     >
       {children}
-    </motion.div>
+    </div>
   );
 }
 
+/* Stagger components still use Framer Motion (complex stagger logic, used in HowItWorksStepper only) */
 export function StaggerContainer({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   const ref = useRef(null);
   const inView = useInView(ref, { once: true, margin: '-60px' });

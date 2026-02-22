@@ -46,7 +46,7 @@ export default function SolutionSection() {
   const reduced = useReducedMotion();
 
   return (
-    <section className="relative overflow-hidden border-t border-slate-200/50 bg-white py-24 md:py-28">
+    <section className="relative overflow-hidden border-t border-slate-200/50 bg-white py-24 md:py-32">
       {/* Soft gradient glow behind center */}
       <div
         className="pointer-events-none absolute inset-0"

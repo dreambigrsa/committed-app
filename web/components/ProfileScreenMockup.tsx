@@ -33,7 +33,7 @@ export default function ProfileScreenMockup() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 pt-2">
+      <div className="flex-1 overflow-y-auto scrollbar-hide p-4 pt-2">
         {/* Cover / avatar area */}
         <motion.div
           className="relative -mx-1 -mt-1 overflow-hidden rounded-2xl bg-gradient-to-b from-violet-100 to-fuchsia-50"

@@ -26,7 +26,22 @@ export const deepLinks = {
   download: `${APP_SCHEME}download`,
   authCallback: (type: 'verify' | 'recovery', token: string) =>
     `${APP_SCHEME}auth-callback?type=${type}&token=${encodeURIComponent(token)}`,
+  /** Shared content links (must match mobile app buildPostLink, buildReelLink, buildReferralLink) */
+  post: (id: string) => `${APP_SCHEME}post/${id}`,
+  reel: (id: string) => `${APP_SCHEME}reel/${id}`,
+  referral: (code: string) => `${APP_SCHEME}referral?ref=${encodeURIComponent(code)}`,
 } as const;
+
+/** Build web URLs for shared content (used when sharing from app) */
+export function buildPostWebUrl(id: string): string {
+  return `${WEB_BASE_URL}/post/${id}`;
+}
+export function buildReelWebUrl(id: string): string {
+  return `${WEB_BASE_URL}/reel/${id}`;
+}
+export function buildReferralWebUrl(code: string): string {
+  return `${WEB_BASE_URL}/referral/${encodeURIComponent(code)}`;
+}
 
 /** Fallback web URL when app isn't installed */
 export function getWebFallback(target: keyof typeof deepLinks): string {

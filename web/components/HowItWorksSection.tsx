@@ -87,7 +87,7 @@ export default function HowItWorksSection() {
         aria-hidden
       />
 
-      <div ref={ref} className="relative mx-auto max-w-7xl px-6 md:px-10">
+      <div ref={ref} className="relative mx-auto max-w-6xl px-6 md:px-10">
         <motion.div
           initial="hidden"
           animate={inView ? 'visible' : 'hidden'}

@@ -36,12 +36,29 @@ function log(...args: unknown[]) {
 /**
  * Parse incoming URL into type + IDs. Handles app scheme and web URLs.
  */
+/** True if URL is clearly an auth callback (so we never treat as unknown). */
+function isAuthCallbackUrl(url: string): boolean {
+  const lower = url.toLowerCase();
+  return (
+    lower.includes('auth-callback') ||
+    lower.includes('access_token=') ||
+    lower.includes('type=recovery') ||
+    (lower.includes('code=') && (lower.includes('auth') || lower.includes('callback')))
+  );
+}
+
 export function parseDeepLink(url: string): ParsedDeepLink | null {
   if (!url || typeof url !== 'string') return null;
   try {
     const rawUrl = url;
     const base = getWebOriginDefault() || 'https://committed.app';
-    const normalized = url.replace(/^committed:\/\//i, `${base}/`).replace(/^committed:\//i, `${base}/`);
+    // Normalize committed:// and exp:// (Expo dev) so URL() can parse; preserve hash/query
+    let normalized = url
+      .replace(/^committed:\/\//i, `${base}/`)
+      .replace(/^committed:\//i, `${base}/`);
+    if (normalized === url && /^exp:\/\//i.test(url)) {
+      normalized = url.replace(/^exp:\/\/[^/]+/i, base);
+    }
     const u = new URL(normalized);
     const path = (u.pathname || '/').replace(/^\/+/, '').replace(/\/+$/, '');
     const params: Record<string, string> = {};
@@ -55,7 +72,12 @@ export function parseDeepLink(url: string): ParsedDeepLink | null {
 
     const pathLower = path.toLowerCase();
 
-    // Auth: verify-email or auth-callback (code, access_token, type=recovery)
+    // Auth: any URL that looks like auth callback must be auth-callback type (never unknown)
+    if (isAuthCallbackUrl(url)) {
+      const type: DeepLinkType =
+        params.type === 'recovery' || params.access_token ? 'auth-callback' : pathLower.includes('verify') ? 'verify-email' : 'auth-callback';
+      return { type, params, rawUrl };
+    }
     if (params.token || pathLower.includes('verify') || params.type === 'recovery' || params.access_token) {
       return {
         type: params.type === 'recovery' || params.access_token ? 'auth-callback' : 'verify-email',
@@ -96,11 +118,33 @@ export function parseDeepLink(url: string): ParsedDeepLink | null {
 }
 
 /**
- * Returns true if URL is auth-related (should go to auth-callback, not stored as content deep link).
+ * Our app-controlled verify/reset links (token in query). These go to app routes, NOT auth-callback.
+ * Returns the app path with token query, or null.
+ */
+export function getCustomVerifyOrResetRoute(url: string): string | null {
+  if (!url || typeof url !== 'string') return null;
+  const parsed = parseDeepLink(url);
+  if (!parsed || !parsed.params?.token) return null;
+  const token = parsed.params.token;
+  if (parsed.rawUrl.toLowerCase().includes('reset-password') || parsed.rawUrl.toLowerCase().includes('reset_password')) {
+    return `/reset-password?token=${encodeURIComponent(token)}`;
+  }
+  if (parsed.rawUrl.toLowerCase().includes('verify-email') || parsed.rawUrl.toLowerCase().includes('verify_email')) {
+    return `/verify-email?token=${encodeURIComponent(token)}`;
+  }
+  return null;
+}
+
+/**
+ * Returns true if URL is Supabase-style auth callback (code=, access_token=, recovery, auth-callback path).
+ * Our custom verify/reset links (token=) are NOT auth links — they are handled by getCustomVerifyOrResetRoute.
  */
 export function isAuthLink(url: string): boolean {
+  if (!url || typeof url !== 'string') return false;
+  if (getCustomVerifyOrResetRoute(url)) return false;
+  if (url.includes('auth-callback') || url.includes('access_token=') || url.includes('type=recovery') || url.includes('code=')) return true;
   const parsed = parseDeepLink(url);
-  return parsed?.type === 'auth-callback' || parsed?.type === 'verify-email' || !!url?.includes('access_token=') || !!url?.includes('type=recovery') || !!url?.includes('code=');
+  return parsed?.type === 'auth-callback';
 }
 
 // In-memory pending (one at a time; cleared when processed)

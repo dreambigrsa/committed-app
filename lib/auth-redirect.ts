@@ -1,7 +1,7 @@
 /**
- * Auth redirect URLs for email verification, password reset, etc.
- * Use platform-aware URLs so verification links open the app (native) or web app (web).
- * Set EXPO_PUBLIC_WEB_ORIGIN to your web app URL (e.g. https://yourdomain.com); on web falls back to current origin.
+ * Auth redirect URLs for email verification and password recovery.
+ * Must match Supabase URL Configuration (Site URL + Redirect URLs allow list).
+ * Native: committed://auth-callback (no localhost). Web: current origin /auth-callback.
  */
 
 import { Platform } from 'react-native';
@@ -17,14 +17,19 @@ function getWebOrigin(): string {
 
 /**
  * Returns the auth callback URL for the current platform.
- * - Native: committed://localhost/auth-callback
- * - Web: current origin or EXPO_PUBLIC_WEB_ORIGIN + /auth-callback
- *
- * Must match Supabase Redirect URLs whitelist.
+ * - Web: ${origin}/auth-callback (plus ?type=recovery if intent === 'recovery')
+ * - Native: committed://auth-callback (no localhost; matches Supabase Site URL)
  */
-export function getAuthRedirectUrl(): string {
+export function getAuthRedirectUrl(intent?: 'verify' | 'recovery'): string {
   if (Platform.OS === 'web') {
-    return `${getWebOrigin()}${AUTH_CALLBACK_PATH}`;
+    const base = `${getWebOrigin()}${AUTH_CALLBACK_PATH}`;
+    return intent === 'recovery' ? `${base}?type=recovery` : base;
   }
-  return `${DEEP_LINK_SCHEME}://localhost${AUTH_CALLBACK_PATH}`;
+  const base = `${DEEP_LINK_SCHEME}://auth-callback`;
+  return intent === 'recovery' ? `${base}?type=recovery` : base;
+}
+
+/** @deprecated Use getAuthRedirectUrl() instead */
+export function getAuthRedirectUrlForRecovery(): string {
+  return getAuthRedirectUrl('recovery');
 }

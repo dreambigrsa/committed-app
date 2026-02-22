@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, TouchableWithoutFeedback } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { CheckCircle, AlertCircle, Mail } from 'lucide-react-native';
 
@@ -46,19 +46,11 @@ export default function MessageModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade">
-      <TouchableOpacity
-        style={styles.overlay}
-        activeOpacity={1}
-        onPress={onClose}
-        accessibilityRole="button"
-        accessibilityLabel="Close"
-      >
-        <TouchableOpacity
-          style={styles.card}
-          activeOpacity={1}
-          onPress={(e) => e.stopPropagation()}
-          accessibilityViewIsModal
-        >
+      <View style={[styles.overlay, { pointerEvents: 'box-none' }]}>
+        <TouchableWithoutFeedback onPress={onClose} accessible={false}>
+          <View style={styles.backdrop} />
+        </TouchableWithoutFeedback>
+        <View style={styles.card}>
           <View style={[styles.iconWrap, { backgroundColor: iconBg }]}>
             <Icon size={44} color={iconColor} strokeWidth={2} />
           </View>
@@ -96,8 +88,8 @@ export default function MessageModal({
               <Text style={styles.primaryButtonText}>{buttonText}</Text>
             </TouchableOpacity>
           )}
-        </TouchableOpacity>
-      </TouchableOpacity>
+        </View>
+      </View>
     </Modal>
   );
 }
@@ -106,10 +98,13 @@ const createStyles = (colors: any) =>
   StyleSheet.create({
     overlay: {
       flex: 1,
-      backgroundColor: colors.background?.overlay ?? 'rgba(0,0,0,0.55)',
       justifyContent: 'center',
       alignItems: 'center',
       padding: 24,
+    },
+    backdrop: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: colors.background?.overlay ?? 'rgba(0,0,0,0.55)',
     },
     card: {
       backgroundColor: colors.background.primary,

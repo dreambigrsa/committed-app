@@ -11,17 +11,18 @@ import {
   Animated,
   Platform,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { Mail, CheckCircle, ArrowLeft, RefreshCw, Sparkles, Shield, Heart } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
-import { getAuthRedirectUrl } from '@/lib/auth-redirect';
+import { sendVerificationEmail, verifyEmailToken } from '@/lib/auth-functions';
 import colors from '@/constants/colors';
 
 export default function VerifyEmailScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ token?: string }>();
   const { currentUser, hasCompletedOnboarding } = useApp();
   const { colors: themeColors } = useTheme();
   const [isChecking, setIsChecking] = useState(true);
@@ -29,18 +30,53 @@ export default function VerifyEmailScreen() {
   const [isResending, setIsResending] = useState(false);
   const [email, setEmail] = useState<string>('');
   const [emailLoaded, setEmailLoaded] = useState(false);
+  const [tokenVerifying, setTokenVerifying] = useState(false);
+  const [tokenResult, setTokenResult] = useState<'idle' | 'success' | 'error'>('idle');
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
 
+  // When opened with token (e.g. from email deep link): call API and show result
   useEffect(() => {
+    const t = typeof params.token === 'string' ? params.token : null;
+    if (!t || t.length < 16) return;
+    let mounted = true;
+    setTokenVerifying(true);
+    setTokenResult('idle');
+    verifyEmailToken(t).then(async (res) => {
+      if (!mounted) return;
+      setTokenVerifying(false);
+      if (res.ok) {
+        setTokenResult('success');
+        setIsVerified(true);
+        await supabase.auth.refreshSession().catch(() => {});
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) router.replace('/');
+        else router.replace('/auth');
+      } else {
+        setTokenResult('error');
+      }
+    }).catch(() => {
+      if (mounted) {
+        setTokenVerifying(false);
+        setTokenResult('error');
+      }
+    });
+    return () => { mounted = false; };
+  }, [params.token]);
+
+  useEffect(() => {
+    const hasToken = typeof params.token === 'string' && params.token.length >= 16;
+    if (hasToken) return; // Token flow handled in separate effect
+
     let interval: ReturnType<typeof setInterval> | null = null;
     let isMounted = true;
 
-    // Check if email is already verified - refresh session so AppGate can route
     const checkVerified = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user?.email_confirmed_at) {
+        if (!session?.user?.id) return false;
+        const { data: profile } = await supabase.from('profiles').select('is_verified').eq('id', session.user.id).maybeSingle();
+        if (profile?.is_verified) {
           setIsVerified(true);
           await supabase.auth.refreshSession();
           return true;
@@ -110,33 +146,19 @@ export default function VerifyEmailScreen() {
     try {
       setIsChecking(true);
       const { data: { session: currentSession } } = await supabase.auth.getSession();
-      
       if (currentSession?.user) {
         setEmail(currentSession.user.email || '');
-        const emailConfirmed = !!currentSession.user.email_confirmed_at;
-        setIsVerified(emailConfirmed);
-        
-        if (emailConfirmed) {
-          // Refresh session so AuthContext updates; AppGate will route
-          supabase.auth.refreshSession().catch(() => {});
-        } else {
-          // Email not verified yet
-          if (showMessage) {
-            alert('Email not verified yet.\n\nPlease check your inbox and click the verification link in the email. If you just clicked it, wait a few seconds and try again.');
-          }
-        }
+        const { data: profile } = await supabase.from('profiles').select('is_verified').eq('id', currentSession.user.id).maybeSingle();
+        const verified = !!profile?.is_verified;
+        setIsVerified(verified);
+        if (verified) supabase.auth.refreshSession().catch(() => {});
+        else if (showMessage) alert('Email not verified yet.\n\nCheck your inbox and click the verification link. If you just clicked it, wait a few seconds.');
       } else {
-        // No session - user needs to log in
-        if (showMessage) {
-          alert('Session expired. Please log in again.');
-          router.replace('/auth');
-        }
+        if (showMessage) { alert('Session expired. Please log in again.'); router.replace('/auth'); }
       }
     } catch (error) {
       console.error('Error checking email verification:', error);
-      if (showMessage) {
-        alert('Error checking verification status. Please try again.');
-      }
+      if (showMessage) alert('Error checking verification status. Please try again.');
     } finally {
       setIsChecking(false);
     }
@@ -147,73 +169,15 @@ export default function VerifyEmailScreen() {
       alert('Email address not found. Please try signing up again.');
       return;
     }
-    
     setIsResending(true);
     try {
-      // First, try to get the current session to check user status
       const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session?.user) {
-        // No session, try using signInWithOtp to resend verification
-        const { error: otpError } = await supabase.auth.signInWithOtp({
-          email: email,
-          options: {
-            emailRedirectTo: getAuthRedirectUrl(),
-          },
-        });
-        
-        if (otpError) {
-          throw otpError;
-        }
-        
-        alert('✅ Verification email sent!\n\nPlease check your inbox (and spam folder) for the verification link.');
-        return;
+      const result = await sendVerificationEmail(session?.access_token ?? null, email);
+      if (result.success) {
+        alert('✅ Verification email sent!\n\nCheck your inbox (and spam folder) for the verification link.');
+      } else {
+        throw new Error(result.message || 'Failed to send');
       }
-      
-      // If user has a session but email is not confirmed, use resend
-      const { data, error } = await supabase.auth.resend({
-        type: 'signup',
-        email: email,
-        options: {
-          emailRedirectTo: getAuthRedirectUrl(),
-        },
-      });
-
-      if (error) {
-        console.error('Resend email error:', error);
-        
-        // If resend fails, try signInWithOtp as fallback
-        if (error.message?.includes('not found') || error.message?.includes('invalid')) {
-          const { error: otpError } = await supabase.auth.signInWithOtp({
-            email: email,
-            options: {
-              emailRedirectTo: getAuthRedirectUrl(),
-            },
-          });
-          
-          if (otpError) {
-            throw otpError;
-          }
-          
-          alert('✅ Verification email sent!\n\nPlease check your inbox (and spam folder) for the verification link.');
-          return;
-        }
-        
-        // Handle specific error cases
-        if (error.message?.includes('rate limit') || error.message?.includes('too many')) {
-          alert('Too many requests. Please wait a few minutes before trying again.');
-        } else if (error.message?.includes('already confirmed')) {
-          // Email already confirmed, check again
-          await checkEmailVerification();
-          alert('Your email is already verified!');
-        } else {
-          throw error;
-        }
-        return;
-      }
-
-      // Success - show confirmation
-      alert('✅ Verification email sent!\n\nPlease check your inbox (and spam folder) for the verification link. Click the link to verify your email.');
     } catch (error: any) {
       console.error('Error resending verification email:', error);
       
@@ -244,9 +208,39 @@ export default function VerifyEmailScreen() {
   // Use fallback colors if themeColors not available
   const styles = createStyles(themeColors || colors);
   const displayEmail = email || 'your email address';
-  
-  // Ensure we always have colors
   const safeThemeColors = themeColors || colors;
+  const hasToken = typeof params.token === 'string' && params.token.length >= 16;
+
+  if (hasToken && tokenVerifying) {
+    return (
+      <>
+        <Stack.Screen options={{ headerShown: false }} />
+        <SafeAreaView style={[styles.container, { backgroundColor: safeThemeColors?.background?.primary || colors.background.primary, justifyContent: 'center', alignItems: 'center' }]}>
+          <ActivityIndicator size="large" color={safeThemeColors?.primary || colors.primary} />
+          <Text style={[styles.successMessage, { marginTop: 16 }]}>Verifying your email…</Text>
+        </SafeAreaView>
+      </>
+    );
+  }
+
+  if (hasToken && tokenResult === 'error') {
+    return (
+      <>
+        <Stack.Screen options={{ headerShown: false }} />
+        <SafeAreaView style={[styles.container, { backgroundColor: safeThemeColors?.background?.primary || colors.background.primary }]}>
+          <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            <View style={styles.centerContent}>
+              <Text style={styles.successTitle}>Link invalid or expired</Text>
+              <Text style={styles.successMessage}>This verification link is no longer valid. Request a new one from the app or sign in again.</Text>
+              <TouchableOpacity style={styles.continueButton} onPress={() => router.replace('/auth')}>
+                <Text style={styles.continueButtonText}>Back to Sign In</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </SafeAreaView>
+      </>
+    );
+  }
 
   return (
     <>

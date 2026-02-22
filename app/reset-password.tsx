@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,24 +11,31 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Lock, Eye, EyeOff } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useAuth } from '@/contexts/AuthContext';
 import MessageModal from '@/components/MessageModal';
-import { UpdatePasswordTimeoutError, UpdatePasswordAbortedError } from '@/lib/supabase-auth-api';
+import { resetPasswordWithToken } from '@/lib/auth-functions';
 
-const MAX_SUBMIT_MS = 30000; // Safety: stop loading and allow retry after 30s
+const MAX_SUBMIT_MS = 30000;
 const MIN_PASSWORD_LENGTH = 6;
 const RECOMMENDED_PASSWORD_LENGTH = 8;
 
 export default function ResetPasswordScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { updatePassword, signOut } = useAuth();
+  const params = useLocalSearchParams<{ token?: string }>();
+  const [token, setToken] = useState<string | null>(null);
+  const [noToken, setNoToken] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    const t = typeof params.token === 'string' ? params.token : null;
+    if (t && t.length >= 16) setToken(t);
+    else setNoToken(true);
+  }, [params.token]);
   const [messageModal, setMessageModal] = useState<{
     visible: boolean;
     variant: 'success' | 'error';
@@ -168,13 +175,36 @@ export default function ResetPasswordScreen() {
       });
     }, MAX_SUBMIT_MS);
 
-    const submitStart = __DEV__ ? Date.now() : 0;
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
     try {
-      await updatePassword(newPassword);
-      if (__DEV__) {
-        console.log('[ResetPassword] updatePassword completed in_ms=', Date.now() - submitStart);
+      const result = await resetPasswordWithToken(token, newPassword);
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
       }
-      await signOut();
+      if (completedRef.current) return;
+      completedRef.current = true;
+      setIsLoading(false);
+      if (result.ok) {
+        setMessageModal({
+          visible: true,
+          variant: 'success',
+          title: 'Password updated',
+          message: 'Your password has been updated. Please sign in with your new password.',
+        });
+      } else {
+        setMessageModal({
+          visible: true,
+          variant: 'error',
+          title: 'Couldn\'t update password',
+          message: result.error || 'Link may have expired. Request a new reset from the sign-in screen.',
+          showRetry: true,
+        });
+      }
+    } catch (error: any) {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
@@ -184,44 +214,48 @@ export default function ResetPasswordScreen() {
       setIsLoading(false);
       setMessageModal({
         visible: true,
-        variant: 'success',
-        title: 'Password updated',
-        message: 'Your password has been updated. Please sign in with your new password.',
+        variant: 'error',
+        title: 'Couldn\'t update password',
+        message: error?.message || 'Please try again or request a new reset link.',
+        showRetry: true,
       });
-    } catch (error: any) {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
-      if (completedRef.current) return;
-      completedRef.current = true;
-      console.error('Reset password error:', error);
-      const raw = error?.message ?? (typeof error === 'string' ? error : '') ?? '';
-      const lower = raw.toLowerCase();
-      let title = 'Couldn\'t update password';
-      let message: string;
-      let showRetry = false;
-
-      if (error?.name === 'UpdatePasswordTimeoutError' || error?.message === 'UPDATE_PASSWORD_TIMEOUT') {
-        title = 'Request timed out';
-        message = 'The request took too long. Check your connection and try again.';
-        showRetry = true;
-      } else if (error?.name === 'UpdatePasswordAbortedError' || lower.includes('cancelled')) {
-        title = 'Request cancelled';
-        message = 'Request was cancelled. You can try again.';
-      } else if (lower.includes('expired') || raw.includes('reset link')) {
-        message = 'This reset link has expired. Please request a new password reset from the sign-in screen.';
-      } else if (lower.includes('api key') || lower.includes('apikey') || lower.includes('configuration')) {
-        message = 'There was a configuration issue. Please try again later or request a new reset link.';
-      } else {
-        message = raw || 'Failed to update password. Please try again or request a new reset link.';
-      }
-      setIsLoading(false);
-      setMessageModal({ visible: true, variant: 'error', title, message, showRetry });
     }
   };
 
   handleSubmitRef.current = handleSubmit;
+
+  if (noToken && !token) {
+    return (
+      <View style={[styles.container, { padding: 24, paddingTop: 60 }]}>
+        <View style={styles.header}>
+          <View style={styles.iconWrap}>
+            <Lock size={32} color={colors.primary} />
+          </View>
+          <Text style={styles.title}>Invalid or expired link</Text>
+          <Text style={styles.subtitle}>
+            This reset link is missing or no longer valid. Request a new link from the sign-in screen.
+          </Text>
+        </View>
+        <TouchableOpacity style={styles.submitButton} onPress={() => router.replace('/auth')}>
+          <Text style={styles.submitButtonText}>Back to Sign In</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.submitButton, { marginTop: 12, backgroundColor: colors.background.secondary }]}
+          onPress={() => router.replace('/auth')}
+        >
+          <Text style={[styles.submitButtonText, { color: colors.text.primary }]}>Request new reset email</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (!token) {
+    return (
+      <View style={[styles.container, styles.scrollContent]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView

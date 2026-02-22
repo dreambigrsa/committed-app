@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { updatePasswordViaApi, UpdatePasswordTimeoutError, UpdatePasswordAbortedError } from '@/lib/supabase-auth-api';
 import { checkUserLegalAcceptances } from '@/lib/legal-enforcement';
 import { hasPendingPasswordRecovery, setPendingPasswordRecovery } from '@/lib/pending-password-recovery';
+import { requestPasswordReset } from '@/lib/auth-functions';
 
 // Minimal auth user for routing decisions
 export interface AuthUser {
@@ -70,22 +71,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setIsPasswordRecovery(true);
         }
 
-        const { data: userData } = await supabase
-          .from('users')
-          .select('id, full_name, email, phone_number')
-          .eq('id', session.user.id)
-          .single();
+        const [{ data: profileData }, { data: userData }] = await Promise.all([
+          supabase.from('profiles').select('is_verified').eq('id', session.user.id).maybeSingle(),
+          supabase.from('users').select('id, full_name, email, phone_number').eq('id', session.user.id).single(),
+        ]);
+        const isVerified = profileData?.is_verified ?? false;
 
         if (!userData) {
-          // User record may not exist yet (e.g. right after signup). Still check legal acceptances
-          // so we don't show the legal modal when they've already accepted (e.g. after password reset).
           const acceptanceStatus = await checkUserLegalAcceptances(session.user.id);
           setUser({
             id: session.user.id,
             email: session.user.email || '',
             fullName: (session.user as any).user_metadata?.full_name || '',
             phoneNumber: (session.user as any).user_metadata?.phone_number || '',
-            emailVerified: !!session.user.email_confirmed_at,
+            emailVerified: isVerified,
             acceptedLegalDocs: acceptanceStatus.hasAllRequired,
             completedOnboarding: false,
             isPasswordRecovery: opts?.isPasswordRecovery ?? isPasswordRecovery,
@@ -105,7 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: userData.email || '',
           fullName: userData.full_name || '',
           phoneNumber: userData.phone_number || '',
-          emailVerified: !!session.user.email_confirmed_at,
+          emailVerified: isVerified,
           acceptedLegalDocs: acceptanceStatus.hasAllRequired,
           completedOnboarding: onboardingData?.has_completed_onboarding ?? false,
           isPasswordRecovery: opts?.isPasswordRecovery ?? isPasswordRecovery,
@@ -291,9 +290,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const resetPassword = useCallback(async (email: string) => {
-    const { getAuthRedirectUrl } = await import('@/lib/auth-redirect');
-    const redirectTo = getAuthRedirectUrl();
-    await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+    const result = await requestPasswordReset(email);
+    if (!result.success) throw new Error(result.message || 'Failed to send reset email');
   }, []);
 
   const updatePassword = useCallback(async (newPassword: string) => {

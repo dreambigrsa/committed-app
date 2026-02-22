@@ -1,0 +1,9 @@
+<svg width="180" height="32" viewBox="0 0 180 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="wmGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#7c3aed"/>
+      <stop offset="100%" stop-color="#a78bfa"/>
+    </linearGradient>
+  </defs>
+  <text x="0" y="26" font-family="system-ui, -apple-system, sans-serif" font-size="24" font-weight="700" fill="url(#wmGrad)">Committed</text>
+</svg>

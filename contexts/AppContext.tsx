@@ -9,7 +9,7 @@ import { checkUserLegalAcceptances } from '@/lib/legal-enforcement';
 import { registerForPushNotificationsAsync, showLocalNotification } from '@/lib/push-notifications';
 import { setNotificationPreferences } from '@/lib/notification-preferences';
 import { normalizePhoneNumber, comparePhoneNumbers } from '@/lib/phone-normalization';
-import { getAuthRedirectUrl } from '@/lib/auth-redirect';
+import { requestPasswordReset } from '@/lib/auth-functions';
 import { queueRelationshipChange, syncOfflineQueue, getOfflineQueue, RelationshipConflict } from '@/lib/relationship-sync';
 import { buildPostLink, buildReelLink } from '@/lib/deep-link-service';
 import { getStoredReferralCode, clearStoredReferralCode } from '@/lib/referral-storage';
@@ -912,7 +912,6 @@ export const [AppContext, useApp] = createContextHook(() => {
             full_name: fullName,
             phone_number: normalizedPhone,
           },
-          emailRedirectTo: getAuthRedirectUrl(),
         }
       });
 
@@ -1277,16 +1276,9 @@ export const [AppContext, useApp] = createContextHook(() => {
   }, [currentUser]);
 
   const resetPassword = useCallback(async (email: string) => {
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: getAuthRedirectUrl(),
-      });
-
-      if (error) throw error;
-    } catch (error: any) {
-      console.error('Reset password error:', error);
-      throw error;
-    }
+    if (__DEV__) console.log('[resetPassword] email:', email);
+    const result = await requestPasswordReset(email);
+    if (!result.success) throw new Error(result.message || 'Failed to send reset email');
   }, []);
 
   const updateUserProfile = useCallback(async (updates: Partial<User>) => {

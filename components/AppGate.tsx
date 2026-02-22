@@ -15,6 +15,7 @@ import {
 } from '@/lib/deep-link-service';
 import { setStoredReferralCode } from '@/lib/referral-storage';
 import { hasPendingPasswordRecovery } from '@/lib/pending-password-recovery';
+import { isCallbackProcessing } from '@/lib/auth-callback-state';
 
 const LOADING_MAX_MS = 4000;
 
@@ -29,6 +30,10 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!authReady || authLoading) return;
+    if (isCallbackProcessing()) {
+      if (__DEV__) console.log('[AppGate] Callback processing, skip redirect');
+      return;
+    }
 
     if (__DEV__) {
       console.log('[AppGate] Auth ready, isAuthenticated:', isAuthenticated, 'pathname:', pathname);
@@ -47,9 +52,12 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
       }
     }
 
-    const current = pathname || '/';
-    // Never redirect away from reset-password when user has a session (recovery flow).
-    if (current === '/reset-password' && isAuthenticated && user) {
+    const current = (pathname && pathname.startsWith('/') ? pathname : `/${pathname || ''}`) || '/';
+    if (current === '/auth-callback') {
+      lastTargetRef.current = '/auth-callback';
+      return;
+    }
+    if (current === '/reset-password' && (isAuthenticated && user ? true : hasPendingPasswordRecovery())) {
       lastTargetRef.current = '/reset-password';
       return;
     }
@@ -65,7 +73,9 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
     const urlHasRecovery =
       typeof window !== 'undefined' && !!window.location?.href?.includes('type=recovery');
     const inRecoveryFlow = user?.isPasswordRecovery || urlHasRecovery || hasPendingPasswordRecovery();
-    if (!isAuthenticated || !user) {
+    if (hasPendingPasswordRecovery()) {
+      target = '/reset-password';
+    } else if (!isAuthenticated || !user) {
       if (hasPendingPost) {
         target = `/post/${pending!.postId!}`;
       } else if (hasPendingReel) {
@@ -87,8 +97,8 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
       target = '/(tabs)/home';
     }
 
-    const publicPaths = ['/', '/auth', '/auth-callback'];
-    if (!isAuthenticated && publicPaths.some((p) => pathname === p || pathname?.startsWith(p))) {
+    const publicPaths = ['/', '/auth', '/auth-callback', '/reset-password', '/verify-email'];
+    if (!isAuthenticated && publicPaths.some((p) => current === p || current.startsWith(p + '/'))) {
       lastTargetRef.current = target;
       return;
     }

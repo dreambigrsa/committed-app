@@ -13,7 +13,7 @@ import BanMessageModal from "@/components/BanMessageModal";
 import LegalAcceptanceEnforcer from "@/components/LegalAcceptanceEnforcer";
 import { setPendingAuthUrl } from "@/lib/pending-auth-url";
 import { setPendingPasswordRecovery } from "@/lib/pending-password-recovery";
-import { setPendingDeepLink, isAuthLink } from "@/lib/deep-link-service";
+import { setPendingDeepLink, isAuthLink, parseDeepLink, getCustomVerifyOrResetRoute } from "@/lib/deep-link-service";
 import { isAbortLikeError } from "@/lib/abort-error";
 
 SplashScreen.preventAutoHideAsync();
@@ -21,42 +21,63 @@ SplashScreen.preventAutoHideAsync();
 function RootLayoutNav() {
   const router = useRouter();
 
-  // Cold start: capture initial URL (auth -> auth-callback; content/referral -> store for AppGate)
+  // Cold start: capture initial URL (auth -> auth-callback; content/referral -> store for AppGate).
+  // Native: getInitialURL() can be null on first tick; retry so reset/verify links are not missed.
   useEffect(() => {
-    (async () => {
+    let cancelled = false;
+    const tryInitial = async (attempt = 0) => {
       const initial = await Linking.getInitialURL();
+      if (cancelled) return;
       if (Platform.OS === "web" && typeof window !== "undefined" && !initial) {
         const href = window.location.href;
-        if (href && (href.includes("post/") || href.includes("reel/") || href.includes("referral") || href.includes("access_token=") || href.includes("type=recovery") || href.includes("code="))) {
-          if (href.includes("type=recovery") || href.includes("access_token=")) {
-            if (href.includes("type=recovery")) setPendingPasswordRecovery(true);
-            const isAuthCallbackPath = href.includes("/auth-callback");
-            if (!isAuthCallbackPath) router.replace("/auth-callback" + (window.location.hash || ""));
-          } else {
-            setPendingDeepLink(href);
-          }
+        const isAuth = href && (href.includes("access_token=") || href.includes("type=recovery") || href.includes("code=") || href.includes("auth-callback"));
+        if (isAuth) {
+          if (href.includes("type=recovery")) setPendingPasswordRecovery(true);
+          setPendingAuthUrl(href);
+          router.replace("/auth-callback");
+          return;
+        }
+        if (href && (href.includes("post/") || href.includes("reel/") || href.includes("referral"))) {
+          setPendingDeepLink(href);
           return;
         }
       }
-      if (!initial) return;
-      if (isAuthLink(initial)) {
-        if (initial.includes("type=recovery")) setPendingPasswordRecovery(true);
-        setPendingAuthUrl(initial);
-        router.replace("/auth-callback");
-      } else {
-        setPendingDeepLink(initial);
+      if (initial) {
+        const customRoute = getCustomVerifyOrResetRoute(initial);
+        if (customRoute) {
+          router.replace(customRoute as any);
+        } else if (isAuthLink(initial)) {
+          if (initial.includes("type=recovery")) setPendingPasswordRecovery(true);
+          setPendingAuthUrl(initial);
+          router.replace("/auth-callback");
+        } else {
+          const parsed = parseDeepLink(initial);
+          if (parsed && parsed.type !== "unknown") setPendingDeepLink(initial);
+        }
+        return;
       }
-    })();
+      if (Platform.OS !== "web" && attempt < 2) {
+        const delay = attempt === 0 ? 150 : 350;
+        setTimeout(() => tryInitial(attempt + 1), delay);
+      }
+    };
+    tryInitial();
+    return () => { cancelled = true; };
   }, [router]);
 
-  // Background / already open: same split — auth vs content/referral
+  // Warm start: app already open, user taps link
   useEffect(() => {
     const sub = Linking.addEventListener("url", ({ url }) => {
-      if (isAuthLink(url)) {
+      const customRoute = getCustomVerifyOrResetRoute(url);
+      if (customRoute) {
+        router.replace(customRoute as any);
+      } else if (isAuthLink(url)) {
+        if (url.includes("type=recovery")) setPendingPasswordRecovery(true);
         setPendingAuthUrl(url);
         router.replace("/auth-callback");
       } else {
-        setPendingDeepLink(url);
+        const parsed = parseDeepLink(url);
+        if (parsed && parsed.type !== "unknown") setPendingDeepLink(url);
       }
     });
     return () => sub.remove();

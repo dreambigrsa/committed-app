@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { getFunctionsBaseUrl } from './auth-functions';
 
 interface ServiceConfig {
   service_type: 'sms' | 'email';
@@ -171,26 +172,34 @@ export async function sendEmailCode(email: string, code: string): Promise<{ succ
 
     if (config.provider === 'resend') {
       try {
-        // Call Supabase Edge Function to send Email
-        // The edge function will handle the Resend API call securely
-        const { data, error } = await supabase.functions.invoke('send-email', {
-          body: {
-            email,
-            code,
-          },
-        });
-
-        if (error) {
-          console.error('Email function error:', error);
-          // If function doesn't exist or fails, fall back to showing code
-          return { success: false, error: 'Email service unavailable. Please configure edge functions.' };
+        // Prefer our website API (Resend) – same design as password reset / verification
+        const base = getFunctionsBaseUrl();
+        if (base) {
+          const res = await fetch(`${base}/api/auth/send-verification-code`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, code }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && data.success) return { success: true };
+          if (!res.ok) {
+            console.error('Website API send-verification-code error:', data?.error || res.status);
+            return { success: false, error: data?.error || 'Failed to send verification email.' };
+          }
         }
 
+        // Fallback: Supabase Edge Function (legacy)
+        const { data, error } = await supabase.functions.invoke('send-email', {
+          body: { email, code },
+        });
+        if (error) {
+          console.error('Email function error:', error);
+          return { success: false, error: 'Email service unavailable.' };
+        }
         return { success: data?.success || false, error: data?.error };
       } catch (err: any) {
-        // Edge function might not be deployed yet
-        console.error('Failed to invoke email function:', err);
-        return { success: false, error: 'Email service not available. Please deploy edge functions.' };
+        console.error('Failed to send verification email:', err);
+        return { success: false, error: 'Email service not available.' };
       }
     }
 

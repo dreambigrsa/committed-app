@@ -169,3 +169,89 @@ export function verificationCodeEmail(code: string, expiryMinutes: number = 10):
     </table>`;
   return emailWrapper(content, preheader, 'Verification Code');
 }
+
+/** Subscription follow-up: user signed up but never subscribed */
+export function subscriptionFollowUpEmail(appUrl: string, downloadUrl: string, daysSinceSignup?: number): string {
+  const preheader = 'Unlock more with Committed Premium — you haven\'t subscribed yet.';
+  const hint = daysSinceSignup
+    ? `You joined Committed ${daysSinceSignup} days ago.`
+    : 'You\'ve been using Committed.';
+  const content = `
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+      <tr>
+        <td align="center">
+          <div style="display: inline-block; background: rgba(26, 115, 232, 0.1); color: ${BRAND.primary}; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.2px; padding: 8px 16px; border-radius: 8px; margin-bottom: 20px;">Premium</div>
+          <h2 class="title" style="margin: 0 0 12px; font-size: 24px; font-weight: 700; color: ${BRAND.gray900};">Ready to unlock more?</h2>
+          <p style="margin: 0; font-size: 16px; color: ${BRAND.gray500}; line-height: 1.65; max-width: 440px;">${hint} Subscribe to Premium to get unlimited likes, see who likes you, and more.</p>
+        </td>
+      </tr>
+      <tr>
+        <td align="center" style="padding-top: 28px;">
+          <a href="${appUrl}" class="btn" style="display: inline-block; background: linear-gradient(135deg, ${BRAND.primary} 0%, ${BRAND.primaryDark} 100%); color: #FFFFFF !important; text-decoration: none; padding: 16px 36px; border-radius: 12px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 14px rgba(26, 115, 232, 0.4);">Upgrade to Premium</a>
+        </td>
+      </tr>
+      <tr>
+        <td align="center" style="padding-top: 20px;">
+          <p style="margin: 0; font-size: 14px; color: ${BRAND.gray500};">Don't have the app? <a href="${downloadUrl}" style="color: ${BRAND.primary}; font-weight: 600; text-decoration: none;">Download Committed</a></p>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding-top: 32px; border-top: 1px solid ${BRAND.gray200}; margin-top: 24px;">
+          <p style="margin: 0; font-size: 13px; color: ${BRAND.gray500}; line-height: 1.6;">You're receiving this because you have a Committed account. Manage preferences in the app.</p>
+        </td>
+      </tr>
+    </table>`;
+  return emailWrapper(content, preheader, 'Premium');
+}
+
+/** Subscription due soon: expires in X days */
+export function subscriptionDueEmail(appUrl: string, daysLeft: number, planName: string): string {
+  const preheader = `Your ${planName} subscription expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}.`;
+  const content = `
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+      <tr>
+        <td align="center">
+          <div style="display: inline-block; background: rgba(26, 115, 232, 0.1); color: ${BRAND.primary}; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.2px; padding: 8px 16px; border-radius: 8px; margin-bottom: 20px;">Renewal</div>
+          <h2 class="title" style="margin: 0 0 12px; font-size: 24px; font-weight: 700; color: ${BRAND.gray900};">Your subscription ends soon</h2>
+          <p style="margin: 0; font-size: 16px; color: ${BRAND.gray500}; line-height: 1.65; max-width: 440px;">Your <strong style="color: ${BRAND.gray700};">${planName}</strong> subscription expires in <strong style="color: ${BRAND.gray700};">${daysLeft} day${daysLeft === 1 ? '' : 's'}</strong>. Renew to keep your premium features.</p>
+        </td>
+      </tr>
+      <tr>
+        <td align="center" style="padding-top: 28px;">
+          <a href="${appUrl}" class="btn" style="display: inline-block; background: linear-gradient(135deg, ${BRAND.primary} 0%, ${BRAND.primaryDark} 100%); color: #FFFFFF !important; text-decoration: none; padding: 16px 36px; border-radius: 12px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 14px rgba(26, 115, 232, 0.4);">Renew Subscription</a>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding-top: 32px; border-top: 1px solid ${BRAND.gray200}; margin-top: 24px;">
+          <p style="margin: 0; font-size: 13px; color: ${BRAND.gray500}; line-height: 1.6;">If you've already renewed, you can ignore this email.</p>
+        </td>
+      </tr>
+    </table>`;
+  return emailWrapper(content, preheader, 'Renewal');
+}
+
+/** Subscription expired */
+export function subscriptionExpiredEmail(appUrl: string, planName: string): string {
+  const preheader = `Your ${planName} subscription has expired.`;
+  const content = `
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+      <tr>
+        <td align="center">
+          <div style="display: inline-block; background: rgba(26, 115, 232, 0.1); color: ${BRAND.primary}; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.2px; padding: 8px 16px; border-radius: 8px; margin-bottom: 20px;">Subscription Expired</div>
+          <h2 class="title" style="margin: 0 0 12px; font-size: 24px; font-weight: 700; color: ${BRAND.gray900};">We miss you</h2>
+          <p style="margin: 0; font-size: 16px; color: ${BRAND.gray500}; line-height: 1.65; max-width: 440px;">Your <strong style="color: ${BRAND.gray700};">${planName}</strong> subscription has expired. Resubscribe to get your premium features back.</p>
+        </td>
+      </tr>
+      <tr>
+        <td align="center" style="padding-top: 28px;">
+          <a href="${appUrl}" class="btn" style="display: inline-block; background: linear-gradient(135deg, ${BRAND.primary} 0%, ${BRAND.primaryDark} 100%); color: #FFFFFF !important; text-decoration: none; padding: 16px 36px; border-radius: 12px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 14px rgba(26, 115, 232, 0.4);">Resubscribe</a>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding-top: 32px; border-top: 1px solid ${BRAND.gray200}; margin-top: 24px;">
+          <p style="margin: 0; font-size: 13px; color: ${BRAND.gray500}; line-height: 1.6;">You're receiving this because you had a Committed subscription.</p>
+        </td>
+      </tr>
+    </table>`;
+  return emailWrapper(content, preheader, 'Expired');
+}

@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { CheckCircle, XCircle, Loader2, Smartphone } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { FUNCTIONS_BASE, SUPABASE_ANON_KEY } from '@/lib/env';
+import { SITE_URL } from '@/lib/env';
 import { APP_SCHEME } from '@/lib/appLinks';
 
 type Status = 'loading' | 'success' | 'error';
@@ -24,12 +24,9 @@ function VerifyEmailContent() {
       return;
     }
     let cancelled = false;
-    const base = FUNCTIONS_BASE.replace(/\/$/, '');
-    const url = `${base}/verify-email?token=${encodeURIComponent(token)}`;
-    fetch(url, {
-      method: 'GET',
-      headers: { apikey: SUPABASE_ANON_KEY },
-    })
+    const base = typeof window !== 'undefined' ? window.location.origin : (SITE_URL || '').replace(/\/$/, '') || '';
+    const url = `${base}/api/auth/verify-email?token=${encodeURIComponent(token)}`;
+    fetch(url, { method: 'GET' })
       .then((res) => res.json())
       .then((data) => {
         if (cancelled) return;

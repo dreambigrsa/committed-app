@@ -132,7 +132,7 @@ function AuthCallbackContent() {
 
   const runVerify = useCallback(
     async (token: string) => {
-      const base = (SITE_URL || '').replace(/\/$/, '') || (typeof window !== 'undefined' ? window.location.origin : '');
+      const base = typeof window !== 'undefined' ? window.location.origin : (SITE_URL || '').replace(/\/$/, '') || '';
       const url = `${base}/api/auth/verify-email?token=${encodeURIComponent(token)}`;
       try {
         const res = await fetch(url, { method: 'GET' });
@@ -168,7 +168,7 @@ function AuthCallbackContent() {
   const handleResendVerification = async () => {
     if (!resendEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(resendEmail)) return;
     setResending(true);
-    const base = (SITE_URL || '').replace(/\/$/, '') || (typeof window !== 'undefined' ? window.location.origin : '');
+    const base = typeof window !== 'undefined' ? window.location.origin : (SITE_URL || '').replace(/\/$/, '') || '';
     try {
       await fetch(`${base}/api/auth/send-verification`, {
         method: 'POST',

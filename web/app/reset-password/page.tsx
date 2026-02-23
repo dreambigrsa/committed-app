@@ -44,7 +44,7 @@ function ResetPasswordContent() {
     }
     setErrorMessage('');
     setStatus('loading');
-    const base = (SITE_URL || '').replace(/\/$/, '') || (typeof window !== 'undefined' ? window.location.origin : '');
+    const base = typeof window !== 'undefined' ? window.location.origin : (SITE_URL || '').replace(/\/$/, '') || '';
     try {
       const res = await fetch(`${base}/api/auth/reset-password`, {
         method: 'POST',
@@ -63,7 +63,7 @@ function ResetPasswordContent() {
     e.preventDefault();
     if (!resetEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(resetEmail)) return;
     setResetting(true);
-    const base = (SITE_URL || '').replace(/\/$/, '') || (typeof window !== 'undefined' ? window.location.origin : '');
+    const base = typeof window !== 'undefined' ? window.location.origin : (SITE_URL || '').replace(/\/$/, '') || '';
     try {
       await fetch(`${base}/api/auth/request-password-reset`, {
         method: 'POST',

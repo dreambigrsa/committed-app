@@ -19,6 +19,14 @@ export function getFunctionsBaseUrl(): string {
   return getAuthApiBaseUrl();
 }
 
+function normalizeFetchError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/failed to fetch|network request failed|networkerror/i.test(msg)) {
+    return 'Unable to connect. Please check your internet connection and try again.';
+  }
+  return msg || 'Something went wrong. Please try again.';
+}
+
 async function fetchJson<T = unknown>(url: string, init?: RequestInit): Promise<{ data: T; ok: boolean; status: number }> {
   const res = await fetch(url, init);
   const data = (await res.json().catch(() => ({}))) as T;
@@ -29,53 +37,69 @@ export async function sendVerificationEmail(
   accessToken: string | null,
   email?: string
 ): Promise<{ success: boolean; message?: string }> {
-  const base = getAuthApiBaseUrl();
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
-  const { data, ok } = await fetchJson<{ success?: boolean; message?: string }>(
-    `${base}/api/auth/send-verification`,
-    { method: "POST", headers, body: JSON.stringify(email ? { email } : {}) }
-  );
-  return { success: data.success === true, message: data.message };
+  try {
+    const base = getAuthApiBaseUrl();
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+    const { data } = await fetchJson<{ success?: boolean; message?: string }>(
+      `${base}/api/auth/send-verification`,
+      { method: "POST", headers, body: JSON.stringify(email ? { email } : {}) }
+    );
+    return { success: data.success === true, message: data.message };
+  } catch (err) {
+    return { success: false, message: normalizeFetchError(err) };
+  }
 }
 
 export async function verifyEmailToken(token: string): Promise<{ ok: boolean; error?: string }> {
-  const base = getAuthApiBaseUrl();
-  const { data, ok } = await fetchJson<{ ok?: boolean; error?: string }>(
-    `${base}/api/auth/verify-email?token=${encodeURIComponent(token)}`,
-    { method: "GET" }
-  );
-  return { ok: data.ok === true, error: data.error };
+  try {
+    const base = getAuthApiBaseUrl();
+    const { data } = await fetchJson<{ ok?: boolean; error?: string }>(
+      `${base}/api/auth/verify-email?token=${encodeURIComponent(token)}`,
+      { method: "GET" }
+    );
+    return { ok: data.ok === true, error: data.error };
+  } catch (err) {
+    return { ok: false, error: normalizeFetchError(err) };
+  }
 }
 
 export async function requestPasswordReset(email: string): Promise<{ success: boolean; message?: string }> {
-  const base = getAuthApiBaseUrl();
-  const { data, ok } = await fetchJson<{ success?: boolean; message?: string; error?: string }>(
-    `${base}/api/auth/request-password-reset`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
+  try {
+    const base = getAuthApiBaseUrl();
+    const { data, ok } = await fetchJson<{ success?: boolean; message?: string; error?: string }>(
+      `${base}/api/auth/request-password-reset`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      }
+    );
+    if (!ok && (data as { error?: string }).error) {
+      return { success: false, message: (data as { error: string }).error };
     }
-  );
-  if (!ok && (data as { error?: string }).error) {
-    return { success: false, message: (data as { error: string }).error };
+    return { success: data.success === true, message: data.message };
+  } catch (err) {
+    return { success: false, message: normalizeFetchError(err) };
   }
-  return { success: data.success === true, message: data.message };
 }
 
 export async function resetPasswordWithToken(
   token: string,
   newPassword: string
 ): Promise<{ ok: boolean; error?: string }> {
-  const base = getAuthApiBaseUrl();
-  const { data, ok } = await fetchJson<{ ok?: boolean; error?: string }>(
-    `${base}/api/auth/reset-password`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, newPassword }),
-    }
-  );
-  return { ok: data.ok === true, error: data.error };
+  try {
+    const base = getAuthApiBaseUrl();
+    const { data } = await fetchJson<{ ok?: boolean; error?: string }>(
+      `${base}/api/auth/reset-password`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, newPassword }),
+      }
+    );
+    return { ok: data.ok === true, error: data.error };
+  } catch (err) {
+    return { ok: false, error: normalizeFetchError(err) };
+  }
 }

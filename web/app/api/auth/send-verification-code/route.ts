@@ -35,13 +35,24 @@ export async function POST(req: NextRequest) {
     const fromEmail = process.env.RESEND_FROM_EMAIL || 'Committed <noreply@resend.dev>';
     const html = verificationCodeEmail(code, CODE_EXPIRY_MINUTES);
 
-    await resend.emails.send({
+    const { data, error: sendError } = await resend.emails.send({
       from: fromEmail,
       to: [email],
       subject: 'Your Committed verification code',
       html,
       text: `Your Committed verification code is: ${code}. This code expires in ${CODE_EXPIRY_MINUTES} minutes.`,
     });
+
+    if (sendError) {
+      console.error('Resend send error:', sendError.message, sendError);
+      return NextResponse.json(
+        { success: false, error: sendError.message || 'Failed to send email' },
+        { status: 500 }
+      );
+    }
+    if (!data?.id) {
+      return NextResponse.json({ success: false, error: 'Failed to send email' }, { status: 500 });
+    }
 
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (e) {

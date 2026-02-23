@@ -72,8 +72,8 @@ export async function POST(req: NextRequest) {
     if (insertErr) {
       console.error('auth_tokens insert error:', insertErr.message);
       return NextResponse.json(
-        { success: true, message: 'If this email is registered, you will receive a verification link.' },
-        { status: 200 }
+        { success: false, error: 'Unable to process request. Please try again later.' },
+        { status: 500 }
       );
     }
 
@@ -86,8 +86,8 @@ export async function POST(req: NextRequest) {
     if (!resendApiKey) {
       console.error('RESEND_API_KEY not set');
       return NextResponse.json(
-        { success: true, message: 'If this email is registered, you will receive a verification link.' },
-        { status: 200 }
+        { success: false, error: 'Email service is not configured. Please contact support.' },
+        { status: 500 }
       );
     }
 
@@ -95,12 +95,34 @@ export async function POST(req: NextRequest) {
     const fromEmail = process.env.RESEND_FROM_EMAIL || 'Committed <noreply@resend.dev>';
     const html = verifyEmailEmail(verifyUrl, deepLink, VERIFY_EXPIRY_HOURS);
 
-    await resend.emails.send({
+    const { data, error: sendError } = await resend.emails.send({
       from: fromEmail,
       to: [email],
       subject: 'Verify your email – Committed',
       html,
     });
+
+    if (sendError) {
+      console.error('Resend send error:', sendError.message, sendError);
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            sendError.message?.includes('domain') || sendError.message?.includes('verify')
+              ? 'Email could not be sent. Please contact support—domain may need verification.'
+              : 'We couldn\'t send the verification email. Please try again in a few minutes.',
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!data?.id) {
+      console.error('Resend returned no email id:', data);
+      return NextResponse.json(
+        { success: false, error: 'We couldn\'t send the verification email. Please try again.' },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json(
       { success: true, message: 'If this email is registered, you will receive a verification link.' },
@@ -109,8 +131,8 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     console.error('send-verification error:', e);
     return NextResponse.json(
-      { success: true, message: 'If this email is registered, you will receive a verification link.' },
-      { status: 200 }
+      { success: false, error: 'Something went wrong. Please try again later.' },
+      { status: 500 }
     );
   }
 }

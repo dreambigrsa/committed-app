@@ -128,6 +128,7 @@ function AuthCallbackContent() {
   const [status, setStatus] = useState<Status>('loading');
   const [resendEmail, setResendEmail] = useState('');
   const [resendSent, setResendSent] = useState(false);
+  const [resendError, setResendError] = useState('');
   const [resending, setResending] = useState(false);
 
   const runVerify = useCallback(
@@ -168,17 +169,23 @@ function AuthCallbackContent() {
   const handleResendVerification = async () => {
     if (!resendEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(resendEmail)) return;
     setResending(true);
+    setResendError('');
     const base = typeof window !== 'undefined' ? window.location.origin : (SITE_URL || '').replace(/\/$/, '') || '';
     try {
-      await fetch(`${base}/api/auth/send-verification`, {
+      const res = await fetch(`${base}/api/auth/send-verification`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: resendEmail }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success === true) {
+        setResendSent(true);
+      } else {
+        setResendError((data as { error?: string }).error || 'Failed to send verification email.');
+      }
     } catch {
-      /* ignore */
+      setResendError('Could not reach the server. Please try again.');
     }
-    setResendSent(true);
     setResending(false);
   };
 
@@ -257,7 +264,10 @@ function AuthCallbackContent() {
                 >
                   {resending ? 'Sending…' : 'Send'}
                 </button>
-                {resendSent && (
+                {resendError && (
+                  <p className="mt-2 text-sm text-red-600">{resendError}</p>
+                )}
+                {resendSent && !resendError && (
                   <p className="mt-2 text-sm text-slate-600">
                     If that email is registered, you&apos;ll receive a new link.
                   </p>

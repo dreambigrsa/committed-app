@@ -59,8 +59,8 @@ export async function POST(req: NextRequest) {
     if (insertErr) {
       console.error('auth_tokens insert error:', insertErr.message);
       return NextResponse.json(
-        { success: true, message: 'If this email is registered, you will receive a password reset link.' },
-        { status: 200 }
+        { success: false, error: 'Unable to process request. Please try again later.' },
+        { status: 500 }
       );
     }
 
@@ -110,6 +110,8 @@ export async function POST(req: NextRequest) {
         { status: 500 }
       );
     }
+
+    console.info('[request-password-reset] Sent email', { resendId: data.id, toDomain: email.split('@')[1] });
 
     return NextResponse.json(
       { success: true, message: 'If this email is registered, you will receive a password reset link.' },

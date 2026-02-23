@@ -23,6 +23,7 @@ function ResetPasswordContent() {
   const [resetEmail, setResetEmail] = useState('');
   const [resetSent, setResetSent] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState('');
 
   useEffect(() => {
     if (!token || token.length < 16) setStatus('no-token');
@@ -63,17 +64,23 @@ function ResetPasswordContent() {
     e.preventDefault();
     if (!resetEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(resetEmail)) return;
     setResetting(true);
+    setResetError('');
     const base = typeof window !== 'undefined' ? window.location.origin : (SITE_URL || '').replace(/\/$/, '') || '';
     try {
-      await fetch(`${base}/api/auth/request-password-reset`, {
+      const res = await fetch(`${base}/api/auth/request-password-reset`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: resetEmail }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success === true) {
+        setResetSent(true);
+      } else {
+        setResetError((data as { error?: string }).error || 'Failed to send reset link. Please try again.');
+      }
     } catch {
-      /* ignore */
+      setResetError('Could not reach the server. Please check your connection and try again.');
     }
-    setResetSent(true);
     setResetting(false);
   };
 
@@ -103,7 +110,10 @@ function ResetPasswordContent() {
               >
                 {resetting ? 'Sending…' : 'Send reset link'}
               </button>
-              {resetSent && (
+              {resetError && (
+                <p className="mt-2 text-sm text-red-600">{resetError}</p>
+              )}
+              {resetSent && !resetError && (
                 <p className="mt-2 text-sm text-slate-600">If that email is registered, you&apos;ll receive a new link.</p>
               )}
             </form>
@@ -169,7 +179,10 @@ function ResetPasswordContent() {
               >
                 {resetting ? 'Sending…' : 'Send reset link'}
               </button>
-              {resetSent && (
+              {resetError && (
+                <p className="mt-2 text-sm text-red-600">{resetError}</p>
+              )}
+              {resetSent && !resetError && (
                 <p className="mt-2 text-sm text-slate-600">If that email is registered, you&apos;ll receive a new link.</p>
               )}
             </form>

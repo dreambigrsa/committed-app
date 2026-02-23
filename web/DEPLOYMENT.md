@@ -46,6 +46,8 @@ Or apply `supabase/migrations/20250218000000_add_profiles_auth_tokens.sql` manua
 - `SUPABASE_SERVICE_ROLE_KEY` = your Supabase service role key (for auth API routes)
 - `RESEND_API_KEY` = your Resend API key (required for password reset & verification emails)
 - `RESEND_FROM_EMAIL` = **Must match your verified Resend domain.** For `dreambig.org.za` use `Committed <noreply@dreambig.org.za>`. Subdomains like `committed.dreambig.org.za` need separate verification. `noreply@resend.dev` is for testing only and may not deliver.
+
+**Troubleshooting:** In Vercel → Logs, search for `request-password-reset`. On success you’ll see `[request-password-reset] Sent email`. On failure: `Resend send error`, `auth_tokens insert error`, or `RESEND_API_KEY not set`.
 - `NEXT_PUBLIC_DEEPLINK_SCHEME` = `committed://`
 - `NEXT_PUBLIC_PLAY_STORE_URL` = (optional) Google Play app URL
 - `NEXT_PUBLIC_APP_STORE_URL` = (optional) App Store URL
@@ -79,6 +81,7 @@ Or apply `supabase/migrations/20250218000000_add_profiles_auth_tokens.sql` manua
 
 ### Custom auth – password reset
 
+- [ ] Set `RESEND_FROM_EMAIL=Committed <noreply@dreambig.org.za>` in Vercel (must match your verified Resend domain).
 - [ ] **Forgot password (app)** → request reset → email sent by our backend (no Supabase reset email).
 - [ ] Email contains **web link**: `https://committed.dreambig.org.za/reset-password?token=...` and **app link**: `committed://reset-password?token=...`.
 - [ ] **Click web link** → website reset-password page → enter new password + confirm → submit → “Password updated” → “Open App to Sign In”.

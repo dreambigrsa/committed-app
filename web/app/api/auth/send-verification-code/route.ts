@@ -3,6 +3,8 @@
  * Sends email verification code via Resend. Matches design of other auth emails.
  */
 import { NextRequest, NextResponse } from 'next/server';
+
+export const dynamic = 'force-dynamic';
 import { Resend } from 'resend';
 import { verificationCodeEmail } from '@/lib/email-templates';
 

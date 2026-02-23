@@ -3,6 +3,8 @@
  * Validates token, updates auth user password via Supabase Admin, marks token used.
  */
 import { NextRequest, NextResponse } from 'next/server';
+
+export const dynamic = 'force-dynamic';
 import { createSupabaseAdmin } from '@/lib/supabase-server';
 import { hashToken } from '@/lib/auth-tokens';
 

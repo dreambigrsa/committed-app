@@ -3,6 +3,8 @@
  * Creates verify_email token (24h), sends email via Resend. Replaces Supabase Edge Function.
  */
 import { NextRequest, NextResponse } from 'next/server';
+
+export const dynamic = 'force-dynamic';
 import { createSupabaseAdmin } from '@/lib/supabase-server';
 import { randomToken, hashToken } from '@/lib/auth-tokens';
 import { Resend } from 'resend';

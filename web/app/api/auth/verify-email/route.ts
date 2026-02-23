@@ -3,6 +3,8 @@
  * Validates token, marks used, sets profiles.is_verified = true.
  */
 import { NextRequest, NextResponse } from 'next/server';
+
+export const dynamic = 'force-dynamic';
 import { createSupabaseAdmin } from '@/lib/supabase-server';
 import { hashToken } from '@/lib/auth-tokens';
 

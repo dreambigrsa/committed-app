@@ -97,7 +97,7 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
       target = '/(tabs)/home';
     }
 
-    const publicPaths = ['/', '/auth', '/auth-callback', '/reset-password', '/verify-email'];
+    const publicPaths = ['/', '/auth', '/auth-callback', '/reset-password', '/verify-email', '/sign-in', '/sign-up', '/signup'];
     if (!isAuthenticated && publicPaths.some((p) => current === p || current.startsWith(p + '/'))) {
       lastTargetRef.current = target;
       return;

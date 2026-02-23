@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocalSearchParams } from 'expo-router';
 import {
   View,
   Text,
@@ -22,9 +23,10 @@ import { checkUserLegalAcceptances } from '@/lib/legal-enforcement';
 
 export default function AuthScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ mode?: string }>();
   const { signup, login, resetPassword } = useApp();
   const { colors } = useTheme();
-  const [isSignUp, setIsSignUp] = useState<boolean>(true);
+  const [isSignUp, setIsSignUp] = useState<boolean>(params?.mode === 'signin' ? false : true);
   const [showForgotPassword, setShowForgotPassword] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [showPassword, setShowPassword] = useState<boolean>(false);
@@ -52,6 +54,11 @@ export default function AuthScreen() {
       return { ...prev, visible: false };
     });
   };
+
+  useEffect(() => {
+    if (params?.mode === 'signin') setIsSignUp(false);
+    else if (params?.mode === 'signup') setIsSignUp(true);
+  }, [params?.mode]);
 
   // No redirects - AppGate handles routing based on auth state
 

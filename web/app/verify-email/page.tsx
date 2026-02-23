@@ -53,9 +53,18 @@ function VerifyEmailContent() {
             <XCircle className="mx-auto h-16 w-16 text-red-500" />
             <h1 className="mt-4 font-display text-xl font-bold text-slate-900">Invalid or missing link</h1>
             <p className="mt-2 text-slate-600">This verification link is invalid or has expired.</p>
-            <Link href="/sign-in" className="mt-6 inline-block rounded-xl bg-primary-600 px-6 py-3 font-semibold text-white hover:bg-primary-700">
-              Go to Sign in
-            </Link>
+            <div className="mt-6 flex flex-col gap-3">
+              <a
+                href={`${APP_SCHEME}sign-in`}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 px-6 py-3 font-semibold text-white hover:bg-primary-700"
+              >
+                <Smartphone className="h-5 w-5" />
+                Open App to Sign In
+              </a>
+              <Link href="/sign-in" className="text-sm text-slate-600 hover:text-primary-600">
+                Sign in on web instead
+              </Link>
+            </div>
           </div>
         </main>
         <Footer />
@@ -87,9 +96,18 @@ function VerifyEmailContent() {
             <XCircle className="mx-auto h-16 w-16 text-red-500" />
             <h1 className="mt-4 font-display text-xl font-bold text-slate-900">Link invalid or expired</h1>
             <p className="mt-2 text-slate-600">This verification link is no longer valid. Request a new one from the app.</p>
-            <Link href="/sign-in" className="mt-6 inline-block rounded-xl bg-primary-600 px-6 py-3 font-semibold text-white hover:bg-primary-700">
-              Open App to Sign In
-            </Link>
+            <div className="mt-6 flex flex-col gap-3">
+              <a
+                href={`${APP_SCHEME}sign-in`}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 px-6 py-3 font-semibold text-white hover:bg-primary-700"
+              >
+                <Smartphone className="h-5 w-5" />
+                Open App to Sign In
+              </a>
+              <Link href="/sign-in" className="text-sm text-slate-600 hover:text-primary-600">
+                Sign in on web instead
+              </Link>
+            </div>
           </div>
         </main>
         <Footer />

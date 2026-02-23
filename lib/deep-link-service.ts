@@ -134,6 +134,7 @@ export function parseDeepLink(url: string): ParsedDeepLink | null {
 /**
  * Our app-controlled verify/reset links (token in query). These go to app routes, NOT auth-callback.
  * Returns the app path with token query, or null.
+ * Handles: reset-password?token=, verify-email?token=, auth-callback?type=recovery&token=
  */
 export function getCustomVerifyOrResetRoute(url: string): string | null {
   if (!url || typeof url !== 'string') return null;
@@ -145,6 +146,13 @@ export function getCustomVerifyOrResetRoute(url: string): string | null {
   }
   if (parsed.rawUrl.toLowerCase().includes('verify-email') || parsed.rawUrl.toLowerCase().includes('verify_email')) {
     return `/verify-email?token=${encodeURIComponent(token)}`;
+  }
+  // Password reset email "Open in App" uses committed://auth-callback?type=recovery&token=xxx
+  if (
+    parsed.rawUrl.toLowerCase().includes('auth-callback') &&
+    (parsed.params.type === 'recovery' || parsed.rawUrl.toLowerCase().includes('type=recovery'))
+  ) {
+    return `/reset-password?token=${encodeURIComponent(token)}`;
   }
   return null;
 }

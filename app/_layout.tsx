@@ -45,6 +45,9 @@ function RootLayoutNav() {
       if (initial) {
         const customRoute = getCustomVerifyOrResetRoute(initial);
         if (customRoute) {
+          if (customRoute.startsWith('/reset-password') || initial.includes('type=recovery')) {
+            setPendingPasswordRecovery(true);
+          }
           router.replace(customRoute as any);
         } else if (isAuthLink(initial)) {
           if (initial.includes("type=recovery")) setPendingPasswordRecovery(true);
@@ -70,6 +73,9 @@ function RootLayoutNav() {
     const sub = Linking.addEventListener("url", ({ url }) => {
       const customRoute = getCustomVerifyOrResetRoute(url);
       if (customRoute) {
+        if (customRoute.startsWith('/reset-password') || url.includes('type=recovery')) {
+          setPendingPasswordRecovery(true);
+        }
         router.replace(customRoute as any);
       } else if (isAuthLink(url)) {
         if (url.includes("type=recovery")) setPendingPasswordRecovery(true);
@@ -94,6 +100,9 @@ function StackContent() {
       <Stack screenOptions={{ headerBackTitle: "Back" }}>
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="auth" options={{ headerShown: false }} />
+        <Stack.Screen name="sign-in" options={{ headerShown: false }} />
+        <Stack.Screen name="sign-up" options={{ headerShown: false }} />
+        <Stack.Screen name="signup" options={{ headerShown: false }} />
         <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false, presentation: "fullScreenModal" }} />
         <Stack.Screen name="verify-email" options={{ headerShown: false }} />

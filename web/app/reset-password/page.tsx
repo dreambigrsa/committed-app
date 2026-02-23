@@ -7,11 +7,49 @@ import { Lock, CheckCircle, XCircle, Loader2, Smartphone } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { SITE_URL } from '@/lib/env';
-import { APP_SCHEME } from '@/lib/appLinks';
+import { APP_SCHEME, getMobileOS } from '@/lib/appLinks';
 
 type Status = 'form' | 'loading' | 'success' | 'error' | 'no-token';
 
 const MIN_PASSWORD_LENGTH = 6;
+
+function ResetPasswordSuccess() {
+  useEffect(() => {
+    const isMobile = getMobileOS() !== null;
+    if (isMobile) {
+      const t = setTimeout(() => {
+        window.location.href = `${APP_SCHEME}sign-in`;
+      }, 1500);
+      return () => clearTimeout(t);
+    }
+  }, []);
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <Navbar />
+      <main className="mx-auto flex min-h-[60vh] max-w-md flex-col justify-center px-4 py-16">
+        <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-xl text-center">
+          <CheckCircle className="mx-auto h-16 w-16 text-green-500" />
+          <h1 className="mt-4 font-display text-xl font-bold text-slate-900">Password updated</h1>
+          <p className="mt-2 text-slate-600">Sign in with your new password in the app.</p>
+          <div className="mt-6 flex flex-col gap-3">
+            <a
+              href={`${APP_SCHEME}sign-in`}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 px-6 py-3 font-semibold text-white hover:bg-primary-700"
+            >
+              <Smartphone className="h-5 w-5" />
+              Open App to Sign In
+            </a>
+            <Link href="/download" className="text-sm text-slate-600 hover:text-primary-600">
+              Don&apos;t have the app? Download it here
+            </Link>
+          </div>
+        </div>
+      </main>
+      <Footer />
+    </div>
+  );
+}
 
 function ResetPasswordContent() {
   const searchParams = useSearchParams();
@@ -129,27 +167,7 @@ function ResetPasswordContent() {
 
   if (status === 'success') {
     return (
-      <div className="min-h-screen bg-slate-50">
-        <Navbar />
-        <main className="mx-auto flex min-h-[60vh] max-w-md flex-col justify-center px-4 py-16">
-          <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-xl text-center">
-            <CheckCircle className="mx-auto h-16 w-16 text-green-500" />
-            <h1 className="mt-4 font-display text-xl font-bold text-slate-900">Password updated</h1>
-            <p className="mt-2 text-slate-600">Sign in with your new password in the app.</p>
-            <a
-              href={`${APP_SCHEME}sign-in`}
-              className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 px-6 py-3 font-semibold text-white hover:bg-primary-700"
-            >
-              <Smartphone className="h-5 w-5" />
-              Open App to Sign In
-            </a>
-            <Link href="/download" className="mt-4 block text-sm text-slate-600 hover:text-primary-600">
-              Download the app
-            </Link>
-          </div>
-        </main>
-        <Footer />
-      </div>
+      <ResetPasswordSuccess />
     );
   }
 

@@ -20,13 +20,16 @@ type ParsedParams = {
 };
 
 function parseAuthParams(searchParams: URLSearchParams, hash: string): ParsedParams {
-  const type = searchParams.get('type') as 'verify' | 'recovery' | null;
+  let type = searchParams.get('type') as 'verify' | 'recovery' | null;
   let token = searchParams.get('token') || searchParams.get('access_token');
   const code = searchParams.get('code');
 
   if (hash) {
     const hashParams = new URLSearchParams(hash.replace(/^#/, ''));
     token = token || hashParams.get('access_token') || hashParams.get('token');
+    const hashType = hashParams.get('type');
+    if (hashType === 'signup') type = 'verify'; // Supabase confirms with type=signup; treat as verify success
+    if (!type && (hashType === 'verify' || hashType === 'recovery')) type = hashType as 'verify' | 'recovery';
   }
 
   let access_token: string | null = null;
@@ -162,6 +165,13 @@ function AuthCallbackContent() {
     }
 
     if (type === 'verify') {
+      const hash = typeof window !== 'undefined' ? window.location.hash : '';
+      const hashParams = hash ? new URLSearchParams(hash.replace(/^#/, '')) : null;
+      const isSupabaseSignup = hashParams?.get('type') === 'signup' && hashParams?.get('access_token');
+      if (isSupabaseSignup) {
+        setStatus('success');
+        return;
+      }
       runVerify(token);
     }
   }, [searchParams, router, runVerify]);

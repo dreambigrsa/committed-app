@@ -38,8 +38,18 @@ export async function GET(req: NextRequest) {
 
     await supabase.from('auth_tokens').update({ used_at: new Date().toISOString() }).eq('id', row.id);
 
-    const profileId = row.user_id;
-    if (profileId) {
+    let userId = row.user_id;
+    if (!userId) {
+      const { data: byEmail } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', row.email)
+        .limit(1)
+        .maybeSingle();
+      userId = byEmail?.id ?? null;
+    }
+
+    if (userId) {
       await supabase
         .from('profiles')
         .update({
@@ -47,24 +57,8 @@ export async function GET(req: NextRequest) {
           verified_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq('id', profileId);
-    } else {
-      const { data: byEmail } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('email', row.email)
-        .limit(1)
-        .maybeSingle();
-      if (byEmail?.id) {
-        await supabase
-          .from('profiles')
-          .update({
-            is_verified: true,
-            verified_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', byEmail.id);
-      }
+        .eq('id', userId);
+      await supabase.auth.admin.updateUserById(userId, { email_confirm: true });
     }
 
     return NextResponse.json({ ok: true }, { status: 200 });

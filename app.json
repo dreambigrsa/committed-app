@@ -64,7 +64,7 @@
       [
         "expo-router",
         {
-          "origin": "https://committed-5mxf.onrender.com"
+          "origin": "https://committed.dreambig.org.za"
         }
       ],
       "expo-asset",
@@ -111,7 +111,7 @@
     },
     "extra": {
       "router": {
-        "origin": "https://committed-5mxf.onrender.com"
+        "origin": "https://committed.dreambig.org.za"
       },
       "openaiApiKey": {},
       "eas": {

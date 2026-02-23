@@ -85,8 +85,8 @@ export async function POST(req: NextRequest) {
 
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://committed.dreambig.org.za';
     const appScheme = process.env.NEXT_PUBLIC_DEEPLINK_SCHEME || 'committed://';
-    const verifyUrl = `${siteUrl}/auth-callback?type=verify&token=${encodeURIComponent(rawToken)}`;
-    const deepLink = `${appScheme}auth-callback?type=verify&token=${encodeURIComponent(rawToken)}`;
+    const verifyUrl = `${siteUrl}/verify-email?token=${encodeURIComponent(rawToken)}`;
+    const deepLink = `${appScheme}verify-email?token=${encodeURIComponent(rawToken)}`;
 
     const resendApiKey = process.env.RESEND_API_KEY;
     if (!resendApiKey) {

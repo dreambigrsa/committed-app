@@ -7,13 +7,18 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const SCHEME = 'committed';
 
+const DEFAULT_WEB_ORIGIN = 'https://committed.dreambig.org.za';
+
 function getWebOriginDefault(): string {
   if (typeof globalThis !== 'undefined' && (globalThis as any).location?.origin)
     return (globalThis as any).location.origin;
-  return (process.env.EXPO_PUBLIC_WEB_ORIGIN ?? '').trim();
+  const env =
+    (process.env.EXPO_PUBLIC_SITE_URL ?? process.env.EXPO_PUBLIC_APP_WEB_URL ?? process.env.EXPO_PUBLIC_WEB_ORIGIN ?? '').trim();
+  return env || DEFAULT_WEB_ORIGIN;
 }
 const PENDING_LINK_KEY = '@committed/pending_deep_link';
 const INTENDED_ROUTE_KEY = '@committed/intended_route';
+let intendedRouteSync: string | null = null;
 const DEBUG = __DEV__;
 
 export type DeepLinkType = 'referral' | 'post' | 'reel' | 'verify-email' | 'auth-callback' | 'unknown';
@@ -51,7 +56,7 @@ export function parseDeepLink(url: string): ParsedDeepLink | null {
   if (!url || typeof url !== 'string') return null;
   try {
     const rawUrl = url;
-    const base = getWebOriginDefault() || 'https://committed.app';
+    const base = getWebOriginDefault();
     // Normalize committed:// and exp:// (Expo dev) so URL() can parse; preserve hash/query
     let normalized = url
       .replace(/^committed:\/\//i, `${base}/`)
@@ -64,10 +69,17 @@ export function parseDeepLink(url: string): ParsedDeepLink | null {
     const params: Record<string, string> = {};
     u.searchParams.forEach((v, k) => { params[k] = v; });
     if (u.hash) {
-      u.hash.replace(/^#/, '').split('&').forEach((pair) => {
-        const [k, v] = pair.split('=').map(decodeURIComponent);
-        if (k && v) params[k] = v;
-      });
+      try {
+        u.hash.replace(/^#/, '').split('&').forEach((pair) => {
+          const eq = pair.indexOf('=');
+          if (eq < 0) return;
+          const k = decodeURIComponent(pair.slice(0, eq)).trim();
+          const v = decodeURIComponent(pair.slice(eq + 1)).trim();
+          if (k && v) params[k] = v;
+        });
+      } catch {
+        // Ignore malformed hash
+      }
     }
 
     const pathLower = path.toLowerCase();
@@ -92,9 +104,11 @@ export function parseDeepLink(url: string): ParsedDeepLink | null {
     // Referral: path /referral or /referral/CODE, or query ref= / referral= (do not use code= to avoid OAuth clash)
     const refCode = params.ref || params.referral || (pathLower.startsWith('referral/') ? path.split('/')[1] : null);
     if (pathLower.startsWith('referral') || pathLower === 'referral' || refCode) {
-      const code = pathLower.startsWith('referral/') ? decodeURIComponent((path.split('/')[1] || '').trim()) : refCode;
-      if (code && code.length > 0) {
-        return { type: 'referral', referralCode: code, params: { ...params, ref: code }, rawUrl };
+      const code = pathLower.startsWith('referral/')
+        ? (() => { try { return decodeURIComponent((path.split('/')[1] || '').trim()); } catch { return path.split('/')[1]?.trim() || ''; } })()
+        : (refCode || '');
+      if (code && String(code).length > 0) {
+        return { type: 'referral', referralCode: String(code), params: { ...params, ref: String(code) }, rawUrl };
       }
     }
 
@@ -172,6 +186,7 @@ export function markDeepLinkHandled(url: string): void {
 }
 
 export async function getIntendedRoute(): Promise<string | null> {
+  if (intendedRouteSync) return intendedRouteSync;
   try {
     return await AsyncStorage.getItem(INTENDED_ROUTE_KEY);
   } catch {
@@ -180,6 +195,7 @@ export async function getIntendedRoute(): Promise<string | null> {
 }
 
 export async function setIntendedRoute(route: string): Promise<void> {
+  intendedRouteSync = route;
   try {
     await AsyncStorage.setItem(INTENDED_ROUTE_KEY, route);
     log('setIntendedRoute', route);
@@ -189,6 +205,7 @@ export async function setIntendedRoute(route: string): Promise<void> {
 }
 
 export async function clearIntendedRoute(): Promise<void> {
+  intendedRouteSync = null;
   try {
     await AsyncStorage.removeItem(INTENDED_ROUTE_KEY);
   } catch {
@@ -199,8 +216,7 @@ export async function clearIntendedRoute(): Promise<void> {
 // --- Build shareable links (app + web) ---
 
 export function getWebOrigin(): string {
-  const o = getWebOriginDefault();
-  return o || 'https://committed.app';
+  return getWebOriginDefault();
 }
 
 export function buildPostLink(postId: string): { app: string; web: string } {

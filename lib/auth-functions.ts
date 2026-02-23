@@ -41,10 +41,14 @@ export async function sendVerificationEmail(
     const base = getAuthApiBaseUrl();
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
-    const { data } = await fetchJson<{ success?: boolean; message?: string }>(
+    const { data, ok } = await fetchJson<{ success?: boolean; message?: string; error?: string }>(
       `${base}/api/auth/send-verification`,
       { method: "POST", headers, body: JSON.stringify(email ? { email } : {}) }
     );
+    if (!ok) {
+      const errMsg = (data as { error?: string }).error || (data as { message?: string }).message;
+      return { success: false, message: errMsg || 'Failed to send verification email.' };
+    }
     return { success: data.success === true, message: data.message };
   } catch (err) {
     return { success: false, message: normalizeFetchError(err) };

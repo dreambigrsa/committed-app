@@ -34,6 +34,7 @@ export default function VerifyEmailScreen() {
   const [tokenResult, setTokenResult] = useState<'idle' | 'success' | 'error'>('idle');
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
+  const hasAutoSentRef = useRef(false);
 
   // When opened with token (e.g. from email deep link): call API and show result
   useEffect(() => {
@@ -106,24 +107,30 @@ export default function VerifyEmailScreen() {
         }),
       ]).start();
 
-      // Get email from session immediately for display
-      const loadEmail = async () => {
+      // Get email from session and auto-send verification email once
+      const loadEmailAndAutoSend = async () => {
         if (!isMounted) return;
         try {
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user?.email) {
-            setEmail(session.user.email);
+            const userEmail = session.user.email;
+            setEmail(userEmail);
             setEmailLoaded(true);
+            // Auto-send verification email once when user lands (new signup)
+            if (!hasAutoSentRef.current) {
+              hasAutoSentRef.current = true;
+              sendVerificationEmail(session.access_token ?? null, userEmail).catch(() => {});
+            }
           }
         } catch (error) {
           console.error('Error loading email:', error);
           if (isMounted) {
-            setEmailLoaded(true); // Set to true even on error so screen shows
+            setEmailLoaded(true);
           }
         }
       };
-      
-      loadEmail();
+
+      loadEmailAndAutoSend();
       checkEmailVerification();
       
       // Check every 3 seconds if email is verified

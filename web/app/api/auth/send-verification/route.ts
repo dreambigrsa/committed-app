@@ -53,8 +53,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    let uid: string | null = null;
     const { data: profileRow } = await supabase.from('profiles').select('id').eq('email', email).limit(1).maybeSingle();
-    const uid = profileRow?.id ?? null;
+    if (profileRow?.id) uid = profileRow.id;
+    if (!uid) {
+      const { data: listData } = await supabase.auth.admin.listUsers({ page: 1, perPage: 500 });
+      const authUser = listData?.users?.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+      if (authUser?.id) uid = authUser.id;
+    }
 
     const rawToken = randomToken(32);
     const tokenHash = await hashToken(rawToken);
@@ -123,6 +129,8 @@ export async function POST(req: NextRequest) {
         { status: 500 }
       );
     }
+
+    console.info('[send-verification] Sent email', { resendId: data.id, toDomain: email.split('@')[1] });
 
     return NextResponse.json(
       { success: true, message: 'If this email is registered, you will receive a verification link.' },

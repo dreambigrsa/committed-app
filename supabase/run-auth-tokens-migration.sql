@@ -28,6 +28,21 @@ SELECT id, email, false, NULL
 FROM auth.users
 ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, updated_at = now();
 
+-- Trigger: auto-create profile when new user signs up
+CREATE OR REPLACE FUNCTION public.handle_new_profile()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, email, is_verified, verified_at)
+  VALUES (NEW.id, COALESCE(NEW.email, ''), false, NULL)
+  ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+DROP TRIGGER IF EXISTS on_auth_user_created_profile ON auth.users;
+CREATE TRIGGER on_auth_user_created_profile
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_profile();
+
 -- 2) AUTH_TOKENS
 CREATE TABLE IF NOT EXISTS public.auth_tokens (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

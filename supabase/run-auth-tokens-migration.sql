@@ -2,6 +2,7 @@
 -- Creates auth_tokens table (and profiles if missing) for password reset & verification emails
 
 -- 1) PROFILES (if not exists)
+-- Sync existing auth.users into profiles so password reset can find user_id
 CREATE TABLE IF NOT EXISTS public.profiles (
   id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email text,
@@ -20,6 +21,12 @@ DROP POLICY IF EXISTS "Service role full access profiles" ON public.profiles;
 CREATE POLICY "Service role full access profiles" ON public.profiles
   FOR ALL USING (auth.jwt() ->> 'role' = 'service_role')
   WITH CHECK (auth.jwt() ->> 'role' = 'service_role');
+
+-- Sync auth.users into profiles (for users created before this migration)
+INSERT INTO public.profiles (id, email, is_verified, verified_at)
+SELECT id, email, false, NULL
+FROM auth.users
+ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, updated_at = now();
 
 -- 2) AUTH_TOKENS
 CREATE TABLE IF NOT EXISTS public.auth_tokens (

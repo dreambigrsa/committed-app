@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
 
     const { data: row, error: fetchErr } = await supabase
       .from('auth_tokens')
-      .select('id, user_id, used_at, expires_at')
+      .select('id, user_id, email, used_at, expires_at')
       .eq('token_hash', tokenHash)
       .eq('type', 'reset_password')
       .maybeSingle();
@@ -49,7 +49,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'Link expired' }, { status: 400 });
     }
 
-    const userId = row.user_id;
+    let userId = row.user_id;
+    if (!userId && row.email) {
+      const { data: listData } = await supabase.auth.admin.listUsers({ page: 1, perPage: 500 });
+      const authUser = listData?.users?.find((u) => u.email?.toLowerCase() === row.email.toLowerCase());
+      if (authUser?.id) userId = authUser.id;
+    }
     if (!userId) {
       return NextResponse.json({ ok: false, error: 'Invalid or expired link' }, { status: 400 });
     }

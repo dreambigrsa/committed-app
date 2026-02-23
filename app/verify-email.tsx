@@ -10,11 +10,13 @@ import {
   ScrollView,
   Animated,
   Platform,
+  AppState,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { Mail, CheckCircle, ArrowLeft, RefreshCw, Sparkles, Shield, Heart } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useApp } from '@/contexts/AppContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { sendVerificationEmail, verifyEmailToken } from '@/lib/auth-functions';
@@ -24,6 +26,7 @@ export default function VerifyEmailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ token?: string }>();
   useApp(); // For app context availability
+  const { refreshSession } = useAuth();
   const { colors: themeColors } = useTheme();
   const [isChecking, setIsChecking] = useState(true);
   const [isVerified, setIsVerified] = useState(false);
@@ -71,6 +74,7 @@ export default function VerifyEmailScreen() {
     if (hasToken) return; // Token flow handled in separate effect
 
     let interval: ReturnType<typeof setInterval> | null = null;
+    let appStateSub: { remove?: () => void } | null = null;
     let isMounted = true;
 
     const checkVerified = async () => {
@@ -132,7 +136,14 @@ export default function VerifyEmailScreen() {
 
       loadEmailAndAutoSend();
       checkEmailVerification();
-      
+
+      // Check immediately when app comes back to foreground (user verified in browser, then returned)
+      appStateSub = AppState.addEventListener('change', (nextState: string) => {
+        if (nextState === 'active' && isMounted) {
+          checkEmailVerification();
+        }
+      });
+
       // Check every 3 seconds if email is verified
       interval = setInterval(() => {
         if (isMounted) {
@@ -144,9 +155,8 @@ export default function VerifyEmailScreen() {
     // Cleanup
     return () => {
       isMounted = false;
-      if (interval) {
-        clearInterval(interval);
-      }
+      if (interval) clearInterval(interval);
+      appStateSub?.remove?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional mount-only effect, checkEmailVerification/fadeAnim/slideAnim are stable
   }, []);
@@ -160,7 +170,10 @@ export default function VerifyEmailScreen() {
         const { data: profile } = await supabase.from('profiles').select('is_verified').eq('id', currentSession.user.id).maybeSingle();
         const verified = !!profile?.is_verified;
         setIsVerified(verified);
-        if (verified) supabase.auth.refreshSession().catch(() => {});
+        if (verified) {
+          supabase.auth.refreshSession().catch(() => {});
+          refreshSession().catch(() => {});
+        }
         else if (showMessage) alert('Email not verified yet.\n\nCheck your inbox and click the verification link. If you just clicked it, wait a few seconds.');
       } else {
         if (showMessage) { alert('Session expired. Please log in again.'); router.replace('/auth'); }

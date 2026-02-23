@@ -42,6 +42,10 @@ Or apply `supabase/migrations/20250218000000_add_profiles_auth_tokens.sql` manua
 - `NEXT_PUBLIC_SITE_URL` = `https://committed.dreambig.org.za`
 - `NEXT_PUBLIC_SUPABASE_FUNCTIONS_BASE` = `https://<PROJECT_REF>.functions.supabase.co/functions/v1`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` = your Supabase anon key
+- `SUPABASE_URL` = your Supabase project URL
+- `SUPABASE_SERVICE_ROLE_KEY` = your Supabase service role key (for auth API routes)
+- `RESEND_API_KEY` = your Resend API key (required for password reset & verification emails)
+- `RESEND_FROM_EMAIL` = **Must match your verified Resend domain.** For `dreambig.org.za` use `Committed <noreply@dreambig.org.za>`. Subdomains like `committed.dreambig.org.za` need separate verification. `noreply@resend.dev` is for testing only and may not deliver.
 - `NEXT_PUBLIC_DEEPLINK_SCHEME` = `committed://`
 - `NEXT_PUBLIC_PLAY_STORE_URL` = (optional) Google Play app URL
 - `NEXT_PUBLIC_APP_STORE_URL` = (optional) App Store URL

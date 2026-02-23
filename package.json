@@ -3,9 +3,11 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "start": "bunx expo start --tunnel",
-    "start-web": "bunx expo start --web --tunnel",
-    "start-web-dev": "DEBUG=expo* bunx expo start --web --tunnel",
+    "start": "npx expo start",
+    "start:tunnel": "npx expo start --tunnel",
+    "start:web": "npx expo start --web",
+    "start-web": "npx expo start --web --tunnel",
+    "start-web-dev": "DEBUG=expo* npx expo start --web --tunnel",
     "lint": "expo lint",
     "start:api": "tsx backend/server.ts"
   },

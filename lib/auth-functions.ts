@@ -75,8 +75,9 @@ export async function requestPasswordReset(email: string): Promise<{ success: bo
         body: JSON.stringify({ email }),
       }
     );
-    if (!ok && (data as { error?: string }).error) {
-      return { success: false, message: (data as { error: string }).error };
+    if (!ok) {
+      const errMsg = (data as { error?: string }).error || (data as { message?: string }).message;
+      return { success: false, message: errMsg || 'Failed to send reset link.' };
     }
     return { success: data.success === true, message: data.message };
   } catch (err) {

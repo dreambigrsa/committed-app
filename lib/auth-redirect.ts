@@ -12,7 +12,7 @@ const DEEP_LINK_SCHEME = 'committed';
 function getWebOrigin(): string {
   if (typeof globalThis !== 'undefined' && (globalThis as any).location?.origin)
     return (globalThis as any).location.origin;
-  return (process.env.EXPO_PUBLIC_WEB_ORIGIN ?? '').trim() || 'https://committed.app';
+  return (process.env.EXPO_PUBLIC_WEB_ORIGIN ?? '').trim() || 'https://committed.dreambig.org.za';
 }
 
 /**

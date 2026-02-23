@@ -13,6 +13,7 @@ export default function LegalPage() {
 
   useEffect(() => {
     if (slug) loadDocument();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadDocument depends on slug which is in deps
   }, [slug]);
 
   const loadDocument = async () => {

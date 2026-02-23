@@ -6,7 +6,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import LegalAcceptanceModal from './LegalAcceptanceModal';
 import { LegalDocument } from '@/types';
 import { checkUserLegalAcceptances } from '@/lib/legal-enforcement';
-import { supabase } from '@/lib/supabase';
 
 export default function LegalAcceptanceEnforcer() {
   const { currentUser, legalAcceptanceStatus, setLegalAcceptanceStatus } = useApp();
@@ -155,6 +154,7 @@ export default function LegalAcceptanceEnforcer() {
       });
       return () => { cancelled = true; };
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setLegalAcceptanceStatus/updateUser from context are stable
   }, [currentUser, legalAcceptanceStatus, isViewingDocument, isOnResetPassword, isOnLegalRoute]);
 
   const showModal = Boolean(

@@ -122,6 +122,7 @@ export default function ResetPasswordScreen() {
     },
   });
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for future error handling
   const clearLoadingAndShowError = (title: string, message: string) => {
     setIsLoading(false);
     setMessageModal({ visible: true, variant: 'error', title, message });

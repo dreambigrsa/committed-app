@@ -213,6 +213,7 @@ export default function UserProfileScreen() {
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for future last-seen display
   const _getLastSeenText = (lastActive: string) => {
     const now = new Date();
     const lastSeen = new Date(lastActive);
@@ -249,8 +250,6 @@ export default function UserProfileScreen() {
   const photos = profile.photos || [];
   const videos = profile.videos || [];
   const primaryPhoto = photos.find((p: any) => p.is_primary) || photos[0];
-  const _displayPhotos = photos.slice(0, 6);
-
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}

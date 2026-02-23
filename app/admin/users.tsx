@@ -74,7 +74,7 @@ export default function AdminUsersScreen() {
                   .limit(1);
                 
                 isBanned = !!(restrictions && restrictions.length > 0);
-              } catch (_err) {
+              } catch {
                 // If we can't check restrictions, rely on database field
                 console.log('Could not check restrictions for user:', u.id);
               }
@@ -254,7 +254,7 @@ export default function AdminUsersScreen() {
 
       Alert.alert('Success', `User ${verificationType} verified`);
       loadUsers();
-    } catch (_error) {
+    } catch {
       Alert.alert('Error', 'Failed to verify user');
     }
   };
@@ -331,7 +331,7 @@ export default function AdminUsersScreen() {
               await supabase.from('users').update({ role: 'user' }).eq('id', userId);
               Alert.alert('Success', 'Role updated to User');
               loadUsers();
-            } catch (_error) {
+            } catch {
               Alert.alert('Error', 'Failed to update role');
             }
           },
@@ -343,7 +343,7 @@ export default function AdminUsersScreen() {
               await supabase.from('users').update({ role: 'moderator' }).eq('id', userId);
               Alert.alert('Success', 'Role updated to Moderator');
               loadUsers();
-            } catch (_error) {
+            } catch {
               Alert.alert('Error', 'Failed to update role');
             }
           },
@@ -355,7 +355,7 @@ export default function AdminUsersScreen() {
               await supabase.from('users').update({ role: 'admin' }).eq('id', userId);
               Alert.alert('Success', 'Role updated to Admin');
               loadUsers();
-            } catch (_error) {
+            } catch {
               Alert.alert('Error', 'Failed to update role');
             }
           },
@@ -367,7 +367,7 @@ export default function AdminUsersScreen() {
               await supabase.from('users').update({ role: 'super_admin' }).eq('id', userId);
               Alert.alert('Success', 'Role updated to Super Admin');
               loadUsers();
-            } catch (_error) {
+            } catch {
               Alert.alert('Error', 'Failed to update role');
             }
           },

@@ -199,7 +199,7 @@ export default function AdReceiptScreen() {
         UTI: '.pdf',
         mimeType: 'application/pdf',
       });
-    } catch (_error) {
+    } catch {
       Alert.alert('Error', 'Unable to generate receipt PDF.');
     }
   };

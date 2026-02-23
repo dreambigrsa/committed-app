@@ -80,8 +80,10 @@ export default function CreateStatusScreen() {
   const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);
   const [showVideoTrimmer, setShowVideoTrimmer] = useState(false);
   const [videoToTrim, setVideoToTrim] = useState<MediaLibrary.Asset | null>(null);
-  const [, _setTrimStartTime] = useState(0);
-  const [, _setTrimEndTime] = useState(15);
+  /* eslint-disable @typescript-eslint/no-unused-vars -- trim setters kept for future video trimmer UI */
+  const [, setTrimStartTime] = useState(0);
+  const [, setTrimEndTime] = useState(15);
+  /* eslint-enable @typescript-eslint/no-unused-vars */
   const [textStyle, setTextStyle] = useState<FontStyle>('classic');
   const [textEffect, setTextEffect] = useState<TextEffect>('default');
   const [textAlignment, setTextAlignment] = useState<TextAlignment>('center');
@@ -2082,6 +2084,7 @@ export default function CreateStatusScreen() {
     return styles;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for future effect preview
   function _getEffectPreviewStyle(effect: TextEffect) {
     const styles: any = {
       fontSize: 24,

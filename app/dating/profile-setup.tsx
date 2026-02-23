@@ -349,6 +349,7 @@ export default function ProfileSetupScreen() {
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for future video picker UI
   const _handlePickVideo = async () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();

@@ -110,7 +110,7 @@ export default function PostDeepLinkScreen() {
             const userQuery = supabase.from('users').select('full_name, profile_picture').eq('id', userId).maybeSingle();
             const { data: u } = await fetchWithTimeout(userQuery, 5000);
             userData = u;
-          } catch (_) {
+          } catch {
             userData = null;
           }
         }
@@ -164,7 +164,7 @@ export default function PostDeepLinkScreen() {
           const { data: userLike } = await supabase.from('post_likes').select('id').eq('post_id', postId).eq('user_id', currentUser.id).maybeSingle();
           setIsLiked(!!userLike);
         }
-      } catch (_) {}
+      } catch {}
     })();
     return () => { cancelled = true; };
   }, [post?.id, postId, currentUser?.id]);
@@ -220,7 +220,7 @@ export default function PostDeepLinkScreen() {
           c.replies = byParent[c.id] || [];
         });
         if (!cancelled) setComments(topLevel);
-      } catch (_) {
+      } catch {
         if (!cancelled) setComments([]);
       } finally {
         if (!cancelled) setCommentsLoading(false);
@@ -327,7 +327,7 @@ export default function PostDeepLinkScreen() {
       });
       topLevel.forEach((c) => { c.replies = byParent[c.id] || []; });
       setComments(topLevel);
-    } catch (_) {}
+    } catch {}
     finally {
       setSubmittingComment(false);
     }

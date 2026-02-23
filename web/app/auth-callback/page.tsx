@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { XCircle, Loader2, CheckCircle, Smartphone, QrCode, Download } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { FUNCTIONS_BASE, SUPABASE_ANON_KEY } from '@/lib/env';
+import { SITE_URL } from '@/lib/env';
 import { APP_SCHEME, getMobileOS } from '@/lib/appLinks';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -132,10 +132,10 @@ function AuthCallbackContent() {
 
   const runVerify = useCallback(
     async (token: string) => {
-      const base = FUNCTIONS_BASE.replace(/\/$/, '');
-      const url = `${base}/verify-email?token=${encodeURIComponent(token)}`;
+      const base = (SITE_URL || '').replace(/\/$/, '') || (typeof window !== 'undefined' ? window.location.origin : '');
+      const url = `${base}/api/auth/verify-email?token=${encodeURIComponent(token)}`;
       try {
-        const res = await fetch(url, { method: 'GET', headers: { apikey: SUPABASE_ANON_KEY } });
+        const res = await fetch(url, { method: 'GET' });
         const data = await res.json().catch(() => ({}));
         setStatus(data.ok === true ? 'success' : 'error');
       } catch {
@@ -168,11 +168,11 @@ function AuthCallbackContent() {
   const handleResendVerification = async () => {
     if (!resendEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(resendEmail)) return;
     setResending(true);
-    const base = FUNCTIONS_BASE.replace(/\/$/, '');
+    const base = (SITE_URL || '').replace(/\/$/, '') || (typeof window !== 'undefined' ? window.location.origin : '');
     try {
-      await fetch(`${base}/send-verification`, {
+      await fetch(`${base}/api/auth/send-verification`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: resendEmail }),
       });
     } catch {

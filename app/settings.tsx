@@ -61,7 +61,7 @@ export default function SettingsScreen() {
   const { currentUser, deleteAccount, getCurrentUserRelationship, endRelationship, updateUserProfile, updateUserStatus, updateStatusPrivacy } = useApp();
   const [legalDocuments, setLegalDocuments] = useState<LegalDocument[]>([]);
   const { colors, isDark, setThemeMode, loadThemePreference, saveThemePreference, visualTheme, loadVisualTheme, saveVisualTheme } = useTheme();
-  const { language, setLanguage: _setLanguageContext, loadLanguagePreference, saveLanguagePreference, t } = useLanguage();
+  const { language, loadLanguagePreference, saveLanguagePreference, t } = useLanguage();
   const relationship = getCurrentUserRelationship();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -623,6 +623,7 @@ export default function SettingsScreen() {
 
   // Language and theme are now saved via their respective context functions
   // This function is kept for backward compatibility but is no longer used
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _saveAppPreferences = async () => {
     // No-op: Language saved via saveLanguagePreference, theme via saveVisualTheme
   };

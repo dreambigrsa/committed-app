@@ -250,11 +250,6 @@ export default function DatingSwipeCard({
     
     stopAllAnimations();
     
-    // Get current values before resetting (used for animation from current pos)
-    const _currentX = (position.x as any)._value || 0;
-    const _currentY = (position.y as any)._value || 0;
-    const _currentRotate = (rotate as any)._value || 0;
-    
     // Use spring animation for smoother feel
     requestAnimationFrame(() => {
       try {
@@ -443,12 +438,14 @@ export default function DatingSwipeCard({
     extrapolate: 'clamp',
   });
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for future photo nav
   const _nextPhoto = () => {
     if (photos.length > 1) {
       setCurrentPhotoIndex((prev) => (prev + 1) % photos.length);
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for future photo nav
   const _prevPhoto = () => {
     if (photos.length > 1) {
       setCurrentPhotoIndex((prev) => (prev - 1 + photos.length) % photos.length);

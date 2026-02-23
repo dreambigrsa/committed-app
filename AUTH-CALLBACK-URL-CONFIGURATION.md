@@ -10,7 +10,7 @@ The auth callback URL is where Supabase redirects users after they:
 
 Your app supports **both** native (mobile) and web. The redirect URL is chosen per platform:
 - **Native (iOS/Android):** `committed://auth-callback` — opens the mobile app
-- **Web:** `https://committed-5mxf.onrender.com/auth-callback` — stays in browser
+- **Web:** `https://committed.dreambig.org.za/auth-callback` — stays in browser
 
 ---
 
@@ -18,7 +18,7 @@ Your app supports **both** native (mobile) and web. The redirect URL is chosen p
 
 **Scheme:** `committed`  
 **Native:** `committed://auth-callback`  
-**Web:** `https://committed-5mxf.onrender.com/auth-callback`
+**Web:** `https://committed.dreambig.org.za/auth-callback`
 
 ---
 
@@ -28,9 +28,9 @@ Your app supports **both** native (mobile) and web. The redirect URL is chosen p
 
 1. Go to **Supabase Dashboard**
 2. Navigate to: **Authentication → URL Configuration**
-3. Set **Site URL** to (use web URL so desktop users can verify via browser):
+3. Set **Site URL** to:
    ```
-   https://committed-5mxf.onrender.com/auth-callback
+   https://committed.dreambig.org.za
    ```
 
 ### Step 2: Add Redirect URLs
@@ -39,17 +39,17 @@ In the same section, add **all** of these **Redirect URLs**:
 
 ```
 committed://auth-callback
-https://committed-5mxf.onrender.com/auth-callback
-https://committed-5mxf.onrender.com
-https://committed-5mxf.onrender.com/reset-password
+https://committed.dreambig.org.za/auth-callback
+https://committed.dreambig.org.za
+https://committed.dreambig.org.za/reset-password
 committed://*
 ```
 
 **Why multiple URLs?**
 - `committed://auth-callback` - Native app deep link (email link on phone opens app)
-- `https://committed-5mxf.onrender.com/auth-callback` - Web app (email link on desktop)
-- `https://committed-5mxf.onrender.com` - Web root (password reset may land here with hash; app redirects to auth-callback then reset-password)
-- `https://committed-5mxf.onrender.com/reset-password` - Web reset page (allowed redirect target)
+- `https://committed.dreambig.org.za/auth-callback` - Web auth callback (verify/reset links)
+- `https://committed.dreambig.org.za` - Web root
+- `https://committed.dreambig.org.za/reset-password` - Web reset page
 - `committed://*` - Wildcard for native app flexibility
 
 ---
@@ -93,7 +93,7 @@ Your app is already configured correctly:
 ### Both URLs Are Required
 
 - **Native app:** Use `committed://auth-callback` — opens the mobile app when user clicks link on phone
-- **Web app:** Use `https://committed-5mxf.onrender.com/auth-callback` — when user clicks link on desktop, they stay in browser and get logged in
+- **Web app:** Use `https://committed.dreambig.org.za/auth-callback` — when user clicks link on desktop, they stay in browser and get logged in
 
 The app picks the correct URL automatically via `getAuthRedirectUrl()` in `lib/auth-redirect.ts`.
 
@@ -150,8 +150,8 @@ The app picks the correct URL automatically via `getAuthRedirectUrl()` in `lib/a
 | Setting | Value |
 |---------|-------|
 | **App Scheme** | `committed` |
-| **Supabase Site URL** | `https://committed-5mxf.onrender.com/auth-callback` |
-| **Supabase Redirect URLs** | `committed://auth-callback`, `https://committed-5mxf.onrender.com/auth-callback`, `committed://*` |
+| **Supabase Site URL** | `https://committed.dreambig.org.za` |
+| **Supabase Redirect URLs** | `committed://auth-callback`, `https://committed.dreambig.org.za/auth-callback`, `https://committed.dreambig.org.za`, `https://committed.dreambig.org.za/reset-password`, `committed://*` |
 
 ---
 

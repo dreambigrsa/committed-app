@@ -227,7 +227,7 @@ function OtherUserStoryCard({
     },
   });
 
-  // Helper functions for text styling
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- helper kept for future text styling
   const _getTextStyle = (textStyle: string = 'classic') => {
     const fontSize = textStyle === 'typewriter' ? 10 : textStyle === 'elegant' ? 12 : 11;
     const baseStyle: any = {
@@ -248,6 +248,7 @@ function OtherUserStoryCard({
     return baseStyle;
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- helper kept for future text effect styling
   const _getTextEffectStyle = (
     textEffect: string = 'default',
     backgroundColor: string = '#1A73E8'
@@ -275,7 +276,6 @@ function OtherUserStoryCard({
     return styles;
   };
 
-  const _hasMedia = status.media_path && (status.content_type === 'image' || status.content_type === 'video');
   const displayText = status.text_content || '';
   const truncatedText = displayText.length > 30 ? displayText.substring(0, 30) + '...' : displayText;
 
@@ -539,7 +539,6 @@ function YourStoryCard({
     },
   });
 
-  // Helper functions for text styling
   const _getTextStyle = (textStyle: string = 'classic') => {
     const fontSize = textStyle === 'typewriter' ? 10 : textStyle === 'elegant' ? 12 : 11;
     const baseStyle: any = {

@@ -485,7 +485,7 @@ export default function AuthScreen() {
               // Fallback to index if we can't get user
               router.replace('/');
             }
-          } catch (_error) {
+          } catch {
             // If error, fallback to index
             router.replace('/');
           }

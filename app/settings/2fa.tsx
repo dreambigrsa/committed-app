@@ -27,7 +27,8 @@ export default function TwoFactorAuthScreen() {
   const [secret, setSecret] = useState<string | null>(null);
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
   const [verificationCode, setVerificationCode] = useState('');
-  const [, _setShowBackupCodes] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- setter kept for future backup codes UI
+  const [, setShowBackupCodes] = useState(false);
 
   useEffect(() => {
     load2FAStatus();

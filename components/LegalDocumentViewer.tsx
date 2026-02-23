@@ -5,11 +5,10 @@ import {
   StyleSheet,
   ScrollView,
   SafeAreaView,
-  TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
-import { ArrowLeft, FileText, Calendar, Tag, Shield } from 'lucide-react-native';
+import { Stack } from 'expo-router';
+import { FileText, Calendar, Tag, Shield } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { LegalDocument } from '@/types';
 
@@ -21,7 +20,6 @@ interface LegalDocumentViewerProps {
 }
 
 export default function LegalDocumentViewer({ document, isLoading, fromAcceptance }: LegalDocumentViewerProps) {
-  const router = useRouter();
   const { colors } = useTheme();
   const styles = createStyles(colors);
 
@@ -194,7 +192,7 @@ export default function LegalDocumentViewer({ document, isLoading, fromAcceptanc
             case 'h5':
             case 'h6':
               if (currentHeading) {
-                const level = parseInt(tagName.charAt(1)) || 1;
+                const level = headingLevel;
                 elements.push(
                   <Text
                     key={keyIndex++}

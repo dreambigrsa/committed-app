@@ -288,6 +288,8 @@ export default function ReelsScreen() {
   }, [requestedReelUnavailable]);
 
   useEffect(() => {
+    // Copy ref at effect run time for use in cleanup (ref may change before cleanup runs)
+    const refs = videoRefs.current;
     // Initialize: play first video if available
     if (reels.length > 0 && !currentReelId) {
       const firstReelId = reels[0]?.id;
@@ -304,8 +306,7 @@ export default function ReelsScreen() {
     }
     
     return () => {
-      // Cleanup: stop all videos on unmount - copy ref for cleanup to avoid stale closure
-      const refs = videoRefs.current;
+      // Cleanup: stop all videos on unmount using refs copied when effect ran
       Object.keys(refs).forEach((reelId) => {
         const video = refs[reelId];
         if (video) {

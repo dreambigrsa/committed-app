@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { Lock, CheckCircle, XCircle, Loader2, Smartphone } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { FUNCTIONS_BASE, SUPABASE_ANON_KEY } from '@/lib/env';
+import { SITE_URL } from '@/lib/env';
 import { APP_SCHEME } from '@/lib/appLinks';
 
 type Status = 'form' | 'loading' | 'success' | 'error' | 'no-token';
@@ -44,11 +44,11 @@ function ResetPasswordContent() {
     }
     setErrorMessage('');
     setStatus('loading');
-    const base = FUNCTIONS_BASE.replace(/\/$/, '');
+    const base = (SITE_URL || '').replace(/\/$/, '') || (typeof window !== 'undefined' ? window.location.origin : '');
     try {
-      const res = await fetch(`${base}/reset-password`, {
+      const res = await fetch(`${base}/api/auth/reset-password`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, newPassword: password }),
       });
       const data = await res.json().catch(() => ({}));
@@ -63,11 +63,11 @@ function ResetPasswordContent() {
     e.preventDefault();
     if (!resetEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(resetEmail)) return;
     setResetting(true);
-    const base = FUNCTIONS_BASE.replace(/\/$/, '');
+    const base = (SITE_URL || '').replace(/\/$/, '') || (typeof window !== 'undefined' ? window.location.origin : '');
     try {
-      await fetch(`${base}/request-password-reset`, {
+      await fetch(`${base}/api/auth/request-password-reset`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: resetEmail }),
       });
     } catch {

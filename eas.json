@@ -20,7 +20,7 @@
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://dizcuexznganwgddsrfo.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_sxd9qg6CLaiMMpW3nsgxGw_7xIf3v3x",
-        "EXPO_PUBLIC_COMMITTED_API_BASE_URL": "https://committed-5mxf.onrender.com"
+        "EXPO_PUBLIC_COMMITTED_API_BASE_URL": "https://committed-5mxf.onrender.com","EXPO_PUBLIC_APP_WEB_URL":"https://committed.dreambig.org.za"
       },
       "android": {
         "buildType": "apk"

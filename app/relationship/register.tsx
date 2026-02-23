@@ -355,7 +355,7 @@ export default function RegisterRelationshipScreen() {
         ? parseInt(formData.partnerDateOfBirthYear, 10) 
         : undefined;
 
-      const _relationship = await createRelationship(
+      await createRelationship(
         formData.partnerName,
         formData.partnerPhone,
         formData.type,

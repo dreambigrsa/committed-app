@@ -23,13 +23,13 @@ import { colors } from '@/constants/colors';
 export default function VerifyEmailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ token?: string }>();
-  const { currentUser, hasCompletedOnboarding } = useApp();
+  useApp(); // For app context availability
   const { colors: themeColors } = useTheme();
   const [isChecking, setIsChecking] = useState(true);
   const [isVerified, setIsVerified] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [email, setEmail] = useState<string>('');
-  const [emailLoaded, setEmailLoaded] = useState(false);
+  const [, setEmailLoaded] = useState(false);
   const [tokenVerifying, setTokenVerifying] = useState(false);
   const [tokenResult, setTokenResult] = useState<'idle' | 'success' | 'error'>('idle');
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -62,6 +62,7 @@ export default function VerifyEmailScreen() {
       }
     });
     return () => { mounted = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- router is stable
   }, [params.token]);
 
   useEffect(() => {
@@ -140,6 +141,7 @@ export default function VerifyEmailScreen() {
         clearInterval(interval);
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional mount-only effect, checkEmailVerification/fadeAnim/slideAnim are stable
   }, []);
 
   const checkEmailVerification = async (showMessage: boolean = false) => {

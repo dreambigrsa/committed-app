@@ -130,7 +130,7 @@ export default function ReelDeepLinkScreen() {
           const { data: userLike } = await supabase.from('reel_likes').select('id').eq('reel_id', reelId).eq('user_id', currentUser.id).maybeSingle();
           setIsLiked(!!userLike);
         }
-      } catch (_) {}
+      } catch {}
     })();
     return () => { cancelled = true; };
   }, [reel?.id, reelId, currentUser?.id]);

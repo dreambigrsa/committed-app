@@ -1342,7 +1342,6 @@ export default function ConversationDetailScreen() {
             
             // Show user-friendly error message instead of silently failing
             try {
-              const _errorMessage = error?.message || 'Failed to get AI response';
               const { error: insertError } = await supabase
                 .from('messages')
                 .insert({

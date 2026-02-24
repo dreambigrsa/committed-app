@@ -117,7 +117,7 @@ export default function HomePage() {
         </section>
 
         {/* Section 4 — For Couples */}
-        <section className="border-t border-slate-200/50 bg-white py-24 md:py-32">
+        <section id="couples" className="border-t border-slate-200/50 bg-white py-24 md:py-32">
           <div className="mx-auto max-w-6xl px-6 md:px-10">
             <div className="grid items-center gap-16 lg:grid-cols-2 lg:gap-20">
               <AnimatedSection className="order-2 lg:order-2">

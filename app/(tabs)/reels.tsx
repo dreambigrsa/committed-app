@@ -35,7 +35,7 @@ export default function ReelsScreen() {
   const pathname = usePathname();
   const params = useLocalSearchParams<{ reelId?: string }>();
   const insets = useSafeAreaInsets();
-  const { currentUser, reels, toggleReelLike, editReel, deleteReel, shareReel, adminDeleteReel, adminRejectReel, followUser, unfollowUser, isFollowing: checkIsFollowing, addReelComment, getReelComments, editReelComment, deleteReelComment, toggleReelCommentLike, reportContent, getActiveAds, getSmartAds, recordAdImpression, recordAdClick, legalAcceptanceStatus } = useApp();
+  const { currentUser, reels, toggleReelLike, editReel, deleteReel, shareReel, adminDeleteReel, adminRejectReel, followUser, unfollowUser, isFollowing: checkIsFollowing, addReelComment, getReelComments, editReelComment, deleteReelComment, toggleReelCommentLike, reportContent, getActiveAds, getSmartAds, recordAdImpression, recordAdClick, legalAcceptanceStatus, userStatuses = {} } = useApp();
   const { colors } = useTheme();
   
   const [currentIndex, setCurrentIndex] = useState<number>(0);

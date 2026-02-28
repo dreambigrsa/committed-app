@@ -53,6 +53,7 @@ export default function VerifyEmailScreen() {
         setTokenResult('success');
         setIsVerified(true);
         await supabase.auth.refreshSession().catch(() => {});
+        await refreshSession().catch(() => {}); // Update AuthContext so user.emailVerified is true and user stays signed in
         const { data: { session } } = await supabase.auth.getSession();
         if (session) router.replace('/');
         else router.replace('/auth');
@@ -85,6 +86,7 @@ export default function VerifyEmailScreen() {
         if (profile?.is_verified) {
           setIsVerified(true);
           await supabase.auth.refreshSession();
+          await refreshSession(); // Update AuthContext so user.emailVerified is true and user stays signed in
           return true;
         }
         return false;
@@ -94,6 +96,11 @@ export default function VerifyEmailScreen() {
     };
 
     checkVerified().then((verified) => {
+      if (verified && isMounted) {
+        // User just verified (e.g. returned from browser); AuthContext is updated, go straight to app
+        router.replace('/');
+        return;
+      }
       if (verified || !isMounted) return;
 
       // Email not verified - proceed with normal screen setup

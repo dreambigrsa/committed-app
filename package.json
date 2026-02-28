@@ -9,7 +9,9 @@
     "start-web": "npx expo start --web --tunnel",
     "start-web-dev": "DEBUG=expo* npx expo start --web --tunnel",
     "lint": "expo lint",
-    "start:api": "tsx backend/server.ts"
+    "start:api": "tsx backend/server.ts",
+    "doctor": "npx expo-doctor",
+    "build:android:production": "eas build --platform android --profile production"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

@@ -22,7 +22,7 @@ import StatusIndicator from '@/components/StatusIndicator';
 
 export default function SearchScreen() {
   const router = useRouter();
-  const { searchUsers, getUserRelationship, searchByFace, userStatuses } = useApp();
+  const { searchUsers, getUserRelationship, searchByFace, userStatuses = {} } = useApp();
   const { colors } = useTheme();
   const [query, setQuery] = useState<string>('');
 

@@ -9,7 +9,7 @@ import { checkUserLegalAcceptances } from '@/lib/legal-enforcement';
 
 export default function LegalAcceptanceEnforcer() {
   const { currentUser, legalAcceptanceStatus, setLegalAcceptanceStatus } = useApp();
-  const { updateUser } = useAuth();
+  const { user: authUser, updateUser } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [modalVisible, setModalVisible] = useState(false);
@@ -121,9 +121,25 @@ export default function LegalAcceptanceEnforcer() {
   const isOnResetPassword = pathname === '/reset-password';
   const isOnLegalRoute = pathname?.startsWith('/legal/');
 
+  // If AuthContext says user already accepted (e.g. during signup), sync to AppContext so modal never shows
+  useEffect(() => {
+    if (authUser?.acceptedLegalDocs && currentUser && legalAcceptanceStatus !== null && !legalAcceptanceStatus.hasAllRequired) {
+      setLegalAcceptanceStatus({
+        hasAllRequired: true,
+        missingDocuments: [],
+        needsReAcceptance: [],
+      });
+      setModalVisible(false);
+    }
+  }, [authUser?.acceptedLegalDocs, currentUser, legalAcceptanceStatus, setLegalAcceptanceStatus]);
+
   // Don't show on reset-password or when viewing a legal document; allow app use so they can open /legal from Settings etc.
   useEffect(() => {
     if (isOnResetPassword || isOnLegalRoute) {
+      setModalVisible(false);
+      return;
+    }
+    if (authUser?.acceptedLegalDocs) {
       setModalVisible(false);
       return;
     }
@@ -155,13 +171,14 @@ export default function LegalAcceptanceEnforcer() {
       return () => { cancelled = true; };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- setLegalAcceptanceStatus/updateUser from context are stable
-  }, [currentUser, legalAcceptanceStatus, isViewingDocument, isOnResetPassword, isOnLegalRoute]);
+  }, [currentUser, legalAcceptanceStatus, isViewingDocument, isOnResetPassword, isOnLegalRoute, authUser?.acceptedLegalDocs]);
 
   const showModal = Boolean(
     !isViewingDocument &&
     !isOnResetPassword &&
     !isOnLegalRoute &&
     currentUser &&
+    !authUser?.acceptedLegalDocs &&
     legalAcceptanceStatus !== null &&
     !legalAcceptanceStatus.hasAllRequired &&
     (legalAcceptanceStatus.missingDocuments.length > 0 ||

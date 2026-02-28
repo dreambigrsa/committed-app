@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   View,
   Text,
@@ -11,9 +11,9 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { Shield, Heart, ArrowLeft, Eye, EyeOff } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import LegalAcceptanceCheckbox from '@/components/LegalAcceptanceCheckbox';
@@ -25,6 +25,7 @@ export default function AuthScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ mode?: string }>();
   const { signup, login, resetPassword } = useApp();
+  const { updateUser } = useAuth();
   const { colors } = useTheme();
   const [isSignUp, setIsSignUp] = useState<boolean>(params?.mode === 'signin' ? false : true);
   const [showForgotPassword, setShowForgotPassword] = useState<boolean>(false);
@@ -400,6 +401,7 @@ export default function AuthScreen() {
                 
                 if (acceptanceStatus.hasAllRequired) {
                   console.log('Legal acceptances successfully saved');
+                  updateUser({ acceptedLegalDocs: true });
                 } else {
                   console.warn('Legal acceptances may not be fully saved, but continuing...');
                 }

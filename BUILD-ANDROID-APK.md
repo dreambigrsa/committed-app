@@ -1,5 +1,46 @@
 # Build Android APK - Complete Guide
 
+## Production APK build (Expo + EAS)
+
+**1. Ensure the 17 Expo Doctor checks pass (required before EAS build):**
+
+```bash
+npm run doctor
+```
+or
+```bash
+npx expo-doctor
+```
+
+You should see: `17/17 checks passed. No issues detected!`  
+If any check fails, fix the reported issues before running the build.
+
+**2. Log in to EAS (if needed):**
+
+```bash
+eas login
+```
+
+**3. Build production Android APK:**
+
+```bash
+npm run build:android:production
+```
+or
+```bash
+eas build --platform android --profile production
+```
+
+The production profile in `eas.json` is already set to output an **APK** (`"android": { "buildType": "apk" }`) and includes env vars for production. When the build finishes, download the APK from the link in the terminal or from your Expo project builds page.
+
+**4. Optional: clear cache if you hit odd build errors:**
+
+```bash
+eas build --platform android --profile production --clear-cache
+```
+
+---
+
 ## Prerequisites
 
 1. **Install EAS CLI** (if not already installed):
@@ -67,6 +108,16 @@ eas build --platform android --profile preview
 # 3. Wait for build to complete (usually 10-20 minutes)
 # 4. Download the APK from the provided link
 ```
+
+## Expo Doctor (17 checks)
+
+EAS Build runs **expo-doctor** during the build; the same 17 checks run locally. Always verify before submitting:
+
+```bash
+npx expo-doctor
+```
+
+Checks include: package versions vs Expo SDK, app config schema, native tooling, dependency compatibility, Metro config, and more. Fix any failures so the EAS build step "Run expo doctor" succeeds.
 
 ## Environment Variables
 

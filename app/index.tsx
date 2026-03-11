@@ -319,7 +319,7 @@ export default function LandingScreen() {
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>
-            © 2024 Committed. All rights reserved.
+            © {new Date().getFullYear()} Committed. All rights reserved.
           </Text>
           <Text style={styles.footerSubtext}>
             Building trust through verified relationships

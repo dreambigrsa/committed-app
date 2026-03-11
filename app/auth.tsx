@@ -24,8 +24,8 @@ import { checkUserLegalAcceptances } from '@/lib/legal-enforcement';
 export default function AuthScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ mode?: string }>();
-  const { signup, login, resetPassword } = useApp();
-  const { updateUser } = useAuth();
+  const { signup, resetPassword } = useApp();
+  const { updateUser, signIn: authSignIn } = useAuth();
   const { colors } = useTheme();
   const [isSignUp, setIsSignUp] = useState<boolean>(params?.mode === 'signin' ? false : true);
   const [showForgotPassword, setShowForgotPassword] = useState<boolean>(false);
@@ -60,6 +60,13 @@ export default function AuthScreen() {
     if (params?.mode === 'signin') setIsSignUp(false);
     else if (params?.mode === 'signup') setIsSignUp(true);
   }, [params?.mode]);
+
+  // Ensure loading is cleared if user leaves the screen during sign-in (no stuck button)
+  useEffect(() => {
+    return () => {
+      setIsLoading(false);
+    };
+  }, []);
 
   // No redirects - AppGate handles routing based on auth state
 
@@ -470,46 +477,32 @@ export default function AuthScreen() {
           return;
         }
 
-        await login(formData.email, formData.password);
-        
-        // Wait for user data to load, then redirect directly to appropriate page
-        // Don't go through landing page to avoid flash
-        setTimeout(async () => {
-          try {
-            // Check onboarding status directly
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.user?.id) {
-              const { data: onboardingData } = await supabase
-                .from('user_onboarding_data')
-                .select('has_completed_onboarding')
-                .eq('user_id', session.user.id)
-                .single();
-              
-              if (onboardingData?.has_completed_onboarding === false) {
-                router.replace('/onboarding');
-              } else {
-                router.replace('/(tabs)/home');
-              }
-            } else {
-              // Fallback to index if we can't get user
-              router.replace('/');
-            }
-          } catch {
-            // If error, fallback to index
-            router.replace('/');
-          }
-        }, 300);
+        // AuthContext.signIn resolves as soon as session exists (full hydration runs in background).
+        // AppGate redirects based on auth state; timeout only guards the auth API call.
+        const SIGN_IN_TIMEOUT_MS = 25000;
+        let timeoutId: ReturnType<typeof setTimeout> | null = null;
+        try {
+          await Promise.race([
+            authSignIn(formData.email, formData.password),
+            new Promise<never>((_, reject) => {
+              timeoutId = setTimeout(() => reject(new Error('Sign in is taking longer than usual. Please check your connection and try again.')), SIGN_IN_TIMEOUT_MS);
+            }),
+          ]);
+        } finally {
+          if (timeoutId != null) clearTimeout(timeoutId);
+          // Guarantee button loading stops even if redirect is slow
+          setIsLoading(false);
+        }
       }
     } catch (error: any) {
       console.error('Auth error:', error);
+      let errorMessage = typeof error?.message === 'string' ? error.message : 'An error occurred. Please try again.';
       
-      let errorMessage = error.message || 'An error occurred. Please try again.';
-      
-      if (error.message?.includes('Invalid login credentials')) {
+      if (error?.message?.includes('Invalid login credentials')) {
         errorMessage = 'Invalid email or password. Please check your credentials.';
-      } else if (error.message?.includes('Email not confirmed')) {
+      } else if (error?.message?.includes('Email not confirmed')) {
         errorMessage = 'Please verify your email before signing in.';
-      } else if (error.code === 'PGRST116') {
+      } else if (error?.code === 'PGRST116') {
         errorMessage = 'Database setup incomplete. Please check DATABASE-FIX-INSTRUCTIONS.md';
       }
 

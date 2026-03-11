@@ -103,6 +103,26 @@ export default function PostDeepLinkScreen() {
         if (!postData) throw new Error('Post not found');
         if (cancelled) return;
 
+        // Normalize media_urls: DB may return array, string, or null; ensure we have an array of full URLs
+        let mediaUrls: string[] = [];
+        const raw = postData.media_urls;
+        if (Array.isArray(raw)) {
+          mediaUrls = raw.filter((u): u is string => typeof u === 'string' && u.length > 0);
+        } else if (typeof raw === 'string') {
+          try {
+            const parsed = JSON.parse(raw) as unknown;
+            mediaUrls = Array.isArray(parsed) ? parsed.filter((u): u is string => typeof u === 'string' && u.length > 0) : [];
+          } catch {
+            if (raw.length > 0) mediaUrls = [raw];
+          }
+        }
+        // Resolve storage paths to public URLs (e.g. "folder/file.jpg" -> full URL)
+        const resolvedMediaUrls = mediaUrls.map((url) => {
+          if (url.startsWith('http://') || url.startsWith('https://')) return url;
+          const { data: { publicUrl } } = supabase.storage.from('media').getPublicUrl(url);
+          return publicUrl || url;
+        });
+
         const userId = postData.user_id;
         let userData: { full_name?: string; profile_picture?: string } | null = null;
         if (userId) {
@@ -116,7 +136,7 @@ export default function PostDeepLinkScreen() {
         }
         if (cancelled) return;
 
-        setPost({ ...postData, users: userData });
+        setPost({ ...postData, media_urls: resolvedMediaUrls, users: userData });
         setError(null);
       } catch (e: any) {
         const msg = e?.message ?? 'Failed to load post';

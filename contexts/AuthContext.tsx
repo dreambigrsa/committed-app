@@ -57,11 +57,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isAuthenticated = user !== null;
   const authReady = !authLoading;
 
+  /** Build minimal AuthUser from session only (no DB). Used so sign-in can resolve immediately. */
+  const getMinimalUserFromSession = useCallback(
+    (
+      session: { user: { id: string; email?: string; email_confirmed_at?: string | null; user_metadata?: Record<string, unknown> }; access_token: string; refresh_token?: string },
+      opts?: { isPasswordRecovery?: boolean }
+    ): AuthUser => {
+      const u = session.user;
+      const meta = (u as { user_metadata?: Record<string, string> }).user_metadata;
+      return {
+        id: u.id,
+        email: u.email || '',
+        fullName: meta?.full_name || '',
+        phoneNumber: meta?.phone_number || '',
+        emailVerified: !!(u as { email_confirmed_at?: string }).email_confirmed_at,
+        acceptedLegalDocs: false,
+        completedOnboarding: false,
+        isPasswordRecovery: opts?.isPasswordRecovery ?? isPasswordRecovery,
+      };
+    },
+    [isPasswordRecovery]
+  );
+
   const hydrateFromSession = useCallback(
     async (
       session: { user: { id: string; email?: string; email_confirmed_at?: string }; access_token: string; refresh_token?: string },
-      opts?: { isPasswordRecovery?: boolean }
+      opts?: { isPasswordRecovery?: boolean; clearOnError?: boolean }
     ) => {
+      const clearOnError = opts?.clearOnError !== false;
       try {
         setSession(session as Session);
         setAccessToken(session.access_token);
@@ -92,12 +115,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        const acceptanceStatus = await checkUserLegalAcceptances(session.user.id);
-        const { data: onboardingData } = await supabase
-          .from('user_onboarding_data')
-          .select('has_completed_onboarding')
-          .eq('user_id', session.user.id)
-          .maybeSingle();
+        const [acceptanceStatus, { data: onboardingData }] = await Promise.all([
+          checkUserLegalAcceptances(session.user.id),
+          supabase
+            .from('user_onboarding_data')
+            .select('has_completed_onboarding')
+            .eq('user_id', session.user.id)
+            .maybeSingle(),
+        ]);
 
         setUser({
           id: userData.id,
@@ -111,10 +136,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
       } catch (err) {
         console.error('AuthContext hydrate error:', err);
-        setUser(null);
-        setSession(null);
-        setAccessToken(null);
-        setRefreshToken(null);
+        if (clearOnError) {
+          setUser(null);
+          setSession(null);
+          setAccessToken(null);
+          setRefreshToken(null);
+        }
       }
     },
     [isPasswordRecovery]
@@ -211,7 +238,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           event === 'PASSWORD_RECOVERY' || hasPendingPasswordRecovery() ||
           (typeof window !== 'undefined' && window.location?.href?.includes('type=recovery'));
         try {
-          await hydrateFromSession(newSession, { isPasswordRecovery: !!isRecovery });
+          await hydrateFromSession(newSession, { isPasswordRecovery: !!isRecovery, clearOnError: false });
         } catch (err: any) {
           const msg = (err?.message ?? String(err)) ?? '';
           if (!msg.includes('aborted') && !msg.includes('signal')) console.error('onAuthStateChange hydrate error:', err);
@@ -233,13 +260,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         if (data.session) {
-          await hydrateFromSession(data.session);
+          const session = data.session;
+          setSession(session);
+          setAccessToken(session.access_token);
+          setRefreshToken(session.refresh_token ?? null);
+          setUser(getMinimalUserFromSession(session));
+          setAuthLoading(false);
+          // Hydrate full profile in background so sign-in resolves immediately and never times out.
+          hydrateFromSession(session, { clearOnError: false }).catch((err) => {
+            console.warn('Background hydration after sign-in failed:', err);
+          });
+          return;
         }
       } finally {
         setAuthLoading(false);
       }
     },
-    [hydrateFromSession]
+    [getMinimalUserFromSession, hydrateFromSession]
   );
 
   const signUp = useCallback(

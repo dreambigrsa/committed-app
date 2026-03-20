@@ -490,20 +490,62 @@ export default function AuthScreen() {
         // AppGate redirects based on auth state; longer timeout when user just verified email (verified=1).
         const email = formData.email.trim();
         const isPostVerification = params?.verified === '1' || params?.verified === 'true';
-        // Give the network more time on slow connections (especially right after email verification).
-        const SIGN_IN_TIMEOUT_MS = isPostVerification ? 75000 : 60000;
+
+        // On slow networks, Supabase sign-in can take longer than usual.
+        // Instead of hard-failing immediately, we:
+        // 1) show a non-error info message after a short delay
+        // 2) use a longer hard timeout to avoid waiting forever
+        // 3) on timeout, check if a session exists anyway (in that case, don't block the user)
+        const SIGN_IN_WARNING_MS = isPostVerification ? 20000 : 15000;
+        const SIGN_IN_HARD_TIMEOUT_MS = isPostVerification ? 120000 : 90000;
+        let warningShown = false;
         let timeoutId: ReturnType<typeof setTimeout> | null = null;
+        const warningTimerId = setTimeout(() => {
+          warningShown = true;
+          setMessageModal({
+            visible: true,
+            variant: 'info',
+            title: 'Signing you in…',
+            message: 'This may take a moment on slow connections. Please keep the app open.',
+            buttonText: 'OK',
+          });
+        }, SIGN_IN_WARNING_MS);
+
         try {
           await Promise.race([
             authSignIn(email, formData.password),
             new Promise<never>((_, reject) => {
-              timeoutId = setTimeout(() => reject(new Error(isPostVerification
-                ? 'Sign-in timed out (slow connection). Please wait 10-30 seconds and try again.'
-                : 'Sign-in timed out (slow connection). Please check your connection and try again.')), SIGN_IN_TIMEOUT_MS);
+              timeoutId = setTimeout(() => {
+                reject(
+                  new Error(
+                    isPostVerification
+                      ? 'Sign-in timed out (slow connection).'
+                      : 'Sign-in timed out (slow connection).'
+                  )
+                );
+              }, SIGN_IN_HARD_TIMEOUT_MS);
             }),
           ]);
+        } catch (error: any) {
+          // If we hit the timeout but the session is already available,
+          // treat it as success and let AppGate redirect.
+          if (timeoutId != null) {
+            // no-op; timeoutId is cleared below
+          }
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+              setMessageModal((prev) => ({ ...prev, visible: false }));
+              return;
+            }
+          } catch {
+            // ignore - we'll fall through to outer catch error messaging
+          }
+
+          throw error;
         } finally {
           if (timeoutId != null) clearTimeout(timeoutId);
+          clearTimeout(warningTimerId);
           // Guarantee button loading stops even if redirect is slow
           setIsLoading(false);
         }
@@ -532,11 +574,9 @@ export default function AuthScreen() {
         errorMessage = 'Database setup incomplete. Please check DATABASE-FIX-INSTRUCTIONS.md';
         title = 'Server misconfiguration';
       } else if (isTimeout) {
-        // This is a UX-friendly fallback for slow/unstable connections.
-        title = 'Sign-in timed out';
-        console.warn('[Auth] Sign-in timeout (slow connection). postVerification=', params?.verified);
+        title = 'Sign-in is taking longer than usual';
         errorMessage =
-          'We couldn’t log you in right now (slow connection). Please check your internet and try again. If you just verified your email, wait 10-30 seconds first.';
+          'We couldn’t complete sign-in right now. Please check your connection and try again. If you already verified your email recently, please wait 10-30 seconds first.';
       } else if (isNetwork) {
         title = 'Connection issue';
         errorMessage =

@@ -496,12 +496,10 @@ export default function AuthScreen() {
         // 1) show a non-error info message after a short delay
         // 2) use a longer hard timeout to avoid waiting forever
         // 3) on timeout, check if a session exists anyway (in that case, don't block the user)
-        const SIGN_IN_WARNING_MS = isPostVerification ? 20000 : 15000;
-        const SIGN_IN_HARD_TIMEOUT_MS = isPostVerification ? 120000 : 90000;
-        let warningShown = false;
+        const SIGN_IN_WARNING_MS = isPostVerification ? 12000 : 8000;
+        const SIGN_IN_HARD_TIMEOUT_MS = isPostVerification ? 60000 : 45000;
         let timeoutId: ReturnType<typeof setTimeout> | null = null;
         const warningTimerId = setTimeout(() => {
-          warningShown = true;
           setMessageModal({
             visible: true,
             variant: 'info',

@@ -264,47 +264,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSession(session);
           setAccessToken(session.access_token);
           setRefreshToken(session.refresh_token ?? null);
-
-          // Fast-path hydration: set fields used by AppGate redirects immediately.
-          // This prevents "restart to complete sign-in" caused by temporary defaults
-          // (e.g. completedOnboarding/emailVerified initially false).
-          const userId = session.user.id;
-          const withTimeout = async <T,>(p: Promise<T>, ms: number): Promise<T> => {
-            return Promise.race([
-              p,
-              new Promise<T>((_, reject) => {
-                setTimeout(() => reject(new Error('Operation timed out')), ms);
-              }),
-            ]);
-          };
-
-          try {
-            const [{ data: profileData }, { data: onboardingData }] = await Promise.all([
-              withTimeout(
-                supabase.from('profiles').select('is_verified').eq('id', userId).maybeSingle(),
-                8000
-              ),
-              withTimeout(
-                supabase
-                  .from('user_onboarding_data')
-                  .select('has_completed_onboarding')
-                  .eq('user_id', userId)
-                  .maybeSingle(),
-                8000
-              ),
-            ]);
-
-            const minimal = getMinimalUserFromSession(session);
-            setUser({
-              ...minimal,
-              emailVerified: !!profileData?.is_verified,
-              completedOnboarding: onboardingData?.has_completed_onboarding ?? false,
-            });
-          } catch {
-            // If fast-path fails (slow network), fall back to minimal user.
-            setUser(getMinimalUserFromSession(session));
-          }
-
+          // Resolve sign-in immediately once auth session exists.
+          // Do not block on extra DB reads (profiles/onboarding/legal), which can be slow.
+          setUser(getMinimalUserFromSession(session));
           setAuthLoading(false);
 
           // Hydrate full profile in background (legal acceptances, user record, etc).

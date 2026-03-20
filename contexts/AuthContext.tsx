@@ -177,13 +177,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const isRecovery =
           hasPendingPasswordRecovery() ||
           (typeof window !== 'undefined' && window.location?.href?.includes('type=recovery'));
-        hydrateFromSession(s, { isPasswordRecovery: !!isRecovery }).catch((err: any) => {
+        hydrateFromSession(s, { isPasswordRecovery: !!isRecovery, clearOnError: false }).catch((err: any) => {
           const msg = (err?.message ?? String(err)) ?? '';
           if (!msg.includes('aborted') && !msg.includes('signal')) console.error('hydrateFromSession error:', err);
-          setUser(null);
-          setSession(null);
-          setAccessToken(null);
-          setRefreshToken(null);
+          // Keep existing auth/session so transient hydration failures don't log users out.
         });
       } else {
         setUser(null);

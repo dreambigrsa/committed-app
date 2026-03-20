@@ -54,9 +54,13 @@ export default function VerifyEmailScreen() {
         setIsVerified(true);
         await supabase.auth.refreshSession().catch(() => {});
         await refreshSession().catch(() => {}); // Update AuthContext so user.emailVerified is true and user stays signed in
-        const { data: { session } } = await supabase.auth.getSession();
+        let session = (await supabase.auth.getSession()).data.session;
+        if (!session) {
+          await new Promise((r) => setTimeout(r, 1200)); // Brief wait for session to propagate (e.g. same-device verify)
+          session = (await supabase.auth.getSession()).data.session;
+        }
         if (session) router.replace('/');
-        else router.replace('/auth');
+        else router.replace('/auth?mode=signin&verified=1' as any); // verified=1 so auth screen uses longer sign-in timeout
       } else {
         setTokenResult('error');
       }
@@ -183,7 +187,10 @@ export default function VerifyEmailScreen() {
         }
         else if (showMessage) alert('Email not verified yet.\n\nCheck your inbox and click the verification link. If you just clicked it, wait a few seconds.');
       } else {
-        if (showMessage) { alert('Session expired. Please log in again.'); router.replace('/auth'); }
+        if (showMessage) {
+          alert('Session expired. Please log in again.');
+          router.replace('/auth?mode=signin&verified=1' as any); // post-verify flow: use longer sign-in timeout
+        }
       }
     } catch (error) {
       console.error('Error checking email verification:', error);

@@ -89,8 +89,10 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
     } else if (!user.emailVerified) {
       target = '/verify-email';
     } else if (!user.acceptedLegalDocs) {
-      lastTargetRef.current = 'legal';
-      return;
+      // Don't block navigation when legal docs aren't accepted yet.
+      // LegalAcceptanceEnforcer shows a modal on top of the app, and we still want
+      // the user to be taken into the app after a successful sign-in.
+      target = user.completedOnboarding ? '/(tabs)/home' : '/onboarding';
     } else if (!user.completedOnboarding) {
       target = '/onboarding';
     } else {

@@ -23,9 +23,9 @@ import { checkUserLegalAcceptances } from '@/lib/legal-enforcement';
 
 export default function AuthScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ mode?: string }>();
+  const params = useLocalSearchParams<{ mode?: string; verified?: string }>();
   const { signup, resetPassword } = useApp();
-  const { updateUser, signIn: authSignIn } = useAuth();
+  const { updateUser, signIn: authSignIn, user, isAuthenticated } = useAuth();
   const { colors } = useTheme();
   const [isSignUp, setIsSignUp] = useState<boolean>(params?.mode === 'signin' ? false : true);
   const [showForgotPassword, setShowForgotPassword] = useState<boolean>(false);
@@ -67,6 +67,14 @@ export default function AuthScreen() {
       setIsLoading(false);
     };
   }, []);
+
+  // If sign-in eventually succeeds after a timeout, dismiss the error modal automatically.
+  useEffect(() => {
+    if (isAuthenticated && user?.id) {
+      setMessageModal((prev) => ({ ...prev, visible: false }));
+      setIsLoading(false);
+    }
+  }, [isAuthenticated, user?.id]);
 
   // No redirects - AppGate handles routing based on auth state
 
@@ -320,6 +328,7 @@ export default function AuthScreen() {
 
   const handleAuth = async () => {
     setIsLoading(true);
+    setMessageModal((prev) => ({ ...prev, visible: false }));
     try {
       if (isSignUp) {
         if (!formData.fullName || !formData.email || !formData.phoneNumber || !formData.password) {
@@ -478,14 +487,19 @@ export default function AuthScreen() {
         }
 
         // AuthContext.signIn resolves as soon as session exists (full hydration runs in background).
-        // AppGate redirects based on auth state; timeout only guards the auth API call.
-        const SIGN_IN_TIMEOUT_MS = 25000;
+        // AppGate redirects based on auth state; longer timeout when user just verified email (verified=1).
+        const email = formData.email.trim();
+        const isPostVerification = params?.verified === '1' || params?.verified === 'true';
+        // Give the network more time on slow connections (especially right after email verification).
+        const SIGN_IN_TIMEOUT_MS = isPostVerification ? 75000 : 60000;
         let timeoutId: ReturnType<typeof setTimeout> | null = null;
         try {
           await Promise.race([
-            authSignIn(formData.email, formData.password),
+            authSignIn(email, formData.password),
             new Promise<never>((_, reject) => {
-              timeoutId = setTimeout(() => reject(new Error('Sign in is taking longer than usual. Please check your connection and try again.')), SIGN_IN_TIMEOUT_MS);
+              timeoutId = setTimeout(() => reject(new Error(isPostVerification
+                ? 'Sign-in timed out (slow connection). Please wait 10-30 seconds and try again.'
+                : 'Sign-in timed out (slow connection). Please check your connection and try again.')), SIGN_IN_TIMEOUT_MS);
             }),
           ]);
         } finally {
@@ -496,20 +510,43 @@ export default function AuthScreen() {
       }
     } catch (error: any) {
       console.error('Auth error:', error);
-      let errorMessage = typeof error?.message === 'string' ? error.message : 'An error occurred. Please try again.';
+      const rawMessage = typeof error?.message === 'string' ? error.message : '';
+      const lower = rawMessage.toLowerCase();
+      const isTimeout = lower.includes('timed out') || lower.includes('taking longer than usual');
+      const isNetwork =
+        lower.includes('network') ||
+        lower.includes('failed to fetch') ||
+        lower.includes('fetch') ||
+        lower.includes('timeout');
+
+      let title = 'Sign-in failed';
+      let errorMessage = rawMessage || 'Unable to sign you in right now. Please try again.';
       
       if (error?.message?.includes('Invalid login credentials')) {
         errorMessage = 'Invalid email or password. Please check your credentials.';
+        title = 'Invalid credentials';
       } else if (error?.message?.includes('Email not confirmed')) {
         errorMessage = 'Please verify your email before signing in.';
+        title = 'Email not verified';
       } else if (error?.code === 'PGRST116') {
         errorMessage = 'Database setup incomplete. Please check DATABASE-FIX-INSTRUCTIONS.md';
+        title = 'Server misconfiguration';
+      } else if (isTimeout) {
+        // This is a UX-friendly fallback for slow/unstable connections.
+        title = 'Sign-in timed out';
+        console.warn('[Auth] Sign-in timeout (slow connection). postVerification=', params?.verified);
+        errorMessage =
+          'We couldn’t log you in right now (slow connection). Please check your internet and try again. If you just verified your email, wait 10-30 seconds first.';
+      } else if (isNetwork) {
+        title = 'Connection issue';
+        errorMessage =
+          'We couldn’t reach the server. Please check your connection and try again in a moment.';
       }
 
       setMessageModal({
         visible: true,
         variant: 'error',
-        title: 'Something went wrong',
+        title,
         message: errorMessage,
         buttonText: 'OK',
       });

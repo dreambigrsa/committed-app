@@ -16,6 +16,9 @@ export default function LegalAcceptanceEnforcer() {
   const [isViewingDocument, setIsViewingDocument] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  /** AppContext may load `users` row after AuthContext; use auth id so legal checks run during verify→home/onboarding. */
+  const effectiveUserId = authUser?.id ?? currentUser?.id ?? null;
+
   // Hide modal when viewing a legal document, show it again when back
   useEffect(() => {
     // Clear any existing timeout
@@ -33,7 +36,7 @@ export default function LegalAcceptanceEnforcer() {
       timeoutRef.current = setTimeout(() => {
         if (pathname?.startsWith('/legal/')) return;
         const shouldShow =
-          currentUser &&
+          effectiveUserId &&
           legalAcceptanceStatus !== null &&
           !legalAcceptanceStatus.hasAllRequired &&
           (legalAcceptanceStatus.missingDocuments.length > 0 ||
@@ -49,7 +52,7 @@ export default function LegalAcceptanceEnforcer() {
         timeoutRef.current = null;
       }
     };
-  }, [pathname, isViewingDocument, currentUser, legalAcceptanceStatus]);
+  }, [pathname, isViewingDocument, effectiveUserId, legalAcceptanceStatus]);
 
   const handleViewDocument = (document: LegalDocument) => {
     if (!document) {
@@ -99,12 +102,12 @@ export default function LegalAcceptanceEnforcer() {
     setModalVisible(false);
     
     // Refresh acceptance status
-    if (currentUser?.id) {
+    if (effectiveUserId) {
       try {
         // Wait a moment for database to update
         await new Promise(resolve => setTimeout(resolve, 500));
         
-        const status = await checkUserLegalAcceptances(currentUser.id);
+        const status = await checkUserLegalAcceptances(effectiveUserId);
         setLegalAcceptanceStatus(status);
         
         // If status shows all required are accepted, update AuthContext; AppGate will route
@@ -133,6 +136,21 @@ export default function LegalAcceptanceEnforcer() {
     }
   }, [authUser?.acceptedLegalDocs, currentUser, legalAcceptanceStatus, setLegalAcceptanceStatus]);
 
+  // Bootstrap legal status from auth id when AppContext hasn't fetched yet (race after sign-in / verify).
+  useEffect(() => {
+    if (!effectiveUserId || authUser?.acceptedLegalDocs) return;
+    if (legalAcceptanceStatus !== null) return;
+    let cancelled = false;
+    checkUserLegalAcceptances(effectiveUserId)
+      .then((status) => {
+        if (!cancelled) setLegalAcceptanceStatus(status);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveUserId, authUser?.acceptedLegalDocs, legalAcceptanceStatus, setLegalAcceptanceStatus]);
+
   // Don't show on reset-password or when viewing a legal document; allow app use so they can open /legal from Settings etc.
   useEffect(() => {
     if (isOnResetPassword || isOnLegalRoute) {
@@ -143,7 +161,7 @@ export default function LegalAcceptanceEnforcer() {
       setModalVisible(false);
       return;
     }
-    if (!isViewingDocument && currentUser && legalAcceptanceStatus !== null) {
+    if (!isViewingDocument && effectiveUserId && legalAcceptanceStatus !== null) {
       // Re-verify from DB once when status says we might show, so we don't show if they already accepted
       const mightShow =
         !legalAcceptanceStatus.hasAllRequired &&
@@ -154,7 +172,7 @@ export default function LegalAcceptanceEnforcer() {
         return;
       }
       let cancelled = false;
-      checkUserLegalAcceptances(currentUser.id).then((status) => {
+      checkUserLegalAcceptances(effectiveUserId).then((status) => {
         if (cancelled) return;
         setLegalAcceptanceStatus(status);
         if (status.hasAllRequired) {
@@ -171,13 +189,13 @@ export default function LegalAcceptanceEnforcer() {
       return () => { cancelled = true; };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- setLegalAcceptanceStatus/updateUser from context are stable
-  }, [currentUser, legalAcceptanceStatus, isViewingDocument, isOnResetPassword, isOnLegalRoute, authUser?.acceptedLegalDocs]);
+  }, [effectiveUserId, legalAcceptanceStatus, isViewingDocument, isOnResetPassword, isOnLegalRoute, authUser?.acceptedLegalDocs]);
 
   const showModal = Boolean(
     !isViewingDocument &&
     !isOnResetPassword &&
     !isOnLegalRoute &&
-    currentUser &&
+    effectiveUserId &&
     !authUser?.acceptedLegalDocs &&
     legalAcceptanceStatus !== null &&
     !legalAcceptanceStatus.hasAllRequired &&

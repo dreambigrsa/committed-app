@@ -14,6 +14,23 @@ import { queueRelationshipChange, syncOfflineQueue, getOfflineQueue, Relationshi
 import { buildPostLink, buildReelLink } from '@/lib/deep-link-service';
 import { getStoredReferralCode, clearStoredReferralCode } from '@/lib/referral-storage';
 
+/** Reject if Supabase (or any) promise hangs — common on slow mobile networks. */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    promise.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      }
+    );
+  });
+}
+
 export const [AppContext, useApp] = createContextHook(() => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -44,7 +61,9 @@ export const [AppContext, useApp] = createContextHook(() => {
   const statusUpdateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [statusRealtimeChannels, setStatusRealtimeChannels] = useState<RealtimeChannel[]>([]);
   const isLoggingOutRef = useRef<boolean>(false); // Track if logout is in progress
-  
+  /** Monotonic id for loadUserData — avoids isLoading stuck/races when session object changes often. */
+  const loadUserDataGenerationRef = useRef(0);
+
   // Ban modal state
   const [banModalVisible, setBanModalVisible] = useState(false);
   const [banModalData, setBanModalData] = useState<{
@@ -98,30 +117,40 @@ export const [AppContext, useApp] = createContextHook(() => {
   }, [authUser?.isPasswordRecovery]);
 
   useEffect(() => {
-    if (authUser?.id) {
-      setSession(authSession);
-      loadUserData(authUser.id, authSession ?? undefined);
-    } else {
+    if (!authUser?.id) {
       setCurrentUser(null);
       setSession(null);
       setIsLoading(false);
+      return;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authUser?.id, authSession]);
+    // Wait until Supabase session exists (avoid empty loads). Keep spinner while waiting.
+    if (!authSession) {
+      setIsLoading(true);
+      return;
+    }
+    // Do NOT depend on `authSession` object identity — it changes on every token refresh and
+    // was re-running this entire load, causing overlapping loads and "Loading your profile..." stuck.
+    loadUserDataGenerationRef.current += 1;
+    const gen = loadUserDataGenerationRef.current;
+    setSession(authSession);
+    void loadUserData(authUser.id, authSession ?? undefined, gen);
+  }, [authUser?.id, !!authSession]);
 
-  const loadUserData = async (userId: string, sessionForCreate?: Session) => {
+  const loadUserData = async (userId: string, sessionForCreate?: Session, generation?: number) => {
+    const gen = typeof generation === 'number' ? generation : ++loadUserDataGenerationRef.current;
     try {
       setIsLoading(true);
       console.log('Loading user data for:', userId);
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', userId)
-        .single();
+      const USERS_FETCH_MS = 20000;
+      const { data: userData, error: userError } = await withTimeout(
+        supabase.from('users').select('*').eq('id', userId).single(),
+        USERS_FETCH_MS,
+        'users_profile_fetch'
+      );
 
       if (userError && userError.code === 'PGRST116') {
         console.log('User not found in database. Creating user record...');
-        await createUserRecord(userId, sessionForCreate ?? session);
+        await createUserRecord(userId, sessionForCreate ?? session, gen);
         return;
       }
 
@@ -147,6 +176,12 @@ export const [AppContext, useApp] = createContextHook(() => {
           createdAt: userData.created_at,
         };
         setCurrentUser(user);
+
+        // Unblock Home ("Loading your profile...") immediately — do not wait for status, legal,
+        // relationship sync, or offline queue; those can hang on mobile and kept users stuck forever.
+        if (loadUserDataGenerationRef.current === gen) {
+          setIsLoading(false);
+        }
 
         // Attach stored referral code (from deep link) to this user once; persist across email verification.
         (async () => {
@@ -821,11 +856,13 @@ export const [AppContext, useApp] = createContextHook(() => {
     } catch (error: any) {
       console.error('Failed to load user data:', error?.message || error);
     } finally {
-      setIsLoading(false);
+      if (loadUserDataGenerationRef.current === gen) {
+        setIsLoading(false);
+      }
     }
   };
 
-  const createUserRecord = async (userId: string, sessionToUse?: Session | null) => {
+  const createUserRecord = async (userId: string, sessionToUse?: Session | null, generation?: number) => {
     const sess = sessionToUse ?? session;
     try {
       if (!sess?.user) {
@@ -855,7 +892,7 @@ export const [AppContext, useApp] = createContextHook(() => {
         // Handle duplicate key error (user already exists)
         if (insertError.code === '23505') {
           console.log('User already exists (duplicate email or ID), loading existing user...');
-          await loadUserData(userId);
+          await loadUserData(userId, undefined, generation);
           return;
         }
         
@@ -872,7 +909,7 @@ export const [AppContext, useApp] = createContextHook(() => {
       }
 
       console.log('User record created successfully:', insertData);
-      await loadUserData(userId);
+      await loadUserData(userId, undefined, generation);
     } catch (error: any) {
       console.error('Create user record error:', error?.message || JSON.stringify(error));
     }

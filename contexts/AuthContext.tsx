@@ -33,6 +33,7 @@ interface AuthState {
   accessToken: string | null;
   refreshToken: string | null;
   isAuthenticated: boolean;
+  profileHydrated: boolean;
   authLoading: boolean;
   authReady: boolean;
 }
@@ -57,6 +58,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
+  const [profileHydrated, setProfileHydrated] = useState(false);
 
   const isAuthenticated = user !== null;
   const authReady = !authLoading;
@@ -116,6 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             completedOnboarding: false,
             isPasswordRecovery: opts?.isPasswordRecovery ?? isPasswordRecovery,
           });
+          setProfileHydrated(true);
           return;
         }
 
@@ -138,6 +141,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           completedOnboarding: onboardingData?.has_completed_onboarding ?? false,
           isPasswordRecovery: opts?.isPasswordRecovery ?? isPasswordRecovery,
         });
+        setProfileHydrated(true);
       } catch (err) {
         console.error('AuthContext hydrate error:', err);
         if (clearOnError) {
@@ -149,8 +153,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSession(null);
           setAccessToken(null);
           setRefreshToken(null);
+          setProfileHydrated(false);
         } else {
           logAuthEvent('hydrate_failed_kept_session', { code: errorToAuthCode(err) });
+          // Keep auth state and stop showing "temporary minimal user" decisions.
+          setProfileHydrated(true);
         }
       }
     },
@@ -209,6 +216,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           (typeof window !== 'undefined' && window.location?.href?.includes('type=recovery'));
         // Critical: set user immediately so AppGate sees isAuthenticated before DB hydration finishes.
         setUser(getMinimalUserFromSession(s, { isPasswordRecovery: !!isRecovery }));
+        setProfileHydrated(false);
         hydrateFromSession(s, { isPasswordRecovery: !!isRecovery, clearOnError: false }).catch((err: any) => {
           const msg = (err?.message ?? String(err)) ?? '';
           if (!msg.includes('aborted') && !msg.includes('signal')) {
@@ -221,6 +229,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(null);
         setAccessToken(null);
         setRefreshToken(null);
+        setProfileHydrated(false);
       }
     } catch (err: any) {
       const msg = (err?.message ?? String(err)) ?? '';
@@ -233,6 +242,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(null);
       setAccessToken(null);
       setRefreshToken(null);
+      setProfileHydrated(false);
     } finally {
       clearTimeout(hangTimeoutId);
       finishLoading();
@@ -259,6 +269,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(null);
         setAccessToken(null);
         setRefreshToken(null);
+        setProfileHydrated(false);
         return;
       }
 
@@ -273,6 +284,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           (typeof window !== 'undefined' && window.location?.href?.includes('type=recovery'));
         // Same as cold start: avoid a window where session exists but user is null (AppGate → logged-out routes).
         setUser(getMinimalUserFromSession(newSession, { isPasswordRecovery: !!isRecovery }));
+        setProfileHydrated(false);
         try {
           await hydrateFromSession(newSession, { isPasswordRecovery: !!isRecovery, clearOnError: false });
         } catch (err: any) {
@@ -304,6 +316,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Resolve sign-in immediately once auth session exists.
         // Do not block on extra DB reads (profiles/onboarding/legal), which can be slow.
         setUser(getMinimalUserFromSession(session));
+        setProfileHydrated(false);
         logAuthEvent('sign_in_ok', {});
 
         // Hydrate full profile in background (legal acceptances, user record, etc).
@@ -333,12 +346,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(null);
         setAccessToken(null);
         setRefreshToken(null);
+        setProfileHydrated(false);
       } else if (data.session) {
         const sess = data.session;
         setSession(sess);
         setAccessToken(sess.access_token);
         setRefreshToken(sess.refresh_token ?? null);
         setUser(getMinimalUserFromSession(sess));
+        setProfileHydrated(false);
         await hydrateFromSession(sess, { clearOnError: false });
         logAuthEvent('sign_up_ok', { hasSession: true });
       }
@@ -355,6 +370,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(null);
       setAccessToken(null);
       setRefreshToken(null);
+      setProfileHydrated(false);
       setIsPasswordRecovery(false);
     } catch (err) {
       console.error('SignOut error:', err);
@@ -362,6 +378,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(null);
       setAccessToken(null);
       setRefreshToken(null);
+      setProfileHydrated(false);
     } finally {
       setAuthLoading(false);
     }
@@ -422,6 +439,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(null);
         setAccessToken(null);
         setRefreshToken(null);
+        setProfileHydrated(false);
       } else {
         // Transient/network failure - keep current session and retry later.
         console.warn('Token refresh failed (transient), keeping session:', err);
@@ -436,6 +454,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     accessToken,
     refreshToken,
     isAuthenticated,
+    profileHydrated,
     authLoading,
     authReady,
     signIn,

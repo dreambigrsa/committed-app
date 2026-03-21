@@ -2,6 +2,16 @@
  * AppGate - Single place for auth-based routing and deep link processing.
  * Deep links are queued and processed only after authReady === true.
  * Loading has a 4s hard stop so the app never stays on splash indefinitely.
+ *
+ * Auth routing order (signed-in user):
+ * 1. Password recovery → /reset-password
+ * 2. Email not verified (JWT before hydrate; DB is_verified after) → /verify-email
+ * 3. Verified but profile still loading → /(tabs)/home shell (avoids onboarding with false minimal-user flags)
+ * 4. Legal not accepted → /onboarding or home+modal if onboarding was already completed
+ * 5. Onboarding not completed (e.g. Committed AI consent) → /onboarding
+ * 6. Else → home
+ *
+ * Returning users with verified email + legal + onboarding complete skip steps 2–5.
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'expo-router';
@@ -23,9 +33,14 @@ const LOADING_MAX_MS = 4000;
 export default function AppGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, authLoading, authReady, isAuthenticated } = useAuth();
+  const { user, authLoading, authReady, isAuthenticated, profileHydrated } = useAuth();
   const lastTargetRef = useRef<string | null>(null);
   const appliedIntendedRouteRef = useRef(false);
+
+  // New login / account switch: allow AppGate to navigate again (avoid stale lastTarget blocking verify→home).
+  useEffect(() => {
+    lastTargetRef.current = null;
+  }, [user?.id]);
   const [loadingOverride, setLoadingOverride] = useState(false);
   /** Bumped when a deep link is queued so routing re-runs (warm links after AppGate mounted). */
   const [pendingDeepLinkSignal, setPendingDeepLinkSignal] = useState(0);
@@ -94,13 +109,18 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
       // Recovery: must go to reset-password first; do not redirect to home.
       target = '/reset-password';
     } else if (!user.emailVerified) {
+      // New signups (and anyone not verified in DB/JWT) stay on verify until confirmed.
       target = '/verify-email';
+    } else if (!profileHydrated) {
+      // Email is verified but legal/onboarding flags are still loading from Supabase.
+      // Land on app shell only — do not send to onboarding with false defaults from minimal user.
+      target = '/(tabs)/home';
     } else if (!user.acceptedLegalDocs) {
-      // Don't block navigation when legal docs aren't accepted yet.
-      // LegalAcceptanceEnforcer shows a modal on top of the app, and we still want
-      // the user to be taken into the app after a successful sign-in.
+      // Legal acceptance (modal) + Committed AI onboarding: show onboarding until docs accepted,
+      // unless they already finished onboarding before new legal requirements (edge case → home + modal).
       target = user.completedOnboarding ? '/(tabs)/home' : '/onboarding';
     } else if (!user.completedOnboarding) {
+      // Committed AI consent lives in onboarding; skip when already completed.
       target = '/onboarding';
     } else {
       target = '/(tabs)/home';
@@ -115,13 +135,18 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
     if (lastTargetRef.current === target) return;
     lastTargetRef.current = target;
 
-    if (current === target || (target === '/(tabs)/home' && current.startsWith('/(tabs)'))) return;
+    // Same route: skip. Allow tab-to-tab when target is home (don't force home tab on every tick).
+    const onTabs = current.startsWith('/(tabs)');
+    const sameRoute =
+      current === target ||
+      (target === '/(tabs)/home' && onTabs);
+    if (sameRoute) return;
 
     const id = setTimeout(() => {
       router.replace(target as any);
     }, 0);
     return () => clearTimeout(id);
-  }, [authReady, authLoading, isAuthenticated, user, pathname, router, pendingDeepLinkSignal]);
+  }, [authReady, authLoading, isAuthenticated, user, pathname, router, pendingDeepLinkSignal, profileHydrated]);
 
   // After we're on main app, navigate to intended route once (e.g. post/reel from deep link)
   useEffect(() => {

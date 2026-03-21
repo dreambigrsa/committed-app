@@ -4,24 +4,66 @@ import { InteractionManager } from 'react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useAuth } from '@/contexts/AuthContext';
 import LegalAcceptanceModal from './LegalAcceptanceModal';
+import LegalReminderBanner from './LegalReminderBanner';
 import { LegalDocument } from '@/types';
 import { checkUserLegalAcceptances } from '@/lib/legal-enforcement';
 
+/** Time until we surface the full legal sheet again after the user taps "Close" (soft reminder). */
+const LEGAL_FULL_SHEET_REMINDER_MS = 5 * 60 * 1000;
+
+type LegalSurface = 'sheet' | 'reminder';
+
+/**
+ * Soft legal UX (production-friendly):
+ * - Full-screen sheet can be dismissed; a top banner reminds users to accept.
+ * - After a delay, the sheet can appear again (gentle nudge) if still pending.
+ * - Legal status still comes from AppContext once loaded (no duplicate bootstrap fetch).
+ */
 export default function LegalAcceptanceEnforcer() {
   const { currentUser, legalAcceptanceStatus, setLegalAcceptanceStatus } = useApp();
   const { user: authUser, updateUser } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  const [modalVisible, setModalVisible] = useState(false);
+  const [surface, setSurface] = useState<LegalSurface>('sheet');
   const [isViewingDocument, setIsViewingDocument] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reminderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevPendingRef = useRef(false);
 
-  /** AppContext may load `users` row after AuthContext; use auth id so legal checks run during verify→home/onboarding. */
   const effectiveUserId = authUser?.id ?? currentUser?.id ?? null;
 
-  // Hide modal when viewing a legal document, show it again when back
+  /** Never show legal sheet/banner until email is verified — flow is: verify → legal → onboarding (AI consent). */
+  const emailVerifiedForProductFlow = authUser?.emailVerified === true;
+  const isOnVerifyEmail =
+    pathname === '/verify-email' || pathname === 'verify-email' || pathname?.endsWith('/verify-email');
+
+  const legalActionRequired = Boolean(
+    emailVerifiedForProductFlow &&
+      !isOnVerifyEmail &&
+      effectiveUserId &&
+      !authUser?.acceptedLegalDocs &&
+      legalAcceptanceStatus !== null &&
+      !legalAcceptanceStatus.hasAllRequired &&
+      (legalAcceptanceStatus.missingDocuments.length > 0 ||
+        legalAcceptanceStatus.needsReAcceptance.length > 0)
+  );
+
+  // When pending legal first becomes true (e.g. after login), show the sheet — not only a banner.
   useEffect(() => {
-    // Clear any existing timeout
+    if (legalActionRequired && !prevPendingRef.current) {
+      setSurface('sheet');
+    }
+    if (!legalActionRequired) {
+      if (reminderTimerRef.current) {
+        clearTimeout(reminderTimerRef.current);
+        reminderTimerRef.current = null;
+      }
+    }
+    prevPendingRef.current = legalActionRequired;
+  }, [legalActionRequired]);
+
+  // Hide sheet when viewing a legal document; show again when back on app routes.
+  useEffect(() => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
@@ -29,19 +71,10 @@ export default function LegalAcceptanceEnforcer() {
 
     if (pathname?.startsWith('/legal/')) {
       setIsViewingDocument(true);
-      setModalVisible(false);
     } else if (isViewingDocument && !pathname?.startsWith('/legal/')) {
-      // User came back from viewing a document — show modal again so they can accept
       setIsViewingDocument(false);
       timeoutRef.current = setTimeout(() => {
         if (pathname?.startsWith('/legal/')) return;
-        const shouldShow =
-          effectiveUserId &&
-          legalAcceptanceStatus !== null &&
-          !legalAcceptanceStatus.hasAllRequired &&
-          (legalAcceptanceStatus.missingDocuments.length > 0 ||
-            legalAcceptanceStatus.needsReAcceptance.length > 0);
-        setModalVisible(!!shouldShow);
         timeoutRef.current = null;
       }, 400);
     }
@@ -52,7 +85,7 @@ export default function LegalAcceptanceEnforcer() {
         timeoutRef.current = null;
       }
     };
-  }, [pathname, isViewingDocument, effectiveUserId, legalAcceptanceStatus]);
+  }, [pathname, isViewingDocument]);
 
   const handleViewDocument = (document: LegalDocument) => {
     if (!document) {
@@ -75,8 +108,6 @@ export default function LegalAcceptanceEnforcer() {
       return;
     }
 
-    // Hide modal first so the stack screen can show and back works
-    setModalVisible(false);
     setIsViewingDocument(true);
 
     if (timeoutRef.current) {
@@ -98,21 +129,17 @@ export default function LegalAcceptanceEnforcer() {
   };
 
   const handleComplete = async () => {
-    // Close modal immediately
-    setModalVisible(false);
-    
-    // Refresh acceptance status
+    if (reminderTimerRef.current) {
+      clearTimeout(reminderTimerRef.current);
+      reminderTimerRef.current = null;
+    }
+
     if (effectiveUserId) {
       try {
-        // Wait a moment for database to update
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
+        await new Promise((resolve) => setTimeout(resolve, 500));
         const status = await checkUserLegalAcceptances(effectiveUserId);
         setLegalAcceptanceStatus(status);
-        
-        // If status shows all required are accepted, update AuthContext; AppGate will route
         if (status.hasAllRequired) {
-          setModalVisible(false);
           updateUser({ acceptedLegalDocs: true });
         }
       } catch (error) {
@@ -124,7 +151,7 @@ export default function LegalAcceptanceEnforcer() {
   const isOnResetPassword = pathname === '/reset-password';
   const isOnLegalRoute = pathname?.startsWith('/legal/');
 
-  // If AuthContext says user already accepted (e.g. during signup), sync to AppContext so modal never shows
+  // If AuthContext says user already accepted, sync AppContext so UI clears.
   useEffect(() => {
     if (authUser?.acceptedLegalDocs && currentUser && legalAcceptanceStatus !== null && !legalAcceptanceStatus.hasAllRequired) {
       setLegalAcceptanceStatus({
@@ -132,90 +159,107 @@ export default function LegalAcceptanceEnforcer() {
         missingDocuments: [],
         needsReAcceptance: [],
       });
-      setModalVisible(false);
     }
   }, [authUser?.acceptedLegalDocs, currentUser, legalAcceptanceStatus, setLegalAcceptanceStatus]);
 
-  // Bootstrap legal status from auth id when AppContext hasn't fetched yet (race after sign-in / verify).
+  // Re-verify from DB when status suggests we may need to show (single pass per dependency set).
   useEffect(() => {
-    if (!effectiveUserId || authUser?.acceptedLegalDocs) return;
-    if (legalAcceptanceStatus !== null) return;
-    let cancelled = false;
-    checkUserLegalAcceptances(effectiveUserId)
-      .then((status) => {
-        if (!cancelled) setLegalAcceptanceStatus(status);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [effectiveUserId, authUser?.acceptedLegalDocs, legalAcceptanceStatus, setLegalAcceptanceStatus]);
-
-  // Don't show on reset-password or when viewing a legal document; allow app use so they can open /legal from Settings etc.
-  useEffect(() => {
-    if (isOnResetPassword || isOnLegalRoute) {
-      setModalVisible(false);
-      return;
-    }
-    if (authUser?.acceptedLegalDocs) {
-      setModalVisible(false);
-      return;
-    }
+    if (isOnResetPassword || isOnLegalRoute || isOnVerifyEmail) return;
+    if (!emailVerifiedForProductFlow) return;
+    if (authUser?.acceptedLegalDocs) return;
     if (!isViewingDocument && effectiveUserId && legalAcceptanceStatus !== null) {
-      // Re-verify from DB once when status says we might show, so we don't show if they already accepted
       const mightShow =
         !legalAcceptanceStatus.hasAllRequired &&
-        (legalAcceptanceStatus.missingDocuments.length > 0 ||
-          legalAcceptanceStatus.needsReAcceptance.length > 0);
-      if (!mightShow) {
-        setModalVisible(false);
-        return;
-      }
+        (legalAcceptanceStatus.missingDocuments.length > 0 || legalAcceptanceStatus.needsReAcceptance.length > 0);
+      if (!mightShow) return;
       let cancelled = false;
-      checkUserLegalAcceptances(effectiveUserId).then((status) => {
-        if (cancelled) return;
-        setLegalAcceptanceStatus(status);
-        if (status.hasAllRequired) {
-          setModalVisible(false);
-          updateUser({ acceptedLegalDocs: true });
-        } else {
-          setModalVisible(
-            status.missingDocuments.length > 0 || status.needsReAcceptance.length > 0
-          );
-        }
-      }).catch(() => {
-        if (!cancelled) setModalVisible(false);
-      });
-      return () => { cancelled = true; };
+      checkUserLegalAcceptances(effectiveUserId)
+        .then((status) => {
+          if (cancelled) return;
+          setLegalAcceptanceStatus(status);
+          if (status.hasAllRequired) {
+            updateUser({ acceptedLegalDocs: true });
+          }
+        })
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- setLegalAcceptanceStatus/updateUser from context are stable
-  }, [effectiveUserId, legalAcceptanceStatus, isViewingDocument, isOnResetPassword, isOnLegalRoute, authUser?.acceptedLegalDocs]);
+  }, [
+    effectiveUserId,
+    legalAcceptanceStatus,
+    isViewingDocument,
+    isOnResetPassword,
+    isOnLegalRoute,
+    isOnVerifyEmail,
+    emailVerifiedForProductFlow,
+    authUser?.acceptedLegalDocs,
+    setLegalAcceptanceStatus,
+    updateUser,
+  ]);
 
-  const showModal = Boolean(
+  const handleDismissSheet = () => {
+    setSurface('reminder');
+    if (reminderTimerRef.current) {
+      clearTimeout(reminderTimerRef.current);
+      reminderTimerRef.current = null;
+    }
+    reminderTimerRef.current = setTimeout(() => {
+      reminderTimerRef.current = null;
+      if (legalActionRequired) {
+        setSurface('sheet');
+      }
+    }, LEGAL_FULL_SHEET_REMINDER_MS);
+  };
+
+  const handleOpenFromBanner = () => {
+    if (reminderTimerRef.current) {
+      clearTimeout(reminderTimerRef.current);
+      reminderTimerRef.current = null;
+    }
+    setSurface('sheet');
+  };
+
+  useEffect(() => {
+    return () => {
+      if (reminderTimerRef.current) clearTimeout(reminderTimerRef.current);
+    };
+  }, []);
+
+  const showFullScreen =
+    legalActionRequired &&
+    surface === 'sheet' &&
     !isViewingDocument &&
     !isOnResetPassword &&
     !isOnLegalRoute &&
-    effectiveUserId &&
-    !authUser?.acceptedLegalDocs &&
-    legalAcceptanceStatus !== null &&
-    !legalAcceptanceStatus.hasAllRequired &&
-    (legalAcceptanceStatus.missingDocuments.length > 0 ||
-      legalAcceptanceStatus.needsReAcceptance.length > 0)
-  );
+    !isOnVerifyEmail;
 
-  const handleDismiss = () => {
-    setModalVisible(false);
-  };
+  const showBanner =
+    legalActionRequired &&
+    surface === 'reminder' &&
+    !isOnResetPassword &&
+    !isOnLegalRoute &&
+    !isOnVerifyEmail;
+
+  const showModal = showFullScreen;
 
   return (
-    <LegalAcceptanceModal
-      visible={modalVisible && showModal}
-      missingDocuments={legalAcceptanceStatus?.missingDocuments || []}
-      needsReAcceptance={legalAcceptanceStatus?.needsReAcceptance || []}
-      onComplete={handleComplete}
-      onViewDocument={handleViewDocument}
-      onDismiss={handleDismiss}
-    />
+    <>
+      {showBanner ? (
+        <LegalReminderBanner
+          onOpen={handleOpenFromBanner}
+          subtitle="Tap to review. We'll remind you again with a full prompt if needed."
+        />
+      ) : null}
+      <LegalAcceptanceModal
+        visible={showModal}
+        missingDocuments={legalAcceptanceStatus?.missingDocuments || []}
+        needsReAcceptance={legalAcceptanceStatus?.needsReAcceptance || []}
+        onComplete={handleComplete}
+        onViewDocument={handleViewDocument}
+        onDismiss={handleDismissSheet}
+      />
+    </>
   );
 }
-

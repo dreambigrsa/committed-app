@@ -7,11 +7,11 @@
  * 1. Password recovery → /reset-password
  * 2. Email not verified (JWT before hydrate; DB is_verified after) → /verify-email
  * 3. Verified but profile still loading → /(tabs)/home shell (avoids onboarding with false minimal-user flags)
- * 4. Legal not accepted → /onboarding or home+modal if onboarding was already completed
- * 5. Onboarding not completed (e.g. Committed AI consent) → /onboarding
- * 6. Else → home
+ * 4. Onboarding not completed (e.g. Committed AI consent) → /onboarding
+ * 5. Else → home
  *
- * Returning users with verified email + legal + onboarding complete skip steps 2–5.
+ * Legal acceptance is **not** a navigation gate — `LegalAcceptanceEnforcer` uses a dismissible sheet + banner
+ * reminders (soft UX). Returning users skip verify/onboarding when already completed.
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'expo-router';
@@ -83,6 +83,18 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
       lastTargetRef.current = '/reset-password';
       return;
     }
+    // Stay on verify-email: (1) until DB/JWT agree user is unverified, or (2) until profile hydrates so we
+    // don't jump to home on a JWT-only email_confirmed_at race before profiles.is_verified is loaded.
+    if (current === '/verify-email' && isAuthenticated && user) {
+      if (!user.emailVerified) {
+        lastTargetRef.current = '/verify-email';
+        return;
+      }
+      if (!profileHydrated) {
+        lastTargetRef.current = '/verify-email';
+        return;
+      }
+    }
     // Always allow viewing legal documents, even if not yet accepted (so users can read before accepting).
     if (current.startsWith('/legal/')) {
       lastTargetRef.current = current;
@@ -112,15 +124,11 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
       // New signups (and anyone not verified in DB/JWT) stay on verify until confirmed.
       target = '/verify-email';
     } else if (!profileHydrated) {
-      // Email is verified but legal/onboarding flags are still loading from Supabase.
+      // Email is verified but profile/onboarding flags are still loading from Supabase.
       // Land on app shell only — do not send to onboarding with false defaults from minimal user.
       target = '/(tabs)/home';
-    } else if (!user.acceptedLegalDocs) {
-      // Legal acceptance (modal) + Committed AI onboarding: show onboarding until docs accepted,
-      // unless they already finished onboarding before new legal requirements (edge case → home + modal).
-      target = user.completedOnboarding ? '/(tabs)/home' : '/onboarding';
     } else if (!user.completedOnboarding) {
-      // Committed AI consent lives in onboarding; skip when already completed.
+      // Committed AI consent & onboarding steps — legal docs use soft modal + banner, not routing.
       target = '/onboarding';
     } else {
       target = '/(tabs)/home';

@@ -4,6 +4,7 @@ import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { AppContext, useApp } from "@/contexts/AppContext";
 import { ThemeProvider } from "@/components/ThemeProvider";
@@ -200,11 +201,13 @@ export default function RootLayout() {
     <AuthProvider>
     <AppContext>
       <ThemeProvider>
-        <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <GestureHandlerRootView style={{ flex: 1 }}>
             <AppGate>
-          <RootLayoutNav />
+              <RootLayoutNav />
             </AppGate>
-        </GestureHandlerRootView>
+          </GestureHandlerRootView>
+        </SafeAreaProvider>
       </ThemeProvider>
     </AppContext>
     </AuthProvider>

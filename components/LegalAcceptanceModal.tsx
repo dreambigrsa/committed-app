@@ -14,6 +14,7 @@ import { LegalDocument } from '@/types';
 import LegalAcceptanceCheckbox from './LegalAcceptanceCheckbox';
 import { saveUserAcceptance } from '@/lib/legal-enforcement';
 import { useApp } from '@/contexts/AppContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { isAbortLikeError } from '@/lib/abort-error';
 
@@ -37,6 +38,9 @@ export default function LegalAcceptanceModal({
 }: LegalAcceptanceModalProps) {
   const { colors } = useTheme();
   const { currentUser } = useApp();
+  const { user: authUser } = useAuth();
+  /** Saving acceptances works as soon as Supabase auth id exists (AppContext user row may still be loading). */
+  const saveUserId = currentUser?.id ?? authUser?.id ?? null;
   const styles = createStyles(colors);
 
   const [acceptances, setAcceptances] = useState<Record<string, boolean>>({});
@@ -75,7 +79,7 @@ export default function LegalAcceptanceModal({
     const documentIds = allDocs.map(d => d.id);
     const requiredDocIds = allDocs.filter(d => d.isRequired).map(d => d.id);
 
-    if (currentUser?.id && documentIds.length > 0) {
+    if (saveUserId && documentIds.length > 0) {
       initializedRef.current = true; // Mark as initialized
       
       // Check which documents are already accepted
@@ -84,7 +88,7 @@ export default function LegalAcceptanceModal({
           const { data, error } = await supabase
             .from('user_legal_acceptances')
             .select('document_id, document_version')
-            .eq('user_id', currentUser.id)
+            .eq('user_id', saveUserId)
             .in('document_id', documentIds);
           
           if (!error && data) {
@@ -118,7 +122,7 @@ export default function LegalAcceptanceModal({
       // If modal is visible but no documents, call onComplete to close it
       onComplete();
     }
-  }, [visible, currentUser?.id, onComplete]);
+  }, [visible, saveUserId, onComplete]);
 
   const handleToggle = (documentId: string, accepted: boolean) => {
     setAcceptances((prev) => ({
@@ -133,7 +137,7 @@ export default function LegalAcceptanceModal({
       return;
     }
 
-    if (!currentUser?.id) {
+    if (!saveUserId) {
       alert('User not found');
       return;
     }
@@ -157,7 +161,7 @@ export default function LegalAcceptanceModal({
 
       for (const { documentId, version } of acceptancesToSave) {
         const ok = await saveUserAcceptance(
-          currentUser.id,
+          saveUserId,
           documentId,
           version,
           needsReAcceptance.find((d) => d.id === documentId) ? 'update' : 'manual'
@@ -196,9 +200,8 @@ export default function LegalAcceptanceModal({
       presentationStyle="pageSheet"
       transparent={false}
       onRequestClose={() => {
-        if (requiredDocs.length > 0 && !allRequiredAccepted && onDismiss) {
-          onDismiss();
-        }
+        // Soft UX: user can close the sheet; enforcer shows a banner + later reminder.
+        if (onDismiss) onDismiss();
       }}
     >
       <View style={styles.container}>
@@ -232,6 +235,11 @@ export default function LegalAcceptanceModal({
               <Text style={styles.viewFirstLinkText}>View documents first</Text>
             </TouchableOpacity>
           )}
+          {onDismiss ? (
+            <Text style={styles.dismissHint}>
+              You can close this screen and continue — we&apos;ll show a reminder until you accept.
+            </Text>
+          ) : null}
         </View>
 
         <ScrollView 
@@ -396,6 +404,14 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontWeight: '600' as const,
     color: colors.primary,
     textDecorationLine: 'underline',
+  },
+  dismissHint: {
+    fontSize: 13,
+    color: colors.text.tertiary,
+    textAlign: 'center',
+    marginTop: 12,
+    paddingHorizontal: 8,
+    lineHeight: 18,
   },
   iconContainer: {
     width: 80,

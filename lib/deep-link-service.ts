@@ -172,6 +172,7 @@ export function isAuthLink(url: string): boolean {
 // In-memory pending (one at a time; cleared when processed)
 let pendingParsed: ParsedDeepLink | null = null;
 let lastHandledUrl: string | null = null;
+const pendingListeners = new Set<() => void>();
 
 export function setPendingDeepLink(url: string): void {
   const parsed = parseDeepLink(url);
@@ -180,6 +181,13 @@ export function setPendingDeepLink(url: string): void {
   if (lastHandledUrl === url) return;
   log('setPendingDeepLink', parsed.type, parsed);
   pendingParsed = parsed;
+  pendingListeners.forEach((listener) => {
+    try {
+      listener();
+    } catch {
+      // Ignore listener errors so deep-link capture never fails
+    }
+  });
 }
 
 export function getAndClearPendingDeepLink(): ParsedDeepLink | null {
@@ -191,6 +199,14 @@ export function getAndClearPendingDeepLink(): ParsedDeepLink | null {
 
 export function markDeepLinkHandled(url: string): void {
   lastHandledUrl = url;
+}
+
+/** Subscribe to pending deep-link updates (for AppGate to react on warm links). */
+export function subscribePendingDeepLink(listener: () => void): () => void {
+  pendingListeners.add(listener);
+  return () => {
+    pendingListeners.delete(listener);
+  };
 }
 
 export async function getIntendedRoute(): Promise<string | null> {

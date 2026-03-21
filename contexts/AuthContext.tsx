@@ -2,11 +2,15 @@
  * AuthContext - Single source of truth for auth/session.
  * Only place that calls getSession() on startup. All other code uses this context.
  * NEVER navigates. Deep link handling runs only after authLoading === false.
+ * authLoading is ONLY for cold-start session restore (and sign-out), not for
+ * signIn/signUp; otherwise AppGate would cover the whole app with SplashScreen
+ * on slow mobile networks while credentials are sent.
  */
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
-import { updatePasswordViaApi, UpdatePasswordTimeoutError, UpdatePasswordAbortedError } from '@/lib/supabase-auth-api';
+import { updatePasswordViaApi } from '@/lib/supabase-auth-api';
+import { logAuthEvent, errorToAuthCode } from '@/lib/auth-telemetry';
 import { checkUserLegalAcceptances } from '@/lib/legal-enforcement';
 import { hasPendingPasswordRecovery, setPendingPasswordRecovery } from '@/lib/pending-password-recovery';
 import { requestPasswordReset } from '@/lib/auth-functions';
@@ -137,10 +141,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (err) {
         console.error('AuthContext hydrate error:', err);
         if (clearOnError) {
+          logAuthEvent('hydrate_cleared_state', {
+            code: errorToAuthCode(err),
+            clearOnError: true,
+          });
           setUser(null);
           setSession(null);
           setAccessToken(null);
           setRefreshToken(null);
+        } else {
+          logAuthEvent('hydrate_failed_kept_session', { code: errorToAuthCode(err) });
         }
       }
     },
@@ -149,63 +159,85 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const restoreSession = useCallback(async () => {
     setAuthLoading(true);
-    const forceStopRef = { done: false };
-    const forceStopLoading = () => {
-      if (forceStopRef.done) return;
-      forceStopRef.done = true;
+    const loadingDoneRef = { done: false };
+    const finishLoading = () => {
+      if (loadingDoneRef.done) return;
+      loadingDoneRef.done = true;
       setAuthLoading(false);
-      if (__DEV__) console.log('[Auth] Loading forced stop (timeout)');
     };
-    const timeoutId = setTimeout(forceStopLoading, 4000);
+
+    // Never end splash before getSession() settles — a 4s timeout here caused users to appear
+    // logged out on cold start while AsyncStorage was still being read (common on slower devices).
+    // Only unblock after an extreme hang (broken bridge / deadlock).
+    const hangTimeoutId = setTimeout(() => {
+      logAuthEvent('restore_hang_timeout', { ms: 25000 });
+      if (__DEV__) console.warn('[Auth] getSession exceeded 25s; unblocking splash');
+      finishLoading();
+    }, 25000);
+
+    const readSessionWithRetry = async () => {
+      let lastError: { message?: string } | null = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const { data: { session: s }, error } = await supabase.auth.getSession();
+        if (!error) return { session: s, error: null as null };
+        lastError = error;
+        const em = (error.message ?? String(error)).toLowerCase();
+        if (em.includes('aborted') || em.includes('signal')) break;
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 350 * (attempt + 1)));
+      }
+      return { session: null as Session | null, error: lastError };
+    };
 
     try {
-      const { data: { session: s }, error } = await supabase.auth.getSession();
+      const { session: s, error } = await readSessionWithRetry();
       if (error) {
         console.error('Session restore error:', error);
+        logAuthEvent('restore_get_session_error', { code: errorToAuthCode(error) });
         setUser(null);
         setSession(null);
         setAccessToken(null);
         setRefreshToken(null);
-        setAuthLoading(false);
         return;
       }
+      logAuthEvent('restore_complete', { hasSession: !!s });
       if (s) {
         setSession(s);
-        setAuthLoading(false);
-        // Session may have been set from URL. Use pending recovery flag (set at first URL sight) so we
-        // always send to /reset-password and never home.
+        setAccessToken(s.access_token);
+        setRefreshToken(s.refresh_token ?? null);
         const isRecovery =
           hasPendingPasswordRecovery() ||
           (typeof window !== 'undefined' && window.location?.href?.includes('type=recovery'));
+        // Critical: set user immediately so AppGate sees isAuthenticated before DB hydration finishes.
+        setUser(getMinimalUserFromSession(s, { isPasswordRecovery: !!isRecovery }));
         hydrateFromSession(s, { isPasswordRecovery: !!isRecovery, clearOnError: false }).catch((err: any) => {
           const msg = (err?.message ?? String(err)) ?? '';
-          if (!msg.includes('aborted') && !msg.includes('signal')) console.error('hydrateFromSession error:', err);
-          // Keep existing auth/session so transient hydration failures don't log users out.
+          if (!msg.includes('aborted') && !msg.includes('signal')) {
+            console.error('hydrateFromSession error:', err);
+            logAuthEvent('hydrate_failed_after_restore', { code: errorToAuthCode(err) });
+          }
         });
       } else {
         setUser(null);
         setSession(null);
         setAccessToken(null);
         setRefreshToken(null);
-        setAuthLoading(false);
       }
     } catch (err: any) {
       const msg = (err?.message ?? String(err)) ?? '';
       if (msg.includes('aborted') || msg.includes('signal')) {
-        setAuthLoading(false);
         return;
       }
       console.error('restoreSession error:', err);
+      logAuthEvent('restore_throw', { code: errorToAuthCode(err) });
       setUser(null);
       setSession(null);
       setAccessToken(null);
       setRefreshToken(null);
-      setAuthLoading(false);
     } finally {
-      clearTimeout(timeoutId);
-      forceStopLoading();
+      clearTimeout(hangTimeoutId);
+      finishLoading();
     }
-  }, [hydrateFromSession]);
+  }, [hydrateFromSession, getMinimalUserFromSession]);
 
   useEffect(() => {
     restoreSession();
@@ -220,12 +252,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (event === 'SIGNED_OUT' || (event === 'TOKEN_REFRESHED' && !newSession)) {
+        logAuthEvent('auth_cleared', {
+          reason: event === 'SIGNED_OUT' ? 'signed_out' : 'token_refresh_no_session',
+        });
         setUser(null);
         setSession(null);
         setAccessToken(null);
         setRefreshToken(null);
         return;
       }
+
+      logAuthEvent('auth_state_change', { event, hasSession: !!newSession });
 
       if (newSession) {
         setSession(newSession);
@@ -234,47 +271,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const isRecovery =
           event === 'PASSWORD_RECOVERY' || hasPendingPasswordRecovery() ||
           (typeof window !== 'undefined' && window.location?.href?.includes('type=recovery'));
+        // Same as cold start: avoid a window where session exists but user is null (AppGate → logged-out routes).
+        setUser(getMinimalUserFromSession(newSession, { isPasswordRecovery: !!isRecovery }));
         try {
           await hydrateFromSession(newSession, { isPasswordRecovery: !!isRecovery, clearOnError: false });
         } catch (err: any) {
           const msg = (err?.message ?? String(err)) ?? '';
-          if (!msg.includes('aborted') && !msg.includes('signal')) console.error('onAuthStateChange hydrate error:', err);
+          if (!msg.includes('aborted') && !msg.includes('signal')) {
+            console.error('onAuthStateChange hydrate error:', err);
+            logAuthEvent('hydrate_failed_listener', { code: errorToAuthCode(err) });
+          }
         }
-      } else {
-        setUser(null);
-        setSession(null);
-        setAccessToken(null);
-        setRefreshToken(null);
       }
+      // Intentionally no "else { clear }": cold start is handled by restoreSession(). Clearing here on
+      // arbitrary events with null session caused spurious logouts; SIGNED_OUT / failed refresh still clear above.
     });
     return () => subscription.unsubscribe();
-  }, [hydrateFromSession]);
+  }, [hydrateFromSession, getMinimalUserFromSession]);
 
   const signIn = useCallback(
     async (email: string, password: string) => {
-      setAuthLoading(true);
-      try {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        if (data.session) {
-          const session = data.session;
-          setSession(session);
-          setAccessToken(session.access_token);
-          setRefreshToken(session.refresh_token ?? null);
-          // Resolve sign-in immediately once auth session exists.
-          // Do not block on extra DB reads (profiles/onboarding/legal), which can be slow.
-          setUser(getMinimalUserFromSession(session));
-          setAuthLoading(false);
+      // Do NOT set authLoading here: AppGate treats authLoading as "show full-app splash".
+      // On mobile, signInWithPassword can take several seconds; keeping the auth screen
+      // visible with its own button spinner is critical (web often feels fine because it's faster).
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      if (data.session) {
+        const session = data.session;
+        setSession(session);
+        setAccessToken(session.access_token);
+        setRefreshToken(session.refresh_token ?? null);
+        // Resolve sign-in immediately once auth session exists.
+        // Do not block on extra DB reads (profiles/onboarding/legal), which can be slow.
+        setUser(getMinimalUserFromSession(session));
+        logAuthEvent('sign_in_ok', {});
 
-          // Hydrate full profile in background (legal acceptances, user record, etc).
-          // clearOnError:false ensures we don't log out the user if hydration is slow.
-          hydrateFromSession(session, { clearOnError: false }).catch((err) => {
-            console.warn('Background hydration after sign-in failed:', err);
-          });
-          return;
-        }
-      } finally {
-        setAuthLoading(false);
+        // Hydrate full profile in background (legal acceptances, user record, etc).
+        // clearOnError:false ensures we don't log out the user if hydration is slow.
+        hydrateFromSession(session, { clearOnError: false }).catch((err) => {
+          console.warn('Background hydration after sign-in failed:', err);
+          logAuthEvent('hydrate_failed_after_sign_in', { code: errorToAuthCode(err) });
+        });
       }
     },
     [getMinimalUserFromSession, hydrateFromSession]
@@ -282,32 +319,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUp = useCallback(
     async (fullName: string, email: string, phoneNumber: string, password: string) => {
-      setAuthLoading(true);
-      try {
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: { full_name: fullName, phone_number: phoneNumber },
-          },
-        });
-        if (error) throw error;
-        if (data.user && !data.session) {
-          setUser(null);
-          setSession(null);
-          setAccessToken(null);
-          setRefreshToken(null);
-        } else if (data.session) {
-          await hydrateFromSession(data.session);
-        }
-      } finally {
-        setAuthLoading(false);
+      // Same as signIn: avoid full-app splash during network call (especially on native).
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { full_name: fullName, phone_number: phoneNumber },
+        },
+      });
+      if (error) throw error;
+      if (data.user && !data.session) {
+        setUser(null);
+        setSession(null);
+        setAccessToken(null);
+        setRefreshToken(null);
+      } else if (data.session) {
+        const sess = data.session;
+        setSession(sess);
+        setAccessToken(sess.access_token);
+        setRefreshToken(sess.refresh_token ?? null);
+        setUser(getMinimalUserFromSession(sess));
+        await hydrateFromSession(sess, { clearOnError: false });
+        logAuthEvent('sign_up_ok', { hasSession: true });
       }
     },
-    [hydrateFromSession]
+    [hydrateFromSession, getMinimalUserFromSession]
   );
 
   const signOut = useCallback(async () => {
+    logAuthEvent('sign_out', {});
     setAuthLoading(true);
     try {
       await supabase.auth.signOut();
@@ -362,15 +402,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error) throw error;
       if (data.session) {
         await hydrateFromSession(data.session);
+        logAuthEvent('refresh_ok', {});
       }
     } catch (err: any) {
       const msg = (err?.message ?? String(err)) ?? '';
       if (msg.includes('aborted') || msg.includes('signal')) return;
-      console.error('Token refresh failed:', err);
-      setUser(null);
-      setSession(null);
-      setAccessToken(null);
-      setRefreshToken(null);
+      const lower = msg.toLowerCase();
+      const isInvalidRefresh =
+        lower.includes('invalid refresh token') ||
+        lower.includes('refresh token not found') ||
+        lower.includes('jwt expired') ||
+        lower.includes('session not found');
+
+      if (isInvalidRefresh) {
+        // Session is truly invalid - clear auth state.
+        console.error('Token refresh failed (invalid session):', err);
+        logAuthEvent('refresh_cleared', { reason: 'invalid_or_expired' });
+        setUser(null);
+        setSession(null);
+        setAccessToken(null);
+        setRefreshToken(null);
+      } else {
+        // Transient/network failure - keep current session and retry later.
+        console.warn('Token refresh failed (transient), keeping session:', err);
+        logAuthEvent('refresh_transient', { code: errorToAuthCode(err) });
+      }
     }
   }, [refreshToken, hydrateFromSession]);
 

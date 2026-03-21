@@ -58,6 +58,16 @@ This project is built with the most popular native mobile cross-platform technic
 - **React Query** - Server state management
 - **Lucide React Native** - Beautiful icons
 
+## Stability, auth & deep linking (audit)
+
+Production-oriented audit (matches full security/stability review prompt):
+
+- **[Full audit report (issues, root cause, fix, verification)](docs/FULL-STABILITY-AUDIT-REPORT.md)** — master document aligned with Tasks 1–5.
+- **[Manual regression checklist](docs/MANUAL-REGRESSION-CHECKLIST.md)** — device QA (session, deep links, network).
+- [Technical changelog summary](docs/AUTH-STABILITY-AUDIT.md) · [Universal Links / App Links setup](docs/UNIVERSAL-LINKS-SETUP.md) · [Maestro E2E](docs/E2E-MAESTRO.md)
+
+CI runs `bun run lint:ci` on push/PR (`.github/workflows/ci.yml`).
+
 ## How can I test my app?
 
 ### **On your phone (Recommended)**

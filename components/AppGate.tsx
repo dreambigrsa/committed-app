@@ -12,6 +12,7 @@ import {
   getIntendedRoute,
   clearIntendedRoute,
   setIntendedRoute,
+  subscribePendingDeepLink,
 } from '@/lib/deep-link-service';
 import { setStoredReferralCode } from '@/lib/referral-storage';
 import { hasPendingPasswordRecovery } from '@/lib/pending-password-recovery';
@@ -24,9 +25,16 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, authLoading, authReady, isAuthenticated } = useAuth();
   const lastTargetRef = useRef<string | null>(null);
-  const processedDeepLinkRef = useRef(false);
   const appliedIntendedRouteRef = useRef(false);
   const [loadingOverride, setLoadingOverride] = useState(false);
+  /** Bumped when a deep link is queued so routing re-runs (warm links after AppGate mounted). */
+  const [pendingDeepLinkSignal, setPendingDeepLinkSignal] = useState(0);
+
+  useEffect(() => {
+    return subscribePendingDeepLink(() => {
+      setPendingDeepLinkSignal((n) => n + 1);
+    });
+  }, []);
 
   useEffect(() => {
     if (!authReady || authLoading) return;
@@ -40,8 +48,7 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
     }
 
     const pending = getAndClearPendingDeepLink();
-    if (pending && !processedDeepLinkRef.current) {
-      processedDeepLinkRef.current = true;
+    if (pending) {
       if (__DEV__) console.log('[AppGate] Deep link:', pending.type, pending.postId ?? pending.reelId ?? pending.referralCode);
       if (pending.type === 'referral' && pending.referralCode) {
         setStoredReferralCode(pending.referralCode).catch(() => {});
@@ -114,7 +121,7 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
       router.replace(target as any);
     }, 0);
     return () => clearTimeout(id);
-  }, [authReady, authLoading, isAuthenticated, user, pathname, router]);
+  }, [authReady, authLoading, isAuthenticated, user, pathname, router, pendingDeepLinkSignal]);
 
   // After we're on main app, navigate to intended route once (e.g. post/reel from deep link)
   useEffect(() => {

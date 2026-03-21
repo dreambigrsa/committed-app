@@ -11,6 +11,8 @@
     "lint": "expo lint",
     "start:api": "tsx backend/server.ts",
     "doctor": "npx expo-doctor",
+    "lint:ci": "expo lint -- --no-cache",
+    "test:e2e:maestro": "maestro test maestro",
     "build:android:production": "eas build --platform android --profile production"
   },
   "dependencies": {

@@ -1,0 +1,20 @@
+# Template: copy to auth-sign-in-local.yaml (gitignored) and fill selectors.
+# Add testID="email-input" / testID="password-input" on auth screen TextInputs for stability.
+#
+# appId: com.committed.app
+# ---
+# - launchApp
+# - tapOn: "Sign in"
+# - tapOn:
+#     id: "email-input"
+# - inputText: "your-test@email.com"
+# - tapOn:
+#     id: "password-input"
+# - inputText: "your-password"
+# - tapOn: "Sign In"
+# - assertVisible: "Home"
+
+appId: com.committed.app
+---
+- launchApp:
+    clearState: false

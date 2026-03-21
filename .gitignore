@@ -7,6 +7,9 @@ node_modules/
 .expo/
 dist/
 web-build/
+
+# Next.js (web/) — never commit build output or cache
+web/.next/
 expo-env.d.ts
 
 # Native

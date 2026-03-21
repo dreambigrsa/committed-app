@@ -1,0 +1,7 @@
+# Smoke: app launches. Fails if the app crashes on startup.
+appId: com.committed.app
+---
+- launchApp:
+    clearState: false
+# Match a string that appears on landing or auth (adjust if rebranded)
+- assertVisible: "Committed"

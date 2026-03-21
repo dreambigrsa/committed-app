@@ -496,8 +496,10 @@ export default function AuthScreen() {
         // 1) show a non-error info message after a short delay
         // 2) use a longer hard timeout to avoid waiting forever
         // 3) on timeout, check if a session exists anyway (in that case, don't block the user)
-        const SIGN_IN_WARNING_MS = isPostVerification ? 12000 : 8000;
-        const SIGN_IN_HARD_TIMEOUT_MS = isPostVerification ? 60000 : 45000;
+        // Native networks are often slower than local web dev; give a bit more time and earlier feedback.
+        const isNativeMobile = Platform.OS === 'ios' || Platform.OS === 'android';
+        const SIGN_IN_WARNING_MS = isPostVerification ? 12000 : isNativeMobile ? 6000 : 8000;
+        const SIGN_IN_HARD_TIMEOUT_MS = isPostVerification ? 60000 : isNativeMobile ? 60000 : 45000;
         let timeoutId: ReturnType<typeof setTimeout> | null = null;
         const warningTimerId = setTimeout(() => {
           setMessageModal({
@@ -670,6 +672,7 @@ export default function AuthScreen() {
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Email</Text>
             <TextInput
+              testID="auth-email-input"
               style={styles.textInput}
               placeholder="Enter your email"
               placeholderTextColor={colors.text.tertiary}
@@ -699,6 +702,7 @@ export default function AuthScreen() {
               <Text style={styles.inputLabel}>Password</Text>
               <View style={styles.passwordInputContainer}>
                 <TextInput
+                  testID="auth-password-input"
                   style={styles.passwordInput}
                   placeholder="Enter your password"
                   placeholderTextColor={colors.text.tertiary}

@@ -1541,8 +1541,8 @@ export default function SettingsScreen() {
                 }}
               >
                 <View style={styles.settingLeft}>
-                  <Trash2 size={20} color={colors.error} />
-                  <Text style={[styles.settingLabel, { color: colors.error }]}>Reset Session Counters</Text>
+                  <Trash2 size={20} color={colors.danger} />
+                  <Text style={[styles.settingLabel, { color: colors.danger }]}>Reset Session Counters</Text>
                 </View>
                 <ChevronRight size={20} color={colors.text.tertiary} />
               </TouchableOpacity>

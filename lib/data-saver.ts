@@ -64,8 +64,9 @@ export async function getNetworkProfile(): Promise<NetworkProfile> {
     }
 
     const state = await Network.getNetworkStateAsync();
+    const stateWithGeneration = state as typeof state & { cellularGeneration?: string | null };
     const type = String(state.type || '').toLowerCase();
-    const generation = String(state.cellularGeneration || 'unknown').toLowerCase();
+    const generation = String(stateWithGeneration.cellularGeneration || 'unknown').toLowerCase();
     return {
       isConnected: !!state.isConnected,
       isWifi: type === 'wifi',

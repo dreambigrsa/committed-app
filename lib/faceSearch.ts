@@ -689,7 +689,7 @@ async function compareFacesAzure(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        faceId1: faceId1,
+        faceId1: _faceId1,
         faceId2: targetFaceId,
       }),
     });

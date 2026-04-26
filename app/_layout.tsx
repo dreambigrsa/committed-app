@@ -166,7 +166,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = async (...args: Parameters<typeof fetch>) => {
+    globalThis.fetch = (async (...args: Parameters<typeof originalFetch>) => {
       const response = await originalFetch(...args);
       const len = response.headers?.get?.('content-length');
       const bytes = len ? Number(len) : 0;
@@ -176,7 +176,7 @@ export default function RootLayout() {
         void recordApiCall(0);
       }
       return response;
-    };
+    }) as typeof globalThis.fetch;
     return () => {
       globalThis.fetch = originalFetch;
     };

@@ -13,7 +13,7 @@
  * Legal acceptance is **not** a navigation gate — `LegalAcceptanceEnforcer` uses a dismissible sheet + banner
  * reminders (soft UX). Returning users skip verify/onboarding when already completed.
  */
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import SplashScreen from './SplashScreen';
@@ -37,7 +37,7 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
   const appliedIntendedRouteRef = useRef(false);
 
   // New login / account switch: allow AppGate to navigate again (avoid stale lastTarget blocking verify→home).
-  useEffect(() => {
+  useLayoutEffect(() => {
     lastTargetRef.current = null;
   }, [user?.id]);
   /** Bumped when a deep link is queued so routing re-runs (warm links after AppGate mounted). */

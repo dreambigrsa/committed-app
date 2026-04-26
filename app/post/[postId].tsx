@@ -27,10 +27,10 @@ const DESKTOP_BREAKPOINT = 600;
 const FETCH_TIMEOUT_MS = 18000;
 const AUTO_RETRY_DELAY_MS = 2000;
 
-function fetchWithTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+function fetchWithTimeout<T>(promise: PromiseLike<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error('Request timed out')), ms);
-    promise.then(
+    Promise.resolve(promise).then(
       (v) => {
         clearTimeout(t);
         resolve(v);

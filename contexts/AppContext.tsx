@@ -64,6 +64,8 @@ export const [AppContext, useApp] = createContextHook(() => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const subscriptionsRef = useRef<RealtimeChannel[]>([]);
   const notificationPollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const setupRealtimeSubscriptionsRef = useRef<((userId: string) => void) | null>(null);
+  const cacheHydrationInFlightRef = useRef<Record<string, boolean>>({});
   const [userStatuses, setUserStatuses] = useState<Record<string, UserStatus>>({}); // userId -> UserStatus
   const statusUpdateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
@@ -77,6 +79,9 @@ export const [AppContext, useApp] = createContextHook(() => {
   const resumeRecoveryInFlightRef = useRef<boolean>(false);
   const lastResumeRecoveryAtRef = useRef<number>(0);
   const aiUserIdRef = useRef<string | null>(null);
+  const authEmptyReloadAttemptsRef = useRef<Record<string, number>>({});
+  const authBootstrapInFlightRef = useRef<boolean>(false);
+  const lastAuthBootstrapUserRef = useRef<string | null>(null);
   /** Monotonic id for loadUserData — avoids isLoading stuck/races when session object changes often. */
   const loadUserDataGenerationRef = useRef(0);
 
@@ -103,22 +108,65 @@ export const [AppContext, useApp] = createContextHook(() => {
   }, [getCacheKey]);
 
   const hydrateFromCache = useCallback(async (userId: string) => {
-    const [cachedCurrentUser, cachedPosts, cachedReels, cachedNotifications, cachedConversations, cachedMessages] = await Promise.all([
-      readCache<User>(userId, 'currentUser'),
-      readCache<Post[]>(userId, 'posts'),
-      readCache<Reel[]>(userId, 'reels'),
-      readCache<Notification[]>(userId, 'notifications'),
-      readCache<Conversation[]>(userId, 'conversations'),
-      readCache<Record<string, Message[]>>(userId, 'messages'),
-    ]);
+    cacheHydrationInFlightRef.current[userId] = true;
+    try {
+      const [cachedCurrentUser, cachedPosts, cachedReels, cachedNotifications, cachedConversations, cachedMessages] = await Promise.all([
+        readCache<User>(userId, 'currentUser'),
+        readCache<Post[]>(userId, 'posts'),
+        readCache<Reel[]>(userId, 'reels'),
+        readCache<Notification[]>(userId, 'notifications'),
+        readCache<Conversation[]>(userId, 'conversations'),
+        readCache<Record<string, Message[]>>(userId, 'messages'),
+      ]);
 
-    if (cachedCurrentUser) setCurrentUser(cachedCurrentUser);
-    if (cachedPosts?.length) setPosts(cachedPosts);
-    if (cachedReels?.length) setReels(cachedReels);
-    if (cachedNotifications?.length) setNotifications(cachedNotifications);
-    if (cachedConversations?.length) setConversations(cachedConversations);
-    if (cachedMessages && Object.keys(cachedMessages).length > 0) setMessages(cachedMessages);
+      if (cachedCurrentUser) setCurrentUser(cachedCurrentUser);
+      setPosts(Array.isArray(cachedPosts) ? cachedPosts : []);
+      setReels(Array.isArray(cachedReels) ? cachedReels : []);
+      setNotifications(Array.isArray(cachedNotifications) ? cachedNotifications : []);
+      setConversations(Array.isArray(cachedConversations) ? cachedConversations : []);
+      setMessages(cachedMessages ?? {});
+    } finally {
+      cacheHydrationInFlightRef.current[userId] = false;
+    }
   }, [readCache]);
+
+  const cacheUserId = currentUser?.id ?? authUser?.id ?? null;
+
+  useEffect(() => {
+    if (!cacheUserId || currentUser?.id !== cacheUserId) return;
+    if (cacheHydrationInFlightRef.current[cacheUserId]) return;
+    writeCache(cacheUserId, 'currentUser', currentUser).catch(() => {});
+  }, [cacheUserId, currentUser, writeCache]);
+
+  useEffect(() => {
+    if (!cacheUserId || currentUser?.id !== cacheUserId) return;
+    if (cacheHydrationInFlightRef.current[cacheUserId]) return;
+    writeCache(cacheUserId, 'posts', posts).catch(() => {});
+  }, [cacheUserId, currentUser?.id, posts, writeCache]);
+
+  useEffect(() => {
+    if (!cacheUserId || currentUser?.id !== cacheUserId) return;
+    if (cacheHydrationInFlightRef.current[cacheUserId]) return;
+    writeCache(cacheUserId, 'reels', reels).catch(() => {});
+  }, [cacheUserId, currentUser?.id, reels, writeCache]);
+
+  useEffect(() => {
+    if (!cacheUserId || currentUser?.id !== cacheUserId) return;
+    if (cacheHydrationInFlightRef.current[cacheUserId]) return;
+    writeCache(cacheUserId, 'notifications', notifications).catch(() => {});
+  }, [cacheUserId, currentUser?.id, notifications, writeCache]);
+
+  useEffect(() => {
+    if (!cacheUserId || currentUser?.id !== cacheUserId) return;
+    if (cacheHydrationInFlightRef.current[cacheUserId]) return;
+    writeCache(cacheUserId, 'conversations', conversations).catch(() => {});
+  }, [cacheUserId, currentUser?.id, conversations, writeCache]);
+
+  useEffect(() => {
+    if (!cacheUserId || currentUser?.id !== cacheUserId) return;
+    if (cacheHydrationInFlightRef.current[cacheUserId]) return;
+    writeCache(cacheUserId, 'messages', messages).catch(() => {});
+  }, [cacheUserId, currentUser?.id, messages, writeCache]);
 
   // Ban modal state
   const [banModalVisible, setBanModalVisible] = useState(false);
@@ -256,6 +304,83 @@ export const [AppContext, useApp] = createContextHook(() => {
     setSession(authSession ?? null);
   }, [authSession]);
 
+  // Deterministic bootstrap right after auth is fully ready.
+  // This ensures mobile fetch starts immediately on restart/login once session restore is complete.
+  useEffect(() => {
+    if (!authInitialized || authLoading || !authUser?.id) return;
+    if (lastAuthBootstrapUserRef.current === authUser.id && (posts.length > 0 || reels.length > 0)) return;
+
+    lastAuthBootstrapUserRef.current = authUser.id;
+    const gen = ++loadUserDataGenerationRef.current;
+    lastRefreshAtRef.current[authUser.id] = Date.now();
+    void hydrateFromCache(authUser.id);
+    void loadUserData(authUser.id, authSession ?? undefined, gen);
+  }, [
+    authInitialized,
+    authLoading,
+    authUser?.id,
+    authSession,
+    posts.length,
+    reels.length,
+    hydrateFromCache,
+  ]);
+
+  // Guard for mobile timing races after login:
+  // if auth is ready but core feeds are still empty, retry bootstrap fetch automatically.
+  useEffect(() => {
+    if (!authInitialized || authLoading || !authUser?.id) return;
+
+    const hasEmptyCoreFeeds = posts.length === 0 || reels.length === 0;
+    if (!hasEmptyCoreFeeds) {
+      authEmptyReloadAttemptsRef.current[authUser.id] = 0;
+      return;
+    }
+
+    const attempts = authEmptyReloadAttemptsRef.current[authUser.id] || 0;
+    if (attempts >= 3) return;
+    authEmptyReloadAttemptsRef.current[authUser.id] = attempts + 1;
+
+    const timer = setTimeout(() => {
+      const gen = ++loadUserDataGenerationRef.current;
+      lastRefreshAtRef.current[authUser.id] = Date.now();
+      void loadUserData(authUser.id, authSession ?? undefined, gen, { suppressLoading: true });
+    }, 900);
+
+    return () => clearTimeout(timer);
+  }, [
+    authInitialized,
+    authLoading,
+    authUser?.id,
+    authSession,
+    posts.length,
+    reels.length,
+  ]);
+
+  // Additional mobile-safe trigger:
+  // once auth session is available, force a background bootstrap if either feed is still empty.
+  // This closes timing gaps where auth user is set before token/session is fully ready.
+  useEffect(() => {
+    if (!authInitialized || authLoading || !authUser?.id || !authSession) return;
+    if (authBootstrapInFlightRef.current) return;
+    if (posts.length > 0 && reels.length > 0) return;
+
+    authBootstrapInFlightRef.current = true;
+    const gen = ++loadUserDataGenerationRef.current;
+    lastRefreshAtRef.current[authUser.id] = Date.now();
+
+    void loadUserData(authUser.id, authSession, gen, { suppressLoading: true })
+      .finally(() => {
+        authBootstrapInFlightRef.current = false;
+      });
+  }, [
+    authInitialized,
+    authLoading,
+    authUser?.id,
+    authSession,
+    posts.length,
+    reels.length,
+  ]);
+
   const loadUserData = async (
     userId: string,
     sessionForCreate?: Session,
@@ -273,12 +398,29 @@ export const [AppContext, useApp] = createContextHook(() => {
     try {
       if (!suppressLoading) setIsLoading(true);
       console.log('Loading user data for:', userId);
-      const USERS_FETCH_MS = 20000;
-      const { data: userData, error: userError } = await withTimeout(
-        Promise.resolve(supabase.from('users').select('*').eq('id', userId).single()),
-        USERS_FETCH_MS,
-        'users_profile_fetch'
-      );
+      const USERS_FETCH_MS = 35000;
+      let userData: any = null;
+      let userError: any = null;
+      let userFetchTimedOut = false;
+      try {
+        const userRes = await withTimeout(
+          Promise.resolve(supabase.from('users').select('*').eq('id', userId).single()),
+          USERS_FETCH_MS,
+          'users_profile_fetch'
+        );
+        userData = userRes.data;
+        userError = userRes.error;
+      } catch (userFetchErr: any) {
+        const msg = String(userFetchErr?.message || userFetchErr || '');
+        if (msg.includes('users_profile_fetch timed out')) {
+          userFetchTimedOut = true;
+          if (__DEV__) {
+            console.warn('[AppContext] user profile fetch timed out, continuing with auth shell:', userId);
+          }
+        } else {
+          throw userFetchErr;
+        }
+      }
 
       if (userError && userError.code === 'PGRST116') {
         console.log('User not found in database. Creating user record...');
@@ -290,7 +432,7 @@ export const [AppContext, useApp] = createContextHook(() => {
         console.error('User data error:', JSON.stringify(userError, null, 2));
         throw userError;
       }
-      
+
       if (userData) {
         const user: User = {
           id: userData.id,
@@ -412,6 +554,24 @@ export const [AppContext, useApp] = createContextHook(() => {
             console.error('Error syncing offline queue:', syncError);
           }
         })();
+      }
+      else if (userFetchTimedOut) {
+        // Don't block app data bootstrap on slow profile query.
+        // Keep an auth-derived shell user so UI can render while posts/reels load.
+        setCurrentUser((prev) => {
+          if (prev?.id === userId) return prev;
+          return {
+            id: userId,
+            fullName: authUser?.fullName || prev?.fullName || '',
+            username: prev?.username || '',
+            email: authUser?.email || prev?.email || '',
+            phoneNumber: authUser?.phoneNumber || prev?.phoneNumber || '',
+            profilePicture: prev?.profilePicture || undefined,
+            role: prev?.role || 'user',
+            verifications: prev?.verifications || { phone: false, email: !!authUser?.emailVerified, id: false },
+            createdAt: prev?.createdAt || new Date().toISOString(),
+          } as User;
+        });
       }
 
       const { data: postsData } = await supabase
@@ -1087,6 +1247,8 @@ export const [AppContext, useApp] = createContextHook(() => {
         await syncAuthState({ reason: 'app_resume_missing_auth_session', refreshToken: true });
       }
 
+      setupRealtimeSubscriptionsRef.current?.(authUser.id);
+
       const lastRefresh = lastRefreshAtRef.current[authUser.id] || 0;
       const needsReload = !currentUser || (posts.length === 0 && reels.length === 0);
       const staleReload = now - lastRefresh > 2 * 60 * 1000;
@@ -1174,13 +1336,29 @@ export const [AppContext, useApp] = createContextHook(() => {
       });
 
       if (error) throw error;
+
+      // Post-login bootstrap to avoid mobile empty-state until app restart.
+      // We refresh auth, hydrate cache immediately, then trigger core data load.
+      if (data?.user?.id && !authBootstrapInFlightRef.current) {
+        authBootstrapInFlightRef.current = true;
+        const userId = data.user.id;
+        try {
+          await syncAuthState({ reason: 'login_success_bootstrap', refreshToken: true });
+          void hydrateFromCache(userId);
+          const gen = ++loadUserDataGenerationRef.current;
+          lastRefreshAtRef.current[userId] = Date.now();
+          void loadUserData(userId, data.session ?? authSession ?? undefined, gen);
+        } finally {
+          authBootstrapInFlightRef.current = false;
+        }
+      }
       
       return data.user;
     } catch (error: any) {
       console.error('Login error:', error);
       throw error;
     }
-  }, []);
+  }, [authSession, hydrateFromCache, loadUserData, syncAuthState]);
 
   const signup = useCallback(async (fullName: string, email: string, phoneNumber: string, password: string) => {
     try {
@@ -1389,7 +1567,28 @@ export const [AppContext, useApp] = createContextHook(() => {
         console.error('Error during subscription cleanup:', cleanupError);
       }
       
-      // Step 2: Sign out from Supabase (this properly clears the session)
+      // Step 2: Set user status to offline while auth is still valid
+      try {
+        const userId = currentUser?.id;
+        if (userId) {
+          const now = new Date().toISOString();
+          const existing = userStatuses[userId];
+          await supabase
+            .from('user_status')
+            .upsert({
+              user_id: userId,
+              status_type: 'offline',
+              last_active_at: now,
+              updated_at: now,
+              status_visibility: existing?.statusVisibility || 'contacts',
+              last_seen_visibility: existing?.lastSeenVisibility || 'contacts',
+            }, { onConflict: 'user_id' });
+        }
+      } catch (statusError) {
+        console.error('Error setting offline status:', statusError);
+      }
+
+      // Step 3: Sign out from Supabase (this properly clears the session)
       try {
         const { error: signOutError } = await supabase.auth.signOut();
         if (signOutError) {
@@ -1401,7 +1600,7 @@ export const [AppContext, useApp] = createContextHook(() => {
         console.error('Error during Supabase signOut:', signOutErr);
       }
       
-      // Step 3: Clear local AsyncStorage session (comprehensive cleanup)
+      // Step 4: Clear local AsyncStorage session (comprehensive cleanup)
       try {
         const AsyncStorage = require('@react-native-async-storage/async-storage').default;
         const storageKeys = await AsyncStorage.getAllKeys();
@@ -1430,24 +1629,6 @@ export const [AppContext, useApp] = createContextHook(() => {
         console.log('AsyncStorage cleared successfully');
       } catch (storageError) {
         console.error('Error clearing AsyncStorage:', storageError);
-      }
-      
-      // Step 4: Set user status to offline BEFORE clearing state
-      try {
-        const userId = currentUser?.id;
-        if (userId) {
-          const now = new Date().toISOString();
-          await supabase
-            .from('user_status')
-            .update({
-              status_type: 'offline',
-              last_active_at: now,
-              updated_at: now,
-            })
-            .eq('user_id', userId);
-        }
-      } catch (statusError) {
-        console.error('Error setting offline status:', statusError);
       }
       
       // Step 5: Clear local state AFTER all cleanup is done
@@ -1517,7 +1698,7 @@ export const [AppContext, useApp] = createContextHook(() => {
       // Reset logout flag even on error
       isLoggingOutRef.current = false;
     }
-  }, [statusRealtimeChannels]);
+  }, [statusRealtimeChannels, currentUser?.id, userStatuses]);
 
   const deleteAccount = useCallback(async () => {
     if (!currentUser) {
@@ -4225,6 +4406,20 @@ export const [AppContext, useApp] = createContextHook(() => {
   }, [currentUser, getActiveAds]);
 
   const setupRealtimeSubscriptions = useCallback((userId: string) => {
+    // Prevent duplicate realtime channels across repeated bootstraps/retries.
+    subscriptionsRef.current.forEach((channel) => {
+      try {
+        supabase.removeChannel(channel);
+      } catch {
+        // best effort cleanup
+      }
+    });
+    subscriptionsRef.current = [];
+    if (notificationPollIntervalRef.current) {
+      clearInterval(notificationPollIntervalRef.current);
+      notificationPollIntervalRef.current = null;
+    }
+
     const subs: RealtimeChannel[] = [];
 
     const messagesChannel = supabase
@@ -4838,7 +5033,16 @@ export const [AppContext, useApp] = createContextHook(() => {
         notificationPollIntervalRef.current = null;
       }
     };
-  }, []);
+  }, [refreshRelationships]);
+
+  useEffect(() => {
+    setupRealtimeSubscriptionsRef.current = setupRealtimeSubscriptions;
+    return () => {
+      if (setupRealtimeSubscriptionsRef.current === setupRealtimeSubscriptions) {
+        setupRealtimeSubscriptionsRef.current = null;
+      }
+    };
+  }, [setupRealtimeSubscriptions]);
 
   const followUser = useCallback(async (followingId: string) => {
     if (!currentUser) return null;
@@ -6854,10 +7058,20 @@ export const [AppContext, useApp] = createContextHook(() => {
         updateData.custom_status_text = customStatusText || null;
       }
 
+      const existing = userStatuses[currentUser.id];
       const { error } = await supabase
         .from('user_status')
-        .update(updateData)
-        .eq('user_id', currentUser.id);
+        .upsert({
+          user_id: currentUser.id,
+          status_type: updateData.status_type,
+          custom_status_text: updateData.custom_status_text ?? existing?.customStatusText ?? null,
+          last_active_at: updateData.last_active_at,
+          updated_at: updateData.updated_at,
+          status_visibility: existing?.statusVisibility || 'contacts',
+          last_seen_visibility: existing?.lastSeenVisibility || 'contacts',
+        }, {
+          onConflict: 'user_id',
+        });
 
       if (error) throw error;
 
@@ -6881,7 +7095,7 @@ export const [AppContext, useApp] = createContextHook(() => {
       console.error('Update user status error:', error);
       return false;
     }
-  }, [currentUser]);
+  }, [currentUser, userStatuses]);
 
   const updateStatusPrivacy = useCallback(async (
     statusVisibility: StatusVisibility,
@@ -6890,14 +7104,21 @@ export const [AppContext, useApp] = createContextHook(() => {
     if (!currentUser) return false;
 
     try {
+      const existing = userStatuses[currentUser.id];
+      const now = new Date().toISOString();
       const { error } = await supabase
         .from('user_status')
-        .update({
+        .upsert({
+          user_id: currentUser.id,
+          status_type: existing?.statusType || 'offline',
+          custom_status_text: existing?.customStatusText ?? null,
+          last_active_at: existing?.lastActiveAt || now,
           status_visibility: statusVisibility,
           last_seen_visibility: lastSeenVisibility,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('user_id', currentUser.id);
+          updated_at: now,
+        }, {
+          onConflict: 'user_id',
+        });
 
       if (error) throw error;
 
@@ -6920,12 +7141,15 @@ export const [AppContext, useApp] = createContextHook(() => {
       console.error('Update status privacy error:', error);
       return false;
     }
-  }, [currentUser]);
+  }, [currentUser, userStatuses]);
 
-  const getUserStatus = useCallback(async (userId: string): Promise<UserStatus | null> => {
+  const getUserStatus = useCallback(async (
+    userId: string,
+    opts?: { forceFresh?: boolean }
+  ): Promise<UserStatus | null> => {
     const cached = userStatuses[userId];
     const fetchedAt = userStatusFetchedAtRef.current[userId];
-    if (cached && fetchedAt && Date.now() - fetchedAt < STATUS_CACHE_TTL_MS) {
+    if (!opts?.forceFresh && cached && fetchedAt && Date.now() - fetchedAt < STATUS_CACHE_TTL_MS) {
       return cached;
     }
 
@@ -7035,10 +7259,20 @@ export const [AppContext, useApp] = createContextHook(() => {
             updateData.status_type = newStatusType;
           }
 
+          const existing = userStatuses[currentUser.id];
           const { error } = await supabase
             .from('user_status')
-            .update(updateData)
-            .eq('user_id', currentUser.id);
+            .upsert({
+              user_id: currentUser.id,
+              status_type: updateData.status_type ?? currentStatusData.status_type,
+              custom_status_text: existing?.customStatusText ?? null,
+              last_active_at: updateData.last_active_at,
+              updated_at: updateData.updated_at,
+              status_visibility: existing?.statusVisibility || 'everyone',
+              last_seen_visibility: existing?.lastSeenVisibility || 'everyone',
+            }, {
+              onConflict: 'user_id',
+            });
 
           if (!error) {
             setUserStatuses(prev => {
@@ -7085,7 +7319,7 @@ export const [AppContext, useApp] = createContextHook(() => {
     }, STATUS_HEARTBEAT_MS);
 
     statusUpdateIntervalRef.current = interval;
-  }, [currentUser]);
+  }, [currentUser, userStatuses]);
 
   // Handle app state changes (foreground/background)
   useEffect(() => {
@@ -7106,14 +7340,20 @@ export const [AppContext, useApp] = createContextHook(() => {
         }
 
         // Update status to online and last_active_at to NOW
+        const existing = userStatuses[currentUser.id];
         const { error } = await supabase
           .from('user_status')
-          .update({
+          .upsert({
+            user_id: currentUser.id,
             status_type: 'online',
             last_active_at: now,
             updated_at: now,
-          })
-          .eq('user_id', currentUser.id);
+            custom_status_text: existing?.customStatusText ?? null,
+            status_visibility: existing?.statusVisibility || 'everyone',
+            last_seen_visibility: existing?.lastSeenVisibility || 'everyone',
+          }, {
+            onConflict: 'user_id',
+          });
 
         if (!error) {
           setUserStatuses(prev => {
@@ -7146,14 +7386,20 @@ export const [AppContext, useApp] = createContextHook(() => {
 
         // Update last_active_at to NOW (actual time they left)
         // Set status to 'away' (will become offline after timeout)
+        const existing = userStatuses[currentUser.id];
         const { error } = await supabase
           .from('user_status')
-          .update({
+          .upsert({
+            user_id: currentUser.id,
             status_type: 'away',
             last_active_at: now, // Update to actual time they left
             updated_at: now,
-          })
-          .eq('user_id', currentUser.id);
+            custom_status_text: existing?.customStatusText ?? null,
+            status_visibility: existing?.statusVisibility || 'everyone',
+            last_seen_visibility: existing?.lastSeenVisibility || 'everyone',
+          }, {
+            onConflict: 'user_id',
+          });
 
         if (!error) {
           setUserStatuses(prev => {
@@ -7184,7 +7430,7 @@ export const [AppContext, useApp] = createContextHook(() => {
     return () => {
       subscription.remove();
     };
-  }, [currentUser, startStatusTracking, recoverDataOnResume]);
+  }, [currentUser, userStatuses, startStatusTracking, recoverDataOnResume]);
 
   // Cleanup interval on unmount or logout
   useEffect(() => {
@@ -7235,7 +7481,7 @@ export const [AppContext, useApp] = createContextHook(() => {
           const statusData = payload.new as any;
           if (statusData && conversationUserIds.has(statusData.user_id)) {
             // Use getUserStatus to get properly calculated status
-            const calculatedStatus = await getUserStatus(statusData.user_id);
+            const calculatedStatus = await getUserStatus(statusData.user_id, { forceFresh: true });
             if (calculatedStatus) {
               setUserStatuses(prev => ({ ...prev, [statusData.user_id]: calculatedStatus }));
             }
@@ -7250,7 +7496,7 @@ export const [AppContext, useApp] = createContextHook(() => {
     return () => {
       channels.forEach(ch => supabase.removeChannel(ch));
     };
-  }, [currentUser, conversations, follows]);
+  }, [currentUser, conversations, follows, getUserStatus]);
 
   // Set status to offline on logout
   // Note: Status is now set in the logout function itself before clearing state
@@ -7269,12 +7515,16 @@ export const [AppContext, useApp] = createContextHook(() => {
         try {
         await supabase
           .from('user_status')
-          .update({
+          .upsert({
+            user_id: userId,
             status_type: 'offline',
-              last_active_at: now,
+            last_active_at: now,
             updated_at: now,
-          })
-            .eq('user_id', userId);
+            status_visibility: 'contacts',
+            last_seen_visibility: 'contacts',
+          }, {
+            onConflict: 'user_id',
+          });
         
         // Update local state
         setUserStatuses(prev => {

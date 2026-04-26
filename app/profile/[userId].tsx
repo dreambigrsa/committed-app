@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Modal,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Video, ResizeMode } from 'expo-av';
@@ -25,16 +26,18 @@ import StatusIndicator from '@/components/StatusIndicator';
 import { AdaptiveMediaProfile, getAdaptiveImageUrl, getAdaptiveMediaProfile, getAdaptiveVideoUrl } from '@/lib/adaptive-media';
 
 const { width } = Dimensions.get('window');
-const itemWidth = (width - 44) / 3;
+const GRID_HORIZONTAL_PADDING = 20;
+const GRID_GAP = 4;
+const itemWidth = Math.floor((width - GRID_HORIZONTAL_PADDING * 2 - GRID_GAP * 2) / 3);
 
 type TabType = 'posts' | 'reels';
 const PROFILE_FETCH_TIMEOUT_MS = 15000;
 const STATUS_FETCH_TIMEOUT_MS = 10000;
 
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
-    promise.then(
+    Promise.resolve(promise).then(
       (v) => {
         clearTimeout(t);
         resolve(v);
@@ -70,6 +73,7 @@ export default function UserProfileScreen() {
   const [reportingProfile, setReportingProfile] = useState(false);
   const [userStatus, setUserStatus] = useState<any>(null);
   const [mediaProfile, setMediaProfile] = useState<AdaptiveMediaProfile | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const imageViewerScrollRef = useRef<ScrollView>(null);
   
   const relationship = user ? getUserRelationship(user.id) : null;
@@ -376,6 +380,22 @@ export default function UserProfileScreen() {
     setIsFollowing(checkIsFollowing(userId));
   };
 
+  const handleRefresh = async () => {
+    if (!userId) return;
+    setRefreshing(true);
+    try {
+      await Promise.allSettled([
+        loadUserProfile(),
+        loadUserContent(),
+        checkFollowStatus(),
+        loadFollowCounts(),
+        Promise.resolve(loadUserStatus()),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const loadFollowCounts = async () => {
     if (!userId) return;
     try {
@@ -548,6 +568,8 @@ export default function UserProfileScreen() {
           numColumns={3}
           key="posts"
           scrollEnabled={false}
+          contentContainerStyle={styles.gridListContent}
+          columnWrapperStyle={styles.gridRow}
           renderItem={({ item }) => (
             <TouchableOpacity 
               style={styles.gridItem}
@@ -588,6 +610,8 @@ export default function UserProfileScreen() {
           numColumns={3}
           key="reels"
           scrollEnabled={false}
+          contentContainerStyle={styles.gridListContent}
+          columnWrapperStyle={styles.gridRow}
           renderItem={({ item }) => (
             <TouchableOpacity 
               style={styles.gridItem}
@@ -633,6 +657,15 @@ export default function UserProfileScreen() {
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+            progressBackgroundColor={colors.background.primary}
+          />
+        }
       >
         <View style={styles.profileSection}>
           <View style={styles.avatarContainer}>
@@ -1289,7 +1322,14 @@ const createStyles = (colors: any) => StyleSheet.create({
   gridItem: {
     width: itemWidth,
     height: itemWidth,
-    margin: 2,
+    marginBottom: GRID_GAP,
+  },
+  gridListContent: {
+    paddingHorizontal: GRID_HORIZONTAL_PADDING,
+  },
+  gridRow: {
+    justifyContent: 'flex-start',
+    gap: GRID_GAP,
   },
   gridImage: {
     width: '100%',

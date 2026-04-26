@@ -27,10 +27,12 @@ import {
   Sparkles,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function LandingScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const { authInitialized, authLoading, isAuthenticated, user } = useAuth();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
 
@@ -48,6 +50,15 @@ export default function LandingScreen() {
         }),
       ]).start();
   }, [fadeAnim, slideAnim]);
+
+  // Never render landing while auth bootstrap is unresolved, and never show it for signed-in users.
+  // AppGate handles canonical routing; this prevents visible flicker of "/" before redirect.
+  useEffect(() => {
+    if (!authInitialized || authLoading) return;
+    if (isAuthenticated && user?.id) {
+      router.replace('/(tabs)/home' as any);
+    }
+  }, [authInitialized, authLoading, isAuthenticated, user?.id, router]);
 
   const features = [
     {
@@ -89,6 +100,10 @@ export default function LandingScreen() {
   ];
 
   const styles = createStyles(colors);
+
+  if (!authInitialized || authLoading || (isAuthenticated && user?.id)) {
+    return <View style={styles.container} />;
+  }
 
   return (
     <View style={styles.container}>

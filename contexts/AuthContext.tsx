@@ -16,6 +16,22 @@ import { checkUserLegalAcceptances } from '@/lib/legal-enforcement';
 import { hasPendingPasswordRecovery, setPendingPasswordRecovery } from '@/lib/pending-password-recovery';
 import { requestPasswordReset } from '@/lib/auth-functions';
 
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
 // Minimal auth user for routing decisions
 export interface AuthUser {
   id: string;
@@ -112,10 +128,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setIsPasswordRecovery(true);
         }
 
-        const [{ data: profileData }, { data: userData }] = await Promise.all([
-          supabase.from('profiles').select('is_verified').eq('id', session.user.id).maybeSingle(),
-          supabase.from('users').select('id, full_name, email, phone_number').eq('id', session.user.id).single(),
-        ]);
+        const [{ data: profileData }, { data: userData }] = await withTimeout(
+          Promise.all([
+            supabase.from('profiles').select('is_verified').eq('id', session.user.id).maybeSingle(),
+            supabase.from('users').select('id, full_name, email, phone_number').eq('id', session.user.id).single(),
+          ]),
+          10000,
+          'auth_profile_hydrate'
+        );
         const isVerified = profileData?.is_verified ?? false;
 
         if (!userData) {
@@ -134,14 +154,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        const [acceptanceStatus, { data: onboardingData }] = await Promise.all([
-          checkUserLegalAcceptances(session.user.id),
-          supabase
-            .from('user_onboarding_data')
-            .select('has_completed_onboarding')
-            .eq('user_id', session.user.id)
-            .maybeSingle(),
-        ]);
+        const [acceptanceStatus, { data: onboardingData }] = await withTimeout(
+          Promise.all([
+            checkUserLegalAcceptances(session.user.id),
+            supabase
+              .from('user_onboarding_data')
+              .select('has_completed_onboarding')
+              .eq('user_id', session.user.id)
+              .maybeSingle(),
+          ]),
+          10000,
+          'auth_onboarding_hydrate'
+        );
 
         setUser({
           id: userData.id,
@@ -197,7 +221,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const readSessionWithRetry = async () => {
       let lastError: { message?: string } | null = null;
       for (let attempt = 0; attempt < 3; attempt++) {
-        const { data: { session: s }, error } = await supabase.auth.getSession();
+        let result: Awaited<ReturnType<typeof supabase.auth.getSession>>;
+        try {
+          result = await withTimeout(
+            supabase.auth.getSession(),
+            8000,
+            'restore_get_session'
+          );
+        } catch (err: any) {
+          lastError = err;
+          if (attempt < 2) await new Promise((r) => setTimeout(r, 350 * (attempt + 1)));
+          continue;
+        }
+        const { data: { session: s }, error } = result;
         if (!error) return { session: s, error: null as null };
         lastError = error;
         const em = (error.message ?? String(error)).toLowerCase();
@@ -452,7 +488,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
 
           if (opts?.refreshToken) {
-            const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
+            const { data: refreshed, error: refreshErr } = await withTimeout(
+              supabase.auth.refreshSession(),
+              12000,
+              'auth_refresh_session'
+            );
             if (refreshErr) throw refreshErr;
             if (refreshed.session) {
               transientNullSinceRef.current = null;
@@ -467,7 +507,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           }
 
-          const { data: { session: liveSession }, error } = await supabase.auth.getSession();
+          const { data: { session: liveSession }, error } = await withTimeout(
+            supabase.auth.getSession(),
+            8000,
+            'auth_get_session'
+          );
           if (error) throw error;
 
           if (!liveSession) {
@@ -476,7 +520,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             // One extra active refresh attempt before considering a clear.
             try {
-              const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
+              const { data: refreshed, error: refreshErr } = await withTimeout(
+                supabase.auth.refreshSession(),
+                12000,
+                'auth_refresh_after_null'
+              );
               if (!refreshErr && refreshed.session) {
                 transientNullSinceRef.current = null;
                 setSession(refreshed.session);
@@ -532,11 +580,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch (err: any) {
           const msg = (err?.message ?? String(err)) ?? '';
           if (msg.includes('aborted') || msg.includes('signal')) {
-            return !!session;
+            return !!session || !!user;
           }
           console.error('syncAuthState error:', err);
           logAuthEvent('sync_error', { reason: opts?.reason ?? 'manual', code: errorToAuthCode(err) });
-          return !!session;
+          return !!session || !!user;
         } finally {
           syncInFlightRef.current = null;
         }
@@ -545,7 +593,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       syncInFlightRef.current = run;
       return run;
     },
-    [getMinimalUserFromSession, hydrateFromSession, session]
+    [getMinimalUserFromSession, hydrateFromSession, session, user]
   );
 
   const refreshSession = useCallback(async () => {
@@ -554,7 +602,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     try {
-      const { data, error } = await supabase.auth.refreshSession();
+      const { data, error } = await withTimeout(
+        supabase.auth.refreshSession(),
+        12000,
+        'manual_refresh_session'
+      );
       if (error) throw error;
       if (data.session) {
         await hydrateFromSession(data.session);
@@ -603,7 +655,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Re-run the same startup bootstrap path used on cold launch.
       await restoreSession();
 
-      const { data: { session: s }, error } = await supabase.auth.getSession();
+      const { data: { session: s }, error } = await withTimeout(
+        supabase.auth.getSession(),
+        8000,
+        'recover_get_session'
+      );
       if (error || !s) {
         if (__DEV__) console.warn('[AuthContext] recoverSessionHard no session after restore');
         setUser(null);

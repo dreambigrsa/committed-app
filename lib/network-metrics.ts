@@ -28,7 +28,7 @@ export async function getSessionMetrics(): Promise<SessionMetrics> {
   } catch {
     cache = createSession();
   }
-  return cache;
+  return cache ?? createSession();
 }
 
 export async function recordApiCall(responseBytes: number): Promise<void> {

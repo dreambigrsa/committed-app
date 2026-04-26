@@ -70,7 +70,7 @@ async function waitForSession(maxMs: number): Promise<boolean> {
 export default function AuthCallbackScreen() {
   const router = useRouter();
   const [uiState, setUiState] = useState<CallbackUIState>("loading");
-  const { setPasswordRecovery } = useAuth();
+  const { setPasswordRecovery, syncAuthState } = useAuth();
   const navigatedRef = useRef(false);
   const processedRef = useRef(false);
 
@@ -178,6 +178,12 @@ export default function AuthCallbackScreen() {
         if (cancelled) return;
 
         markUrlProcessed(url);
+        if (hasSession) {
+          await syncAuthState({
+            reason: typeRecovery ? "auth_callback_recovery" : "auth_callback_verify",
+            refreshToken: true,
+          }).catch(() => false);
+        }
         if (typeRecovery) {
           navigateOnce("/reset-password");
         } else {
@@ -255,7 +261,7 @@ export default function AuthCallbackScreen() {
       sub.remove();
       if (!navigatedRef.current) setCallbackProcessing(false);
     };
-  }, [router, setPasswordRecovery]);
+  }, [router, setPasswordRecovery, syncAuthState]);
 
   if (uiState === "error") {
     return (

@@ -1513,12 +1513,26 @@ export const [AppContext, useApp] = createContextHook(() => {
         }
       }
 
+      if (authData.session && !authBootstrapInFlightRef.current) {
+        authBootstrapInFlightRef.current = true;
+        const userId = authData.user.id;
+        try {
+          await syncAuthState({ reason: 'signup_success_bootstrap', refreshToken: true });
+          void hydrateFromCache(userId);
+          const gen = ++loadUserDataGenerationRef.current;
+          lastRefreshAtRef.current[userId] = Date.now();
+          void loadUserData(userId, authData.session, gen);
+        } finally {
+          authBootstrapInFlightRef.current = false;
+        }
+      }
+
       return authData.user;
     } catch (error: any) {
       console.error('Signup error:', error);
       throw error;
     }
-  }, []);
+  }, [hydrateFromCache, loadUserData, syncAuthState]);
 
   const logout = useCallback(async () => {
     try {

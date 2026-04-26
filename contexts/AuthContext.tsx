@@ -16,10 +16,10 @@ import { checkUserLegalAcceptances } from '@/lib/legal-enforcement';
 import { hasPendingPasswordRecovery, setPendingPasswordRecovery } from '@/lib/pending-password-recovery';
 import { requestPasswordReset } from '@/lib/auth-functions';
 
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
-    promise.then(
+    Promise.resolve(promise).then(
       (value) => {
         clearTimeout(timer);
         resolve(value);
@@ -139,7 +139,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const isVerified = profileData?.is_verified ?? false;
 
         if (!userData) {
-          const acceptanceStatus = await checkUserLegalAcceptances(session.user.id);
+          const acceptanceStatus = await withTimeout(
+            checkUserLegalAcceptances(session.user.id),
+            8000,
+            'auth_legal_hydrate'
+          );
           setUser({
             id: session.user.id,
             email: session.user.email || '',

@@ -30,7 +30,7 @@ const ONBOARDING_VERSION = '1.0.0';
 
 export default function OnboardingScreen() {
   const router = useRouter();
-  const { updateUser } = useAuth();
+  const { updateUser, syncAuthState } = useAuth();
   const { userId, isSessionReady } = useOnboardingUserId();
   const { colors: themeColors } = useTheme();
   const styles = createStyles(themeColors);
@@ -225,6 +225,9 @@ export default function OnboardingScreen() {
       if (error) throw error;
 
       updateUser({ completedOnboarding: true });
+      await syncAuthState({ reason: 'onboarding_completed', refreshToken: false }).catch(() => false);
+      updateUser({ completedOnboarding: true });
+      router.replace('/(tabs)/home' as any);
     } catch (error: any) {
       console.error('Error saving onboarding data:', error);
       Alert.alert('Error', 'Failed to save onboarding data. Please try again.');

@@ -453,6 +453,9 @@ export default function AuthScreen() {
         try {
           const { data: { session } } = await supabase.auth.getSession();
           const emailConfirmed = !!session?.user?.email_confirmed_at;
+          if (session?.user?.id) {
+            await syncAuthState({ reason: 'signup_success_bootstrap', refreshToken: true }).catch(() => false);
+          }
           
           // Redirect immediately - verify-email screen will render instantly
           // Don't clear loading until after redirect completes

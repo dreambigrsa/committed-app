@@ -26,7 +26,7 @@ export default function VerifyEmailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ token?: string }>();
   useApp(); // For app context availability
-  const { refreshSession } = useAuth();
+  const { refreshSession, syncAuthState, updateUser } = useAuth();
   const { colors: themeColors } = useTheme();
   const [isChecking, setIsChecking] = useState(true);
   const [isVerified, setIsVerified] = useState(false);
@@ -38,6 +38,16 @@ export default function VerifyEmailScreen() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const hasAutoSentRef = useRef(false);
+
+  const refreshVerifiedAuthState = async () => {
+    updateUser({ emailVerified: true });
+    await supabase.auth.refreshSession().catch(() => {});
+    const synced = await syncAuthState({ reason: 'email_verified', refreshToken: true }).catch(() => false);
+    if (!synced) {
+      await refreshSession().catch(() => {});
+    }
+    updateUser({ emailVerified: true });
+  };
 
   // When opened with token (e.g. from email deep link): call API and show result
   useEffect(() => {
@@ -52,8 +62,7 @@ export default function VerifyEmailScreen() {
       if (res.ok) {
         setTokenResult('success');
         setIsVerified(true);
-        await supabase.auth.refreshSession().catch(() => {});
-        await refreshSession().catch(() => {}); // Update AuthContext so user.emailVerified is true and user stays signed in
+        await refreshVerifiedAuthState();
         let session = (await supabase.auth.getSession()).data.session;
         if (!session) {
           await new Promise((r) => setTimeout(r, 1200)); // Brief wait for session to propagate (e.g. same-device verify)
@@ -89,8 +98,7 @@ export default function VerifyEmailScreen() {
         const { data: profile } = await supabase.from('profiles').select('is_verified').eq('id', session.user.id).maybeSingle();
         if (profile?.is_verified) {
           setIsVerified(true);
-          await supabase.auth.refreshSession();
-          await refreshSession(); // Update AuthContext so user.emailVerified is true and user stays signed in
+          await refreshVerifiedAuthState();
           return true;
         }
         return false;
@@ -182,8 +190,8 @@ export default function VerifyEmailScreen() {
         const verified = !!profile?.is_verified;
         setIsVerified(verified);
         if (verified) {
-          supabase.auth.refreshSession().catch(() => {});
-          refreshSession().catch(() => {});
+          await refreshVerifiedAuthState();
+          router.replace('/');
         }
         else if (showMessage) alert('Email not verified yet.\n\nCheck your inbox and click the verification link. If you just clicked it, wait a few seconds.');
       } else {

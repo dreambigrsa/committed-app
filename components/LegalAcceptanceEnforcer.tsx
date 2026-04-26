@@ -20,8 +20,8 @@ type LegalSurface = 'sheet' | 'reminder';
  * - Legal status still comes from AppContext once loaded (no duplicate bootstrap fetch).
  */
 export default function LegalAcceptanceEnforcer() {
-  const { currentUser, legalAcceptanceStatus, setLegalAcceptanceStatus } = useApp();
-  const { user: authUser, updateUser } = useAuth();
+  const { currentUser, legalAcceptanceStatus, setLegalAcceptanceStatus, checkOnboardingStatus } = useApp();
+  const { user: authUser, updateUser, syncAuthState } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [surface, setSurface] = useState<LegalSurface>('sheet');
@@ -136,11 +136,22 @@ export default function LegalAcceptanceEnforcer() {
 
     if (effectiveUserId) {
       try {
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        if (__DEV__) {
+          console.log('[LegalAcceptanceEnforcer] complete start', {
+            userId: effectiveUserId,
+            beforeAccepted: authUser?.acceptedLegalDocs ?? null,
+          });
+        }
+        await new Promise((resolve) => setTimeout(resolve, 400));
         const status = await checkUserLegalAcceptances(effectiveUserId);
         setLegalAcceptanceStatus(status);
         if (status.hasAllRequired) {
           updateUser({ acceptedLegalDocs: true });
+          await syncAuthState({ reason: 'legal_acceptance_complete', refreshToken: false });
+          await checkOnboardingStatus(effectiveUserId);
+          if (__DEV__) {
+            console.log('[LegalAcceptanceEnforcer] complete success', { hasAllRequired: true });
+          }
         }
       } catch (error) {
         console.error('Error refreshing legal acceptance status:', error);

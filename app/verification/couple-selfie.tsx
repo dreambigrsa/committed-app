@@ -18,6 +18,7 @@ import { Image } from 'expo-image';
 import { useApp } from '@/contexts/AppContext';
 import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
+import { assertMediaWithinLimit, getAdaptiveImageQuality, optimizeImageForUpload } from '@/lib/media-optimizer';
 
 export default function CoupleSelfieVerificationScreen() {
   const router = useRouter();
@@ -33,11 +34,13 @@ export default function CoupleSelfieVerificationScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [4, 3],
-      quality: 0.8,
+      quality: await getAdaptiveImageQuality(),
     });
 
     if (!result.canceled && result.assets[0]) {
-      setSelfieUri(result.assets[0].uri);
+      const optimizedUri = await optimizeImageForUpload(result.assets[0].uri);
+      await assertMediaWithinLimit(optimizedUri, 'image');
+      setSelfieUri(optimizedUri);
     }
   };
 

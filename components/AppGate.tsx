@@ -1,7 +1,7 @@
 /**
  * AppGate - Single place for auth-based routing and deep link processing.
  * Deep links are queued and processed only after authReady === true.
- * Loading has a 4s hard stop so the app never stays on splash indefinitely.
+ * Bootstrap splash should not hang indefinitely; watchdog + AuthContext unblock handle edge cases.
  *
  * Auth routing order (signed-in user):
  * 1. Password recovery → /reset-password
@@ -28,12 +28,11 @@ import { setStoredReferralCode } from '@/lib/referral-storage';
 import { hasPendingPasswordRecovery } from '@/lib/pending-password-recovery';
 import { isCallbackProcessing } from '@/lib/auth-callback-state';
 
-const LOADING_MAX_MS = 4000;
-
 export default function AppGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, authLoading, authReady, isAuthenticated, profileHydrated } = useAuth();
+  const { user, authLoading, authReady, authInitialized, isAuthenticated, profileHydrated, syncAuthState, forceAuthBootstrapUnblock } =
+    useAuth();
   const lastTargetRef = useRef<string | null>(null);
   const appliedIntendedRouteRef = useRef(false);
 
@@ -41,7 +40,6 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     lastTargetRef.current = null;
   }, [user?.id]);
-  const [loadingOverride, setLoadingOverride] = useState(false);
   /** Bumped when a deep link is queued so routing re-runs (warm links after AppGate mounted). */
   const [pendingDeepLinkSignal, setPendingDeepLinkSignal] = useState(0);
 
@@ -52,7 +50,7 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!authReady || authLoading) return;
+    if (!authInitialized || !authReady || authLoading) return;
     if (isCallbackProcessing()) {
       if (__DEV__) console.log('[AppGate] Callback processing, skip redirect');
       return;
@@ -140,7 +138,23 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    if (lastTargetRef.current === target) return;
+    const onAuthShell =
+      current === '/auth' ||
+      current.startsWith('/auth?') ||
+      current === '/sign-in' ||
+      current.startsWith('/sign-in?') ||
+      current === '/sign-up' ||
+      current.startsWith('/sign-up?') ||
+      current === '/signup' ||
+      current.startsWith('/signup?');
+
+    // If lastTarget already equals target we normally skip — but signed-in users must never
+    // stay stuck on /auth after login just because lastTarget was already /(tabs)/home.
+    if (lastTargetRef.current === target) {
+      const mustLeaveAuthShell =
+        isAuthenticated && !!user && onAuthShell && current !== target;
+      if (!mustLeaveAuthShell) return;
+    }
     lastTargetRef.current = target;
 
     // Same route: skip. Allow tab-to-tab when target is home (don't force home tab on every tick).
@@ -154,11 +168,11 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
       router.replace(target as any);
     }, 0);
     return () => clearTimeout(id);
-  }, [authReady, authLoading, isAuthenticated, user, pathname, router, pendingDeepLinkSignal, profileHydrated]);
+  }, [authInitialized, authReady, authLoading, isAuthenticated, user, pathname, router, pendingDeepLinkSignal, profileHydrated]);
 
   // After we're on main app, navigate to intended route once (e.g. post/reel from deep link)
   useEffect(() => {
-    if (!authReady || authLoading || !isAuthenticated || !user || appliedIntendedRouteRef.current) return;
+    if (!authInitialized || !authReady || authLoading || !isAuthenticated || !user || appliedIntendedRouteRef.current) return;
     const current = pathname || '/';
     const onMainApp = current.startsWith('/(tabs)') || current.startsWith('/post') || current.startsWith('/reel/');
     if (!onMainApp) return;
@@ -169,17 +183,25 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
       clearIntendedRoute();
       setTimeout(() => router.push(route as any), 200);
     });
-  }, [authReady, authLoading, isAuthenticated, user, pathname, router]);
+  }, [authInitialized, authReady, authLoading, isAuthenticated, user, pathname, router]);
+
+  const showSplash = !authInitialized || !authReady || authLoading;
 
   useEffect(() => {
-    const t = setTimeout(() => {
-      setLoadingOverride(true);
-      if (__DEV__) console.log('[AppGate] Loading timeout reached, showing app');
-    }, LOADING_MAX_MS);
-    return () => clearTimeout(t);
-  }, []);
+    if (!showSplash) return;
+    const syncId = setTimeout(() => {
+      void syncAuthState({ reason: 'appgate_splash_watchdog', refreshToken: true });
+    }, 12000);
+    const unblockId = setTimeout(() => {
+      void syncAuthState({ reason: 'appgate_splash_unblock', refreshToken: true });
+      forceAuthBootstrapUnblock();
+    }, 24000);
+    return () => {
+      clearTimeout(syncId);
+      clearTimeout(unblockId);
+    };
+  }, [showSplash, syncAuthState, forceAuthBootstrapUnblock]);
 
-  const showSplash = !loadingOverride && (!authReady || authLoading);
   if (__DEV__ && showSplash) {
     console.log('[AppGate] Splash: authReady=', authReady, 'authLoading=', authLoading);
   }

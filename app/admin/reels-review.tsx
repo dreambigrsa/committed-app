@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,7 @@ import { Video, ResizeMode } from 'expo-av';
 import { CheckCircle, XCircle, RefreshCw, Video as VideoIcon, Trash2 } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface ReviewReel {
   id: string;
@@ -33,6 +33,8 @@ interface ReviewReel {
 
 export default function AdminReelsReviewScreen() {
   const { currentUser, adminDeleteReel, adminRejectReel } = useApp();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [reels, setReels] = useState<ReviewReel[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'resubmit'>('pending');
@@ -365,7 +367,7 @@ export default function AdminReelsReviewScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.secondary,

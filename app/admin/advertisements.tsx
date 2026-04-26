@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -18,11 +18,13 @@ import { Image } from 'expo-image';
 import { Plus, Edit2, Trash2, X, CheckCircle2, PauseCircle, Play, XCircle, DollarSign } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
 import { Advertisement } from '@/types';
 
 export default function AdminAdvertisementsScreen() {
   const { currentUser, createAdvertisement, updateAdvertisement, deleteAdvertisement } = useApp();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [advertisements, setAdvertisements] = useState<Advertisement[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
@@ -1315,7 +1317,7 @@ export default function AdminAdvertisementsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.secondary,

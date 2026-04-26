@@ -53,6 +53,7 @@ import {
 } from 'lucide-react-native';
 import StickerPicker from '@/components/StickerPicker';
 import { Sticker } from '@/types';
+import { getAdaptiveImageQuality } from '@/lib/media-optimizer';
 
 const { width, height } = Dimensions.get('window');
 const GRID_ITEM_SIZE = (width - 48) / 3;
@@ -422,7 +423,7 @@ export default function CreateStatusScreen() {
                       mediaTypes: ImagePicker.MediaTypeOptions.Videos,
                       allowsEditing: true,
                       videoMaxDuration: 15,
-                      quality: 0.8,
+                      quality: await getAdaptiveImageQuality(),
                       allowsMultipleSelection: false,
                     });
 
@@ -483,7 +484,7 @@ export default function CreateStatusScreen() {
         mediaTypes: ImagePicker.MediaTypeOptions.Videos,
         allowsEditing: true,
         videoMaxDuration: 15,
-        quality: 0.8,
+        quality: await getAdaptiveImageQuality(),
         // Pre-select the video we want to trim
         allowsMultipleSelection: false,
       });
@@ -525,7 +526,7 @@ export default function CreateStatusScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [9, 16],
-      quality: 0.8,
+      quality: await getAdaptiveImageQuality(),
     });
 
     if (!result.canceled && result.assets[0]) {
@@ -618,7 +619,7 @@ export default function CreateStatusScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.All,
       allowsMultipleSelection: true,
-      quality: 0.8,
+      quality: await getAdaptiveImageQuality(),
     });
 
     if (!result.canceled && result.assets.length > 0) {
@@ -648,7 +649,7 @@ export default function CreateStatusScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [9, 16],
-      quality: 0.8,
+      quality: await getAdaptiveImageQuality(),
     });
 
     if (!result.canceled && result.assets[0]) {

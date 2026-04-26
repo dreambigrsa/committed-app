@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -18,11 +18,12 @@ import { Heart, X, Search, CheckCircle2, Camera, Calendar, Info, AlertCircle, Ch
 import { Image } from 'expo-image';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useApp } from '@/contexts/AppContext';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
 import { RelationshipType, LegalDocument } from '@/types';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '@/lib/supabase';
+import { assertMediaWithinLimit, getAdaptiveImageQuality, optimizeImageForUpload } from '@/lib/media-optimizer';
 import LegalAcceptanceCheckbox from '@/components/LegalAcceptanceCheckbox';
 
 const RELATIONSHIP_TYPES: { value: RelationshipType; label: string }[] = [
@@ -35,6 +36,8 @@ const RELATIONSHIP_TYPES: { value: RelationshipType; label: string }[] = [
 export default function RegisterRelationshipScreen() {
   const router = useRouter();
   const { createRelationship, searchUsers, currentUser } = useApp();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [step, setStep] = useState<number>(1);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -255,12 +258,14 @@ export default function RegisterRelationshipScreen() {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
+        quality: await getAdaptiveImageQuality(),
       });
 
       if (!result.canceled && result.assets[0]) {
         setUploadingPhoto(true);
-        const fileExt = result.assets[0].uri.split('.').pop() || 'jpg';
+        const optimizedUri = await optimizeImageForUpload(result.assets[0].uri);
+        await assertMediaWithinLimit(optimizedUri, 'image');
+        const fileExt = optimizedUri.split('.').pop() || 'jpg';
         const fileName = `partner-face-${Date.now()}.${fileExt}`;
         const filePath = `partner-photos/${fileName}`;
 
@@ -269,13 +274,13 @@ export default function RegisterRelationshipScreen() {
         // Handle web vs native platforms differently
         if (Platform.OS === 'web') {
           // For web, use fetch to read the file
-          const response = await fetch(result.assets[0].uri);
+          const response = await fetch(optimizedUri);
           const blob = await response.blob();
           const arrayBuffer = await blob.arrayBuffer();
           bytes = new Uint8Array(arrayBuffer);
         } else {
           // For native platforms, use FileSystem
-          const base64 = await FileSystem.readAsStringAsync(result.assets[0].uri, {
+          const base64 = await FileSystem.readAsStringAsync(optimizedUri, {
             encoding: FileSystem.EncodingType.Base64,
           });
           
@@ -1118,10 +1123,10 @@ export default function RegisterRelationshipScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: colors.background.secondary,
   },
   scrollContent: {
     flexGrow: 1,

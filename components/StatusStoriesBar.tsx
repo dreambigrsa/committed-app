@@ -5,14 +5,16 @@
  * Used in both Feed and Messages screens (like Facebook/Messenger)
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useApp } from '@/contexts/AppContext';
@@ -904,6 +906,9 @@ export default function StatusStoriesBar({ context, onStatusPress }: StatusStori
   const { colors } = useTheme();
   const [statusFeed, setStatusFeed] = useState<StatusFeedItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const hasLoadedOnceRef = useRef(false);
+  const cacheKey = currentUser?.id ? `status-stories:${currentUser.id}:${context}` : null;
 
   const styles = StyleSheet.create({
     container: {
@@ -994,6 +999,8 @@ export default function StatusStoriesBar({ context, onStatusPress }: StatusStori
       height: BUBBLE_SIZE + 30,
       alignItems: 'center',
       justifyContent: 'center',
+      flexDirection: 'row',
+      gap: 8,
     },
     emptyContainer: {
       height: BUBBLE_SIZE + 30,
@@ -1066,74 +1073,107 @@ export default function StatusStoriesBar({ context, onStatusPress }: StatusStori
     },
   });
 
+  const FEED_LOAD_TIMEOUT_MS = 25000;
+  const LOADING_UI_MAX_MS = 8000;
+
   useEffect(() => {
     let isMounted = true;
 
-    const loadData = async () => {
-      console.log(`🔄 [StatusStoriesBar] useEffect triggered for context: ${context}`);
-      setLoading(true);
-      try {
-        const feed = context === 'feed' 
-          ? await getStatusFeedForFeed()
-          : await getStatusFeedForMessenger();
-        
-        console.log(`✅ [StatusStoriesBar] Feed loaded in useEffect:`, {
-          context,
-          feedLength: feed?.length || 0,
-          feed: feed,
-        });
-        
+    const loadData = async (silent: boolean) => {
+      if (!currentUser?.id) {
         if (isMounted) {
-          setStatusFeed(Array.isArray(feed) ? feed : []);
+          setStatusFeed([]);
+          setLoading(false);
+        }
+        return;
+      }
+
+      if (!silent) {
+        setLoading(true);
+        // Only show visible refresh state for initial/empty loads.
+        if (!hasLoadedOnceRef.current) {
+          setRefreshing(true);
+        }
+      }
+      const uiLoadingFailsafe = setTimeout(() => {
+        if (isMounted) setLoading(false);
+      }, LOADING_UI_MAX_MS);
+      try {
+        const loader =
+          context === 'feed' ? getStatusFeedForFeed() : getStatusFeedForMessenger();
+        const feed = await Promise.race([
+          loader,
+          new Promise<StatusFeedItem[]>((_, reject) =>
+            setTimeout(() => reject(new Error('status_feed_timeout')), FEED_LOAD_TIMEOUT_MS)
+          ),
+        ]);
+
+        if (isMounted) {
+          const safeFeed = Array.isArray(feed) ? feed : [];
+          setStatusFeed(safeFeed);
+          if (cacheKey) {
+            void AsyncStorage.setItem(cacheKey, JSON.stringify(safeFeed)).catch(() => {});
+          }
+          hasLoadedOnceRef.current = true;
         }
       } catch (error) {
         console.error('❌ [StatusStoriesBar] Error loading status feed in useEffect:', error);
-        if (isMounted) {
-          setStatusFeed([]);
-        }
+        // Keep last good data on transient failures.
       } finally {
-        if (isMounted) {
+        clearTimeout(uiLoadingFailsafe);
+        if (isMounted && !silent) {
           setLoading(false);
         }
+        if (isMounted && !silent) setRefreshing(false);
       }
     };
 
-    loadData();
-    
-    // Refresh every 30 seconds to check for new statuses
+    if (cacheKey) {
+      void AsyncStorage.getItem(cacheKey)
+        .then((raw) => {
+          if (!isMounted || !raw) return;
+          const parsed = JSON.parse(raw) as StatusFeedItem[];
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setStatusFeed(parsed);
+            hasLoadedOnceRef.current = true;
+            setLoading(false);
+          }
+        })
+        .catch(() => {});
+    }
+
+    void loadData(false);
+
     const interval = setInterval(() => {
-      if (isMounted) {
-        loadData();
-      }
+      if (isMounted) void loadData(true);
     }, 30000);
 
     return () => {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [context]);
+  }, [context, currentUser?.id, cacheKey]);
 
   // Keep loadStatusFeed for manual refreshes (like after viewing a status)
   const loadStatusFeed = async () => {
-    console.log(`🔄 [StatusStoriesBar] Manual loadStatusFeed called for context: ${context}`);
-    setLoading(true);
+    if (!currentUser?.id) {
+      setStatusFeed([]);
+      return;
+    }
     try {
-      const feed = context === 'feed' 
-        ? await getStatusFeedForFeed()
-        : await getStatusFeedForMessenger();
-      
-      console.log(`✅ [StatusStoriesBar] Feed loaded manually:`, {
-        context,
-        feedLength: feed?.length || 0,
-        feed: feed,
-      });
-      
+      const loader =
+        context === 'feed' ? getStatusFeedForFeed() : getStatusFeedForMessenger();
+      const feed = await Promise.race([
+        loader,
+        new Promise<StatusFeedItem[]>((_, reject) =>
+          setTimeout(() => reject(new Error('status_feed_timeout')), FEED_LOAD_TIMEOUT_MS)
+        ),
+      ]);
       setStatusFeed(Array.isArray(feed) ? feed : []);
+      hasLoadedOnceRef.current = true;
     } catch (error) {
       console.error('❌ [StatusStoriesBar] Error loading status feed manually:', error);
-      setStatusFeed([]);
-    } finally {
-      setLoading(false);
+      // Keep last known stories if refresh fails.
     }
   };
 
@@ -1151,16 +1191,6 @@ export default function StatusStoriesBar({ context, onStatusPress }: StatusStori
       loadStatusFeed();
     }, 1000);
   };
-
-  if (loading) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.emptyText}>Loading stories...</Text>
-        </View>
-      </View>
-    );
-  }
 
   // Separate current user's status from others
   const ownStatusInFeed = statusFeed.find((item: StatusFeedItem) => item.user_id === currentUser?.id);
@@ -1185,6 +1215,12 @@ export default function StatusStoriesBar({ context, onStatusPress }: StatusStori
 
   return (
     <View style={styles.container}>
+      {(loading || refreshing) && statusFeed.length === 0 && (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={styles.emptyText}>Loading stories...</Text>
+        </View>
+      )}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}

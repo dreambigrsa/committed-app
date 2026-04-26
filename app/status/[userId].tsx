@@ -33,6 +33,7 @@ import { X, Trash2, Plus, Music, Image as ImageIcon, RefreshCw, Share2, MoreHori
 import { getUserStatuses, markStatusAsViewed, getSignedUrlForMedia, deleteStatus, getStatusViewers, getStatusViewCount, updateStatusPrivacy, archiveStatus, reactToStatus, removeStatusReaction, getUserReaction, getStatusReactionCounts, type StatusViewer, type Status } from '@/lib/status-queries';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { AdaptiveMediaProfile, getAdaptiveImageUrl, getAdaptiveMediaProfile, getAdaptiveVideoUrl } from '@/lib/adaptive-media';
 
 const { width, height } = Dimensions.get('window');
 const PROGRESS_BAR_HEIGHT = 3;
@@ -51,6 +52,7 @@ export default function StatusViewerScreen() {
   const videoRef = useRef<Video | null>(null);
   const [backgroundImageUrl, setBackgroundImageUrl] = useState<string | null>(null);
   const [stickerUrls, setStickerUrls] = useState<Map<string, string>>(new Map());
+  const [mediaProfile, setMediaProfile] = useState<AdaptiveMediaProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [, setIsDeleting] = useState(false);
   const [showPlusMenu, setShowPlusMenu] = useState(false);
@@ -67,6 +69,27 @@ export default function StatusViewerScreen() {
   const [, setPausedProgress] = useState(0);
   const progressAnim = useRef(new Animated.Value(0)).current;
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    void getAdaptiveMediaProfile()
+      .then((profile) => {
+        if (isMounted) setMediaProfile(profile);
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const adaptImage = (url: string | null | undefined, kind: 'avatar' | 'feed' | 'full' = 'feed') => {
+    if (!url || !mediaProfile) return url || '';
+    return getAdaptiveImageUrl(url, mediaProfile, kind);
+  };
+  const adaptVideo = (url: string | null | undefined, kind: 'feed' | 'full' = 'feed') => {
+    if (!url || !mediaProfile) return url || '';
+    return getAdaptiveVideoUrl(url, mediaProfile, kind);
+  };
 
   const styles = StyleSheet.create({
     container: {
@@ -1302,7 +1325,7 @@ export default function StatusViewerScreen() {
             <View style={styles.userInfoRow}>
               {status.user?.profile_picture ? (
                 <Image
-                  source={{ uri: status.user.profile_picture }}
+                  source={{ uri: adaptImage(status.user.profile_picture, 'avatar') }}
                   style={styles.profilePicture}
                   contentFit="cover"
                 />
@@ -1375,7 +1398,7 @@ export default function StatusViewerScreen() {
               {/* Background Image */}
               {backgroundImageUrl && (
                 <Image 
-                  source={{ uri: backgroundImageUrl }} 
+                  source={{ uri: adaptImage(backgroundImageUrl, 'full') }} 
                   style={styles.textBackgroundImage} 
                   contentFit="cover" 
                 />
@@ -1462,7 +1485,7 @@ export default function StatusViewerScreen() {
                     return (
                       <Image
                         key={sticker.id}
-                        source={{ uri: stickerUrl }}
+                        source={{ uri: adaptImage(stickerUrl, 'feed') }}
                         style={[styles.sticker, {
                           left: `${sticker.position_x * 100}%`,
                           top: `${sticker.position_y * 100}%`,
@@ -1487,7 +1510,7 @@ export default function StatusViewerScreen() {
             >
               {status.content_type === 'image' ? (
                 <Image 
-                  source={{ uri: mediaUrl }} 
+                  source={{ uri: adaptImage(mediaUrl, 'full') }} 
                   style={styles.media} 
                   contentFit="contain"
                   onLoad={() => {
@@ -1503,7 +1526,7 @@ export default function StatusViewerScreen() {
               ) : (
                 <Video
                   ref={videoRef}
-                  source={{ uri: mediaUrl }}
+                  source={{ uri: adaptVideo(mediaUrl, 'full') }}
                   style={styles.media}
                   useNativeControls
                   resizeMode={ResizeMode.CONTAIN}
@@ -1569,7 +1592,7 @@ export default function StatusViewerScreen() {
                     return (
                       <Image
                         key={sticker.id}
-                        source={{ uri: stickerUrl }}
+                        source={{ uri: adaptImage(stickerUrl, 'feed') }}
                         style={[styles.sticker, {
                           left: `${(sticker.position_x ?? 0.5) * 100}%`,
                           top: `${(sticker.position_y ?? 0.5) * 100}%`,
@@ -2103,6 +2126,7 @@ export default function StatusViewerScreen() {
             loading={loadingViewers}
             viewCount={viewCount}
             status={status}
+            adaptImage={adaptImage}
             onRefresh={async () => {
               await loadViewers();
               await loadViewCount();
@@ -2124,6 +2148,7 @@ function ViewersListModal({
   loading: initialLoading,
   viewCount: initialViewCount,
   status,
+  adaptImage,
   onRefresh,
 }: {
   visible: boolean;
@@ -2132,6 +2157,7 @@ function ViewersListModal({
   loading: boolean;
   viewCount: number;
   status: Status;
+  adaptImage: (url: string | null | undefined, kind?: 'avatar' | 'feed' | 'full') => string;
   onRefresh: () => Promise<void>;
 }) {
   const router = useRouter();
@@ -2461,7 +2487,7 @@ function ViewersListModal({
                       >
                         {viewer.user.profile_picture ? (
                           <Image
-                            source={{ uri: viewer.user.profile_picture }}
+                            source={{ uri: adaptImage(viewer.user.profile_picture, 'avatar') }}
                             style={styles.viewerAvatar}
                             contentFit="cover"
                           />

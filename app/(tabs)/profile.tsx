@@ -33,7 +33,9 @@ import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import { assertMediaWithinLimit, getAdaptiveImageQuality, optimizeImageForUpload } from '@/lib/media-optimizer';
 import { supabase } from '@/lib/supabase';
+import { AdaptiveMediaProfile, getAdaptiveImageUrl, getAdaptiveMediaProfile } from '@/lib/adaptive-media';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -43,6 +45,7 @@ export default function ProfileScreen() {
   const [isUploading, setIsUploading] = useState(false);
   const [isProfessional, setIsProfessional] = useState(false);
   const [, setIsCheckingProfessional] = useState(true);
+  const [mediaProfile, setMediaProfile] = useState<AdaptiveMediaProfile | null>(null);
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -53,6 +56,23 @@ export default function ProfileScreen() {
     checkProfessionalStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- checkProfessionalStatus is stable, load on mount/currentUser change
   }, [currentUser]);
+
+  useEffect(() => {
+    let isMounted = true;
+    void getAdaptiveMediaProfile()
+      .then((profile) => {
+        if (isMounted) setMediaProfile(profile);
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const adaptImage = (url: string | null | undefined, kind: 'avatar' | 'feed' | 'full' = 'feed') => {
+    if (!url || !mediaProfile) return url || '';
+    return getAdaptiveImageUrl(url, mediaProfile, kind);
+  };
 
   const checkProfessionalStatus = async () => {
     if (!currentUser) {
@@ -146,16 +166,18 @@ export default function ProfileScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.8,
+      quality: await getAdaptiveImageQuality(),
     });
 
     if (!result.canceled && result.assets[0]) {
       setIsUploading(true);
       try {
+        const optimizedUri = await optimizeImageForUpload(result.assets[0].uri);
+        await assertMediaWithinLimit(optimizedUri, 'image');
         const fileName = `profile_${currentUser?.id}_${Date.now()}.jpg`;
         
         // Convert URI to Uint8Array using legacy API (no deprecation warnings)
-        const base64 = await FileSystem.readAsStringAsync(result.assets[0].uri, {
+        const base64 = await FileSystem.readAsStringAsync(optimizedUri, {
           encoding: FileSystem.EncodingType.Base64,
         });
         
@@ -276,7 +298,7 @@ export default function ProfileScreen() {
           >
             {currentUser.profilePicture ? (
               <Image
-                source={{ uri: currentUser.profilePicture }}
+                source={{ uri: adaptImage(currentUser.profilePicture, 'avatar') }}
                 style={styles.avatar}
               />
             ) : (

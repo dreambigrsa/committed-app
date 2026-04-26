@@ -27,6 +27,7 @@ import { Reel, Advertisement, Sticker } from '@/types';
 import StickerPicker from '@/components/StickerPicker';
 import * as WebBrowser from 'expo-web-browser';
 import StatusIndicator from '@/components/StatusIndicator';
+import { AdaptiveMediaProfile, getAdaptiveImageUrl, getAdaptiveMediaProfile, getAdaptiveVideoUrl } from '@/lib/adaptive-media';
 
 const { width, height } = Dimensions.get('window');
 
@@ -61,6 +62,7 @@ export default function ReelsScreen() {
   const [skipCountdown, setSkipCountdown] = useState<number>(0);
   const [bannerCardSkipCountdown, setBannerCardSkipCountdown] = useState<number>(0);
   const [requestedReelUnavailable, setRequestedReelUnavailable] = useState(false);
+  const [mediaProfile, setMediaProfile] = useState<AdaptiveMediaProfile | null>(null);
   const videoRefs = useRef<{ [key: string]: Video | null }>({});
   const adVideoRefs = useRef<{ [key: string]: Video | null }>({});
   const scrollViewRef = useRef<ScrollView>(null);
@@ -98,6 +100,27 @@ export default function ReelsScreen() {
     }).start();
   }, [fadeAnim]);
 
+  useEffect(() => {
+    let isMounted = true;
+    void getAdaptiveMediaProfile()
+      .then((profile) => {
+        if (isMounted) setMediaProfile(profile);
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const adaptImage = (url: string | null | undefined, kind: 'avatar' | 'feed' | 'full' = 'feed') => {
+    if (!url || !mediaProfile) return url || '';
+    return getAdaptiveImageUrl(url, mediaProfile, kind);
+  };
+  const adaptVideo = (url: string | null | undefined, kind: 'feed' | 'full' = 'feed') => {
+    if (!url || !mediaProfile) return url || '';
+    return getAdaptiveVideoUrl(url, mediaProfile, kind);
+  };
+
   // Load advertisements for reels
   useEffect(() => {
     const loadSmartAds = async () => {
@@ -127,7 +150,7 @@ export default function ReelsScreen() {
           console.error('Error refreshing smart ads for reels:', error);
         }
       }
-    }, 30000); // Refresh every 30 seconds
+    }, 2 * 60 * 1000);
     
     return () => clearInterval(interval);
   }, [currentUser, getSmartAds, smartAds.length]);
@@ -773,7 +796,8 @@ export default function ReelsScreen() {
           </View>
           {!failedAdImages.current.has(ad.id) ? (
             <Image 
-              source={{ uri: ad.imageUrl }} 
+              source={{ uri: adaptImage(ad.imageUrl, 'feed') }} 
+              cachePolicy="disk"
               style={styles.bannerAdImage} 
               contentFit="cover"
               onError={() => {
@@ -819,7 +843,8 @@ export default function ReelsScreen() {
           </View>
           {!failedAdImages.current.has(ad.id) ? (
             <Image 
-              source={{ uri: ad.imageUrl }} 
+              source={{ uri: adaptImage(ad.imageUrl, 'feed') }} 
+              cachePolicy="disk"
               style={styles.adImage} 
               contentFit="cover"
               onError={() => {
@@ -908,7 +933,8 @@ export default function ReelsScreen() {
               <>
                 {!failedAdImages.current.has(ad.id) ? (
                   <Image 
-                    source={{ uri: ad.imageUrl }} 
+                    source={{ uri: adaptImage(ad.imageUrl, 'feed') }} 
+                    cachePolicy="disk"
                     style={styles.bannerCardAdImage} 
                     contentFit="cover"
                     onError={() => {
@@ -936,7 +962,8 @@ export default function ReelsScreen() {
               <>
                 {!failedAdImages.current.has(ad.id) ? (
                   <Image 
-                    source={{ uri: ad.imageUrl }} 
+                    source={{ uri: adaptImage(ad.imageUrl, 'feed') }} 
+                    cachePolicy="disk"
                     style={styles.bannerCardAdCardImage} 
                     contentFit="cover"
                     onError={() => {
@@ -1016,7 +1043,7 @@ export default function ReelsScreen() {
               ref={(ref: any) => {
                 adVideoRefs.current[ad.id] = ref;
               }}
-              source={{ uri: ad.imageUrl }}
+              source={{ uri: adaptVideo(ad.imageUrl, 'feed') }}
               style={styles.videoAdVideo}
               resizeMode={ResizeMode.COVER}
               shouldPlay={true}
@@ -1119,7 +1146,7 @@ export default function ReelsScreen() {
             ref={(ref: any) => {
               videoRefs.current[reel.id] = ref;
             }}
-            source={{ uri: reel.videoUrl }}
+            source={{ uri: adaptVideo(reel.videoUrl, 'full') }}
             style={styles.video}
             resizeMode={ResizeMode.COVER}
             isLooping
@@ -1166,7 +1193,8 @@ export default function ReelsScreen() {
                   <View style={styles.avatarContainer}>
                     {reel.userAvatar ? (
                       <Image
-                        source={{ uri: reel.userAvatar }}
+                        source={{ uri: adaptImage(reel.userAvatar, 'avatar') }}
+                        cachePolicy="disk"
                         style={styles.avatar}
                       />
                     ) : (
@@ -1380,6 +1408,7 @@ export default function ReelsScreen() {
             editComment={editReelComment}
             deleteComment={deleteReelComment}
             toggleCommentLike={toggleReelCommentLike}
+            adaptImage={adaptImage}
           />
         )}
       </View>
@@ -2414,6 +2443,7 @@ function ReelCommentsModal({
   editComment,
   deleteComment,
   toggleCommentLike,
+  adaptImage,
 }: {
   reelId: string;
   visible: boolean;
@@ -2425,6 +2455,7 @@ function ReelCommentsModal({
   editComment: (commentId: string, content: string) => Promise<any>;
   deleteComment: (commentId: string) => Promise<boolean>;
   toggleCommentLike: (commentId: string, reelId: string) => Promise<boolean>;
+  adaptImage: (url: string | null | undefined, kind?: 'avatar' | 'feed' | 'full') => string;
 }) {
   const { currentUser, reportContent } = useApp();
   const [reportingComment, setReportingComment] = useState<{ id: string; userId: string } | null>(null);
@@ -2544,7 +2575,8 @@ function ReelCommentsModal({
                   <View style={styles.commentHeader}>
                     {comment.userAvatar ? (
                       <Image
-                        source={{ uri: comment.userAvatar }}
+                        source={{ uri: adaptImage(comment.userAvatar, 'avatar') }}
+                        cachePolicy="disk"
                         style={styles.commentAvatar}
                       />
                     ) : (
@@ -2605,7 +2637,8 @@ function ReelCommentsModal({
                         {comment.messageType === 'sticker' && comment.stickerImageUrl ? (
                           <View style={styles.commentStickerContainer}>
                             <Image
-                              source={{ uri: comment.stickerImageUrl }}
+                              source={{ uri: adaptImage(comment.stickerImageUrl, 'feed') }}
+                              cachePolicy="disk"
                               style={styles.commentSticker}
                               contentFit="contain"
                             />
@@ -2678,7 +2711,8 @@ function ReelCommentsModal({
                             <View style={styles.replyHeader}>
                               {reply.userAvatar ? (
                                 <Image
-                                  source={{ uri: reply.userAvatar }}
+                                  source={{ uri: adaptImage(reply.userAvatar, 'avatar') }}
+                                  cachePolicy="disk"
                                   style={styles.replyAvatar}
                                 />
                               ) : (
@@ -2747,7 +2781,8 @@ function ReelCommentsModal({
                                     {reply.messageType === 'sticker' && reply.stickerImageUrl ? (
                                       <View style={styles.commentStickerContainer}>
                                         <Image
-                                          source={{ uri: reply.stickerImageUrl }}
+                                          source={{ uri: adaptImage(reply.stickerImageUrl, 'feed') }}
+                                          cachePolicy="disk"
                                           style={styles.commentSticker}
                                           contentFit="contain"
                                         />
@@ -2784,7 +2819,7 @@ function ReelCommentsModal({
                         <View style={styles.replyInputContainer}>
                           {selectedSticker && (
                             <View style={styles.stickerPreview}>
-                              <Image source={{ uri: selectedSticker.imageUrl }} style={styles.previewSticker} />
+                              <Image source={{ uri: adaptImage(selectedSticker.imageUrl, 'feed') }} style={styles.previewSticker} />
                               <TouchableOpacity
                                 style={styles.removeStickerButton}
                                 onPress={() => setSelectedSticker(null)}
@@ -2846,7 +2881,7 @@ function ReelCommentsModal({
           >
             {selectedSticker && (
               <View style={styles.stickerPreview}>
-                <Image source={{ uri: selectedSticker.imageUrl }} style={styles.previewSticker} />
+                <Image source={{ uri: adaptImage(selectedSticker.imageUrl, 'feed') }} style={styles.previewSticker} />
                 <TouchableOpacity
                   style={styles.removeStickerButton}
                   onPress={() => setSelectedSticker(null)}

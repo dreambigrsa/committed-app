@@ -22,6 +22,7 @@ import { Image as ExpoImage } from 'expo-image';
 import * as Location from 'expo-location';
 import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '@/lib/supabase';
+import { assertMediaWithinLimit, getAdaptiveImageQuality, optimizeImageForUpload } from '@/lib/media-optimizer';
 
 const RELATIONSHIP_GOALS = ['Long-term', 'Short-term', 'Friendship', 'Marriage', 'Casual'];
 
@@ -149,14 +150,16 @@ export default function ProfileSetupScreen() {
 
   const uploadImageToStorage = async (uri: string): Promise<string> => {
     try {
+      const optimizedUri = await optimizeImageForUpload(uri);
+      await assertMediaWithinLimit(optimizedUri, 'image');
       const fileName = `dating/${currentUser?.id}/${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
       
       // Check if it's a local file URI
       let fileData: Uint8Array;
       
-      if (uri.startsWith('file://') || uri.startsWith('ph://') || uri.startsWith('content://')) {
+      if (optimizedUri.startsWith('file://') || optimizedUri.startsWith('ph://') || optimizedUri.startsWith('content://')) {
         // Read local file using FileSystem
-        const base64 = await FileSystem.readAsStringAsync(uri, {
+        const base64 = await FileSystem.readAsStringAsync(optimizedUri, {
           encoding: FileSystem.EncodingType.Base64,
         });
         
@@ -168,7 +171,7 @@ export default function ProfileSetupScreen() {
         }
       } else {
         // Remote URL - fetch and convert to Uint8Array
-        const response = await fetch(uri);
+        const response = await fetch(optimizedUri);
         const arrayBuffer = await response.arrayBuffer();
         fileData = new Uint8Array(arrayBuffer);
       }
@@ -205,7 +208,7 @@ export default function ProfileSetupScreen() {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [4, 5],
-        quality: 0.8,
+        quality: await getAdaptiveImageQuality(),
       });
 
       if (!result.canceled && result.assets[0]) {
@@ -309,6 +312,7 @@ export default function ProfileSetupScreen() {
 
   const uploadVideoToStorage = async (uri: string): Promise<string> => {
     try {
+      await assertMediaWithinLimit(uri, 'video');
       const fileName = `dating/videos/${currentUser?.id}/${Date.now()}_${Math.random().toString(36).substring(7)}.mp4`;
       
       let fileData: Uint8Array;
@@ -361,7 +365,7 @@ export default function ProfileSetupScreen() {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Videos,
         allowsEditing: true,
-        quality: 0.8,
+        quality: 0.7,
         videoMaxDuration: 30, // 30 seconds max
       });
 

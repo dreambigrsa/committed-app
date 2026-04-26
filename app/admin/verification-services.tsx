@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import { Stack } from 'expo-router';
 import { Shield, Phone, Mail, Save, Eye, EyeOff } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface ServiceConfig {
   id: string;
@@ -34,6 +34,8 @@ interface ServiceConfig {
 
 export default function VerificationServicesScreen() {
   const { currentUser } = useApp();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [smsConfig, setSmsConfig] = useState<ServiceConfig | null>(null);
   const [emailConfig, setEmailConfig] = useState<ServiceConfig | null>(null);
   const [loading, setLoading] = useState(true);
@@ -154,8 +156,9 @@ export default function VerificationServicesScreen() {
         options={{ 
           title: 'Verification Services', 
           headerShown: true,
-          headerStyle: { backgroundColor: colors.primary },
-          headerTintColor: colors.text.white,
+          headerStyle: { backgroundColor: colors.background.primary },
+          headerTintColor: colors.text.primary,
+          headerTitleStyle: { color: colors.text.primary },
         }} 
       />
       
@@ -380,10 +383,10 @@ export default function VerificationServicesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: colors.background.secondary,
   },
   errorContainer: {
     flex: 1,

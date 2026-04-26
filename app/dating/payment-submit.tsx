@@ -22,6 +22,7 @@ import * as ImagePicker from 'expo-image-picker';
 // @ts-ignore - legacy path works at runtime, TypeScript definitions may not include it
 import * as FileSystem from 'expo-file-system/legacy';
 import { useApp } from '@/contexts/AppContext';
+import { assertMediaWithinLimit, getAdaptiveImageQuality, optimizeImageForUpload } from '@/lib/media-optimizer';
 
 export default function PaymentSubmitScreen() {
   const router = useRouter();
@@ -93,7 +94,7 @@ export default function PaymentSubmitScreen() {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [4, 3],
-        quality: 0.8,
+        quality: await getAdaptiveImageQuality(),
       });
 
       if (!result.canceled && result.assets[0]) {
@@ -113,6 +114,8 @@ export default function PaymentSubmitScreen() {
       if (!currentUser) {
         throw new Error('User not authenticated');
       }
+      const optimizedUri = await optimizeImageForUpload(uri);
+      await assertMediaWithinLimit(optimizedUri, 'image');
 
       // Convert URI to Uint8Array for upload
       let uint8Array: Uint8Array;
@@ -120,13 +123,13 @@ export default function PaymentSubmitScreen() {
       // Handle web platform differently
       if (Platform.OS === 'web') {
         // For web, fetch the image and convert to blob
-        const response = await fetch(uri);
+        const response = await fetch(optimizedUri);
         const blob = await response.blob();
         const arrayBuffer = await blob.arrayBuffer();
         uint8Array = new Uint8Array(arrayBuffer);
       } else {
         // For native platforms, use FileSystem
-        const base64 = await FileSystem.readAsStringAsync(uri, {
+        const base64 = await FileSystem.readAsStringAsync(optimizedUri, {
           encoding: FileSystem.EncodingType.Base64,
         });
         

@@ -5,6 +5,7 @@ import { Image } from 'expo-image';
 import { Video, ResizeMode } from 'expo-av';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/contexts/ThemeContext';
+import { AdaptiveMediaProfile, getAdaptiveImageUrl, getAdaptiveMediaProfile, getAdaptiveVideoUrl } from '@/lib/adaptive-media';
 
 export default function StatusDeepLinkScreen() {
   const router = useRouter();
@@ -16,6 +17,28 @@ export default function StatusDeepLinkScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<any>(null);
+  const [mediaProfile, setMediaProfile] = useState<AdaptiveMediaProfile | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    void getAdaptiveMediaProfile()
+      .then((profile) => {
+        if (isMounted) setMediaProfile(profile);
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const adaptImage = (url: string | null | undefined, kind: 'avatar' | 'feed' | 'full' = 'feed') => {
+    if (!url || !mediaProfile) return url || '';
+    return getAdaptiveImageUrl(url, mediaProfile, kind);
+  };
+  const adaptVideo = (url: string | null | undefined, kind: 'feed' | 'full' = 'feed') => {
+    if (!url || !mediaProfile) return url || '';
+    return getAdaptiveVideoUrl(url, mediaProfile, kind);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -77,14 +100,14 @@ export default function StatusDeepLinkScreen() {
               {String(status.media_type) === 'video' ? (
                 <View style={styles.videoWrap}>
                   <Video
-                    source={{ uri: String(status.media_path) }}
+                    source={{ uri: adaptVideo(String(status.media_path), 'full') }}
                     style={styles.video}
                     useNativeControls
                     resizeMode={ResizeMode.CONTAIN}
                   />
                 </View>
               ) : (
-                <Image source={{ uri: String(status.media_path) }} style={styles.image} contentFit="cover" />
+                <Image source={{ uri: adaptImage(String(status.media_path), 'full') }} style={styles.image} contentFit="cover" />
               )}
             </>
           )}

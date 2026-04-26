@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -18,12 +18,11 @@ import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { ProfessionalProfile, ProfessionalApplication } from '@/types';
-import { colors } from '@/constants/colors';
 
 export default function AdminProfessionalProfilesScreen() {
   const { currentUser } = useApp();
   const { colors: themeColors } = useTheme();
-  const styles = createStyles(themeColors);
+  const styles = useMemo(() => createStyles(themeColors), [themeColors]);
   
   const [tab, setTab] = useState<'applications' | 'profiles'>('applications');
   const [applications, setApplications] = useState<(ProfessionalApplication & { user?: any; role?: any })[]>([]);
@@ -285,10 +284,10 @@ export default function AdminProfessionalProfilesScreen() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'approved': return colors.secondary; // success color
-      case 'pending': return colors.accent; // warning color
-      case 'rejected': return colors.danger;
-      case 'suspended': return colors.danger;
+      case 'approved': return themeColors.secondary; // success color
+      case 'pending': return themeColors.accent; // warning color
+      case 'rejected': return themeColors.danger;
+      case 'suspended': return themeColors.danger;
       default: return themeColors.text.secondary;
     }
   };
@@ -570,14 +569,14 @@ export default function AdminProfessionalProfilesScreen() {
                         style={[styles.modalButton, styles.rejectButton]}
                         onPress={() => handleRejectApplication(selectedItem)}
                       >
-                        <XCircle size={20} color={colors.text.white} />
+                        <XCircle size={20} color={themeColors.text.white} />
                         <Text style={styles.modalButtonText}>Reject</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={[styles.modalButton, styles.approveButton]}
                         onPress={() => handleApproveApplication(selectedItem)}
                       >
-                        <CheckCircle size={20} color={colors.text.white} />
+                        <CheckCircle size={20} color={themeColors.text.white} />
                         <Text style={styles.modalButtonText}>Approve</Text>
                       </TouchableOpacity>
                     </View>
@@ -635,8 +634,8 @@ export default function AdminProfessionalProfilesScreen() {
                           style={[styles.managementButton, styles.deleteButton]}
                           onPress={() => handleDeleteProfile(selectedItem)}
                         >
-                          <XCircle size={20} color={colors.text.white} />
-                          <Text style={[styles.managementButtonText, { color: colors.text.white }]}>
+                          <XCircle size={20} color={themeColors.text.white} />
+                          <Text style={[styles.managementButtonText, { color: themeColors.text.white }]}>
                             Delete Profile
                           </Text>
                         </TouchableOpacity>

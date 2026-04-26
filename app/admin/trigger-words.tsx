@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,11 +13,13 @@ import {
 import { Stack } from 'expo-router';
 import { Plus, Edit2, Trash2, Shield, X, Save } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
 import { TriggerWord } from '@/types';
 
 export default function TriggerWordsManagementScreen() {
   const { currentUser, getTriggerWords, addTriggerWord, updateTriggerWord, deleteTriggerWord } = useApp();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [triggerWords, setTriggerWords] = useState<TriggerWord[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -622,7 +624,7 @@ export default function TriggerWordsManagementScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,

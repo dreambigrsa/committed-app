@@ -304,6 +304,7 @@ Possible confidence values: "high", "medium", "low", or "none".`;
     return json(200, {
       success: true,
       message: content,
+      source: 'openai',
       suggestProfessionalHelp,
       suggestedProfessionalType,
       meta: {

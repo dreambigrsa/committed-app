@@ -19,6 +19,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '@/lib/supabase';
 import { LegalDocument } from '@/types';
 import StatusIndicator from '@/components/StatusIndicator';
+import { getAdaptiveImageQuality, optimizeImageForUpload } from '@/lib/media-optimizer';
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -103,15 +104,16 @@ export default function SearchScreen() {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
+        quality: await getAdaptiveImageQuality(),
       });
 
       if (!result.canceled && result.assets[0]) {
-        setSearchPhoto(result.assets[0].uri);
+        const optimizedUri = await optimizeImageForUpload(result.assets[0].uri);
+        setSearchPhoto(optimizedUri);
         setIsSearching(true);
         
         try {
-          const faceResults = await searchByFace(result.assets[0].uri);
+          const faceResults = await searchByFace(optimizedUri);
           setResults(faceResults);
         } catch (error) {
           console.error('Face search error:', error);

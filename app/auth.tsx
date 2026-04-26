@@ -25,7 +25,7 @@ export default function AuthScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ mode?: string; verified?: string }>();
   const { signup, resetPassword } = useApp();
-  const { updateUser, signIn: authSignIn, user, isAuthenticated } = useAuth();
+  const { updateUser, signIn: authSignIn, user, isAuthenticated, syncAuthState } = useAuth();
   const { colors } = useTheme();
   const [isSignUp, setIsSignUp] = useState<boolean>(params?.mode === 'signin' ? false : true);
   const [showForgotPassword, setShowForgotPassword] = useState<boolean>(false);
@@ -489,6 +489,7 @@ export default function AuthScreen() {
         // AuthContext.signIn resolves as soon as session exists (full hydration runs in background).
         // AppGate redirects based on auth state; longer timeout when user just verified email (verified=1).
         const email = formData.email.trim();
+        const normalizedEmail = email.toLowerCase();
         const isPostVerification = params?.verified === '1' || params?.verified === 'true';
 
         // On slow networks, Supabase sign-in can take longer than usual.
@@ -534,12 +535,28 @@ export default function AuthScreen() {
           }
           try {
             const { data: { session } } = await supabase.auth.getSession();
-            if (session) {
+            const sessionEmail = session?.user?.email?.toLowerCase();
+            if (session && sessionEmail && sessionEmail === normalizedEmail) {
               setMessageModal((prev) => ({ ...prev, visible: false }));
               return;
             }
           } catch {
             // ignore - we'll fall through to outer catch error messaging
+          }
+
+          // Extra recovery path: if SDK sign-in resolved late or listener missed,
+          // force-sync auth state before surfacing an error.
+          try {
+            const recovered = await syncAuthState({
+              reason: 'auth_screen_sign_in_recovery',
+              refreshToken: false,
+            });
+            if (recovered) {
+              setMessageModal((prev) => ({ ...prev, visible: false }));
+              return;
+            }
+          } catch {
+            // ignore and show normal error modal below
           }
 
           throw error;
@@ -683,7 +700,7 @@ export default function AuthScreen() {
             />
           </View>
 
-          {!showForgotPassword && (
+          {isSignUp && !showForgotPassword && (
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Phone Number</Text>
               <TextInput

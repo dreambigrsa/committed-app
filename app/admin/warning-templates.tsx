@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,11 +14,13 @@ import {
 import { Stack } from 'expo-router';
 import { Edit2, Save, X, FileText, AlertTriangle, AlertCircle, Info } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
 import { WarningTemplate } from '@/types';
 
 export default function WarningTemplatesManagementScreen() {
   const { getWarningTemplates, updateWarningTemplate } = useApp();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [templates, setTemplates] = useState<WarningTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -353,7 +355,7 @@ export default function WarningTemplatesManagementScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,

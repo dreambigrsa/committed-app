@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,20 +17,41 @@ import { Video, ResizeMode } from 'expo-av';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CheckCircle2, Heart, Shield, UserPlus, UserMinus, MessageCircle, Grid, Film, X, UserX, MoreVertical, Flag } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
 import { User, Post, Reel } from '@/types';
 import { supabase } from '@/lib/supabase';
 import ReportContentModal from '@/components/ReportContentModal';
 import StatusIndicator from '@/components/StatusIndicator';
+import { AdaptiveMediaProfile, getAdaptiveImageUrl, getAdaptiveMediaProfile, getAdaptiveVideoUrl } from '@/lib/adaptive-media';
 
 const { width } = Dimensions.get('window');
 const itemWidth = (width - 44) / 3;
 
 type TabType = 'posts' | 'reels';
+const PROFILE_FETCH_TIMEOUT_MS = 15000;
+const STATUS_FETCH_TIMEOUT_MS = 10000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    promise.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      }
+    );
+  });
+}
 
 export default function UserProfileScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const router = useRouter();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { currentUser, getUserRelationship, posts: allPosts, reels: allReels, createOrGetConversation, followUser, unfollowUser, isFollowing: checkIsFollowing, blockUser, unblockUser, isBlocked: checkIsBlocked, reportContent, getUserStatus } = useApp();
   
   const [user, setUser] = useState<User | null>(null);
@@ -48,6 +69,7 @@ export default function UserProfileScreen() {
   const [isBlocked, setIsBlocked] = useState(false);
   const [reportingProfile, setReportingProfile] = useState(false);
   const [userStatus, setUserStatus] = useState<any>(null);
+  const [mediaProfile, setMediaProfile] = useState<AdaptiveMediaProfile | null>(null);
   const imageViewerScrollRef = useRef<ScrollView>(null);
   
   const relationship = user ? getUserRelationship(user.id) : null;
@@ -63,11 +85,85 @@ export default function UserProfileScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load on userId change
   }, [userId, checkIsFollowing, checkIsBlocked]);
 
+  useEffect(() => {
+    let isMounted = true;
+    void getAdaptiveMediaProfile()
+      .then((profile) => {
+        if (isMounted) setMediaProfile(profile);
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const adaptImage = (url: string | null | undefined, kind: 'avatar' | 'feed' | 'full' = 'feed') => {
+    if (!url || !mediaProfile) return url || '';
+    return getAdaptiveImageUrl(url, mediaProfile, kind);
+  };
+  const adaptVideo = (url: string | null | undefined, kind: 'feed' | 'full' = 'feed') => {
+    if (!url || !mediaProfile) return url || '';
+    return getAdaptiveVideoUrl(url, mediaProfile, kind);
+  };
+
   // Load user status
   const loadUserStatus = async () => {
-    if (userId && getUserStatus) {
-      const status = await getUserStatus(userId);
-      setUserStatus(status);
+    if (!userId) return;
+    try {
+      if (getUserStatus) {
+        const status = await withTimeout(
+          getUserStatus(userId),
+          STATUS_FETCH_TIMEOUT_MS,
+          'profile_status_fetch'
+        );
+        if (status) {
+          setUserStatus(status);
+          return;
+        }
+      }
+    } catch (error) {
+      console.warn('Profile status via context failed, using direct fallback:', error);
+    }
+
+    try {
+      const { data } = await withTimeout(
+        supabase
+          .from('user_status')
+          .select('user_id,status_type,last_active_at,status_visibility,last_seen_visibility,updated_at')
+          .eq('user_id', userId)
+          .maybeSingle(),
+        STATUS_FETCH_TIMEOUT_MS,
+        'profile_status_direct_fetch'
+      );
+      if (data) {
+        setUserStatus({
+          userId: data.user_id,
+          statusType: data.status_type,
+          lastActiveAt: data.last_active_at,
+          statusVisibility: data.status_visibility,
+          lastSeenVisibility: data.last_seen_visibility,
+          updatedAt: data.updated_at,
+        });
+      } else {
+        setUserStatus({
+          userId,
+          statusType: 'offline',
+          lastActiveAt: new Date().toISOString(),
+          statusVisibility: 'everyone',
+          lastSeenVisibility: 'everyone',
+          updatedAt: new Date().toISOString(),
+        });
+      }
+    } catch {
+      // Ensure indicator still shows a deterministic state.
+      setUserStatus({
+        userId,
+        statusType: 'offline',
+        lastActiveAt: new Date().toISOString(),
+        statusVisibility: 'everyone',
+        lastSeenVisibility: 'everyone',
+        updatedAt: new Date().toISOString(),
+      });
     }
   };
 
@@ -89,12 +185,12 @@ export default function UserProfileScreen() {
 
     let isMounted = true;
 
-    // Refresh status every 30 seconds to recalculate based on last_active_at
+    // Refresh less frequently to reduce background network calls.
     const refreshInterval = setInterval(() => {
       if (isMounted) {
         refreshStatus();
       }
-    }, 30 * 1000);
+    }, 2 * 60 * 1000);
 
     const channel = supabase
       .channel(`user_status:${userId}`)
@@ -124,9 +220,9 @@ export default function UserProfileScreen() {
   }, [userId, getUserStatus]);
 
   useEffect(() => {
-    loadUserContent();
+    void loadUserContent();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load on userId/content change
-  }, [allPosts, allReels, userId]);
+  }, [allPosts, allReels, userId, currentUser?.id]);
 
   // Sync local isFollowing state with AppContext's isFollowing function
   useEffect(() => {
@@ -144,11 +240,15 @@ export default function UserProfileScreen() {
   const loadUserProfile = async () => {
     try {
       setIsLoading(true);
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', userId)
-        .single();
+      const { data, error } = await withTimeout(
+        supabase
+          .from('users')
+          .select('id,full_name,email,phone_number,profile_picture,role,phone_verified,email_verified,id_verified,created_at')
+          .eq('id', userId)
+          .single(),
+        PROFILE_FETCH_TIMEOUT_MS,
+        'profile_user_fetch'
+      );
 
       if (error) throw error;
 
@@ -171,16 +271,103 @@ export default function UserProfileScreen() {
       }
     } catch (error) {
       console.error('Failed to load user profile:', error);
+      // Fallback: render profile shell from content caches if DB fetch is slow/unavailable.
+      const fallbackFromPost = allPosts.find((p) => p.userId === userId);
+      const fallbackFromReel = allReels.find((r) => r.userId === userId);
+      const fallbackName = fallbackFromPost?.userName || fallbackFromReel?.userName;
+      const fallbackAvatar = fallbackFromPost?.userAvatar || fallbackFromReel?.userAvatar;
+      if (userId && fallbackName) {
+        setUser({
+          id: userId,
+          fullName: fallbackName,
+          email: '',
+          phoneNumber: '',
+          profilePicture: fallbackAvatar,
+          role: 'user',
+          verifications: { phone: false, email: false, id: false },
+          createdAt: new Date().toISOString(),
+        });
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
-  const loadUserContent = () => {
-    const posts = allPosts.filter(p => p.userId === userId);
-    const reels = allReels.filter(r => r.userId === userId);
-    setUserPosts(posts);
-    setUserReels(reels);
+  const loadUserContent = async () => {
+    if (!userId) {
+      setUserPosts([]);
+      setUserReels([]);
+      return;
+    }
+
+    const postsFromContext = allPosts.filter(p => p.userId === userId);
+    const reelsFromContext = allReels.filter(r => r.userId === userId);
+    setUserPosts(postsFromContext);
+    setUserReels(reelsFromContext);
+
+    // Fallback: profile pages need direct user-scoped content in case the global
+    // feed context is limited/paginated and doesn't include this user's older reels/posts.
+    try {
+      const viewerId = currentUser?.id;
+      const canViewOwnUnapproved = viewerId && viewerId === userId;
+      const baseQuery = supabase
+        .from('reels')
+        .select(`
+          *,
+          users!reels_user_id_fkey(full_name, profile_picture)
+        `)
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(120);
+
+      // Match AppContext resilient strategy for schema variance.
+      let { data: reelsData, error: reelsError } = await (canViewOwnUnapproved
+        ? baseQuery
+        : supabase
+            .from('reels')
+            .select(`
+              *,
+              users!reels_user_id_fkey(full_name, profile_picture)
+            `)
+            .eq('user_id', userId)
+            .eq('status', 'approved')
+            .order('created_at', { ascending: false })
+            .limit(120));
+
+      if (reelsError && !canViewOwnUnapproved) {
+        const { data: modData, error: modError } = await supabase
+          .from('reels')
+          .select(`
+            *,
+            users!reels_user_id_fkey(full_name, profile_picture)
+          `)
+          .eq('user_id', userId)
+          .eq('moderation_status', 'approved')
+          .order('created_at', { ascending: false })
+          .limit(120);
+        reelsData = modData ?? null;
+        reelsError = modError ?? null;
+      }
+
+      if (!reelsError && reelsData) {
+        const formattedReels: Reel[] = reelsData.map((r: any) => ({
+          id: r.id,
+          userId: r.user_id,
+          userName: r.users?.full_name || user?.fullName || 'User',
+          userAvatar: r.users?.profile_picture || user?.profilePicture || null,
+          videoUrl: r.video_url,
+          thumbnailUrl: r.thumbnail_url,
+          caption: r.caption,
+          likes: Array.isArray(r.likes) ? r.likes : [],
+          commentCount: r.comment_count || 0,
+          viewCount: r.view_count || 0,
+          createdAt: r.created_at,
+        }));
+        setUserReels(formattedReels);
+      }
+    } catch (error) {
+      console.error('Failed to load user reels directly:', error);
+    }
   };
 
   const checkFollowStatus = async () => {
@@ -369,7 +556,7 @@ export default function UserProfileScreen() {
             >
               {item.mediaUrls && item.mediaUrls[0] ? (
                 <Image 
-                  source={{ uri: item.mediaUrls[0] }} 
+                  source={{ uri: adaptImage(item.mediaUrls[0], 'feed') }}
                   style={styles.gridImage} 
                   contentFit="cover"
                   onError={(error) => {
@@ -409,12 +596,22 @@ export default function UserProfileScreen() {
             >
               {item.thumbnailUrl ? (
                 <Image 
-                  source={{ uri: item.thumbnailUrl }} 
+                  source={{ uri: adaptImage(item.thumbnailUrl, 'feed') }}
                   style={styles.gridImage} 
                   contentFit="cover"
                   onError={(error) => {
                     console.error('Error loading reel thumbnail:', error);
                   }}
+                />
+              ) : item.videoUrl ? (
+                <Video
+                  source={{ uri: adaptVideo(item.videoUrl, 'feed') }}
+                  style={styles.gridImage}
+                  resizeMode={ResizeMode.COVER}
+                  shouldPlay={false}
+                  isMuted
+                  isLooping={false}
+                  useNativeControls={false}
                 />
               ) : (
                 <View style={[styles.gridImage, styles.gridPlaceholder]}>
@@ -440,7 +637,7 @@ export default function UserProfileScreen() {
         <View style={styles.profileSection}>
           <View style={styles.avatarContainer}>
             {user.profilePicture ? (
-              <Image source={{ uri: user.profilePicture }} style={styles.avatar} />
+              <Image source={{ uri: adaptImage(user.profilePicture, 'avatar') }} style={styles.avatar} />
             ) : (
               <View style={styles.avatarPlaceholder}>
                 <Text style={styles.avatarPlaceholderText}>
@@ -690,7 +887,7 @@ export default function UserProfileScreen() {
               {viewingImages.urls.map((url, index) => (
                 <View key={index} style={styles.imageViewerItem}>
                   <Image
-                    source={{ uri: url }}
+                    source={{ uri: adaptImage(url, 'full') }}
                     style={styles.imageViewerImage}
                     contentFit="contain"
                   />
@@ -726,7 +923,7 @@ export default function UserProfileScreen() {
             </TouchableOpacity>
             
             <Video
-              source={{ uri: viewingReel.videoUrl }}
+              source={{ uri: adaptVideo(viewingReel.videoUrl, 'full') }}
               style={styles.reelViewerVideo}
               useNativeControls
               resizeMode={ResizeMode.CONTAIN}
@@ -796,7 +993,7 @@ export default function UserProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.secondary,

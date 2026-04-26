@@ -1,0 +1,48 @@
+appId: com.committed.app
+---
+# Auth/session smoke flow (existing verified test account)
+# Required env vars:
+# - MAESTRO_TEST_EMAIL
+# - MAESTRO_TEST_PASSWORD
+#
+# Run:
+#   MAESTRO_TEST_EMAIL="you@example.com" MAESTRO_TEST_PASSWORD="secret" maestro test maestro/auth-core-smoke.yaml
+#
+# What this validates:
+# 1) Sign-in works and leaves auth screen
+# 2) Session persists after app terminate + relaunch
+
+- launchApp:
+    clearState: false
+
+# Ensure we are on Sign In tab in auth shell if auth is visible.
+- tapOn:
+    text: "Sign In"
+    optional: true
+
+- tapOn:
+    id: "auth-email-input"
+- eraseText
+- inputText: "${MAESTRO_TEST_EMAIL}"
+
+- tapOn:
+    id: "auth-password-input"
+- eraseText
+- inputText: "${MAESTRO_TEST_PASSWORD}"
+
+- tapOn:
+    text: "^Sign In$"
+
+# Home marker from app/(tabs)/home.tsx
+- extendedWaitUntil:
+    visible: "Relationship Status"
+    timeout: 45000
+
+# Session persistence check: restart app process and ensure still authenticated.
+- stopApp
+- launchApp:
+    clearState: false
+
+- extendedWaitUntil:
+    visible: "Relationship Status"
+    timeout: 45000

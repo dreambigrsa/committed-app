@@ -19,6 +19,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'expo-image';
 
 import { supabase } from '@/lib/supabase';
+import { assertMediaWithinLimit, getAdaptiveImageQuality, optimizeImageForUpload } from '@/lib/media-optimizer';
 
 interface VerificationDocument {
   id: string;
@@ -85,25 +86,27 @@ export default function IdVerificationScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      quality: 0.9,
+      quality: await getAdaptiveImageQuality(),
     });
 
     if (!result.canceled && result.assets[0]) {
       setIsUploading(true);
       try {
+        const optimizedUri = await optimizeImageForUpload(result.assets[0].uri);
+        await assertMediaWithinLimit(optimizedUri, 'image');
         const fileName = `id_${currentUser?.id}_${Date.now()}.jpg`;
         let uint8Array: Uint8Array;
         
         // Handle web platform differently
         if (Platform.OS === 'web') {
           // For web, fetch the image and convert to blob
-          const response = await fetch(result.assets[0].uri);
+          const response = await fetch(optimizedUri);
           const blob = await response.blob();
           const arrayBuffer = await blob.arrayBuffer();
           uint8Array = new Uint8Array(arrayBuffer);
         } else {
           // For native platforms, use FileSystem
-          const base64 = await FileSystem.readAsStringAsync(result.assets[0].uri, {
+          const base64 = await FileSystem.readAsStringAsync(optimizedUri, {
             encoding: FileSystem.EncodingType.Base64,
           });
           
@@ -376,7 +379,7 @@ export default function IdVerificationScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: colors.background.secondary,
   },
   content: {
     flex: 1,

@@ -13,6 +13,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { DatingPhoto } from '@/types';
+import { AdaptiveMediaProfile, getAdaptiveImageUrl, getAdaptiveMediaProfile } from '@/lib/adaptive-media';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -28,6 +29,7 @@ export default function PhotoGalleryScreen() {
   const userAge = params.userAge ? parseInt(params.userAge as string) : undefined;
   
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const [mediaProfile, setMediaProfile] = useState<AdaptiveMediaProfile | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
@@ -38,6 +40,23 @@ export default function PhotoGalleryScreen() {
       });
     }
   }, [initialIndex]);
+
+  useEffect(() => {
+    let isMounted = true;
+    void getAdaptiveMediaProfile()
+      .then((profile) => {
+        if (isMounted) setMediaProfile(profile);
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const adaptImage = (url: string | null | undefined, kind: 'avatar' | 'feed' | 'full' = 'feed') => {
+    if (!url || !mediaProfile) return url || '';
+    return getAdaptiveImageUrl(url, mediaProfile, kind);
+  };
 
   const handleScroll = (event: any) => {
     const offsetX = event.nativeEvent.contentOffset.x;
@@ -101,7 +120,7 @@ export default function PhotoGalleryScreen() {
         {photos.map((photo: any, index: number) => (
           <View key={photo.id || index} style={styles.photoContainer}>
             <ExpoImage
-              source={{ uri: photo.photo_url || photo.photoUrl }}
+              source={{ uri: adaptImage(photo.photo_url || photo.photoUrl, 'full') }}
               style={styles.photo}
               contentFit="contain"
             />

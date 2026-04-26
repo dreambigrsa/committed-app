@@ -144,7 +144,21 @@ export default function LegalAcceptanceModal({
 
     setIsSaving(true);
     const SAFETY_MS = 25000;
+    const SAVE_CALL_TIMEOUT_MS = 12000;
     let safetyTimeout: ReturnType<typeof setTimeout> | null = null;
+    const withTimeout = async <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      try {
+        return await Promise.race([
+          promise,
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+          }),
+        ]);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    };
 
     try {
       const acceptancesToSave = Object.entries(acceptances)
@@ -157,14 +171,26 @@ export default function LegalAcceptanceModal({
           };
         });
 
+      if (__DEV__) {
+        console.log('[LegalAcceptanceModal] save start', {
+          userId: saveUserId,
+          selectedCount: acceptancesToSave.length,
+          requiredCount: requiredDocs.length,
+        });
+      }
+
       safetyTimeout = setTimeout(() => setIsSaving(false), SAFETY_MS);
 
       for (const { documentId, version } of acceptancesToSave) {
-        const ok = await saveUserAcceptance(
-          saveUserId,
-          documentId,
-          version,
-          needsReAcceptance.find((d) => d.id === documentId) ? 'update' : 'manual'
+        const ok = await withTimeout(
+          saveUserAcceptance(
+            saveUserId,
+            documentId,
+            version,
+            needsReAcceptance.find((d) => d.id === documentId) ? 'update' : 'manual'
+          ),
+          SAVE_CALL_TIMEOUT_MS,
+          `saveUserAcceptance(${documentId})`
         );
         if (!ok) {
           throw new Error('Failed to save one or more acceptances. Please try again.');
@@ -175,6 +201,7 @@ export default function LegalAcceptanceModal({
         clearTimeout(safetyTimeout);
         safetyTimeout = null;
       }
+      if (__DEV__) console.log('[LegalAcceptanceModal] save success');
       onComplete();
     } catch (error: any) {
       if (safetyTimeout) {
@@ -185,6 +212,7 @@ export default function LegalAcceptanceModal({
         alert('Request was cancelled. Please try again.');
       } else {
         console.error('Failed to save acceptances:', error);
+        if (__DEV__) console.log('[LegalAcceptanceModal] save failed', error?.message ?? error);
         const errorMessage = error?.message || 'Failed to save acceptances. Please try again.';
         alert(errorMessage);
       }

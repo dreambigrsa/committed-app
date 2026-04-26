@@ -165,6 +165,8 @@ export interface AIResponse {
   success: boolean;
   message?: string;
   error?: string;
+  source?: 'system' | 'database' | 'openai';
+  model?: string;
   imageUrl?: string; // For generated images
   documentUrl?: string; // For generated documents
   documentName?: string; // For generated documents
@@ -185,6 +187,187 @@ export interface UserLearnings {
   user_satisfaction_score?: number;
   total_interactions?: number;
   ai_notes?: string;
+}
+
+export type AIActionCommand =
+  | { type: 'open_route'; route: string; label: string }
+  | { type: 'search'; query: string }
+  | { type: 'book_help'; professionalType?: string }
+  | { type: 'send_message'; target?: string; content?: string };
+
+export function parseAIActionCommand(input: string): AIActionCommand | null {
+  const raw = String(input || '').trim();
+  if (!raw) return null;
+  const msg = raw.toLowerCase();
+  const hasAny = (terms: string[]) => terms.some((t) => msg.includes(t));
+  const hasActionIntent = hasAny([
+    'open',
+    'go to',
+    'navigate',
+    'take me',
+    'show me',
+    'go',
+    'i want to',
+    'i need to',
+  ]);
+
+  // Intent-based navigation for relationship registration.
+  // Handles non-exact phrasing like:
+  // - "open register a relationship page"
+  // - "i want to register my relationship"
+  // - "take me to relationship registration"
+  const wantsRelationshipRegistration =
+    hasAny(['relationship']) &&
+    hasAny(['register', 'registration', 'link', 'start relationship']);
+  if (wantsRelationshipRegistration && (hasActionIntent || msg.length < 120)) {
+    return { type: 'open_route', route: '/relationship/register', label: 'Relationship Register' };
+  }
+
+  // Intent-based navigation: verification flows
+  const wantsVerification =
+    hasAny(['verify', 'verification']) &&
+    hasAny(['account', 'me', 'profile', 'id', 'phone', 'email']);
+  if (wantsVerification) {
+    if (hasAny(['id', 'identity'])) {
+      return { type: 'open_route', route: '/verification/id', label: 'ID Verification' };
+    }
+    if (hasAny(['phone', 'number'])) {
+      return { type: 'open_route', route: '/verification/phone', label: 'Phone Verification' };
+    }
+    if (hasAny(['email', 'mail'])) {
+      return { type: 'open_route', route: '/verification/email', label: 'Email Verification' };
+    }
+    return { type: 'open_route', route: '/settings', label: 'Settings' };
+  }
+
+  // Intent-based navigation: create content
+  const wantsCreate = hasAny(['create', 'make', 'post', 'upload', 'share']);
+  if (wantsCreate && hasAny(['post', 'feed post'])) {
+    return { type: 'open_route', route: '/post/create', label: 'Create Post' };
+  }
+  if (wantsCreate && hasAny(['reel', 'video reel', 'short video'])) {
+    return { type: 'open_route', route: '/reel/create', label: 'Create Reel' };
+  }
+  if (wantsCreate && hasAny(['status', 'story'])) {
+    return { type: 'open_route', route: '/status/create', label: 'Create Status' };
+  }
+
+  // Intent-based navigation: dating setup/profile
+  const wantsDatingSetup =
+    hasAny(['dating', 'date']) &&
+    hasAny(['setup', 'profile', 'create profile', 'edit profile']);
+  if (wantsDatingSetup) {
+    return { type: 'open_route', route: '/dating/profile-setup', label: 'Dating Profile Setup' };
+  }
+
+  // Intent-based navigation: settings/profile
+  if (hasAny(['settings', 'preferences']) && (hasActionIntent || msg.length < 100)) {
+    return { type: 'open_route', route: '/settings', label: 'Settings' };
+  }
+  if (hasAny(['my profile', 'profile page', 'open profile']) && (hasActionIntent || msg.length < 100)) {
+    return { type: 'open_route', route: '/(tabs)/profile', label: 'Profile' };
+  }
+
+  const openMatch = msg.match(/^(open|go to|navigate to)\s+(.+)$/i);
+  if (openMatch?.[2]) {
+    const target = openMatch[2].trim();
+
+    // Admin routes
+    if (/(admin account|admin user|admin users|user admin|users admin|admin profile|admin profiles)/i.test(target)) {
+      return { type: 'open_route', route: '/admin/users', label: 'Admin Users' };
+    }
+    if (/(admin setting|settings admin)/i.test(target)) {
+      return { type: 'open_route', route: '/admin/settings', label: 'Admin Settings' };
+    }
+    if (/(admin dashboard|admin home|admin panel)/i.test(target)) {
+      return { type: 'open_route', route: '/admin', label: 'Admin Dashboard' };
+    }
+
+    // Common app routes
+    if (/\b(messages|chat)\b/.test(target)) {
+      return { type: 'open_route', route: '/(tabs)/messages', label: 'Messages' };
+    }
+    if (/\b(search)\b/.test(target)) {
+      return { type: 'open_route', route: '/(tabs)/search', label: 'Search' };
+    }
+    if (/\b(notification|notifications|alerts)\b/.test(target)) {
+      return { type: 'open_route', route: '/(tabs)/notifications', label: 'Notifications' };
+    }
+    if (/\b(feed)\b/.test(target)) {
+      return { type: 'open_route', route: '/(tabs)/feed', label: 'Feed' };
+    }
+    if (/\b(home|homepage|home page|main page)\b/.test(target)) {
+      return { type: 'open_route', route: '/(tabs)/home', label: 'Home' };
+    }
+    if (/\b(reels?)\b/.test(target)) {
+      return { type: 'open_route', route: '/(tabs)/reels', label: 'Reels' };
+    }
+    if (/\b(profile)\b/.test(target)) {
+      return { type: 'open_route', route: '/(tabs)/profile', label: 'Profile' };
+    }
+    if (/\b(settings)\b/.test(target)) {
+      return { type: 'open_route', route: '/settings', label: 'Settings' };
+    }
+    if (/\b(verification|verify)\b/.test(target) && /\b(id)\b/.test(target)) {
+      return { type: 'open_route', route: '/verification/id', label: 'ID Verification' };
+    }
+    if (/\b(verification|verify)\b/.test(target) && /\b(phone)\b/.test(target)) {
+      return { type: 'open_route', route: '/verification/phone', label: 'Phone Verification' };
+    }
+    if (/\b(verification|verify)\b/.test(target) && /\b(email)\b/.test(target)) {
+      return { type: 'open_route', route: '/verification/email', label: 'Email Verification' };
+    }
+    if (/\b(create)\b/.test(target) && /\b(post)\b/.test(target)) {
+      return { type: 'open_route', route: '/post/create', label: 'Create Post' };
+    }
+    if (/\b(create)\b/.test(target) && /\b(reel|video)\b/.test(target)) {
+      return { type: 'open_route', route: '/reel/create', label: 'Create Reel' };
+    }
+    if (/\b(create)\b/.test(target) && /\b(status|story)\b/.test(target)) {
+      return { type: 'open_route', route: '/status/create', label: 'Create Status' };
+    }
+    if (/\b(dating)\b/.test(target) && /\b(setup|profile)\b/.test(target)) {
+      return { type: 'open_route', route: '/dating/profile-setup', label: 'Dating Profile Setup' };
+    }
+    if (/\b(relationship|relationships?)\b/.test(target) && /\b(register|registration|link)\b/.test(target)) {
+      return { type: 'open_route', route: '/relationship/register', label: 'Relationship Register' };
+    }
+  }
+
+  const searchMatch = msg.match(/^(search|find|look up)\s+(.+)$/i);
+  if (searchMatch?.[2]) {
+    return { type: 'search', query: searchMatch[2].trim() };
+  }
+
+  if (
+    /\b(book|booking|schedule|appointment|reserve)\b/.test(msg) &&
+    (/\b(help|session|professional|counselor|therapist|mentor|advisor)\b/.test(msg) || /^book$/i.test(raw))
+  ) {
+    return { type: 'book_help' };
+  }
+
+  const sendWithTarget = raw.match(/^send(?:\s+a)?\s+message\s+to\s+([^:]+)\s*:\s*(.+)$/i);
+  if (sendWithTarget) {
+    return {
+      type: 'send_message',
+      target: sendWithTarget[1]?.trim(),
+      content: sendWithTarget[2]?.trim(),
+    };
+  }
+
+  const sendDirect = raw.match(/^(send|text|message)(?:\s+a)?\s+message\s+(.+)$/i);
+  if (sendDirect?.[1]) {
+    return {
+      type: 'send_message',
+      content: sendDirect[2].trim(),
+    };
+  }
+
+  if (/^(send|text|message)(?:\s+a)?\s+message$/i.test(raw)) {
+    return { type: 'send_message' };
+  }
+
+  return null;
 }
 
 /**
@@ -372,6 +555,8 @@ async function generateImage(prompt: string): Promise<AIResponse> {
     return {
       success: true,
       message: `I've generated an image for you: "${cleanPrompt}"`,
+      source: shouldUseDirectOpenAI ? 'openai' : 'openai',
+      model: 'dall-e-3',
       imageUrl: uploadedUrl,
       contentType: 'image',
     };
@@ -510,6 +695,8 @@ async function generateDocument(
     return {
       success: true,
       message: `I've generated a ${documentName.replace('.txt', '')} for you. You can download it from the message.`,
+      source: 'openai',
+      model: shouldUseDirectOpenAI ? 'gpt-4o-mini' : 'gpt-4o-mini',
       documentUrl: documentUrl,
       documentName: documentName,
       contentType: 'document',
@@ -800,6 +987,7 @@ You are having a natural conversation with ${userDisplayName}${userName && userU
 
 CRITICAL INSTRUCTIONS:
 - Answer questions directly and accurately - address exactly what ${userDisplayName} is asking
+- Do NOT start with a greeting unless the user greeted first in their latest message.
 - If ${userDisplayName} asks about you (e.g., "tell me about yourself", "who are you", "what are you", "talk about you"), you MUST explain who you are: You are Committed AI, an intelligent AI assistant created to help people with relationships, life advice, business questions, and friendly conversation. Be specific and conversational about your capabilities.
 - If the user asks anything about the Committed app ("how do I…", "where is…", "it’s not working", "I can’t…"), prioritize app guidance:
   - Ask 1-2 clarifying questions if needed (iOS/Android, which screen, what they tapped, error message).
@@ -853,6 +1041,7 @@ IMPORTANT CONTEXT:
 
   prompt += `\n\nYOUR CORE PRINCIPLES:
 - Answer questions directly and accurately - address exactly what the user is asking
+- Do NOT force greetings. Only greet if the user's latest message is itself a greeting.
 - If asked about yourself (e.g., "tell me about yourself", "who are you", "what are you"), explain that you're Committed AI, an AI assistant designed to help with relationships, life advice, business questions, or just conversation. Be specific and conversational.
 - Think through problems carefully before responding - provide thoughtful, knowledgeable answers
 - Stay on topic - don't go off on tangents or change the subject
@@ -893,23 +1082,36 @@ COMMANDS:
 export async function getAIResponse(
   userMessage: string,
   conversationHistory: { role: 'user' | 'assistant'; content: string }[] = [],
-  isNewConversation: boolean = false,
+  _isNewConversation: boolean = false,
   userName?: string,
   userUsername?: string,
   userId?: string
 ): Promise<AIResponse> {
-  // Build personalized greeting with user's name
-  const userDisplayName = userName || userUsername || 'there';
-  
-  // If this is the first message, send a personalized greeting
-  if (isNewConversation || conversationHistory.length === 0) {
-    return {
-      success: true,
-      message: `Hello ${userDisplayName}! I'm Committed AI. How can I help you today?`,
-      contentType: 'text',
-    };
-  }
   try {
+    // 1) System-routed trivial queries (fast, deterministic, no API call).
+    const systemAnswer = getSystemRoutedAnswer(userMessage);
+    if (systemAnswer) {
+      return {
+        success: true,
+        message: systemAnswer,
+        source: 'system',
+        model: 'local-system-router',
+        contentType: 'text',
+      };
+    }
+
+    // 2) Predefined knowledge from database (optional app_settings key: ai_predefined_answers).
+    const dbAnswer = await getPredefinedDatabaseAnswer(userMessage);
+    if (dbAnswer) {
+      return {
+        success: true,
+        message: dbAnswer,
+        source: 'database',
+        model: 'app_settings.ai_predefined_answers',
+        contentType: 'text',
+      };
+    }
+
     // Note: Professional help detection is now handled by detectProfessionalHelpNeeded()
     // which runs before the OpenAI call. The detection results are merged into the response.
 
@@ -1026,6 +1228,8 @@ export async function getAIResponse(
       
       return {
         ...response,
+        source: response.source || 'openai',
+        model: response.model || 'gpt-3.5-turbo',
         suggestProfessionalHelp: shouldSuggest,
         suggestedProfessionalType: helpDetection.professionalType || 'professional',
       };
@@ -1139,6 +1343,8 @@ async function getOpenAIResponse(
     return {
       success: true,
       message: aiMessage,
+      source: 'openai',
+      model: 'gpt-3.5-turbo',
     };
   } catch (error: any) {
     console.error('[AI Service] OpenAI API error:', error);
@@ -1196,6 +1402,8 @@ async function getOpenAIResponseViaSupabaseFunction(params: {
       return { 
         success: true, 
         message: String(data.message ?? ''),
+        source: data?.source === 'database' || data?.source === 'system' ? data.source : 'openai',
+        model: typeof data?.meta?.model === 'string' ? data.meta.model : 'gpt-4o-mini',
         suggestProfessionalHelp: data.suggestProfessionalHelp || false,
         suggestedProfessionalType: data.suggestedProfessionalType || undefined,
       };
@@ -1725,6 +1933,8 @@ function getFallbackResponse(
     return {
       success: true,
       message: `I'm Committed AI, an intelligent AI assistant designed to be your companion, advisor, and friend. I can help you with relationship advice, life guidance, business questions, or just be someone to talk to. I learn from our conversations to better understand you and provide more personalized help. I'm always here when you need someone to talk to or when you need advice. What would you like to know more about me, or how can I help you today?`,
+      source: 'system',
+      model: 'fallback-rules',
     };
   }
 
@@ -1736,6 +1946,8 @@ function getFallbackResponse(
         success: true,
         message:
           "Yes — I can tell jokes. Here are a few:\n\n1) Why don’t programmers like nature? Too many bugs.\n2) I told my computer I needed a break… and it said: “No problem, I’ll go to sleep.”\n3) Why did the scarecrow get promoted? He was outstanding in his field.\n\nWant clean jokes, dark humor, or dad jokes?",
+        source: 'system',
+        model: 'fallback-rules',
       };
     }
 
@@ -1743,6 +1955,8 @@ function getFallbackResponse(
       success: true,
       message:
         "Yes, I can help with that. Tell me exactly what you want (and any constraints or details), and I’ll respond directly.",
+      source: 'system',
+      model: 'fallback-rules',
     };
   }
 
@@ -1811,6 +2025,8 @@ function getFallbackResponse(
     return {
       success: true,
       message: personalizedGreeting,
+      source: 'system',
+      model: 'fallback-rules',
     };
   }
 
@@ -1819,13 +2035,71 @@ function getFallbackResponse(
     return {
       success: true,
       message: "I'm here to help! Every situation is unique, so I'd love to understand more about what you're dealing with. Could you share a bit more detail? I'll do my best to provide thoughtful guidance.",
+      source: 'system',
+      model: 'fallback-rules',
     };
   }
 
-  // If OpenAI is not available, tell the user
+  // Final guaranteed relevant response (never empty/generic failure in chat UX).
   return {
-    success: false,
-    error: "I apologize, but my advanced features are currently unavailable. Please ensure the OpenAI API key is configured. In the meantime, I can help with basic questions - feel free to ask me anything!",
+    success: true,
+    source: 'system',
+    model: 'fallback-rules',
+    message:
+      "I understand. I couldn't use the full AI engine right now, but I can still help. Tell me your exact question (or what screen you're on), and I'll give you a direct step-by-step answer.",
   };
+}
+
+function getSystemRoutedAnswer(userMessage: string): string | null {
+  const msg = userMessage.trim().toLowerCase();
+  if (!msg) return null;
+
+  const asksTime =
+    /\bwhat('?s| is)? the time\b/.test(msg) ||
+    /\bcurrent time\b/.test(msg) ||
+    /^time\??$/.test(msg);
+  if (asksTime) {
+    return `The current time is ${new Date().toLocaleTimeString()}.`;
+  }
+
+  const asksDate =
+    /\bwhat('?s| is)? the date\b/.test(msg) ||
+    /\btoday('?s| is)? date\b/.test(msg) ||
+    /^date\??$/.test(msg);
+  if (asksDate) {
+    return `Today's date is ${new Date().toLocaleDateString()}.`;
+  }
+
+  return null;
+}
+
+async function getPredefinedDatabaseAnswer(userMessage: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'ai_predefined_answers')
+      .maybeSingle();
+
+    if (error || !data?.value) return null;
+    const entries = Array.isArray(data.value) ? data.value : [];
+    if (entries.length === 0) return null;
+
+    const normalized = userMessage.trim().toLowerCase();
+    const exact = entries.find((e: any) => {
+      const q = String(e?.question ?? '').trim().toLowerCase();
+      return q && q === normalized;
+    });
+    if (exact?.answer) return String(exact.answer);
+
+    const keywordMatch = entries.find((e: any) => {
+      const keys: string[] = Array.isArray(e?.keywords) ? e.keywords : [];
+      return keys.some((k) => normalized.includes(String(k).toLowerCase()));
+    });
+    if (keywordMatch?.answer) return String(keywordMatch.answer);
+    return null;
+  } catch {
+    return null;
+  }
 }
 

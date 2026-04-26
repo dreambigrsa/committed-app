@@ -6,8 +6,9 @@
  * signIn/signUp; otherwise AppGate would cover the whole app with SplashScreen
  * on slow mobile networks while credentials are sent.
  */
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { Session } from '@supabase/supabase-js';
+import { AppState, AppStateStatus } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { updatePasswordViaApi } from '@/lib/supabase-auth-api';
 import { logAuthEvent, errorToAuthCode } from '@/lib/auth-telemetry';
@@ -36,6 +37,7 @@ interface AuthState {
   profileHydrated: boolean;
   authLoading: boolean;
   authReady: boolean;
+  authInitialized: boolean;
 }
 
 interface AuthContextValue extends AuthState {
@@ -46,6 +48,11 @@ interface AuthContextValue extends AuthState {
   updatePassword: (newPassword: string) => Promise<void>;
   updateUser: (partial: Partial<AuthUser>) => void;
   refreshSession: () => Promise<void>;
+  syncAuthState: (opts?: { reason?: string; refreshToken?: boolean }) => Promise<boolean>;
+  /** Full bootstrap recovery (closest to cold app relaunch without process restart). */
+  recoverSessionHard: () => Promise<boolean>;
+  /** Last resort: hide AppGate splash if bootstrap is stuck (should be rare). */
+  forceAuthBootstrapUnblock: () => void;
   setPasswordRecovery: (value: boolean) => void;
 }
 
@@ -57,11 +64,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [authInitialized, setAuthInitialized] = useState(false);
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
   const [profileHydrated, setProfileHydrated] = useState(false);
+  const lastActiveSyncRef = useRef(0);
+  const syncInFlightRef = useRef<Promise<boolean> | null>(null);
+  const transientNullSinceRef = useRef<number | null>(null);
+  const TRANSIENT_NULL_GRACE_MS = 20000;
 
   const isAuthenticated = user !== null;
-  const authReady = !authLoading;
+  const authReady = authInitialized && !authLoading;
 
   /** Build minimal AuthUser from session only (no DB). Used so sign-in can resolve immediately. */
   const getMinimalUserFromSession = useCallback(
@@ -204,6 +216,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(null);
         setAccessToken(null);
         setRefreshToken(null);
+        setProfileHydrated(false);
         return;
       }
       logAuthEvent('restore_complete', { hasSession: !!s });
@@ -245,6 +258,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setProfileHydrated(false);
     } finally {
       clearTimeout(hangTimeoutId);
+      setAuthInitialized(true);
       finishLoading();
     }
   }, [hydrateFromSession, getMinimalUserFromSession]);
@@ -262,6 +276,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (event === 'SIGNED_OUT' || (event === 'TOKEN_REFRESHED' && !newSession)) {
+        // During cold-start bootstrap, ignore transient null refresh events.
+        if (!authInitialized && event === 'TOKEN_REFRESHED') {
+          return;
+        }
         logAuthEvent('auth_cleared', {
           reason: event === 'SIGNED_OUT' ? 'signed_out' : 'token_refresh_no_session',
         });
@@ -299,7 +317,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // arbitrary events with null session caused spurious logouts; SIGNED_OUT / failed refresh still clear above.
     });
     return () => subscription.unsubscribe();
-  }, [hydrateFromSession, getMinimalUserFromSession]);
+  }, [hydrateFromSession, getMinimalUserFromSession, authInitialized]);
 
   const signIn = useCallback(
     async (email: string, password: string) => {
@@ -364,22 +382,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = useCallback(async () => {
     logAuthEvent('sign_out', {});
     setAuthLoading(true);
+    const SIGN_OUT_TIMEOUT_MS = 12000;
     try {
-      await supabase.auth.signOut();
+      await Promise.race([
+        supabase.auth.signOut(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('signOut_timeout')), SIGN_OUT_TIMEOUT_MS)
+        ),
+      ]);
+    } catch (err) {
+      console.error('SignOut error:', err);
+    } finally {
+      // Always clear local auth state so AppGate can leave splash even if SDK/network hangs.
       setUser(null);
       setSession(null);
       setAccessToken(null);
       setRefreshToken(null);
       setProfileHydrated(false);
       setIsPasswordRecovery(false);
-    } catch (err) {
-      console.error('SignOut error:', err);
-      setUser(null);
-      setSession(null);
-      setAccessToken(null);
-      setRefreshToken(null);
-      setProfileHydrated(false);
-    } finally {
       setAuthLoading(false);
     }
   }, []);
@@ -412,8 +432,127 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser((prev) => (prev ? { ...prev, ...partial } : null));
   }, []);
 
+  const forceAuthBootstrapUnblock = useCallback(() => {
+    logAuthEvent('force_bootstrap_unblock', {});
+    if (__DEV__) console.warn('[Auth] forceAuthBootstrapUnblock');
+    setAuthLoading(false);
+  }, []);
+
+  const syncAuthState = useCallback(
+    async (opts?: { reason?: string; refreshToken?: boolean }) => {
+      if (syncInFlightRef.current) {
+        return syncInFlightRef.current;
+      }
+
+      const run = (async (): Promise<boolean> => {
+        const reason = opts?.reason ?? 'manual';
+        try {
+          if (__DEV__) {
+            console.log('[AuthContext] syncAuthState start:', reason, 'refreshToken=', !!opts?.refreshToken);
+          }
+
+          if (opts?.refreshToken) {
+            const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
+            if (refreshErr) throw refreshErr;
+            if (refreshed.session) {
+              transientNullSinceRef.current = null;
+              setSession(refreshed.session);
+              setAccessToken(refreshed.session.access_token);
+              setRefreshToken(refreshed.session.refresh_token ?? null);
+              setUser(getMinimalUserFromSession(refreshed.session));
+              setProfileHydrated(false);
+              await hydrateFromSession(refreshed.session, { clearOnError: false });
+              logAuthEvent('sync_ok', { reason, refreshed: true });
+              return true;
+            }
+          }
+
+          const { data: { session: liveSession }, error } = await supabase.auth.getSession();
+          if (error) throw error;
+
+          if (!liveSession) {
+            const hadAuthState = !!session || !!user;
+            const isResumePath = reason === 'app_focus' || reason === 'home_missing_current_user' || reason === 'appgate_splash_watchdog';
+
+            // One extra active refresh attempt before considering a clear.
+            try {
+              const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
+              if (!refreshErr && refreshed.session) {
+                transientNullSinceRef.current = null;
+                setSession(refreshed.session);
+                setAccessToken(refreshed.session.access_token);
+                setRefreshToken(refreshed.session.refresh_token ?? null);
+                setUser(getMinimalUserFromSession(refreshed.session));
+                setProfileHydrated(false);
+                await hydrateFromSession(refreshed.session, { clearOnError: false });
+                logAuthEvent('sync_ok', { reason, refreshed: true, recoveredAfterNull: true });
+                return true;
+              }
+            } catch {
+              // Ignore transient refresh errors; handled by grace logic below.
+            }
+
+            if (hadAuthState && isResumePath) {
+              const now = Date.now();
+              if (!transientNullSinceRef.current) transientNullSinceRef.current = now;
+              const elapsed = now - transientNullSinceRef.current;
+              if (elapsed < TRANSIENT_NULL_GRACE_MS) {
+                if (__DEV__) {
+                  console.log('[AuthContext] syncAuthState transient null session during resume, keeping state:', reason, 'elapsed=', elapsed);
+                }
+                logAuthEvent('sync_transient_no_session_kept', { reason, elapsed });
+                return true;
+              }
+            }
+
+            if (__DEV__) console.log('[AuthContext] syncAuthState no session confirmed, clearing:', reason);
+            transientNullSinceRef.current = null;
+            setUser(null);
+            setSession(null);
+            setAccessToken(null);
+            setRefreshToken(null);
+            setProfileHydrated(false);
+            logAuthEvent('sync_cleared', { reason });
+            return false;
+          }
+
+          transientNullSinceRef.current = null;
+          const isRecovery =
+            hasPendingPasswordRecovery() ||
+            (typeof window !== 'undefined' && window.location?.href?.includes('type=recovery'));
+
+          setSession(liveSession);
+          setAccessToken(liveSession.access_token);
+          setRefreshToken(liveSession.refresh_token ?? null);
+          setUser(getMinimalUserFromSession(liveSession, { isPasswordRecovery: !!isRecovery }));
+          setProfileHydrated(false);
+          await hydrateFromSession(liveSession, { isPasswordRecovery: !!isRecovery, clearOnError: false });
+          logAuthEvent('sync_ok', { reason, refreshed: false });
+          return true;
+        } catch (err: any) {
+          const msg = (err?.message ?? String(err)) ?? '';
+          if (msg.includes('aborted') || msg.includes('signal')) {
+            return !!session;
+          }
+          console.error('syncAuthState error:', err);
+          logAuthEvent('sync_error', { reason: opts?.reason ?? 'manual', code: errorToAuthCode(err) });
+          return !!session;
+        } finally {
+          syncInFlightRef.current = null;
+        }
+      })();
+
+      syncInFlightRef.current = run;
+      return run;
+    },
+    [getMinimalUserFromSession, hydrateFromSession, session]
+  );
+
   const refreshSession = useCallback(async () => {
-    if (!refreshToken) return;
+    if (!refreshToken) {
+      await syncAuthState({ reason: 'refresh_without_refresh_token', refreshToken: false });
+      return;
+    }
     try {
       const { data, error } = await supabase.auth.refreshSession();
       if (error) throw error;
@@ -446,7 +585,87 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         logAuthEvent('refresh_transient', { code: errorToAuthCode(err) });
       }
     }
-  }, [refreshToken, hydrateFromSession]);
+  }, [refreshToken, hydrateFromSession, syncAuthState]);
+
+  const recoverSessionHard = useCallback(async (): Promise<boolean> => {
+    try {
+      if (__DEV__) console.log('[AuthContext] recoverSessionHard start');
+      syncInFlightRef.current = null;
+      transientNullSinceRef.current = null;
+
+      const authApi = supabase.auth as unknown as {
+        startAutoRefresh?: () => void;
+        stopAutoRefresh?: () => void;
+      };
+      authApi.stopAutoRefresh?.();
+      authApi.startAutoRefresh?.();
+
+      // Re-run the same startup bootstrap path used on cold launch.
+      await restoreSession();
+
+      const { data: { session: s }, error } = await supabase.auth.getSession();
+      if (error || !s) {
+        if (__DEV__) console.warn('[AuthContext] recoverSessionHard no session after restore');
+        setUser(null);
+        setSession(null);
+        setAccessToken(null);
+        setRefreshToken(null);
+        setProfileHydrated(false);
+        return false;
+      }
+
+      setSession(s);
+      setAccessToken(s.access_token);
+      setRefreshToken(s.refresh_token ?? null);
+      setUser(getMinimalUserFromSession(s));
+      setProfileHydrated(false);
+      await hydrateFromSession(s, { clearOnError: false }).catch((err) => {
+        // Session is already restored; hydration can finish later via AppContext/Auth listener.
+        console.warn('recoverSessionHard hydrate warning:', err);
+      });
+      logAuthEvent('recover_session_hard_ok', {});
+      return true;
+    } catch (err: any) {
+      console.error('recoverSessionHard error:', err);
+      logAuthEvent('recover_session_hard_error', { code: errorToAuthCode(err) });
+      return false;
+    }
+  }, [restoreSession, getMinimalUserFromSession, hydrateFromSession]);
+
+  useEffect(() => {
+    const authApi = supabase.auth as unknown as {
+      startAutoRefresh?: () => void;
+      stopAutoRefresh?: () => void;
+    };
+
+    const applyAppState = (next: AppStateStatus) => {
+      if (next === 'background' || next === 'inactive') {
+        authApi.stopAutoRefresh?.();
+        return;
+      }
+      if (next !== 'active') return;
+
+      // Supabase RN: timers for auto-refresh pause in background; restart on foreground.
+      authApi.startAutoRefresh?.();
+
+      if (authLoading) return;
+      const now = Date.now();
+      if (now - lastActiveSyncRef.current < 2000) return;
+      lastActiveSyncRef.current = now;
+      syncAuthState({ reason: 'app_focus', refreshToken: true }).catch(() => {});
+    };
+
+    // Cold start: listener may not fire for initial "active" state.
+    if (AppState.currentState === 'active') {
+      authApi.startAutoRefresh?.();
+    }
+
+    const sub = AppState.addEventListener('change', applyAppState);
+    return () => {
+      sub.remove();
+      authApi.stopAutoRefresh?.();
+    };
+  }, [syncAuthState, authLoading]);
 
   const value: AuthContextValue = {
     user,
@@ -457,6 +676,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     profileHydrated,
     authLoading,
     authReady,
+    authInitialized,
     signIn,
     signUp,
     signOut,
@@ -464,6 +684,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     updatePassword,
     updateUser,
     refreshSession,
+    syncAuthState,
+    recoverSessionHard,
+    forceAuthBootstrapUnblock,
     setPasswordRecovery: setIsPasswordRecovery,
   };
 

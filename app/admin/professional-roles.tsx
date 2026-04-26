@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -19,12 +19,11 @@ import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { ProfessionalRole } from '@/types';
-import { colors } from '@/constants/colors';
 
 export default function AdminProfessionalRolesScreen() {
   const { currentUser } = useApp();
   const { colors: themeColors } = useTheme();
-  const styles = createStyles(themeColors);
+  const styles = useMemo(() => createStyles(themeColors), [themeColors]);
   
   const [roles, setRoles] = useState<ProfessionalRole[]>([]);
   const [loading, setLoading] = useState(true);
@@ -280,7 +279,7 @@ export default function AdminProfessionalRolesScreen() {
               <Text style={styles.emptyText}>No professional roles yet</Text>
               <Text style={styles.emptySubtext}>Create your first role to get started</Text>
               <TouchableOpacity style={styles.createButton} onPress={handleCreate}>
-                <Plus size={20} color={colors.text.white} />
+                <Plus size={20} color={themeColors.text.white} />
                 <Text style={styles.createButtonText}>Create Role</Text>
               </TouchableOpacity>
             </View>
@@ -315,7 +314,7 @@ export default function AdminProfessionalRolesScreen() {
                             </Text>
                             <View style={[styles.statusBadge, isActive ? styles.activeBadge : styles.inactiveBadge]}>
                               {isActive ? (
-                                <CheckCircle2 size={14} color={colors.secondary} />
+                                <CheckCircle2 size={14} color={themeColors.secondary} />
                               ) : (
                                 <AlertCircle size={14} color={themeColors.text.tertiary} />
                               )}
@@ -337,13 +336,13 @@ export default function AdminProfessionalRolesScreen() {
 
                       <View style={styles.roleFeaturesGrid}>
                         <View style={styles.featureItem}>
-                          <Shield size={16} color={requiresCredentials ? colors.secondary : themeColors.text.tertiary} />
+                          <Shield size={16} color={requiresCredentials ? themeColors.secondary : themeColors.text.tertiary} />
                           <Text style={[styles.featureText, !requiresCredentials && styles.featureTextInactive]}>
                             {requiresCredentials ? 'Credentials' : 'No Credentials'}
                           </Text>
                         </View>
                         <View style={styles.featureItem}>
-                          <CheckCircle2 size={16} color={eligibleForLiveChat ? colors.secondary : themeColors.text.tertiary} />
+                          <CheckCircle2 size={16} color={eligibleForLiveChat ? themeColors.secondary : themeColors.text.tertiary} />
                           <Text style={[styles.featureText, !eligibleForLiveChat && styles.featureTextInactive]}>
                             {eligibleForLiveChat ? 'Live Chat' : 'No Live Chat'}
                           </Text>
@@ -378,7 +377,7 @@ export default function AdminProfessionalRolesScreen() {
                             handleDelete(mappedRole);
                           }}
                         >
-                          <Trash2 size={16} color={colors.danger} />
+                          <Trash2 size={16} color={themeColors.danger} />
                         </TouchableOpacity>
                       </View>
                     </LinearGradient>
@@ -563,7 +562,7 @@ export default function AdminProfessionalRolesScreen() {
               style={[styles.footerButton, styles.saveButton]}
               onPress={handleSave}
             >
-                  <Save size={20} color={colors.text.white} />
+                  <Save size={20} color={themeColors.text.white} />
               <Text style={styles.saveButtonText}>Save</Text>
             </TouchableOpacity>
           </View>
@@ -797,7 +796,7 @@ const createStyles = (colors: any) => StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: colors.border.light,
     backgroundColor: colors.background.primary,
   },
   modalTitle: {
@@ -887,7 +886,7 @@ const createStyles = (colors: any) => StyleSheet.create({
     flexDirection: 'row',
     padding: 16,
     borderTopWidth: 1,
-    borderTopColor: colors.border,
+    borderTopColor: colors.border.light,
     backgroundColor: colors.background.primary,
     gap: 12,
   },

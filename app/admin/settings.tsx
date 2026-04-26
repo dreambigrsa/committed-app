@@ -13,12 +13,14 @@ import {
 import { Stack } from 'expo-router';
 import { Settings as SettingsIcon, Save, Shield, KeyRound, TestTubeDiagonal, Sparkles, Search } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { refreshOpenAIKeyCache } from '@/lib/ai-service';
 
 export default function AdminSettingsScreen() {
   const { currentUser } = useApp();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const isSuperAdmin = useMemo(() => !!currentUser && currentUser.role === 'super_admin', [currentUser]);
   const [settings, setSettings] = useState({
     appName: 'Committed',
@@ -1074,7 +1076,7 @@ export default function AdminSettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.secondary,

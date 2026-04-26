@@ -40,6 +40,13 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   },
 });
 
+/**
+ * Do NOT globally serialize getSession / refreshSession.
+ * A single hung refresh after resume would block every later getSession forever
+ * (users only recover after force-quit). The Supabase client already coordinates
+ * token refresh; parallel reads are acceptable for this app.
+ */
+
 export interface SupabaseUser {
   id: string;
   full_name: string;

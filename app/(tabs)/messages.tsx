@@ -19,18 +19,21 @@ import StatusIndicator from '@/components/StatusIndicator';
 import StatusStoriesBar from '@/components/StatusStoriesBar';
 import { UserStatus } from '@/types';
 import { useTheme } from '@/contexts/ThemeContext';
-import { getOrCreateAIUser, getAIResponse } from '@/lib/ai-service';
+import { getOrCreateAIUser, getAIResponse, parseAIActionCommand } from '@/lib/ai-service';
 import { supabase } from '@/lib/supabase';
+import { AdaptiveMediaProfile, getAdaptiveImageUrl, getAdaptiveMediaProfile } from '@/lib/adaptive-media';
 
 export default function MessagesScreen() {
   const router = useRouter();
   const { currentUser, conversations, deleteConversation, getUserStatus, createOrGetConversation, sendMessage, getMessages } = useApp();
   const { colors } = useTheme();
+  const isAdminUser = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [participantStatuses, setParticipantStatuses] = useState<Record<string, UserStatus>>({});
   const [aiQuery, setAiQuery] = useState<string>('');
   const [isSendingAI, setIsSendingAI] = useState<boolean>(false);
+  const [mediaProfile, setMediaProfile] = useState<AdaptiveMediaProfile | null>(null);
 
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -50,6 +53,23 @@ export default function MessagesScreen() {
       useNativeDriver: true,
     }).start();
   }, [fadeAnim]);
+
+  useEffect(() => {
+    let isMounted = true;
+    void getAdaptiveMediaProfile()
+      .then((profile) => {
+        if (isMounted) setMediaProfile(profile);
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const adaptImage = (url: string | null | undefined, kind: 'avatar' | 'feed' | 'full' = 'feed') => {
+    if (!url || !mediaProfile) return url || '';
+    return getAdaptiveImageUrl(url, mediaProfile, kind);
+  };
 
   // Helper function to get other participant - defined before early return
   const getOtherParticipant = (conversation: any) => {
@@ -135,12 +155,12 @@ export default function MessagesScreen() {
 
     loadStatuses();
 
-    // Refresh statuses every 30 seconds to recalculate based on last_active_at
+    // Refresh less frequently to reduce mobile data usage.
     const refreshInterval = setInterval(() => {
       if (isMounted) {
         loadStatuses();
       }
-    }, 30 * 1000);
+    }, 2 * 60 * 1000);
 
     return () => {
       isMounted = false;
@@ -204,6 +224,63 @@ export default function MessagesScreen() {
         undefined, // statusId
         undefined // statusPreviewUrl
       );
+
+      const actionCommand = parseAIActionCommand(aiQuery.trim());
+      if (actionCommand) {
+        setAiQuery('');
+        if (actionCommand.type === 'open_route') {
+          if (actionCommand.route.startsWith('/admin') && !isAdminUser) {
+            Alert.alert('Access denied', 'This command is available to admins only.');
+            return;
+          }
+          router.push(actionCommand.route as any);
+          return;
+        }
+        if (actionCommand.type === 'search') {
+          router.push('/(tabs)/search' as any);
+          return;
+        }
+        if (actionCommand.type === 'book_help') {
+          router.push(`/messages/${conversation.id}` as any);
+          return;
+        }
+        if (actionCommand.type === 'send_message') {
+          const textToSend = actionCommand.content?.trim();
+          const targetName = actionCommand.target?.trim();
+
+          if (textToSend && targetName) {
+            const { data: targetUser } = await supabase
+              .from('users')
+              .select('id, full_name, username')
+              .or(`username.ilike.%${targetName}%,full_name.ilike.%${targetName}%`)
+              .limit(1)
+              .maybeSingle();
+
+            if (targetUser?.id) {
+              const targetConversation = await createOrGetConversation(targetUser.id);
+              if (targetConversation?.id) {
+                await sendMessage(
+                  targetConversation.id,
+                  targetUser.id,
+                  textToSend,
+                  undefined,
+                  undefined,
+                  undefined,
+                  'text',
+                  undefined,
+                  undefined,
+                  undefined
+                );
+                router.push(`/messages/${targetConversation.id}` as any);
+                return;
+              }
+            }
+          }
+
+          router.push('/(tabs)/messages' as any);
+          return;
+        }
+      }
 
       // Clear input
       setAiQuery('');
@@ -443,7 +520,7 @@ export default function MessagesScreen() {
                     <View style={styles.avatarContainer}>
                       {otherParticipant.avatar ? (
                         <Image
-                          source={{ uri: otherParticipant.avatar }}
+                          source={{ uri: adaptImage(otherParticipant.avatar, 'avatar') }}
                           style={styles.avatar}
                         />
                       ) : (

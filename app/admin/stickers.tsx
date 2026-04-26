@@ -36,6 +36,7 @@ import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { StickerPack, Sticker } from '@/types';
+import { assertMediaWithinLimit, getAdaptiveImageQuality, optimizeImageForUpload } from '@/lib/media-optimizer';
 
 export default function AdminStickersScreen() {
   const { currentUser } = useApp();
@@ -189,7 +190,7 @@ export default function AdminStickersScreen() {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
+        quality: await getAdaptiveImageQuality(),
       });
 
       if (!result.canceled && result.assets[0]) {
@@ -210,7 +211,7 @@ export default function AdminStickersScreen() {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false, // Don't allow editing for GIFs
-        quality: 1.0, // Full quality for GIFs
+        quality: await getAdaptiveImageQuality(),
       });
 
       if (!result.canceled && result.assets[0]) {
@@ -239,6 +240,10 @@ export default function AdminStickersScreen() {
 
   const uploadImage = async (uri: string, folder: string, isGif: boolean = false): Promise<string | null> => {
     try {
+      const preparedUri = isGif ? uri : await optimizeImageForUpload(uri);
+      if (!isGif) {
+        await assertMediaWithinLimit(preparedUri, 'image');
+      }
       const extension = isGif ? 'gif' : 'jpg';
       const contentType = isGif ? 'image/gif' : 'image/jpeg';
       const filename = `${folder}/${Date.now()}_${Math.random().toString(36).substring(7)}.${extension}`;
@@ -246,9 +251,9 @@ export default function AdminStickersScreen() {
       // Check if it's a local file URI
       let fileData: Uint8Array;
       
-      if (uri.startsWith('file://') || uri.startsWith('ph://') || uri.startsWith('content://')) {
+      if (preparedUri.startsWith('file://') || preparedUri.startsWith('ph://') || preparedUri.startsWith('content://')) {
         // Read local file using FileSystem
-        const base64 = await FileSystem.readAsStringAsync(uri, {
+        const base64 = await FileSystem.readAsStringAsync(preparedUri, {
           encoding: FileSystem.EncodingType.Base64,
         });
         
@@ -260,7 +265,7 @@ export default function AdminStickersScreen() {
         }
       } else {
         // Remote URL - fetch and convert to Uint8Array
-        const response = await fetch(uri);
+        const response = await fetch(preparedUri);
         const arrayBuffer = await response.arrayBuffer();
         fileData = new Uint8Array(arrayBuffer);
       }

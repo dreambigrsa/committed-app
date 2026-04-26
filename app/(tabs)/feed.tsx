@@ -32,6 +32,8 @@ import * as ImagePicker from 'expo-image-picker';
 // @ts-ignore - legacy path works at runtime, TypeScript definitions may not include it
 import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '@/lib/supabase';
+import { assertMediaWithinLimit, getAdaptiveImageQuality, optimizeImageForUpload } from '@/lib/media-optimizer';
+import { AdaptiveMediaProfile, getAdaptiveImageUrl, getAdaptiveMediaProfile, getAdaptiveVideoUrl } from '@/lib/adaptive-media';
 
 const { width } = Dimensions.get('window');
 
@@ -65,6 +67,7 @@ export default function FeedScreen() {
   const [adComments, setAdComments] = useState<Record<string, (PostComment | ReelComment)[]>>({});
   const [expandedAdDescriptions, setExpandedAdDescriptions] = useState<Set<string>>(new Set());
   const [showAdComments, setShowAdComments] = useState<string | null>(null);
+  const [mediaProfile, setMediaProfile] = useState<AdaptiveMediaProfile | null>(null);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -73,6 +76,27 @@ export default function FeedScreen() {
       useNativeDriver: true,
     }).start();
   }, [fadeAnim]);
+
+  useEffect(() => {
+    let isMounted = true;
+    void getAdaptiveMediaProfile()
+      .then((profile) => {
+        if (isMounted) setMediaProfile(profile);
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const adaptImage = (url: string | null | undefined, kind: 'avatar' | 'feed' | 'full' = 'feed') => {
+    if (!url || !mediaProfile) return url || '';
+    return getAdaptiveImageUrl(url, mediaProfile, kind);
+  };
+  const adaptVideo = (url: string | null | undefined, kind: 'feed' | 'full' = 'feed') => {
+    if (!url || !mediaProfile) return url || '';
+    return getAdaptiveVideoUrl(url, mediaProfile, kind);
+  };
 
   // Reset recorded impressions when ads change
   useEffect(() => {
@@ -225,9 +249,11 @@ export default function FeedScreen() {
 
   // Refresh ad engagement when posts/comments change
   useEffect(() => {
-    const updateAdEngagement = () => {
+    let isMounted = true;
+    const updateAdEngagement = async () => {
       const newLikes: Record<string, string[]> = {};
       const newComments: Record<string, (PostComment | ReelComment)[]> = {};
+      const promotedReelEntries: { adId: string; reelId: string }[] = [];
       
       smartAds.forEach(ad => {
         if (ad.promotedPostId) {
@@ -239,30 +265,43 @@ export default function FeedScreen() {
         } else if (ad.promotedReelId) {
           const reelCommentsList = getReelComments(ad.promotedReelId) || [];
           newComments[ad.id] = reelCommentsList;
-          // Get reel likes from database
-          supabase
-            .from('reel_likes')
-            .select('user_id')
-            .eq('reel_id', ad.promotedReelId)
-            .then(({ data }) => {
-              if (data) {
-                const likes = data.map((l: any) => l.user_id);
-                setAdLikes(prev => ({ ...prev, [ad.id]: likes }));
-              }
-            });
+          promotedReelEntries.push({ adId: ad.id, reelId: ad.promotedReelId });
         }
       });
+
+      if (promotedReelEntries.length > 0) {
+        const reelIds = Array.from(new Set(promotedReelEntries.map((entry) => entry.reelId)));
+        const { data } = await supabase
+          .from('reel_likes')
+          .select('reel_id, user_id')
+          .in('reel_id', reelIds);
+
+        const likesByReel: Record<string, string[]> = {};
+        (data || []).forEach((row: any) => {
+          const list = likesByReel[row.reel_id] || [];
+          list.push(row.user_id);
+          likesByReel[row.reel_id] = list;
+        });
+
+        promotedReelEntries.forEach(({ adId, reelId }) => {
+          newLikes[adId] = likesByReel[reelId] || [];
+        });
+      }
       
+      if (!isMounted) return;
       setAdLikes(prev => ({ ...prev, ...newLikes }));
       setAdComments(prev => ({ ...prev, ...newComments }));
     };
     
     if (smartAds.length > 0) {
-      updateAdEngagement();
+      void updateAdEngagement();
     }
+    return () => {
+      isMounted = false;
+    };
   }, [posts, smartAds, getComments, getReelComments]);
   
-  // Reload ads periodically to ensure rotation (every 30 seconds or when posts change)
+  // Reload ads less frequently to reduce background data usage.
   useEffect(() => {
     const interval = setInterval(async () => {
       if (currentUser && smartAds.length > 0) {
@@ -273,7 +312,7 @@ export default function FeedScreen() {
           console.error('Error refreshing smart ads:', error);
         }
       }
-    }, 30000); // Refresh every 30 seconds for better rotation
+    }, 2 * 60 * 1000);
     
     return () => clearInterval(interval);
   }, [currentUser, getSmartAds, smartAds.length]);
@@ -1377,7 +1416,7 @@ export default function FeedScreen() {
               return (
                 <Video
                   key={index}
-                  source={{ uri: url }}
+                  source={{ uri: adaptVideo(url, 'full') }}
                   style={styles.postImage}
                   useNativeControls
                   resizeMode={ResizeMode.COVER}
@@ -1393,7 +1432,7 @@ export default function FeedScreen() {
                 style={styles.postImageTouchable}
               >
                 <Image
-                  source={{ uri: url }}
+                  source={{ uri: adaptImage(url, 'full') }}
                   style={styles.postImage}
                   contentFit="cover"
                   onError={(error) => {
@@ -1476,7 +1515,7 @@ export default function FeedScreen() {
         </View>
         {!failedAdImages.current.has(ad.id) ? (
           <Image 
-            source={{ uri: ad.imageUrl }} 
+            source={{ uri: adaptImage(ad.imageUrl, 'feed') }} 
             style={styles.bannerAdImage} 
             contentFit="cover"
             onError={() => {
@@ -1736,7 +1775,7 @@ export default function FeedScreen() {
           >
             {sponsorPhoto ? (
               <Image
-                source={{ uri: sponsorPhoto }}
+                source={{ uri: adaptImage(sponsorPhoto, 'avatar') }}
                 style={styles.adAvatar}
                 contentFit="cover"
               />
@@ -1799,7 +1838,7 @@ export default function FeedScreen() {
         >
           {!failedAdImages.current.has(ad.id) ? (
             <Image 
-              source={{ uri: ad.imageUrl }} 
+              source={{ uri: adaptImage(ad.imageUrl, 'feed') }}
               style={styles.adImage} 
               contentFit="cover"
               onError={() => {
@@ -1902,6 +1941,7 @@ export default function FeedScreen() {
             editComment={originalPost ? editComment : async () => false}
             deleteComment={originalPost ? deleteComment : async () => false}
             toggleCommentLike={originalPost ? toggleCommentLike : async () => false}
+            adaptImage={adaptImage}
           />
         )}
       </View>
@@ -1924,7 +1964,7 @@ export default function FeedScreen() {
           activeOpacity={0.9}
         >
           <Video
-            source={{ uri: ad.imageUrl }}
+            source={{ uri: adaptVideo(ad.imageUrl, 'feed') }}
             style={styles.videoAdImage}
             useNativeControls
             resizeMode={ResizeMode.COVER}
@@ -2001,12 +2041,14 @@ export default function FeedScreen() {
 
         // Determine file type
         const isVideo = uri.includes('video') || uri.includes('.mp4') || uri.includes('.mov');
+        const mediaUri = isVideo ? uri : await optimizeImageForUpload(uri);
+        await assertMediaWithinLimit(mediaUri, isVideo ? 'video' : 'image');
         const fileName = isVideo 
           ? `post_${Date.now()}_${Math.random().toString(36).substring(7)}.mp4`
           : `post_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
         
         // Convert URI to Uint8Array using legacy API (no deprecation warnings)
-        const base64 = await FileSystem.readAsStringAsync(uri, {
+        const base64 = await FileSystem.readAsStringAsync(mediaUri, {
           encoding: FileSystem.EncodingType.Base64,
         });
         
@@ -2058,7 +2100,7 @@ export default function FeedScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.All,
       allowsMultipleSelection: true,
-      quality: 0.8,
+      quality: await getAdaptiveImageQuality(),
       videoMaxDuration: 60,
     });
 
@@ -2171,7 +2213,7 @@ export default function FeedScreen() {
             <View style={styles.postAvatarContainer}>
               {post.userAvatar ? (
                 <Image
-                  source={{ uri: post.userAvatar }}
+                  source={{ uri: adaptImage(post.userAvatar, 'avatar') }}
                   style={styles.postAvatar}
                 />
               ) : (
@@ -2281,7 +2323,7 @@ export default function FeedScreen() {
                 {editMediaUrls.map((url: string, index: number) => (
                   <View key={index} style={styles.editMediaWrapper}>
                     <Image
-                      source={{ uri: url }}
+                      source={{ uri: adaptImage(url, 'full') }}
                       style={styles.editMediaImage}
                       contentFit="cover"
                     />
@@ -2403,6 +2445,7 @@ export default function FeedScreen() {
             editComment={editComment}
             deleteComment={deleteComment}
             toggleCommentLike={toggleCommentLike}
+            adaptImage={adaptImage}
           />
         )}
       </View>
@@ -2585,7 +2628,7 @@ export default function FeedScreen() {
               {viewingImages.urls.map((url: string, index: number) => (
                 <View key={index} style={styles.imageViewerItem}>
                   <Image
-                    source={{ uri: url }}
+                    source={{ uri: adaptImage(url, 'full') }}
                     style={styles.imageViewerImage}
                     contentFit="contain"
                   />
@@ -2668,6 +2711,7 @@ function CommentsModal({
   editComment,
   deleteComment,
   toggleCommentLike,
+  adaptImage,
 }: {
   postId: string;
   visible: boolean;
@@ -2679,6 +2723,7 @@ function CommentsModal({
   editComment: (commentId: string, content: string) => Promise<any>;
   deleteComment: (commentId: string) => Promise<boolean>;
   toggleCommentLike: (commentId: string, postId: string) => Promise<boolean>;
+  adaptImage: (url: string | null | undefined, kind?: 'avatar' | 'feed' | 'full') => string;
 }) {
   const { currentUser, reportContent } = useApp();
   const [commentText, setCommentText] = useState<string>('');
@@ -2690,6 +2735,7 @@ function CommentsModal({
   const [editingComment, setEditingComment] = useState<string | null>(null);
   const [editCommentText, setEditCommentText] = useState<string>('');
   const [expandedReplies, setExpandedReplies] = useState<Set<string>>(new Set());
+  const commentsList = Array.isArray(comments) ? comments : [];
 
   const handleSubmit = async () => {
     try {
@@ -2787,7 +2833,12 @@ function CommentsModal({
         </View>
 
         <ScrollView style={styles.commentsList}>
-          {comments.map((comment) => {
+          {commentsList.length === 0 ? (
+            <View style={styles.emptyCommentsContainer}>
+              <Text style={styles.emptyCommentsText}>No comments yet</Text>
+              <Text style={styles.emptyCommentsSubtext}>Be the first to comment!</Text>
+            </View>
+          ) : commentsList.map((comment) => {
             const isOwner = comment.userId === currentUser?.id;
             const isLiked = comment.likes?.includes(currentUser?.id || '') || false;
             const hasReplies = comment.replies && comment.replies.length > 0;
@@ -2798,7 +2849,7 @@ function CommentsModal({
                 <View style={styles.commentHeader}>
                   {comment.userAvatar ? (
                     <Image
-                      source={{ uri: comment.userAvatar }}
+                      source={{ uri: adaptImage(comment.userAvatar, 'avatar') }}
                       style={styles.commentAvatar}
                     />
                   ) : (
@@ -2859,7 +2910,7 @@ function CommentsModal({
                         {comment.messageType === 'sticker' && comment.stickerImageUrl ? (
                           <View style={styles.commentStickerContainer}>
                             <Image
-                              source={{ uri: comment.stickerImageUrl }}
+                              source={{ uri: adaptImage(comment.stickerImageUrl, 'feed') }}
                               style={styles.commentSticker}
                               contentFit="contain"
                             />
@@ -2932,7 +2983,7 @@ function CommentsModal({
                           <View style={styles.replyHeader}>
                             {reply.userAvatar ? (
                               <Image
-                                source={{ uri: reply.userAvatar }}
+                                source={{ uri: adaptImage(reply.userAvatar, 'avatar') }}
                                 style={styles.replyAvatar}
                               />
                             ) : (
@@ -3001,7 +3052,7 @@ function CommentsModal({
                                   {reply.messageType === 'sticker' && reply.stickerImageUrl ? (
                                     <View style={styles.commentStickerContainer}>
                                       <Image
-                                        source={{ uri: reply.stickerImageUrl }}
+                                        source={{ uri: adaptImage(reply.stickerImageUrl, 'feed') }}
                                         style={styles.commentSticker}
                                         contentFit="contain"
                                       />
@@ -3038,7 +3089,7 @@ function CommentsModal({
                       <View style={styles.replyInputContainer}>
                         {selectedSticker && (
                           <View style={styles.stickerPreview}>
-                            <Image source={{ uri: selectedSticker.imageUrl }} style={styles.previewSticker} />
+                            <Image source={{ uri: adaptImage(selectedSticker.imageUrl, 'feed') }} style={styles.previewSticker} />
                             <TouchableOpacity
                               style={styles.removeStickerButton}
                               onPress={() => setSelectedSticker(null)}
@@ -3099,7 +3150,7 @@ function CommentsModal({
           >
             {selectedSticker && (
               <View style={styles.stickerPreview}>
-                <Image source={{ uri: selectedSticker.imageUrl }} style={styles.previewSticker} />
+                <Image source={{ uri: adaptImage(selectedSticker.imageUrl, 'feed') }} style={styles.previewSticker} />
                 <TouchableOpacity
                   style={styles.removeStickerButton}
                   onPress={() => setSelectedSticker(null)}

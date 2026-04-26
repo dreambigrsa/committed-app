@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,7 @@ import { Image } from 'expo-image';
 import { Shield, CheckCircle, XCircle, Eye, ArrowLeft } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface IdVerificationRequest {
   id: string;
@@ -37,6 +37,8 @@ interface IdVerificationRequest {
 
 export default function IdVerificationsScreen() {
   const { currentUser } = useApp();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [requests, setRequests] = useState<IdVerificationRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRequest, setSelectedRequest] = useState<IdVerificationRequest | null>(null);
@@ -262,8 +264,9 @@ export default function IdVerificationsScreen() {
         options={{ 
           title: 'ID Verifications', 
           headerShown: true,
-          headerStyle: { backgroundColor: colors.primary },
-          headerTintColor: colors.text.white,
+          headerStyle: { backgroundColor: colors.background.primary },
+          headerTintColor: colors.text.primary,
+          headerTitleStyle: { color: colors.text.primary },
         }} 
       />
       
@@ -554,10 +557,10 @@ export default function IdVerificationsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: colors.background.secondary,
   },
   errorContainer: {
     flex: 1,

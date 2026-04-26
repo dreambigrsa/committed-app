@@ -55,6 +55,9 @@ import StatusIndicator from '@/components/StatusIndicator';
 import StatusBadge from '@/components/StatusBadge';
 import { configureAndroidNotificationChannel } from '@/lib/push-notifications';
 import { setNotificationPreferences } from '@/lib/notification-preferences';
+import { DataSaverSettings, getNetworkProfile, loadDataSaverSettings, saveDataSaverSettings } from '@/lib/data-saver';
+import { getSessionMetrics, resetSessionMetrics } from '@/lib/network-metrics';
+import { assertMediaWithinLimit, getAdaptiveImageQuality, optimizeImageForUpload } from '@/lib/media-optimizer';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -88,6 +91,14 @@ export default function SettingsScreen() {
     marketingPromotions: false,
     soundEnabled: true,
   });
+  const [dataSaver, setDataSaver] = useState<DataSaverSettings>({
+    enabled: false,
+    autoOnCellular: true,
+  });
+  const [networkLabel, setNetworkLabel] = useState('Checking...');
+  const [sessionUsageLabel, setSessionUsageLabel] = useState('0 KB / 0 requests');
+  const [lastDataUsageRefreshAt, setLastDataUsageRefreshAt] = useState<Date | null>(null);
+  const [secondsSinceRefresh, setSecondsSinceRefresh] = useState(0);
 
   // Privacy & Security
   const [privacy, setPrivacy] = useState({
@@ -179,6 +190,45 @@ export default function SettingsScreen() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount
   }, [currentUser, loadThemePreference, loadVisualTheme, loadLanguagePreference]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    let mounted = true;
+
+    const refreshDataUsage = async () => {
+      const [metrics, network] = await Promise.all([
+        getSessionMetrics(),
+        getNetworkProfile(),
+      ]);
+      if (!mounted) return;
+      const kb = Math.round(metrics.totalResponseBytes / 1024);
+      setSessionUsageLabel(`${kb} KB / ${metrics.totalRequests} requests`);
+      const typeLabel = network.isWifi ? 'WiFi' : network.isCellular ? 'Mobile Data' : 'Unknown Network';
+      const generationLabel = network.generation !== 'unknown' ? ` (${network.generation.toUpperCase()})` : '';
+      setNetworkLabel(`${typeLabel}${generationLabel}`);
+      setLastDataUsageRefreshAt(new Date());
+      setSecondsSinceRefresh(0);
+    };
+
+    refreshDataUsage();
+    const id = setInterval(refreshDataUsage, 5000);
+    return () => {
+      mounted = false;
+      clearInterval(id);
+    };
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!lastDataUsageRefreshAt) return;
+    const id = setInterval(() => {
+      const seconds = Math.max(
+        0,
+        Math.floor((Date.now() - lastDataUsageRefreshAt.getTime()) / 1000)
+      );
+      setSecondsSinceRefresh(seconds);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [lastDataUsageRefreshAt]);
 
   const checkProfessionalStatus = async () => {
     if (!currentUser) return;
@@ -281,8 +331,21 @@ export default function SettingsScreen() {
         if (settings.privacy_settings) {
           setPrivacy(settings.privacy_settings);
         }
+        if (settings.notification_settings?.dataSaver) {
+          const normalizedDataSaver = {
+            enabled: Boolean(settings.notification_settings.dataSaver.enabled),
+            autoOnCellular: settings.notification_settings.dataSaver.autoOnCellular !== false,
+          };
+          setDataSaver(normalizedDataSaver);
+          // Keep local adaptive-media source of truth in sync with DB-backed settings.
+          await saveDataSaverSettings(normalizedDataSaver);
+        } else {
+          setDataSaver(await loadDataSaverSettings());
+        }
         // Language and visual theme are loaded by their respective contexts
         // No need to set local state here
+      } else {
+        setDataSaver(await loadDataSaverSettings());
       }
 
       // Load gender and date of birth from users table
@@ -416,22 +479,25 @@ export default function SettingsScreen() {
 
   const handleProfilePhotoChange = async () => {
     try {
+      const quality = await getAdaptiveImageQuality();
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
+        quality,
       });
 
       if (!result.canceled && result.assets[0]) {
+        const optimizedUri = await optimizeImageForUpload(result.assets[0].uri);
+        await assertMediaWithinLimit(optimizedUri, 'image');
         // Upload to Supabase Storage
-        const fileExt = result.assets[0].uri.split('.').pop();
+        const fileExt = optimizedUri.split('.').pop() || 'jpg';
         const fileName = `${currentUser.id}-${Date.now()}.${fileExt}`;
         const filePath = `profile-pictures/${fileName}`;
 
         const formData = new FormData();
         formData.append('file', {
-          uri: result.assets[0].uri,
+          uri: optimizedUri,
           type: `image/${fileExt}`,
           name: fileName,
         } as any);
@@ -527,6 +593,16 @@ export default function SettingsScreen() {
     await saveNotificationSettings({ ...notifications, [key]: newValue });
   };
 
+  const handleToggleDataSaver = async (key: keyof DataSaverSettings) => {
+    const updated = {
+      ...dataSaver,
+      [key]: !dataSaver[key],
+    };
+    setDataSaver(updated);
+    await saveDataSaverSettings(updated);
+    await saveNotificationSettings(notifications, updated);
+  };
+
   const handleTogglePrivacy = async (key: keyof typeof privacy) => {
     if (key === 'profileVisibility') return;
 
@@ -539,22 +615,22 @@ export default function SettingsScreen() {
     await savePrivacySettings({ ...privacy, [key]: newValue });
   };
 
-  const saveNotificationSettings = async (settings: typeof notifications) => {
+  const saveNotificationSettings = async (
+    settings: typeof notifications,
+    settingsDataSaver: DataSaverSettings = dataSaver
+  ) => {
     if (!currentUser) return;
     
     try {
       const { data: existingData } = await supabase
         .from('user_settings')
-        .select('privacy_settings, theme_preference, language')
+        .select('privacy_settings, language')
         .eq('user_id', currentUser.id)
         .limit(1);
 
       const existingPrivacy = existingData && existingData.length > 0 
         ? existingData[0].privacy_settings 
         : privacy;
-      const existingTheme = existingData && existingData.length > 0 
-        ? existingData[0].theme_preference || 'light'
-        : 'light';
       const existingLanguage = existingData && existingData.length > 0 
         ? existingData[0].language || 'en'
         : 'en';
@@ -563,9 +639,11 @@ export default function SettingsScreen() {
         .from('user_settings')
         .upsert({
           user_id: currentUser.id,
-          notification_settings: settings,
+          notification_settings: {
+            ...settings,
+            dataSaver: settingsDataSaver,
+          },
           privacy_settings: existingPrivacy,
-          theme_preference: existingTheme,
           language: existingLanguage,
         }, {
           onConflict: 'user_id'
@@ -586,16 +664,13 @@ export default function SettingsScreen() {
     try {
       const { data: existingData } = await supabase
         .from('user_settings')
-        .select('notification_settings, theme_preference, language, visual_theme')
+        .select('notification_settings, language, visual_theme')
         .eq('user_id', currentUser.id)
         .limit(1);
 
       const existingNotifications = existingData && existingData.length > 0 
         ? existingData[0].notification_settings 
         : notifications;
-      const existingTheme = existingData && existingData.length > 0 
-        ? existingData[0].theme_preference || 'light'
-        : 'light';
       const existingLanguage = existingData && existingData.length > 0 
         ? existingData[0].language || 'en'
         : 'en';
@@ -606,7 +681,6 @@ export default function SettingsScreen() {
           user_id: currentUser.id,
           privacy_settings: settings,
           notification_settings: existingNotifications,
-          theme_preference: existingTheme,
           language: existingLanguage,
         }, {
           onConflict: 'user_id'
@@ -739,6 +813,13 @@ export default function SettingsScreen() {
       'verified-only': 'Verified Users Only',
     };
     return labels[privacy.profileVisibility];
+  };
+
+  const getLastUpdatedLabel = () => {
+    if (!lastDataUsageRefreshAt) return 'Last updated: never';
+    if (secondsSinceRefresh <= 2) return 'Last updated: just now';
+    if (secondsSinceRefresh < 60) return `Last updated: ${secondsSinceRefresh}s ago`;
+    return `Last updated: ${Math.floor(secondsSinceRefresh / 60)}m ago`;
   };
 
   const getVerificationStatus = (type: 'phone' | 'email' | 'id') => {
@@ -1385,6 +1466,88 @@ export default function SettingsScreen() {
                 />
               </View>
             </View>
+          </View>
+
+          {/* Data Usage */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Download size={20} color={colors.primary} />
+              <Text style={styles.sectionTitle}>Data Usage</Text>
+            </View>
+
+            <View style={styles.settingsList}>
+              <View style={styles.settingItem}>
+                <View style={styles.settingLeft}>
+                  <Smartphone size={20} color={colors.text.secondary} />
+                  <Text style={styles.settingLabel}>Network</Text>
+                </View>
+                <Text style={styles.settingValue}>{networkLabel}</Text>
+              </View>
+
+              <View style={styles.settingItem}>
+                <View style={styles.settingLeft}>
+                  <Download size={20} color={colors.text.secondary} />
+                  <Text style={styles.settingLabel}>Session Usage</Text>
+                </View>
+                <Text style={styles.settingValue}>{sessionUsageLabel}</Text>
+              </View>
+
+              <View style={styles.settingItem}>
+                <View style={styles.settingLeft}>
+                  <Moon size={20} color={colors.text.secondary} />
+                  <View>
+                    <Text style={styles.settingLabel}>Data Saver Mode</Text>
+                    <Text style={styles.editHint}>Reduce autoplay/background network usage</Text>
+                  </View>
+                </View>
+                <Switch
+                  value={dataSaver.enabled}
+                  onValueChange={() => handleToggleDataSaver('enabled')}
+                  trackColor={{
+                    false: colors.border.light,
+                    true: colors.primary + '50',
+                  }}
+                  thumbColor={dataSaver.enabled ? colors.primary : colors.text.tertiary}
+                />
+              </View>
+
+              <View style={styles.settingItem}>
+                <View style={styles.settingLeft}>
+                  <Smartphone size={20} color={colors.text.secondary} />
+                  <View>
+                    <Text style={styles.settingLabel}>Auto Data Saver on Mobile Data</Text>
+                    <Text style={styles.editHint}>Auto-enable on cellular connections</Text>
+                  </View>
+                </View>
+                <Switch
+                  value={dataSaver.autoOnCellular}
+                  onValueChange={() => handleToggleDataSaver('autoOnCellular')}
+                  trackColor={{
+                    false: colors.border.light,
+                    true: colors.primary + '50',
+                  }}
+                  thumbColor={dataSaver.autoOnCellular ? colors.primary : colors.text.tertiary}
+                />
+              </View>
+
+              <TouchableOpacity
+                style={styles.settingItem}
+                onPress={async () => {
+                  await resetSessionMetrics();
+                  const metrics = await getSessionMetrics();
+                  setSessionUsageLabel(`${Math.round(metrics.totalResponseBytes / 1024)} KB / ${metrics.totalRequests} requests`);
+                  setLastDataUsageRefreshAt(new Date());
+                  setSecondsSinceRefresh(0);
+                }}
+              >
+                <View style={styles.settingLeft}>
+                  <Trash2 size={20} color={colors.error} />
+                  <Text style={[styles.settingLabel, { color: colors.error }]}>Reset Session Counters</Text>
+                </View>
+                <ChevronRight size={20} color={colors.text.tertiary} />
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.editHint, { marginTop: 8, marginLeft: 4 }]}>{getLastUpdatedLabel()}</Text>
           </View>
 
           {/* App Preferences */}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -28,7 +28,7 @@ import {
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
 import { regenerateAllFaceEmbeddings } from '@/lib/faceSearch';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface FaceMatchingProvider {
   id: string;
@@ -54,6 +54,8 @@ interface FaceMatchingProvider {
 
 export default function FaceMatchingProvidersScreen() {
   const { currentUser } = useApp();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [providers, setProviders] = useState<FaceMatchingProvider[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -776,7 +778,7 @@ export default function FaceMatchingProvidersScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.secondary,

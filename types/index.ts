@@ -137,6 +137,8 @@ export interface Message {
   senderId: string;
   receiverId: string;
   content: string;
+  aiSource?: 'system' | 'database' | 'openai';
+  aiModel?: string;
   mediaUrl?: string;
   documentUrl?: string;
   documentName?: string;

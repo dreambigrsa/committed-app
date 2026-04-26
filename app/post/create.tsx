@@ -20,6 +20,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'expo-image';
 import { supabase } from '@/lib/supabase';
+import { assertMediaWithinLimit, getAdaptiveImageQuality, optimizeImageForUpload } from '@/lib/media-optimizer';
 
 type PickedMedia = {
   uri: string;
@@ -47,7 +48,7 @@ export default function CreatePostScreen() {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.All,
         allowsMultipleSelection: true,
-        quality: 0.8,
+        quality: await getAdaptiveImageQuality(),
         videoMaxDuration: 60,
       });
 
@@ -82,12 +83,17 @@ export default function CreatePostScreen() {
           continue;
         }
 
+        const mediaUri = item.kind === 'image'
+          ? await optimizeImageForUpload(item.uri)
+          : item.uri;
+        await assertMediaWithinLimit(mediaUri, item.kind);
+
         const ext = item.kind === 'video' ? 'mp4' : 'jpg';
         const contentType = item.kind === 'video' ? 'video/mp4' : 'image/jpeg';
         const fileName = `post_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
         
         // Convert URI to Uint8Array using legacy API (no deprecation warnings)
-        const base64 = await FileSystem.readAsStringAsync(item.uri, {
+        const base64 = await FileSystem.readAsStringAsync(mediaUri, {
           encoding: FileSystem.EncodingType.Base64,
         });
         

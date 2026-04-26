@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useColorScheme } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 import createContextHook from '@nkzw/create-context-hook';
 import { updateGlobalColors } from '@/constants/colors';
@@ -102,12 +103,40 @@ const darkColors = {
 };
 
 export type VisualTheme = 'default' | 'colorful' | 'minimal';
+const LOCAL_THEME_MODE_KEY = 'theme:mode';
+const LOCAL_VISUAL_THEME_KEY = 'theme:visual';
 
 export const [ThemeContext, useTheme] = createContextHook(() => {
   const systemColorScheme = useColorScheme();
   const [themeMode, setThemeMode] = useState<ThemeMode>('light');
   const [isDark, setIsDark] = useState(false);
   const [visualTheme, setVisualTheme] = useState<VisualTheme>('default');
+
+  // Keep last-used theme locally so auth/sign-in screens can render correct mode
+  // before AppContext/currentUser is ready.
+  useEffect(() => {
+    let isMounted = true;
+    void (async () => {
+      try {
+        const [storedMode, storedVisual] = await Promise.all([
+          AsyncStorage.getItem(LOCAL_THEME_MODE_KEY),
+          AsyncStorage.getItem(LOCAL_VISUAL_THEME_KEY),
+        ]);
+        if (!isMounted) return;
+        if (storedMode === 'light' || storedMode === 'dark' || storedMode === 'system') {
+          setThemeMode(storedMode);
+        }
+        if (storedVisual === 'default' || storedVisual === 'colorful' || storedVisual === 'minimal') {
+          setVisualTheme(storedVisual);
+        }
+      } catch {
+        // Ignore local storage read errors.
+      }
+    })();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Apply visual theme to base colors
   // This ensures components using useTheme() get the correct themed colors
@@ -163,6 +192,14 @@ export const [ThemeContext, useTheme] = createContextHook(() => {
     updateGlobalColors(newIsDark, visualTheme);
   }, [themeMode, systemColorScheme, visualTheme]);
 
+  useEffect(() => {
+    void AsyncStorage.setItem(LOCAL_THEME_MODE_KEY, themeMode).catch(() => {});
+  }, [themeMode]);
+
+  useEffect(() => {
+    void AsyncStorage.setItem(LOCAL_VISUAL_THEME_KEY, visualTheme).catch(() => {});
+  }, [visualTheme]);
+
   // Load visual theme from database
   const loadVisualTheme = useCallback(async (userId: string) => {
     try {
@@ -170,7 +207,7 @@ export const [ThemeContext, useTheme] = createContextHook(() => {
         .from('user_settings')
         .select('visual_theme')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
 
       if (!error && data?.visual_theme) {
         setVisualTheme(data.visual_theme as VisualTheme);
@@ -206,7 +243,7 @@ export const [ThemeContext, useTheme] = createContextHook(() => {
         .from('user_settings')
         .select('theme_preference')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
 
       if (!error && data?.theme_preference) {
         setThemeMode(data.theme_preference as ThemeMode);

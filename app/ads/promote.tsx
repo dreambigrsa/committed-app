@@ -12,6 +12,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'expo-image';
 import { Upload, X } from 'lucide-react-native';
 import * as PaymentAdminService from '@/lib/payment-admin-service';
+import { assertMediaWithinLimit, getAdaptiveImageQuality, optimizeImageForUpload } from '@/lib/media-optimizer';
 
 export default function PromoteScreen() {
   const { colors } = useTheme();
@@ -85,7 +86,7 @@ export default function PromoteScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      quality: 0.8,
+      quality: await getAdaptiveImageQuality(),
     });
 
     if (!result.canceled && result.assets[0]) {
@@ -94,17 +95,19 @@ export default function PromoteScreen() {
         if (!currentUser) {
           throw new Error('User not authenticated');
         }
-        setPaymentProofUri(result.assets[0].uri);
+        const optimizedUri = await optimizeImageForUpload(result.assets[0].uri);
+        await assertMediaWithinLimit(optimizedUri, 'image');
+        setPaymentProofUri(optimizedUri);
         const fileName = `payment_proof_${currentUser.id}_${Date.now()}.jpg`;
 
         let uint8Array: Uint8Array;
         if (Platform.OS === 'web') {
-          const response = await fetch(result.assets[0].uri);
+          const response = await fetch(optimizedUri);
           const blob = await response.blob();
           const arrayBuffer = await blob.arrayBuffer();
           uint8Array = new Uint8Array(arrayBuffer);
         } else {
-          const base64 = await FileSystem.readAsStringAsync(result.assets[0].uri, {
+          const base64 = await FileSystem.readAsStringAsync(optimizedUri, {
             encoding: FileSystem.EncodingType.Base64,
           });
 

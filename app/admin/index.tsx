@@ -36,7 +36,6 @@ import {
 } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 
 export default function AdminDashboardScreen() {
@@ -95,7 +94,7 @@ export default function AdminDashboardScreen() {
       <SafeAreaView style={styles.container}>
         <Stack.Screen options={{ title: 'Admin Dashboard', headerShown: true }} />
         <View style={styles.errorContainer}>
-          <Shield size={64} color={colors.danger} />
+          <Shield size={64} color={themeColors.danger} />
           <Text style={styles.errorText}>Access Denied</Text>
           <Text style={styles.errorSubtext}>You don&apos;t have admin permissions</Text>
         </View>

@@ -7,6 +7,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { AppContext, useApp } from "@/contexts/AppContext";
+import { useTheme } from "@/contexts/ThemeContext";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import AppGate from "@/components/AppGate";
 import NotificationToast from "../components/NotificationToast";
@@ -16,6 +17,7 @@ import { setPendingAuthUrl } from "@/lib/pending-auth-url";
 import { setPendingPasswordRecovery } from "@/lib/pending-password-recovery";
 import { setPendingDeepLink, isAuthLink, parseDeepLink, getCustomVerifyOrResetRoute } from "@/lib/deep-link-service";
 import { isAbortLikeError } from "@/lib/abort-error";
+import { recordApiCall } from "@/lib/network-metrics";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -95,10 +97,19 @@ function RootLayoutNav() {
 
 function StackContent() {
   const { banModalVisible, banModalData, setBanModalVisible, currentUser } = useApp();
+  const { colors } = useTheme();
 
   return (
     <>
-      <Stack screenOptions={{ headerBackTitle: "Back" }}>
+      <Stack
+        screenOptions={{
+          headerBackTitle: "Back",
+          headerStyle: { backgroundColor: colors.background.primary },
+          headerTintColor: colors.text.primary,
+          headerTitleStyle: { color: colors.text.primary },
+          headerShadowVisible: true,
+        }}
+      >
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="auth" options={{ headerShown: false }} />
         <Stack.Screen name="sign-in" options={{ headerShown: false }} />
@@ -151,6 +162,24 @@ function isAuthAbortError(e: unknown): boolean {
 export default function RootLayout() {
   useEffect(() => {
     SplashScreen.hideAsync();
+  }, []);
+
+  useEffect(() => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (...args: Parameters<typeof fetch>) => {
+      const response = await originalFetch(...args);
+      const len = response.headers?.get?.('content-length');
+      const bytes = len ? Number(len) : 0;
+      if (Number.isFinite(bytes) && bytes > 0) {
+        void recordApiCall(bytes);
+      } else {
+        void recordApiCall(0);
+      }
+      return response;
+    };
+    return () => {
+      globalThis.fetch = originalFetch;
+    };
   }, []);
 
   // Supabase auth-js can throw "signal is aborted without reason" from a setTimeout in locks.js;

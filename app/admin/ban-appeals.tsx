@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,13 +15,15 @@ import { Stack } from 'expo-router';
 import { AlertCircle, CheckCircle, XCircle, Clock, User, Shield } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
 import { BanAppeal } from '@/types';
 
 type AppealStatus = 'all' | 'pending' | 'approved' | 'rejected' | 'under_review';
 
 export default function AdminBanAppealsScreen() {
   const { currentUser } = useApp();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [appeals, setAppeals] = useState<BanAppeal[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [filter, setFilter] = useState<AppealStatus>('all');
@@ -397,7 +399,7 @@ export default function AdminBanAppealsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.secondary,

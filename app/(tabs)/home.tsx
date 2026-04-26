@@ -11,19 +11,25 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { Shield, Heart, CheckCircle2, Clock, Plus, AlertCircle, Award, Calendar, Settings, Briefcase, ArrowRight } from 'lucide-react-native';
+import { Shield, Heart, CheckCircle2, Clock, Plus, AlertCircle, Award, Calendar, Settings, Briefcase, ArrowRight, RotateCcw, LogIn } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
+import { AdaptiveMediaProfile, getAdaptiveImageUrl, getAdaptiveMediaProfile } from '@/lib/adaptive-media';
 
 export default function HomeScreen() {
   const router = useRouter();
   const { currentUser, isLoading, getCurrentUserRelationship, getPendingRequests } = useApp();
+  const { authLoading, authReady, isAuthenticated, syncAuthState, recoverSessionHard, signOut } = useAuth();
   const { colors } = useTheme();
   const relationship = getCurrentUserRelationship();
   const pendingRequests = getPendingRequests();
   const [isProfessional, setIsProfessional] = useState(false);
   const [isCheckingProfessional, setIsCheckingProfessional] = useState(false);
+  const [isRecoveringAuth, setIsRecoveringAuth] = useState(false);
+  const [recoveryTimedOut, setRecoveryTimedOut] = useState(false);
+  const [mediaProfile, setMediaProfile] = useState<AdaptiveMediaProfile | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
@@ -42,6 +48,53 @@ export default function HomeScreen() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- checkProfessionalStatus is stable, load on mount only
   }, [currentUser]);
+
+  useEffect(() => {
+    let isMounted = true;
+    void getAdaptiveMediaProfile()
+      .then((profile) => {
+        if (isMounted) setMediaProfile(profile);
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (currentUser || !authReady || authLoading || !isAuthenticated) {
+      setIsRecoveringAuth(false);
+      setRecoveryTimedOut(false);
+      return;
+    }
+
+    let isMounted = true;
+    setIsRecoveringAuth(true);
+    setRecoveryTimedOut(false);
+
+    const timeoutId = setTimeout(() => {
+      if (isMounted) {
+        setRecoveryTimedOut(true);
+        // Force-exit reconnect spinner so user can recover manually.
+        setIsRecoveringAuth(false);
+      }
+    }, 8000);
+
+    void syncAuthState({ reason: 'home_missing_current_user', refreshToken: true })
+      .finally(() => {
+        if (isMounted) setIsRecoveringAuth(false);
+      });
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+    };
+  }, [currentUser, authReady, authLoading, isAuthenticated, syncAuthState]);
+
+  const adaptImage = (url: string | null | undefined, kind: 'avatar' | 'feed' | 'full' = 'feed') => {
+    if (!url || !mediaProfile) return url || '';
+    return getAdaptiveImageUrl(url, mediaProfile, kind);
+  };
 
   const checkProfessionalStatus = async () => {
     if (!currentUser) {
@@ -128,10 +181,62 @@ export default function HomeScreen() {
   }
 
   if (!currentUser) {
+    const recoveringSession = authLoading || isRecoveringAuth;
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background.secondary }]}>
         <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: colors.text.secondary }]}>Please log in to continue</Text>
+          {recoveringSession && !recoveryTimedOut ? (
+            <>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={[styles.loadingText, { color: colors.text.secondary, marginTop: 10 }]}>
+                Reconnecting your session...
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={[styles.loadingText, { color: colors.text.secondary }]}>
+                {recoveryTimedOut ? 'Session recovery took too long.' : 'Please log in to continue'}
+              </Text>
+              {recoveryTimedOut && (
+                <View style={styles.recoveryActionsContainer}>
+                  <Text style={styles.recoveryHintText}>
+                    Try session restore first. Use sign in again only if restore keeps failing.
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.recoveryButton, styles.recoveryButtonPrimary]}
+                    onPress={() => {
+                      void (async () => {
+                        setRecoveryTimedOut(false);
+                        setIsRecoveringAuth(true);
+                        const restored = await recoverSessionHard();
+                        if (!restored) {
+                          setRecoveryTimedOut(true);
+                        }
+                        setIsRecoveringAuth(false);
+                      })();
+                    }}
+                  >
+                    <RotateCcw size={16} color={colors.text.white} />
+                    <Text style={styles.recoveryButtonPrimaryText}>Retry session restore</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.recoveryButton, styles.recoveryButtonSecondary]}
+                    onPress={() => {
+                      void (async () => {
+                        // Ensure AppGate treats this as a true public-route navigation.
+                        await signOut();
+                        router.replace('/sign-in' as any);
+                      })();
+                    }}
+                  >
+                    <LogIn size={16} color={colors.primary} />
+                    <Text style={styles.recoveryButtonSecondaryText}>Sign in again (clear session)</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </>
+          )}
         </View>
       </SafeAreaView>
     );
@@ -186,7 +291,7 @@ export default function HomeScreen() {
           >
             {currentUser.profilePicture ? (
               <Image
-                source={{ uri: currentUser.profilePicture }}
+                source={{ uri: adaptImage(currentUser.profilePicture, 'avatar') }}
                 style={styles.avatar}
               />
             ) : (
@@ -572,6 +677,57 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontSize: 16,
     color: colors.text.secondary,
     fontWeight: '500' as const,
+    textAlign: 'center',
+    paddingHorizontal: 20,
+  },
+  recoveryActionsContainer: {
+    width: '100%',
+    maxWidth: 320,
+    marginTop: 6,
+    gap: 10,
+  },
+  recoveryHintText: {
+    fontSize: 12,
+    color: colors.text.tertiary,
+    textAlign: 'center',
+    lineHeight: 17,
+    marginBottom: 2,
+    paddingHorizontal: 8,
+  },
+  recoveryButton: {
+    width: '100%',
+    minHeight: 48,
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 18,
+  },
+  recoveryButtonPrimary: {
+    backgroundColor: colors.primary,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  recoveryButtonSecondary: {
+    backgroundColor: colors.background.primary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+  },
+  recoveryButtonPrimaryText: {
+    fontSize: 15,
+    fontWeight: '700' as const,
+    color: colors.text.white,
+    letterSpacing: 0.2,
+  },
+  recoveryButtonSecondaryText: {
+    fontSize: 15,
+    fontWeight: '700' as const,
+    color: colors.primary,
+    letterSpacing: 0.2,
   },
   scrollContent: {
     paddingTop: 20,

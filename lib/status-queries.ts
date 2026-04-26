@@ -197,37 +197,40 @@ export async function getStatusFeedForFeed(): Promise<StatusFeedItem[]> {
     console.warn('⚠️ [getStatusFeedForFeed] No user data returned');
   }
 
-  // Group by user, keeping only latest status per user
-  const statusMap = new Map<string, Status>();
-
-  console.log('🔄 [getStatusFeedForFeed] Processing statuses:', activeStatuses.length);
-  
+  // Latest status per user (activeStatuses is newest-first)
+  const latestByUser = new Map<string, Status>();
   for (const status of activeStatuses) {
     const userId = status.user_id;
-    if (!statusMap.has(userId)) {
-      // Check if user has viewed this status
-      const { data: view, error: viewError } = await supabase
-        .from('status_views')
-        .select('id')
-        .eq('status_id', status.id)
-        .eq('viewer_id', user.id)
-        .maybeSingle();
-
-      if (viewError && viewError.code !== 'PGRST116') { // PGRST116 = no rows returned
-        console.warn('⚠️ [getStatusFeedForFeed] Error checking view status:', viewError);
-      }
-
-      statusMap.set(userId, {
-        ...status,
-        user: usersMap.get(userId) || undefined,
-        has_unviewed: !view,
-      });
-      
-      console.log(`✅ [getStatusFeedForFeed] Added status for user ${userId}:`, {
-        hasUnviewed: !view,
-        hasUserData: !!usersMap.get(userId),
-      });
+    if (!latestByUser.has(userId)) {
+      latestByUser.set(userId, status);
     }
+  }
+
+  const statusIdsForViews = [...latestByUser.values()].map((s) => s.id);
+  const viewedStatusIds = new Set<string>();
+  if (statusIdsForViews.length > 0) {
+    const { data: viewsRows, error: viewsBatchError } = await supabase
+      .from('status_views')
+      .select('status_id')
+      .eq('viewer_id', user.id)
+      .in('status_id', statusIdsForViews);
+
+    if (viewsBatchError && viewsBatchError.code !== 'PGRST116') {
+      console.warn('⚠️ [getStatusFeedForFeed] Batch view lookup:', viewsBatchError);
+    }
+    if (viewsRows) {
+      viewsRows.forEach((row: { status_id: string }) => viewedStatusIds.add(row.status_id));
+    }
+  }
+
+  const statusMap = new Map<string, Status>();
+  console.log('🔄 [getStatusFeedForFeed] Processing statuses (batched views):', latestByUser.size);
+  for (const [userId, status] of latestByUser.entries()) {
+    statusMap.set(userId, {
+      ...status,
+      user: usersMap.get(userId) || undefined,
+      has_unviewed: !viewedStatusIds.has(status.id),
+    });
   }
   
   console.log(`📦 [getStatusFeedForFeed] Status map size:`, statusMap.size);
@@ -610,26 +613,37 @@ export async function getStatusFeedForMessenger(): Promise<StatusFeedItem[]> {
     console.warn('⚠️ [getStatusFeedForMessenger] No user data returned');
   }
 
-  const statusMap = new Map<string, Status>();
+  const latestByUserMessenger = new Map<string, Status>();
   for (const status of filteredStatuses) {
-    if (!statusMap.has(status.user_id)) {
-      const { data: view, error: viewError } = await supabase
-        .from('status_views')
-        .select('id')
-        .eq('status_id', status.id)
-        .eq('viewer_id', user.id)
-        .maybeSingle();
-
-      if (viewError && viewError.code !== 'PGRST116') {
-        console.warn('⚠️ [getStatusFeedForMessenger] Error checking view:', viewError);
-      }
-
-      statusMap.set(status.user_id, {
-        ...status,
-        user: usersMap.get(status.user_id) || undefined,
-        has_unviewed: !view,
-      });
+    if (!latestByUserMessenger.has(status.user_id)) {
+      latestByUserMessenger.set(status.user_id, status);
     }
+  }
+
+  const messengerStatusIds = [...latestByUserMessenger.values()].map((s) => s.id);
+  const viewedMessenger = new Set<string>();
+  if (messengerStatusIds.length > 0) {
+    const { data: viewsRows, error: viewsBatchError } = await supabase
+      .from('status_views')
+      .select('status_id')
+      .eq('viewer_id', user.id)
+      .in('status_id', messengerStatusIds);
+
+    if (viewsBatchError && viewsBatchError.code !== 'PGRST116') {
+      console.warn('⚠️ [getStatusFeedForMessenger] Batch view lookup:', viewsBatchError);
+    }
+    if (viewsRows) {
+      viewsRows.forEach((row: { status_id: string }) => viewedMessenger.add(row.status_id));
+    }
+  }
+
+  const statusMap = new Map<string, Status>();
+  for (const [userId, status] of latestByUserMessenger.entries()) {
+    statusMap.set(userId, {
+      ...status,
+      user: usersMap.get(userId) || undefined,
+      has_unviewed: !viewedMessenger.has(status.id),
+    });
   }
 
   const feedItems: StatusFeedItem[] = [];

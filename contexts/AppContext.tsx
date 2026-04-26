@@ -1,6 +1,7 @@
 import createContextHook from '@nkzw/create-context-hook';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { AppState, AppStateStatus, Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User, Relationship, RelationshipRequest, Post, Reel, Comment, Conversation, Message, Advertisement, Notification, CheatingAlert, Follow, Dispute, CoupleCertificate, Anniversary, ReportedContent, ReelComment, NotificationType, MessageWarning, InfidelityReport, TriggerWord, LegalDocument, UserStatus, UserStatusType, StatusVisibility } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { Session, RealtimeChannel } from '@supabase/supabase-js';
@@ -31,10 +32,16 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   });
 }
 
+const STATUS_CACHE_TTL_MS = 60 * 1000;
+const STATUS_HEARTBEAT_MS = 2 * 60 * 1000;
+const NOTIFICATION_POLL_MS = 45 * 1000;
+const CACHE_PREFIX = 'app-cache:v1:';
+const COMMITTED_AI_EMAIL = 'ai@committed.app';
+
 export const [AppContext, useApp] = createContextHook(() => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const { user: authUser, session: authSession } = useAuth();
+  const { user: authUser, session: authSession, syncAuthState, authLoading, authInitialized } = useAuth();
   const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [relationshipRequests, setRelationshipRequests] = useState<RelationshipRequest[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
@@ -59,10 +66,59 @@ export const [AppContext, useApp] = createContextHook(() => {
   const notificationPollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [userStatuses, setUserStatuses] = useState<Record<string, UserStatus>>({}); // userId -> UserStatus
   const statusUpdateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const userStatusFetchedAtRef = useRef<Record<string, number>>({});
   const [statusRealtimeChannels, setStatusRealtimeChannels] = useState<RealtimeChannel[]>([]);
   const isLoggingOutRef = useRef<boolean>(false); // Track if logout is in progress
+  const authRecoveryInFlightRef = useRef<boolean>(false);
+  const lastLoadedAuthUserIdRef = useRef<string | null>(null);
+  const prevAuthSessionPresentRef = useRef<boolean>(false);
+  const lastRefreshAtRef = useRef<Record<string, number>>({});
+  const resumeRecoveryInFlightRef = useRef<boolean>(false);
+  const lastResumeRecoveryAtRef = useRef<number>(0);
+  const aiUserIdRef = useRef<string | null>(null);
   /** Monotonic id for loadUserData — avoids isLoading stuck/races when session object changes often. */
   const loadUserDataGenerationRef = useRef(0);
+
+  const getCacheKey = useCallback((userId: string, section: string) => {
+    return `${CACHE_PREFIX}${userId}:${section}`;
+  }, []);
+
+  const writeCache = useCallback(async (userId: string, section: string, value: unknown) => {
+    try {
+      await AsyncStorage.setItem(getCacheKey(userId, section), JSON.stringify(value));
+    } catch {
+      // Cache write failures should never block app flow.
+    }
+  }, [getCacheKey]);
+
+  const readCache = useCallback(async <T,>(userId: string, section: string): Promise<T | null> => {
+    try {
+      const raw = await AsyncStorage.getItem(getCacheKey(userId, section));
+      if (!raw) return null;
+      return JSON.parse(raw) as T;
+    } catch {
+      return null;
+    }
+  }, [getCacheKey]);
+
+  const hydrateFromCache = useCallback(async (userId: string) => {
+    const [cachedCurrentUser, cachedPosts, cachedReels, cachedNotifications, cachedConversations, cachedMessages] = await Promise.all([
+      readCache<User>(userId, 'currentUser'),
+      readCache<Post[]>(userId, 'posts'),
+      readCache<Reel[]>(userId, 'reels'),
+      readCache<Notification[]>(userId, 'notifications'),
+      readCache<Conversation[]>(userId, 'conversations'),
+      readCache<Record<string, Message[]>>(userId, 'messages'),
+    ]);
+
+    if (cachedCurrentUser) setCurrentUser(cachedCurrentUser);
+    if (cachedPosts?.length) setPosts(cachedPosts);
+    if (cachedReels?.length) setReels(cachedReels);
+    if (cachedNotifications?.length) setNotifications(cachedNotifications);
+    if (cachedConversations?.length) setConversations(cachedConversations);
+    if (cachedMessages && Object.keys(cachedMessages).length > 0) setMessages(cachedMessages);
+  }, [readCache]);
 
   // Ban modal state
   const [banModalVisible, setBanModalVisible] = useState(false);
@@ -117,33 +173,109 @@ export const [AppContext, useApp] = createContextHook(() => {
   }, [authUser?.isPasswordRecovery]);
 
   useEffect(() => {
-    if (!authUser?.id) {
-      setCurrentUser(null);
-      setSession(null);
-      setIsLoading(false);
-      return;
-    }
-    // Wait until Supabase session exists (avoid empty loads). Keep spinner while waiting.
-    if (!authSession) {
+    if (!authInitialized || authLoading) {
       setIsLoading(true);
       return;
     }
-    // Do NOT depend on `authSession` object identity — it changes on every token refresh and
-    // was re-running this entire load, causing overlapping loads and "Loading your profile..." stuck.
-    loadUserDataGenerationRef.current += 1;
-    const gen = loadUserDataGenerationRef.current;
-    setSession(authSession);
-    void loadUserData(authUser.id, authSession ?? undefined, gen);
-  }, [authUser?.id, !!authSession]);
 
-  const loadUserData = async (userId: string, sessionForCreate?: Session, generation?: number) => {
-    const gen = typeof generation === 'number' ? generation : ++loadUserDataGenerationRef.current;
-    try {
+    if (!authUser?.id) {
+      lastLoadedAuthUserIdRef.current = null;
       setIsLoading(true);
+      if (authRecoveryInFlightRef.current) return;
+      authRecoveryInFlightRef.current = true;
+      syncAuthState({ reason: 'app_context_missing_auth_user', refreshToken: false })
+        .then((restored) => {
+          if (__DEV__) {
+            console.log('[AppContext] auth recovery (missing auth user):', restored ? 'restored' : 'not_restored');
+          }
+          if (!restored && authInitialized && !authLoading) {
+            setCurrentUser(null);
+            setSession(null);
+            setIsLoading(false);
+          }
+        })
+        .catch((err) => {
+          if (__DEV__) console.log('[AppContext] auth recovery failed:', err?.message ?? err);
+          if (authInitialized && !authLoading) {
+            setCurrentUser(null);
+            setSession(null);
+            setIsLoading(false);
+          }
+        })
+        .finally(() => {
+          authRecoveryInFlightRef.current = false;
+        });
+      return;
+    }
+    const hasSession = !!authSession;
+    const hadSession = prevAuthSessionPresentRef.current;
+    prevAuthSessionPresentRef.current = hasSession;
+
+    // Render immediately with minimal auth user shell while cache/fresh data load.
+    setCurrentUser((prev) => {
+      if (prev?.id === authUser.id) return prev;
+      return {
+        id: authUser.id,
+        fullName: authUser.fullName || prev?.fullName || '',
+        username: prev?.username || '',
+        email: authUser.email || prev?.email || '',
+        phoneNumber: authUser.phoneNumber || prev?.phoneNumber || '',
+        profilePicture: prev?.profilePicture || undefined,
+        role: prev?.role || 'user',
+        verifications: prev?.verifications || { phone: false, email: authUser.emailVerified, id: false },
+        createdAt: prev?.createdAt || new Date().toISOString(),
+      } as User;
+    });
+
+    const isFirstLoadForUser = lastLoadedAuthUserIdRef.current !== authUser.id;
+    if (isFirstLoadForUser) {
+      lastLoadedAuthUserIdRef.current = authUser.id;
+      loadUserDataGenerationRef.current += 1;
+      const gen = loadUserDataGenerationRef.current;
+      setSession(authSession ?? null);
+      void hydrateFromCache(authUser.id);
+      void loadUserData(authUser.id, authSession ?? undefined, gen);
+      return;
+    }
+
+    // Same user: do not block UI, but refresh in background when session becomes available
+    // or when stale, so users don't need app restart to see fresh data.
+    const now = Date.now();
+    const last = lastRefreshAtRef.current[authUser.id] || 0;
+    const shouldRefreshBecauseSessionJustRestored = hasSession && !hadSession;
+    const shouldRefreshBecauseStale = now - last > 60_000;
+    if (shouldRefreshBecauseSessionJustRestored || shouldRefreshBecauseStale) {
+      lastRefreshAtRef.current[authUser.id] = now;
+      loadUserDataGenerationRef.current += 1;
+      const gen = loadUserDataGenerationRef.current;
+      void loadUserData(authUser.id, authSession ?? undefined, gen);
+    }
+  }, [authInitialized, authUser?.id, syncAuthState, authLoading, hydrateFromCache, authSession]);
+
+  useEffect(() => {
+    setSession(authSession ?? null);
+  }, [authSession]);
+
+  const loadUserData = async (
+    userId: string,
+    sessionForCreate?: Session,
+    generation?: number,
+    opts?: { suppressLoading?: boolean }
+  ) => {
+    const gen = typeof generation === 'number' ? generation : ++loadUserDataGenerationRef.current;
+    const suppressLoading = opts?.suppressLoading ?? false;
+    const perfStart = Date.now();
+    const stageMarks: Array<{ stage: string; ms: number }> = [];
+    const markStage = (stage: string) => {
+      if (!__DEV__) return;
+      stageMarks.push({ stage, ms: Date.now() - perfStart });
+    };
+    try {
+      if (!suppressLoading) setIsLoading(true);
       console.log('Loading user data for:', userId);
       const USERS_FETCH_MS = 20000;
       const { data: userData, error: userError } = await withTimeout(
-        supabase.from('users').select('*').eq('id', userId).single(),
+        Promise.resolve(supabase.from('users').select('*').eq('id', userId).single()),
         USERS_FETCH_MS,
         'users_profile_fetch'
       );
@@ -176,6 +308,8 @@ export const [AppContext, useApp] = createContextHook(() => {
           createdAt: userData.created_at,
         };
         setCurrentUser(user);
+        writeCache(user.id, 'currentUser', user).catch(() => {});
+        markStage('core_user_loaded');
 
         // Unblock Home ("Loading your profile...") immediately — do not wait for status, legal,
         // relationship sync, or offline queue; those can hang on mobile and kept users stuck forever.
@@ -208,76 +342,76 @@ export const [AppContext, useApp] = createContextHook(() => {
           // Errors are already logged in the helper; avoid breaking login flow.
         });
 
-        // Load user status
-        await loadUserStatus(user.id);
-        
-        // Set status to online immediately on login
-        const now = new Date().toISOString();
-        const { error: statusError } = await supabase
-          .from('user_status')
-          .update({
-            status_type: 'online',
-            last_active_at: now,
-            updated_at: now,
-          })
-          .eq('user_id', user.id);
+        // Run non-critical boot tasks in background so sign-in and first page render stay fast.
+        void (async () => {
+          try {
+            // Load user status + mark online
+            await loadUserStatus(user.id);
+            const now = new Date().toISOString();
+            const { error: statusError } = await supabase
+              .from('user_status')
+              .update({
+                status_type: 'online',
+                last_active_at: now,
+                updated_at: now,
+              })
+              .eq('user_id', user.id);
 
-        if (!statusError) {
-          setUserStatuses(prev => ({
-            ...prev,
-            [user.id]: {
-              userId: user.id,
-              statusType: 'online',
-              lastActiveAt: now,
-              statusVisibility: 'everyone',
-              lastSeenVisibility: 'everyone',
-              updatedAt: now,
-            } as UserStatus,
-          }));
-        }
-        
-        // Start status tracking
-        startStatusTracking();
-
-        // Check legal acceptances after user is loaded
-        try {
-          const acceptanceStatus = await checkUserLegalAcceptances(user.id);
-          setLegalAcceptanceStatus(acceptanceStatus);
-        } catch (error) {
-          console.error('Failed to check legal acceptances:', error);
-          // Set to null so enforcer knows status hasn't been checked yet
-          setLegalAcceptanceStatus(null);
-        }
-
-        // Check onboarding status
-        try {
-          const { data: onboardingData } = await supabase
-            .from('user_onboarding_data')
-            .select('has_completed_onboarding')
-            .eq('user_id', user.id)
-            .maybeSingle();
-          
-          setHasCompletedOnboarding(onboardingData?.has_completed_onboarding ?? false);
-        } catch (error) {
-          console.error('Failed to check onboarding status:', error);
-          setHasCompletedOnboarding(false);
-        }
-
-        // Check and link any relationships where this user's phone number was registered
-        // This handles cases where user was created via trigger or if linking failed during signup
-        await checkAndLinkRelationships(user.id, user.phoneNumber);
-
-        // Sync any pending offline relationship changes
-        try {
-          const queue = await getOfflineQueue();
-          if (queue.length > 0) {
-            console.log(`Syncing ${queue.length} pending relationship changes...`);
-            const result = await syncOfflineQueue();
-            console.log(`Sync complete: ${result.synced} synced, ${result.conflicts} conflicts, ${result.errors} errors`);
+            if (!statusError) {
+              setUserStatuses(prev => ({
+                ...prev,
+                [user.id]: {
+                  userId: user.id,
+                  statusType: 'online',
+                  lastActiveAt: now,
+                  statusVisibility: 'everyone',
+                  lastSeenVisibility: 'everyone',
+                  updatedAt: now,
+                } as UserStatus,
+              }));
+            }
+            startStatusTracking();
+          } catch (statusErr) {
+            console.error('Background status boot failed:', statusErr);
           }
-        } catch (syncError) {
-          console.error('Error syncing offline queue:', syncError);
-        }
+
+          try {
+            const acceptanceStatus = await checkUserLegalAcceptances(user.id);
+            setLegalAcceptanceStatus(acceptanceStatus);
+          } catch (error) {
+            console.error('Failed to check legal acceptances:', error);
+            setLegalAcceptanceStatus(null);
+          }
+
+          try {
+            const { data: onboardingData } = await supabase
+              .from('user_onboarding_data')
+              .select('has_completed_onboarding')
+              .eq('user_id', user.id)
+              .maybeSingle();
+            setHasCompletedOnboarding(onboardingData?.has_completed_onboarding ?? false);
+          } catch (error) {
+            console.error('Failed to check onboarding status:', error);
+            setHasCompletedOnboarding(false);
+          }
+
+          try {
+            await checkAndLinkRelationships(user.id, user.phoneNumber);
+          } catch (relErr) {
+            console.error('Background relationship linking failed:', relErr);
+          }
+
+          try {
+            const queue = await getOfflineQueue();
+            if (queue.length > 0) {
+              console.log(`Syncing ${queue.length} pending relationship changes...`);
+              const result = await syncOfflineQueue();
+              console.log(`Sync complete: ${result.synced} synced, ${result.conflicts} conflicts, ${result.errors} errors`);
+            }
+          } catch (syncError) {
+            console.error('Error syncing offline queue:', syncError);
+          }
+        })();
       }
 
       const { data: postsData } = await supabase
@@ -295,15 +429,22 @@ export const [AppContext, useApp] = createContextHook(() => {
         new Map(postsData.map((p: any) => [p.id, p])).values()
       ) : [];
 
-      const { data: postLikesData } = await supabase
-        .from('post_likes')
-        .select('post_id, user_id');
+      const postIds = uniquePostsData.map((p: any) => p.id);
+      const { data: postLikesData } = postIds.length > 0
+        ? await supabase
+            .from('post_likes')
+            .select('post_id, user_id')
+            .in('post_id', postIds)
+        : { data: [] as any[] };
 
       if (uniquePostsData) {
+        const likesByPostId: Record<string, string[]> = {};
+        (postLikesData || []).forEach((like: any) => {
+          if (!likesByPostId[like.post_id]) likesByPostId[like.post_id] = [];
+          likesByPostId[like.post_id].push(like.user_id);
+        });
         const formattedPosts: Post[] = uniquePostsData.map((p: any) => {
-          const likes = postLikesData
-            ?.filter((like: any) => like.post_id === p.id)
-            .map((like: any) => like.user_id) || [];
+          const likes = likesByPostId[p.id] || [];
           return {
             id: p.id,
             userId: p.user_id,
@@ -324,6 +465,8 @@ export const [AppContext, useApp] = createContextHook(() => {
         );
         
         setPosts(sortedPosts);
+        writeCache(userId, 'posts', sortedPosts).catch(() => {});
+        markStage('posts_loaded');
       }
 
       // Load reels: show approved reels or user's own reels (regardless of status)
@@ -366,15 +509,22 @@ export const [AppContext, useApp] = createContextHook(() => {
         }
       }
 
-      const { data: reelLikesData } = await supabase
-        .from('reel_likes')
-        .select('reel_id, user_id');
+      const reelIds = reelsData?.map((r: any) => r.id) || [];
+      const { data: reelLikesData } = reelIds.length > 0
+        ? await supabase
+            .from('reel_likes')
+            .select('reel_id, user_id')
+            .in('reel_id', reelIds)
+        : { data: [] as any[] };
 
       if (reelsData) {
+        const likesByReelId: Record<string, string[]> = {};
+        (reelLikesData || []).forEach((like: any) => {
+          if (!likesByReelId[like.reel_id]) likesByReelId[like.reel_id] = [];
+          likesByReelId[like.reel_id].push(like.user_id);
+        });
         const formattedReels: Reel[] = reelsData.map((r: any) => {
-          const likes = reelLikesData
-            ?.filter((like: any) => like.reel_id === r.id)
-            .map((like: any) => like.user_id) || [];
+          const likes = likesByReelId[r.id] || [];
           return {
             id: r.id,
             userId: r.user_id,
@@ -390,15 +540,64 @@ export const [AppContext, useApp] = createContextHook(() => {
           };
         });
         setReels(formattedReels);
+        writeCache(userId, 'reels', formattedReels).catch(() => {});
+        markStage('reels_loaded');
       }
 
-      const { data: adsData } = await supabase
-        .from('advertisements')
-        .select('*')
-        .eq('active', true)
-        .eq('status', 'approved')
-        .eq('billing_status', 'paid')
-        .order('created_at', { ascending: false });
+      const [
+        { data: adsData },
+        { data: relationshipsData },
+        { data: requestsData },
+        { data: notificationsData },
+        { data: cheatingAlertsData },
+        { data: blockedUsersData },
+        { data: followsData },
+        { data: disputesData },
+      ] = await Promise.all([
+        supabase
+          .from('advertisements')
+          .select('*')
+          .eq('active', true)
+          .eq('status', 'approved')
+          .eq('billing_status', 'paid')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('relationships')
+          .select('*')
+          .or(`user_id.eq.${userId},partner_user_id.eq.${userId}`)
+          .in('status', ['pending', 'verified']),
+        supabase
+          .from('relationship_requests')
+          .select('*')
+          .eq('to_user_id', userId)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('notifications')
+          .select('id,user_id,type,title,message,data,read,created_at')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(50),
+        supabase
+          .from('cheating_alerts')
+          .select('id,user_id,partner_user_id,alert_type,description,read,created_at')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('blocked_users')
+          .select('blocked_id')
+          .eq('blocker_id', userId),
+        supabase
+          .from('follows')
+          .select('id,follower_id,following_id,created_at')
+          .or(`follower_id.eq.${userId},following_id.eq.${userId}`),
+        supabase
+          .from('disputes')
+          .select('id,relationship_id,initiated_by,dispute_type,description,status,resolution,auto_resolve_at,resolved_at,resolved_by,created_at')
+          .eq('initiated_by', userId)
+          .order('created_at', { ascending: false }),
+      ]);
+      markStage('parallel_bootstrap_queries_loaded');
 
       if (adsData) {
         const formattedAds: Advertisement[] = adsData
@@ -446,13 +645,8 @@ export const [AppContext, useApp] = createContextHook(() => {
           promotedReelId: ad.promoted_reel_id,
         }));
         setAdvertisements(formattedAds);
+        markStage('ads_loaded');
       }
-
-      const { data: relationshipsData } = await supabase
-        .from('relationships')
-        .select('*')
-        .or(`user_id.eq.${userId},partner_user_id.eq.${userId}`)
-        .in('status', ['pending', 'verified']);
 
       if (relationshipsData) {
         const formattedRelationships: Relationship[] = relationshipsData.map((r: any) => ({
@@ -473,14 +667,8 @@ export const [AppContext, useApp] = createContextHook(() => {
           partnerCity: r.partner_city,
         }));
         setRelationships(formattedRelationships);
+        markStage('relationships_loaded');
       }
-
-      const { data: requestsData } = await supabase
-        .from('relationship_requests')
-        .select('*')
-        .eq('to_user_id', userId)
-        .eq('status', 'pending')
-        .order('created_at', { ascending: false });
 
       if (requestsData) {
         const formattedRequests: RelationshipRequest[] = requestsData.map((req: any) => ({
@@ -493,6 +681,7 @@ export const [AppContext, useApp] = createContextHook(() => {
           createdAt: req.created_at,
         }));
         setRelationshipRequests(formattedRequests);
+        markStage('relationship_requests_loaded');
       }
 
       const { data: conversationsData } = await supabase
@@ -551,6 +740,7 @@ export const [AppContext, useApp] = createContextHook(() => {
             messagesByConversation[m.conversation_id].push(message);
           });
           setMessages(messagesByConversation);
+          writeCache(userId, 'messages', messagesByConversation).catch(() => {});
         }
 
         // Deduplicate conversations: keep only the most recent one for each set of participants
@@ -567,24 +757,30 @@ export const [AppContext, useApp] = createContextHook(() => {
         });
         const deduplicatedConversations = Array.from(conversationMap.values());
 
+        // Batch participant user lookup for all conversations (avoid N queries in map loop).
+        const allParticipantIds = Array.from(
+          new Set(
+            deduplicatedConversations.flatMap((conv: any) => conv.participant_ids || [])
+          )
+        );
+        const { data: allParticipantsData } = allParticipantIds.length > 0
+          ? await supabase
+              .from('users')
+              .select('id, full_name, profile_picture')
+              .in('id', allParticipantIds)
+          : { data: [] as any[] };
+        const globalParticipantsMap = new Map(
+          (allParticipantsData || []).map((p: any) => [p.id, { name: p.full_name, avatar: p.profile_picture }])
+        );
+
         // Now format conversations with accurate last message from non-deleted messages
         // Filter out conversations with no messages
         const formattedConversations: Conversation[] = (await Promise.all(
           deduplicatedConversations.map(async (conv: any) => {
             const participantIds = conv.participant_ids;
-            const { data: participantsData } = await supabase
-              .from('users')
-              .select('id, full_name, profile_picture')
-              .in('id', participantIds);
-
-            // Create a map for quick lookup
-            const participantsMap = new Map(
-              participantsData?.map((p: any) => [p.id, { name: p.full_name, avatar: p.profile_picture }]) || []
-            );
-
             // Ensure arrays are in the same order as participantIds
-            const participantNames = participantIds.map((id: string) => participantsMap.get(id)?.name || 'Unknown');
-            const participantAvatars = participantIds.map((id: string) => participantsMap.get(id)?.avatar);
+            const participantNames = participantIds.map((id: string) => globalParticipantsMap.get(id)?.name || 'Unknown');
+            const participantAvatars = participantIds.map((id: string) => globalParticipantsMap.get(id)?.avatar);
 
             // Calculate last message from non-deleted messages
             const convMessages = messagesByConversation[conv.id] || [];
@@ -618,20 +814,30 @@ export const [AppContext, useApp] = createContextHook(() => {
           return convMessages.length > 0;
         });
         setConversations(formattedConversations);
+        writeCache(userId, 'conversations', formattedConversations).catch(() => {});
+        markStage('conversations_loaded');
       }
 
-      const { data: commentsData } = await supabase
-        .from('comments')
-        .select(`
-          *,
-          users!comments_user_id_fkey(full_name, profile_picture),
-          stickers!comments_sticker_id_fkey(image_url, is_animated)
-        `)
-        .order('created_at', { ascending: true });
+      const currentPostIds = (uniquePostsData || []).map((p: any) => p.id);
+      const { data: commentsData } = currentPostIds.length > 0
+        ? await supabase
+            .from('comments')
+            .select(`
+              *,
+              users!comments_user_id_fkey(full_name, profile_picture),
+              stickers!comments_sticker_id_fkey(image_url, is_animated)
+            `)
+            .in('post_id', currentPostIds)
+            .order('created_at', { ascending: true })
+        : { data: [] as any[] };
 
-      const { data: commentLikesData } = await supabase
-        .from('comment_likes')
-        .select('comment_id, user_id');
+      const commentIds = (commentsData || []).map((c: any) => c.id);
+      const { data: commentLikesData } = commentIds.length > 0
+        ? await supabase
+            .from('comment_likes')
+            .select('comment_id, user_id')
+            .in('comment_id', commentIds)
+        : { data: [] as any[] };
 
       if (commentsData) {
         // Create a map of comment likes
@@ -689,14 +895,8 @@ export const [AppContext, useApp] = createContextHook(() => {
         });
         
         setComments(commentsByPost);
+        markStage('post_comments_loaded');
       }
-
-      const { data: notificationsData } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(50);
 
       if (notificationsData) {
         const formattedNotifications: Notification[] = notificationsData.map((n: any) => ({
@@ -710,13 +910,9 @@ export const [AppContext, useApp] = createContextHook(() => {
           createdAt: n.created_at,
         }));
         setNotifications(formattedNotifications);
+        writeCache(userId, 'notifications', formattedNotifications).catch(() => {});
+        markStage('notifications_loaded');
       }
-
-      const { data: cheatingAlertsData } = await supabase
-        .from('cheating_alerts')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
 
       if (cheatingAlertsData) {
         const formattedAlerts: CheatingAlert[] = cheatingAlertsData.map((a: any) => ({
@@ -729,22 +925,13 @@ export const [AppContext, useApp] = createContextHook(() => {
           createdAt: a.created_at,
         }));
         setCheatingAlerts(formattedAlerts);
+        markStage('alerts_loaded');
       }
-
-      // Load blocked users
-      const { data: blockedUsersData } = await supabase
-        .from('blocked_users')
-        .select('blocked_id')
-        .eq('blocker_id', userId);
 
       if (blockedUsersData) {
         setBlockedUsers(blockedUsersData.map((b: any) => b.blocked_id));
+        markStage('blocked_users_loaded');
       }
-
-      const { data: followsData } = await supabase
-        .from('follows')
-        .select('*')
-        .or(`follower_id.eq.${userId},following_id.eq.${userId}`);
 
       if (followsData) {
         const formattedFollows: Follow[] = followsData.map((f: any) => ({
@@ -754,13 +941,8 @@ export const [AppContext, useApp] = createContextHook(() => {
           createdAt: f.created_at,
         }));
         setFollows(formattedFollows);
+        markStage('follows_loaded');
       }
-
-      const { data: disputesData } = await supabase
-        .from('disputes')
-        .select('*')
-        .eq('initiated_by', userId)
-        .order('created_at', { ascending: false });
 
       if (disputesData) {
         const formattedDisputes: Dispute[] = disputesData.map((d: any) => ({
@@ -777,20 +959,29 @@ export const [AppContext, useApp] = createContextHook(() => {
           createdAt: d.created_at,
         }));
         setDisputes(formattedDisputes);
+        markStage('disputes_loaded');
       }
 
-      const { data: reelCommentsData } = await supabase
-        .from('reel_comments')
-        .select(`
-          *,
-          users!reel_comments_user_id_fkey(full_name, profile_picture),
-          stickers!reel_comments_sticker_id_fkey(image_url, is_animated)
-        `)
-        .order('created_at', { ascending: true });
+      const currentReelIds = (reelsData || []).map((r: any) => r.id);
+      const { data: reelCommentsData } = currentReelIds.length > 0
+        ? await supabase
+            .from('reel_comments')
+            .select(`
+              *,
+              users!reel_comments_user_id_fkey(full_name, profile_picture),
+              stickers!reel_comments_sticker_id_fkey(image_url, is_animated)
+            `)
+            .in('reel_id', currentReelIds)
+            .order('created_at', { ascending: true })
+        : { data: [] as any[] };
 
-      const { data: reelCommentLikesData } = await supabase
-        .from('reel_comment_likes')
-        .select('comment_id, user_id');
+      const reelCommentIds = (reelCommentsData || []).map((c: any) => c.id);
+      const { data: reelCommentLikesData } = reelCommentIds.length > 0
+        ? await supabase
+            .from('reel_comment_likes')
+            .select('comment_id, user_id')
+            .in('comment_id', reelCommentIds)
+        : { data: [] as any[] };
 
       if (reelCommentsData) {
         // Create a map of comment likes
@@ -848,19 +1039,79 @@ export const [AppContext, useApp] = createContextHook(() => {
         });
         
         setReelComments(commentsByReel);
+        markStage('reel_comments_loaded');
       }
 
       setupRealtimeSubscriptions(userId);
+      markStage('realtime_subscriptions_ready');
+
+      if (__DEV__) {
+        console.log(
+          '[AppContext] loadUserData timings:',
+          stageMarks.map((m) => `${m.stage}:${m.ms}ms`).join(' | '),
+          `| total:${Date.now() - perfStart}ms`
+        );
+      }
 
 
     } catch (error: any) {
       console.error('Failed to load user data:', error?.message || error);
     } finally {
-      if (loadUserDataGenerationRef.current === gen) {
+      if (!suppressLoading && loadUserDataGenerationRef.current === gen) {
         setIsLoading(false);
       }
     }
   };
+
+  const recoverDataOnResume = useCallback(async () => {
+    if (!authInitialized || authLoading) return;
+
+    const now = Date.now();
+    if (resumeRecoveryInFlightRef.current) return;
+    if (now - lastResumeRecoveryAtRef.current < 3000) return;
+    lastResumeRecoveryAtRef.current = now;
+    resumeRecoveryInFlightRef.current = true;
+
+    try {
+      if (!authUser?.id) {
+        await syncAuthState({ reason: 'app_resume_missing_auth_user', refreshToken: true });
+        return;
+      }
+
+      // Immediately surface cached content if any, then refresh in background.
+      if (!currentUser || posts.length === 0 || reels.length === 0) {
+        void hydrateFromCache(authUser.id);
+      }
+
+      if (!authSession) {
+        await syncAuthState({ reason: 'app_resume_missing_auth_session', refreshToken: true });
+      }
+
+      const lastRefresh = lastRefreshAtRef.current[authUser.id] || 0;
+      const needsReload = !currentUser || (posts.length === 0 && reels.length === 0);
+      const staleReload = now - lastRefresh > 2 * 60 * 1000;
+
+      if (needsReload || staleReload) {
+        lastRefreshAtRef.current[authUser.id] = now;
+        const gen = ++loadUserDataGenerationRef.current;
+        void loadUserData(authUser.id, authSession ?? undefined, gen, { suppressLoading: true });
+      }
+    } catch (error) {
+      if (__DEV__) console.warn('[AppContext] resume recovery error:', error);
+    } finally {
+      resumeRecoveryInFlightRef.current = false;
+    }
+  }, [
+    authInitialized,
+    authLoading,
+    authUser?.id,
+    authSession,
+    currentUser,
+    posts.length,
+    reels.length,
+    hydrateFromCache,
+    syncAuthState,
+  ]);
 
   const createUserRecord = async (userId: string, sessionToUse?: Session | null, generation?: number) => {
     const sess = sessionToUse ?? session;
@@ -1584,7 +1835,7 @@ export const [AppContext, useApp] = createContextHook(() => {
     try {
       const { data: relationshipsData } = await supabase
         .from('relationships')
-        .select('*')
+        .select('id,user_id,partner_name,partner_phone,partner_user_id,type,status,start_date,verified_date,end_date,privacy_level,partner_face_photo,partner_date_of_birth_month,partner_date_of_birth_year,partner_city')
         .or(`user_id.eq.${currentUser.id},partner_user_id.eq.${currentUser.id}`)
         .in('status', ['pending', 'verified']);
 
@@ -1612,7 +1863,7 @@ export const [AppContext, useApp] = createContextHook(() => {
       // Also refresh relationship requests
       const { data: requestsData } = await supabase
         .from('relationship_requests')
-        .select('*')
+        .select('id,from_user_id,from_user_name,to_user_id,relationship_type,status,created_at')
         .eq('to_user_id', currentUser.id)
         .eq('status', 'pending')
         .order('created_at', { ascending: false });
@@ -1796,7 +2047,7 @@ export const [AppContext, useApp] = createContextHook(() => {
 
       const { data: existingRelationships } = await supabase
         .from('relationships')
-        .select('*')
+        .select('id,partner_user_id,status')
         .eq('user_id', currentUser.id)
         .in('status', ['pending', 'verified']);
 
@@ -1875,7 +2126,7 @@ export const [AppContext, useApp] = createContextHook(() => {
       if (partnerData) {
         const { data: partnerExistingRels } = await supabase
           .from('relationships')
-          .select('*')
+          .select('id,partner_user_id,status')
           .eq('user_id', partnerData.id)
           .in('status', ['pending', 'verified']);
 
@@ -2018,7 +2269,7 @@ export const [AppContext, useApp] = createContextHook(() => {
 
       const { data: request } = await supabase
         .from('relationship_requests')
-        .select('*')
+        .select('id,from_user_id,relationship_type')
         .eq('id', requestId)
         .single();
 
@@ -2026,7 +2277,7 @@ export const [AppContext, useApp] = createContextHook(() => {
         // Get the requester's relationship record to get all details
         const { data: requesterRelationship } = await supabase
           .from('relationships')
-          .select('*')
+          .select('start_date,privacy_level,partner_face_photo,partner_date_of_birth_month,partner_date_of_birth_year,partner_city')
           .eq('user_id', request.from_user_id)
           .in('status', ['pending', 'verified'])
           .single();
@@ -2054,7 +2305,7 @@ export const [AppContext, useApp] = createContextHook(() => {
           // Check if accepter already has a relationship record
           const { data: existingAccepterRelationship } = await supabase
             .from('relationships')
-            .select('*')
+            .select('id')
             .eq('user_id', currentUser.id)
             .in('status', ['pending', 'verified'])
             .single();
@@ -2838,7 +3089,7 @@ export const [AppContext, useApp] = createContextHook(() => {
       return null;
     }
 
-    // Check dating message limits (only for 2-participant conversations)
+    // Check dating message limits (only for non-AI 2-participant conversations)
     try {
       const { data: conversation } = await supabase
         .from('conversations')
@@ -2846,8 +3097,24 @@ export const [AppContext, useApp] = createContextHook(() => {
         .eq('id', conversationId)
         .single();
 
-      // Only check limits for 2-participant conversations (dating conversations)
-      if (conversation?.participant_ids && conversation.participant_ids.length === 2) {
+      if (!aiUserIdRef.current) {
+        const { data: aiUserData } = await supabase
+          .from('users')
+          .select('id')
+          .eq('email', COMMITTED_AI_EMAIL)
+          .maybeSingle();
+        aiUserIdRef.current = aiUserData?.id || null;
+      }
+
+      const participantIds: string[] = Array.isArray(conversation?.participant_ids)
+        ? conversation.participant_ids
+        : [];
+      const isAIConversation =
+        receiverId === aiUserIdRef.current ||
+        (aiUserIdRef.current ? participantIds.includes(aiUserIdRef.current) : false);
+
+      // Only enforce dating limits for regular user-to-user conversations.
+      if (!isAIConversation && participantIds.length === 2) {
         const { checkDatingMessageLimit } = await import('@/lib/dating-message-limits');
         const limitCheck = await checkDatingMessageLimit(conversationId);
         
@@ -4066,11 +4333,12 @@ export const [AppContext, useApp] = createContextHook(() => {
       notificationPollIntervalRef.current = setInterval(async () => {
         // Don't poll if logout is in progress
         if (isLoggingOutRef.current) return;
+        if (appStateRef.current !== 'active') return;
         
         try {
           const { data: newNotifications, error } = await supabase
             .from('notifications')
-            .select('*')
+            .select('id,user_id,type,title,message,data,read,created_at')
             .eq('user_id', pollUserId)
             .order('created_at', { ascending: false })
             .limit(20); // Check more notifications
@@ -4106,7 +4374,7 @@ export const [AppContext, useApp] = createContextHook(() => {
         } catch (error) {
           console.error('Error in notification polling:', error);
         }
-      }, 2000); // Poll every 2 seconds for faster updates
+      }, NOTIFICATION_POLL_MS);
       
       // Poll immediately when starting
       (async () => {
@@ -4116,7 +4384,7 @@ export const [AppContext, useApp] = createContextHook(() => {
         try {
           const { data: newNotifications, error } = await supabase
             .from('notifications')
-            .select('*')
+            .select('id,user_id,type,title,message,data,read,created_at')
             .eq('user_id', pollUserId)
             .order('created_at', { ascending: false })
             .limit(20);
@@ -4323,7 +4591,7 @@ export const [AppContext, useApp] = createContextHook(() => {
           
           const { data: requestsData } = await supabase
             .from('relationship_requests')
-            .select('*')
+            .select('id,from_user_id,from_user_name,to_user_id,relationship_type,status,created_at')
             .eq('to_user_id', userId)
             .eq('status', 'pending')
             .order('created_at', { ascending: false });
@@ -6430,7 +6698,7 @@ export const [AppContext, useApp] = createContextHook(() => {
     try {
       const { data, error } = await supabase
         .from('warning_templates')
-        .select('*')
+        .select('id,severity,title_template,message_template,in_chat_warning_template,description,active,created_at,updated_at')
         .order('severity', { ascending: false });
       if (error) throw error;
       return (data || []).map((t: any) => ({
@@ -6492,7 +6760,7 @@ export const [AppContext, useApp] = createContextHook(() => {
     try {
       const { data, error } = await supabase
         .from('user_status')
-        .select('*')
+        .select('user_id,status_type,custom_status_text,last_active_at,status_visibility,last_seen_visibility,updated_at')
         .eq('user_id', userId)
         .single();
 
@@ -6512,6 +6780,7 @@ export const [AppContext, useApp] = createContextHook(() => {
           updatedAt: data.updated_at,
         };
         setUserStatuses(prev => ({ ...prev, [userId]: status }));
+        userStatusFetchedAtRef.current[userId] = Date.now();
         return status;
       }
 
@@ -6526,6 +6795,7 @@ export const [AppContext, useApp] = createContextHook(() => {
       };
       await createUserStatus(defaultStatus);
       setUserStatuses(prev => ({ ...prev, [userId]: defaultStatus }));
+      userStatusFetchedAtRef.current[userId] = Date.now();
       return defaultStatus;
     } catch (error) {
       console.error('Load user status error:', error);
@@ -6653,6 +6923,12 @@ export const [AppContext, useApp] = createContextHook(() => {
   }, [currentUser]);
 
   const getUserStatus = useCallback(async (userId: string): Promise<UserStatus | null> => {
+    const cached = userStatuses[userId];
+    const fetchedAt = userStatusFetchedAtRef.current[userId];
+    if (cached && fetchedAt && Date.now() - fetchedAt < STATUS_CACHE_TTL_MS) {
+      return cached;
+    }
+
     // Check if this is the AI user - always return online status
     const { data: userData } = await supabase
       .from('users')
@@ -6718,7 +6994,7 @@ export const [AppContext, useApp] = createContextHook(() => {
     setUserStatuses(prev => ({ ...prev, [userId]: finalStatus }));
     
     return finalStatus;
-  }, [loadUserStatus]);
+  }, [loadUserStatus, userStatuses]);
 
   const startStatusTracking = useCallback(() => {
     if (!currentUser) return;
@@ -6729,10 +7005,10 @@ export const [AppContext, useApp] = createContextHook(() => {
       statusUpdateIntervalRef.current = null;
     }
 
-    // Update last_active_at every 30 seconds while app is active
-    // This keeps the user marked as "online" while they're using the app
+    // Update last_active_at at lower frequency to reduce network usage.
     const interval = setInterval(async () => {
       if (currentUser) {
+        if (appStateRef.current !== 'active') return;
         const now = new Date();
         
         // Update last_active_at to show user is active
@@ -6806,7 +7082,7 @@ export const [AppContext, useApp] = createContextHook(() => {
           }
         }
       }
-    }, 30 * 1000); // Every 30 seconds
+    }, STATUS_HEARTBEAT_MS);
 
     statusUpdateIntervalRef.current = interval;
   }, [currentUser]);
@@ -6816,6 +7092,7 @@ export const [AppContext, useApp] = createContextHook(() => {
     if (!currentUser) return;
 
     const handleAppStateChange = async (nextAppState: AppStateStatus) => {
+      appStateRef.current = nextAppState;
       const now = new Date().toISOString();
       
       if (nextAppState === 'active') {
@@ -6855,6 +7132,8 @@ export const [AppContext, useApp] = createContextHook(() => {
 
         // Start tracking
         startStatusTracking();
+        // Non-blocking auth/data recovery path for interrupted background resumes.
+        void recoverDataOnResume();
       } else if (nextAppState === 'background' || nextAppState === 'inactive') {
         // App went to background - update last_active_at to NOW and set to away/offline
         console.log('App went to background - updating last_active_at and setting status');
@@ -6905,7 +7184,7 @@ export const [AppContext, useApp] = createContextHook(() => {
     return () => {
       subscription.remove();
     };
-  }, [currentUser, startStatusTracking]);
+  }, [currentUser, startStatusTracking, recoverDataOnResume]);
 
   // Cleanup interval on unmount or logout
   useEffect(() => {

@@ -21,6 +21,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Video, ResizeMode } from 'expo-av';
 import { supabase } from '@/lib/supabase';
+import { assertMediaWithinLimit } from '@/lib/media-optimizer';
 
 export default function CreateReelScreen() {
   const router = useRouter();
@@ -43,7 +44,7 @@ export default function CreateReelScreen() {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Videos,
         allowsEditing: true,
-        quality: 0.8,
+        quality: 0.7,
         videoMaxDuration: 60,
       });
 
@@ -68,7 +69,7 @@ export default function CreateReelScreen() {
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Videos,
         allowsEditing: true,
-        quality: 0.8,
+        quality: 0.7,
         videoMaxDuration: 60,
       });
 
@@ -86,6 +87,7 @@ export default function CreateReelScreen() {
       if (!uri) {
         throw new Error('Video URI is required');
       }
+      await assertMediaWithinLimit(uri, 'video');
 
       const fileName = `reel_${Date.now()}_${Math.random().toString(36).substring(7)}.mp4`;
       

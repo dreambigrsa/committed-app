@@ -30,7 +30,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/contexts/AppContext';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import ReportContentModal from '@/components/ReportContentModal';
 import StickerPicker from '@/components/StickerPicker';
@@ -38,13 +38,15 @@ import { Sticker, Advertisement , UserStatus , ProfessionalSession } from '@/typ
 import * as WebBrowser from 'expo-web-browser';
 import StatusIndicator from '@/components/StatusIndicator';
 import { getSignedUrlForMedia } from '@/lib/status-queries';
-import { getOrCreateAIUser, getAIResponse, shouldAIRespondInObserverMode } from '@/lib/ai-service';
+import { getOrCreateAIUser, getAIResponse, parseAIActionCommand, shouldAIRespondInObserverMode } from '@/lib/ai-service';
 import RequestLiveHelpModal from '@/components/RequestLiveHelpModal';
 import SessionReviewModal from '@/components/SessionReviewModal';
 import ProfessionalHelpSuggestionModal from '@/components/ProfessionalHelpSuggestionModal';
 import SessionManagementModal from '@/components/SessionManagementModal';
 import PremiumModal from '@/components/PremiumModal';
 import { getActiveSession } from '@/lib/professional-sessions';
+import { assertMediaWithinLimit, getAdaptiveImageQuality, optimizeImageForUpload } from '@/lib/media-optimizer';
+import { AdaptiveMediaProfile, getAdaptiveImageUrl, getAdaptiveMediaProfile, getAdaptiveVideoUrl } from '@/lib/adaptive-media';
 
 /**
  * Status Preview Attachment Component
@@ -53,11 +55,13 @@ import { getActiveSession } from '@/lib/professional-sessions';
 function StatusPreviewAttachment({ 
   mediaPath, 
   isMe, 
-  onPress 
+  onPress,
+  styles,
 }: { 
   mediaPath: string; 
   isMe: boolean; 
   onPress: () => void;
+  styles: any;
 }) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -155,8 +159,9 @@ function StatusPreviewAttachment({
 
 export default function ConversationDetailScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
   const { conversationId } = useLocalSearchParams<{ conversationId: string }>();
-  const { currentUser, getConversation, sendMessage, deleteMessage, getChatBackground, setChatBackground, getMessageWarnings, acknowledgeWarning, reportContent, getActiveAds, getSmartAds, recordAdImpression, recordAdClick, getUserStatus } = useApp();
+  const { currentUser, getConversation, createOrGetConversation, sendMessage, deleteMessage, getChatBackground, setChatBackground, getMessageWarnings, acknowledgeWarning, reportContent, getActiveAds, getSmartAds, recordAdImpression, recordAdClick, getUserStatus } = useApp();
   const insets = useSafeAreaInsets();
   const [messageText, setMessageText] = useState<string>('');
   const [localMessages, setLocalMessages] = useState<any[]>([]);
@@ -178,6 +183,7 @@ export default function ConversationDetailScreen() {
   const [showAttachments, setShowAttachments] = useState(true);
   const [smartAds, setSmartAds] = useState<Advertisement[]>([]);
   const [otherParticipantStatus, setOtherParticipantStatus] = useState<UserStatus | null>(null);
+  const [mediaProfile, setMediaProfile] = useState<AdaptiveMediaProfile | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
@@ -185,6 +191,13 @@ export default function ConversationDetailScreen() {
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shouldAutoScroll = useRef(true);
   const [aiUserId, setAiUserId] = useState<string | null>(null);
+  const pendingAiMetaRef = useRef<{
+    content: string;
+    messageType: 'text' | 'image' | 'document';
+    source?: 'system' | 'database' | 'openai';
+    model?: string;
+    createdAt: number;
+  }[]>([]);
   const [aiFeedback, setAiFeedback] = useState<Record<string, 1 | -1>>({});
   const [aiIsThinking, setAiIsThinking] = useState(false);
   const [showRequestHelpModal, setShowRequestHelpModal] = useState(false);
@@ -201,6 +214,7 @@ export default function ConversationDetailScreen() {
   const recordedImpressions = useRef<Set<string>>(new Set());
   const failedAdImages = useRef<Set<string>>(new Set());
   const handleDeleteMessageRef = useRef<((messageId: string, isSender: boolean) => Promise<void>) | null>(null);
+  const isAdminUser = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
   
   // Check if this is an AI conversation
   const isAIConversation = conversation?.participants?.some((p: string) => p === aiUserId);
@@ -213,6 +227,53 @@ export default function ConversationDetailScreen() {
   useEffect(() => {
     recordedImpressions.current.clear();
   }, [smartAds]);
+
+  useEffect(() => {
+    let isMounted = true;
+    void getAdaptiveMediaProfile()
+      .then((profile) => {
+        if (isMounted) setMediaProfile(profile);
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const adaptImage = useCallback((url: string | null | undefined, kind: 'avatar' | 'feed' | 'full' = 'feed') => {
+    if (!url || !mediaProfile) return url || '';
+    return getAdaptiveImageUrl(url, mediaProfile, kind);
+  }, [mediaProfile]);
+  const adaptVideo = useCallback((url: string | null | undefined, kind: 'feed' | 'full' = 'feed') => {
+    if (!url || !mediaProfile) return url || '';
+    return getAdaptiveVideoUrl(url, mediaProfile, kind);
+  }, [mediaProfile]);
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
+  const attachPendingAIMetadata = useCallback((message: any) => {
+    if (!message || !aiUserId || message.senderId !== aiUserId) return message;
+
+    const msgType = message.messageType || 'text';
+    const msgContent = String(message.content || '').trim();
+    const msgCreatedAt = new Date(message.createdAt || Date.now()).getTime();
+
+    const idx = pendingAiMetaRef.current.findIndex((meta) => {
+      const sameType = meta.messageType === msgType;
+      const sameContent = (meta.content || '').trim() === msgContent;
+      const nearInTime = Math.abs(meta.createdAt - msgCreatedAt) <= 60_000;
+      return sameType && sameContent && nearInTime;
+    });
+
+    if (idx < 0) return message;
+    const matched = pendingAiMetaRef.current[idx];
+    pendingAiMetaRef.current.splice(idx, 1);
+
+    return {
+      ...message,
+      aiSource: matched.source,
+      aiModel: matched.model,
+    };
+  }, [aiUserId]);
 
   useEffect(() => {
     // Cache AI user id so we can show feedback UI on AI messages
@@ -437,7 +498,7 @@ export default function ConversationDetailScreen() {
                 if (existingIndex >= 0) {
                   // Update existing message in place (more efficient than map)
                   const updated = [...prev];
-                  updated[existingIndex] = {
+                  updated[existingIndex] = attachPendingAIMetadata({
                     id: newMessage.id,
                     conversationId: newMessage.conversation_id,
                     senderId: newMessage.sender_id,
@@ -454,7 +515,7 @@ export default function ConversationDetailScreen() {
                     createdAt: newMessage.created_at,
                     statusId: newMessage.status_id,
                     statusPreviewUrl: newMessage.status_preview_url,
-                  };
+                  });
                   return updated;
                 }
                 
@@ -473,7 +534,7 @@ export default function ConversationDetailScreen() {
                 if (optimisticIndex >= 0) {
                   // Replace optimistic message with real one
                   const updated = [...prev];
-                  updated[optimisticIndex] = {
+                  updated[optimisticIndex] = attachPendingAIMetadata({
                     id: newMessage.id,
                     conversationId: newMessage.conversation_id,
                     senderId: newMessage.sender_id,
@@ -490,12 +551,12 @@ export default function ConversationDetailScreen() {
                     createdAt: newMessage.created_at,
                     statusId: newMessage.status_id,
                     statusPreviewUrl: newMessage.status_preview_url,
-                  };
+                  });
                   return updated;
                 }
                 
                 // Add new message at the end
-                return [...prev, {
+                return [...prev, attachPendingAIMetadata({
                   id: newMessage.id,
                   conversationId: newMessage.conversation_id,
                   senderId: newMessage.sender_id,
@@ -512,7 +573,7 @@ export default function ConversationDetailScreen() {
                   createdAt: newMessage.created_at,
                   statusId: newMessage.status_id,
                   statusPreviewUrl: newMessage.status_preview_url,
-                }];
+                })];
               });
             } else {
               // If message is deleted for current user, remove it from local state
@@ -577,7 +638,7 @@ export default function ConversationDetailScreen() {
       };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load on conversation change
-  }, [conversationId, currentUser]);
+  }, [conversationId, currentUser, attachPendingAIMetadata]);
 
   // Load other participant's status
   useEffect(() => {
@@ -637,12 +698,12 @@ export default function ConversationDetailScreen() {
     };
     refreshStatus();
 
-    // Refresh status every 30 seconds to recalculate based on last_active_at
+    // Refresh less frequently to reduce background network calls.
     const refreshInterval = setInterval(() => {
       if (isMounted) {
         refreshStatus();
       }
-    }, 30 * 1000);
+    }, 2 * 60 * 1000);
 
     const channel = supabase
       .channel(`user_status:${other.id}`)
@@ -712,7 +773,8 @@ export default function ConversationDetailScreen() {
             createdAt: m.created_at,
             statusId: m.status_id,
             statusPreviewUrl: m.status_preview_url,
-          }));
+          }))
+          .map(attachPendingAIMetadata);
         setLocalMessages(filteredMessages);
       }
     } catch (error) {
@@ -869,14 +931,20 @@ export default function ConversationDetailScreen() {
 
   const uploadImage = async (uri: string): Promise<string | null> => {
     try {
+      const preparedUri = uri.startsWith('http')
+        ? uri
+        : await optimizeImageForUpload(uri);
+      if (!preparedUri.startsWith('http')) {
+        await assertMediaWithinLimit(preparedUri, 'image');
+      }
       const filename = `messages/${conversationId}/${Date.now()}.jpg`;
       
       // Check if it's a local file URI
       let fileData: Uint8Array;
       
-      if (uri.startsWith('file://') || uri.startsWith('ph://') || uri.startsWith('content://')) {
+      if (preparedUri.startsWith('file://') || preparedUri.startsWith('ph://') || preparedUri.startsWith('content://')) {
         // Read local file using FileSystem
-        const base64 = await FileSystem.readAsStringAsync(uri, {
+        const base64 = await FileSystem.readAsStringAsync(preparedUri, {
           encoding: FileSystem.EncodingType.Base64,
         });
         
@@ -888,7 +956,7 @@ export default function ConversationDetailScreen() {
         }
       } else {
         // Remote URL - fetch and convert to Uint8Array
-        const response = await fetch(uri);
+        const response = await fetch(preparedUri);
         const arrayBuffer = await response.arrayBuffer();
         fileData = new Uint8Array(arrayBuffer);
       }
@@ -950,7 +1018,7 @@ export default function ConversationDetailScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [4, 3],
-      quality: 0.8,
+      quality: await getAdaptiveImageQuality(),
     });
 
     if (!result.canceled && result.assets[0]) {
@@ -978,6 +1046,59 @@ export default function ConversationDetailScreen() {
       Alert.alert('Error', 'Failed to pick document');
     }
   };
+
+  const executeAIActionCommand = useCallback(async (rawCommand: string): Promise<boolean> => {
+    const actionCommand = parseAIActionCommand(rawCommand);
+    if (!actionCommand) return false;
+
+    if (actionCommand.type === 'open_route') {
+      if (actionCommand.route.startsWith('/admin') && !isAdminUser) {
+        Alert.alert('Access denied', 'This command is available to admins only.');
+        return true;
+      }
+      router.push(actionCommand.route as any);
+      return true;
+    }
+    if (actionCommand.type === 'search') {
+      router.push('/(tabs)/search' as any);
+      return true;
+    }
+    if (actionCommand.type === 'book_help') {
+      setShowRequestHelpModal(true);
+      return true;
+    }
+    if (actionCommand.type === 'send_message') {
+      const textToSend = actionCommand.content?.trim();
+      const targetName = actionCommand.target?.trim();
+
+      if (textToSend && targetName) {
+        const { data: targetUser } = await supabase
+          .from('users')
+          .select('id, full_name, username')
+          .or(`username.ilike.%${targetName}%,full_name.ilike.%${targetName}%`)
+          .limit(1)
+          .maybeSingle();
+
+        if (targetUser?.id) {
+          const targetConversation = await createOrGetConversation(targetUser.id);
+          if (targetConversation?.id) {
+            await sendMessage(targetConversation.id, targetUser.id, textToSend, undefined, undefined, undefined, 'text');
+            router.push(`/messages/${targetConversation.id}` as any);
+            return true;
+          }
+        }
+      }
+
+      Alert.alert(
+        'Send Message Command',
+        'Use: send message to username: your message',
+      );
+      router.push('/(tabs)/messages' as any);
+      return true;
+    }
+
+    return false;
+  }, [createOrGetConversation, isAdminUser, router, sendMessage]);
 
   const handleSend = async () => {
     if (!conversation || !currentUser) return;
@@ -1069,6 +1190,11 @@ export default function ConversationDetailScreen() {
       if (messageType === 'text' && messageContent.trim()) {
         const aiUser = await getOrCreateAIUser();
         if (aiUser && otherParticipantId === aiUser.id) {
+          const handled = await executeAIActionCommand(messageContent);
+          if (handled) {
+            return;
+          }
+
           // Check if there's an active professional session - if so, AI is in observer mode
           const activeSession = await getActiveSession(conversationId);
           if (activeSession && activeSession.status === 'active' && activeSession.aiObserverMode) {
@@ -1297,6 +1423,17 @@ export default function ConversationDetailScreen() {
                   messageData.document_url = aiResponse.documentUrl;
                   messageData.document_name = aiResponse.documentName || 'document.txt';
                   messageData.content = aiResponse.message || 'I\'ve generated a document for you!';
+                }
+
+                pendingAiMetaRef.current.push({
+                  content: String(messageData.content || ''),
+                  messageType: messageData.message_type,
+                  source: aiResponse.source,
+                  model: aiResponse.model,
+                  createdAt: Date.now(),
+                });
+                if (pendingAiMetaRef.current.length > 50) {
+                  pendingAiMetaRef.current.splice(0, pendingAiMetaRef.current.length - 50);
                 }
 
                 // Try direct insert first (RLS policy should allow AI to send messages)
@@ -1551,6 +1688,11 @@ export default function ConversationDetailScreen() {
       item.senderId === (professionalSession.professional?.userId || '');
     
     const isAI = !isMe && item.senderId === aiUserId;
+    const aiMetaLabel = isAI && item.aiSource
+      ? (item.aiSource === 'openai' && item.aiModel
+          ? `${item.aiSource} · ${item.aiModel}`
+          : item.aiSource)
+      : null;
 
     return (
       <>
@@ -1639,7 +1781,7 @@ export default function ConversationDetailScreen() {
               activeOpacity={0.9}
             >
               <Image
-                source={{ uri: item.mediaUrl }}
+                source={{ uri: adaptImage(item.mediaUrl, 'full') }}
                 style={styles.messageImage}
                 contentFit="cover"
               />
@@ -1672,7 +1814,7 @@ export default function ConversationDetailScreen() {
           {item.messageType === 'sticker' && item.mediaUrl ? (
             <View style={styles.stickerContainer}>
               <Image
-                source={{ uri: item.mediaUrl }}
+                source={{ uri: adaptImage(item.mediaUrl, 'full') }}
                 style={styles.stickerImage}
                 contentFit="contain"
               />
@@ -1684,6 +1826,7 @@ export default function ConversationDetailScreen() {
             <StatusPreviewAttachment
               mediaPath={item.statusPreviewUrl}
               isMe={isMe}
+              styles={styles}
               onPress={() => {
                 // Get status owner from conversation
                 const otherParticipantId = conversation.participants.find(id => id !== currentUser.id);
@@ -1718,6 +1861,12 @@ export default function ConversationDetailScreen() {
             ]}>
               {messageTime}
             </Text>
+
+            {aiMetaLabel ? (
+              <View style={styles.aiMetaBadge}>
+                <Text style={styles.aiMetaText}>{aiMetaLabel}</Text>
+              </View>
+            ) : null}
             
             {/* AI Feedback Buttons - Only show on AI messages, inline with timestamp */}
             {isAI && !isMe && aiUserId && (
@@ -1751,7 +1900,7 @@ export default function ConversationDetailScreen() {
         </TouchableOpacity>
       </>
     );
-  }, [currentUser, warnings, warningTemplates, professionalSession, aiUserId, aiFeedback, aiIsThinking, conversation, router, acknowledgeWarning, submitAiFeedback, setViewingImage]);
+  }, [currentUser, warnings, warningTemplates, professionalSession, aiUserId, aiFeedback, aiIsThinking, conversation, router, acknowledgeWarning, submitAiFeedback, setViewingImage, adaptImage, styles, colors]);
 
   // Define keyExtractor BEFORE early return to ensure hooks are always called in same order
   const keyExtractor = useMemo(() => (item: any) => String(item.id), []);
@@ -1809,7 +1958,7 @@ export default function ConversationDetailScreen() {
 
     return (
       <ImageBackground
-        source={{ uri: chatBackground.background_value }}
+        source={{ uri: adaptImage(chatBackground.background_value, 'full') }}
         style={StyleSheet.absoluteFill}
         resizeMode="cover"
       >
@@ -1828,7 +1977,7 @@ export default function ConversationDetailScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: false,
-      quality: 0.8,
+      quality: await getAdaptiveImageQuality(),
     });
 
     if (!result.canceled && result.assets[0]) {
@@ -1928,7 +2077,7 @@ export default function ConversationDetailScreen() {
           </View>
           {!failedAdImages.current.has(ad.id) ? (
             <Image 
-              source={{ uri: ad.imageUrl }} 
+              source={{ uri: adaptImage(ad.imageUrl, 'feed') }}
               style={styles.bannerAdImage} 
               contentFit="cover"
               onError={() => {
@@ -1974,7 +2123,7 @@ export default function ConversationDetailScreen() {
           </View>
           {!failedAdImages.current.has(ad.id) ? (
             <Image 
-              source={{ uri: ad.imageUrl }} 
+              source={{ uri: adaptImage(ad.imageUrl, 'feed') }}
               style={styles.adImage} 
               contentFit="cover"
               onError={() => {
@@ -2022,7 +2171,7 @@ export default function ConversationDetailScreen() {
             activeOpacity={0.9}
           >
           <Video
-            source={{ uri: ad.imageUrl }}
+            source={{ uri: adaptVideo(ad.imageUrl, 'feed') }}
             style={styles.videoAdImage}
             useNativeControls
             resizeMode={ResizeMode.COVER}
@@ -2079,7 +2228,7 @@ export default function ConversationDetailScreen() {
           {viewingImage && (
             <>
               <Image
-                source={{ uri: viewingImage }}
+                source={{ uri: adaptImage(viewingImage, 'full') }}
                 style={styles.fullScreenImage}
                 contentFit="contain"
               />
@@ -2160,7 +2309,7 @@ export default function ConversationDetailScreen() {
                 <>
                   <View style={styles.imagePreviewContainer}>
                     <ImageBackground
-                      source={{ uri: selectedBackgroundImage }}
+                      source={{ uri: adaptImage(selectedBackgroundImage, 'full') }}
                       style={styles.backgroundPreview}
                       resizeMode="cover"
                     >
@@ -2316,7 +2465,7 @@ export default function ConversationDetailScreen() {
                 <View style={styles.headerAvatarContainer}>
                   {otherParticipant.avatar ? (
                     <Image
-                      source={{ uri: otherParticipant.avatar }}
+                      source={{ uri: adaptImage(otherParticipant.avatar, 'avatar') }}
                       style={styles.headerAvatar}
                     />
                   ) : (
@@ -2334,8 +2483,8 @@ export default function ConversationDetailScreen() {
                 </View>
               </TouchableOpacity>
               <View style={styles.headerNameContainer}>
-                <Text style={styles.headerName}>{otherParticipant.name}</Text>
-                <Text style={styles.headerStatus}>
+                <Text style={[styles.headerName, { color: colors.text.primary }]}>{otherParticipant.name}</Text>
+                <Text style={[styles.headerStatus, { color: colors.text.secondary }]}>
                   {otherParticipantStatus 
                     ? (otherParticipantStatus.statusType === 'online' 
                         ? 'Online' 
@@ -2509,7 +2658,7 @@ export default function ConversationDetailScreen() {
             <View style={styles.attachmentPreview}>
               {selectedImage && (
                 <View style={styles.imagePreviewContainer}>
-                  <Image source={{ uri: selectedImage }} style={styles.previewImage} />
+                  <Image source={{ uri: adaptImage(selectedImage, 'full') }} style={styles.previewImage} />
                   <TouchableOpacity
                     style={styles.removeAttachment}
                     onPress={() => setSelectedImage(null)}
@@ -2534,7 +2683,7 @@ export default function ConversationDetailScreen() {
               )}
               {selectedSticker && (
                 <View style={styles.stickerPreview}>
-                  <Image source={{ uri: selectedSticker.imageUrl }} style={styles.previewSticker} />
+                  <Image source={{ uri: adaptImage(selectedSticker.imageUrl, 'feed') }} style={styles.previewSticker} />
                   <TouchableOpacity
                     style={styles.removeStickerButton}
                     onPress={() => setSelectedSticker(null)}
@@ -2546,6 +2695,40 @@ export default function ConversationDetailScreen() {
             </View>
           )}
 
+          {isAIConversation && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.quickCommandsRow}
+              keyboardShouldPersistTaps="handled"
+              style={styles.quickCommandsContainer}
+            >
+              <TouchableOpacity style={styles.quickCommandChip} onPress={() => executeAIActionCommand('open home')}>
+                <Text style={styles.quickCommandChipText}>Open Home</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.quickCommandChip} onPress={() => executeAIActionCommand('open feed')}>
+                <Text style={styles.quickCommandChipText}>Open Feed</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.quickCommandChip} onPress={() => executeAIActionCommand('open search')}>
+                <Text style={styles.quickCommandChipText}>Open Search</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.quickCommandChip} onPress={() => executeAIActionCommand('open reels')}>
+                <Text style={styles.quickCommandChipText}>Open Reels</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.quickCommandChip} onPress={() => executeAIActionCommand('open notifications')}>
+                <Text style={styles.quickCommandChipText}>Open Notifications</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.quickCommandChip} onPress={() => executeAIActionCommand('open profile')}>
+                <Text style={styles.quickCommandChipText}>Open Profile</Text>
+              </TouchableOpacity>
+              {isAdminUser && (
+                <TouchableOpacity style={styles.quickCommandChip} onPress={() => executeAIActionCommand('open admin profile')}>
+                  <Text style={styles.quickCommandChipText}>Open Admin Users</Text>
+                </TouchableOpacity>
+              )}
+            </ScrollView>
+          )}
+
           <Animated.View
             style={[
               styles.inputContainer,
@@ -2555,6 +2738,7 @@ export default function ConversationDetailScreen() {
               },
             ]}
           >
+
             {/* Attachment Toggle Button - Only show when keyboard is visible */}
             {isKeyboardVisible && (
               <TouchableOpacity
@@ -2774,7 +2958,7 @@ export default function ConversationDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
   },
@@ -3019,6 +3203,19 @@ const styles = StyleSheet.create({
     gap: 4,
     marginLeft: 4,
   },
+  aiMetaBadge: {
+    marginLeft: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    backgroundColor: 'rgba(127, 127, 127, 0.18)',
+  },
+  aiMetaText: {
+    fontSize: 10,
+    color: colors.text.secondary,
+    fontWeight: '600' as const,
+    textTransform: 'lowercase' as const,
+  },
   aiFeedbackButton: {
     paddingHorizontal: 6,
     paddingVertical: 4,
@@ -3110,6 +3307,41 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.primary,
     borderTopWidth: 1,
     borderTopColor: colors.border.light,
+  },
+  quickCommandsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    paddingRight: 16,
+  },
+  quickCommandsContainer: {
+    backgroundColor: colors.background.primary,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.light,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.light,
+    paddingVertical: 6,
+    minHeight: 56,
+  },
+  quickCommandChip: {
+    backgroundColor: colors.background.secondary,
+    borderWidth: 1,
+    borderColor: colors.secondary + '45',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 20,
+    marginRight: 2,
+    minHeight: 38,
+    justifyContent: 'center',
+  },
+  quickCommandChipText: {
+    color: colors.secondary,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600' as const,
   },
   attachmentToggleButton: {
     width: 40,

@@ -23,6 +23,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
 import ReportContentModal from '@/components/ReportContentModal';
 import PremiumModal from '@/components/PremiumModal';
+import { AdaptiveMediaProfile, getAdaptiveImageUrl, getAdaptiveMediaProfile } from '@/lib/adaptive-media';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -45,11 +46,29 @@ export default function UserProfileScreen() {
   const [showReportModal, setShowReportModal] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [premiumFeature, setPremiumFeature] = useState<{ name?: string; description?: string }>({});
+  const [mediaProfile, setMediaProfile] = useState<AdaptiveMediaProfile | null>(null);
 
   useEffect(() => {
     loadProfile();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load on mount/params change
   }, [params.userId]);
+
+  useEffect(() => {
+    let isMounted = true;
+    void getAdaptiveMediaProfile()
+      .then((profile) => {
+        if (isMounted) setMediaProfile(profile);
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const adaptImage = (url: string | null | undefined, kind: 'avatar' | 'feed' | 'full' = 'feed') => {
+    if (!url || !mediaProfile) return url || '';
+    return getAdaptiveImageUrl(url, mediaProfile, kind);
+  };
 
   const loadProfile = async () => {
     try {
@@ -280,7 +299,7 @@ export default function UserProfileScreen() {
         <View style={styles.heroSection}>
           {primaryPhoto ? (
             <ExpoImage
-              source={{ uri: primaryPhoto.photo_url }}
+              source={{ uri: adaptImage(primaryPhoto.photo_url, 'full') }}
               style={styles.heroImage}
               contentFit="cover"
             />
@@ -648,7 +667,7 @@ export default function UserProfileScreen() {
                     }}
                   >
                     <ExpoImage
-                      source={{ uri: photo.photo_url }}
+                      source={{ uri: adaptImage(photo.photo_url, 'full') }}
                       style={styles.mediaImage}
                       contentFit="cover"
                     />
@@ -686,7 +705,7 @@ export default function UserProfileScreen() {
                   >
                     {video.thumbnail_url ? (
                       <ExpoImage
-                        source={{ uri: video.thumbnail_url }}
+                        source={{ uri: adaptImage(video.thumbnail_url, 'feed') }}
                         style={styles.mediaImage}
                         contentFit="cover"
                       />

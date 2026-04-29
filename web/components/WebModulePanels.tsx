@@ -1314,7 +1314,13 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
 
       const postIds = postRows.map((item: any) => item.id);
       const reelIds = reelRows.map((item: any) => item.id);
-      const authorIds = Array.from(new Set(postRows.map((item: any) => item.user_id).filter(Boolean)));
+      const authorIds: string[] = Array.from(
+        new Set<string>(
+          postRows
+            .map((item: any) => item.user_id)
+            .filter((userId: unknown): userId is string => typeof userId === 'string' && userId.length > 0)
+        )
+      );
       const [postLikesRes, postCommentsRes, reelLikesRes, reelCommentsRes, myPostLikesRes] = await Promise.all([
         postIds.length ? supabase.from('post_likes').select('post_id') .in('post_id', postIds) : Promise.resolve({ data: [] }),
         postIds.length ? supabase.from('comments').select('id,post_id,parent_comment_id,content,created_at,users!comments_user_id_fkey(full_name)').in('post_id', postIds) : Promise.resolve({ data: [] }),

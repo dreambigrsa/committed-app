@@ -1,190 +1,152 @@
 import Link from 'next/link';
-import Image from 'next/image';
 import nextDynamic from 'next/dynamic';
+import { Bell, Briefcase, CheckCircle2, Film, Heart, MessageCircle, Search, Shield, Sparkles, User } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import PremiumDarkHero from '@/components/PremiumDarkHero';
-import { AnimatedSection } from '@/components/AnimatedSection';
-import { stockImages } from '@/lib/stock-images';
+import { PLAY_STORE_URL, APK_DOWNLOAD_URL } from '@/lib/appLinks';
 
-/* Lazy-load below-the-fold sections to reduce initial JS bundle */
-const ProblemSection = nextDynamic(() => import('@/components/ProblemSection'), { ssr: true });
-const SolutionSection = nextDynamic(() => import('@/components/SolutionSection'), { ssr: true });
-const ProductExperienceSection = nextDynamic(() => import('@/components/ProductExperienceSection'), { ssr: true });
-const WebPlatformRoadmapSection = nextDynamic(() => import('@/components/WebPlatformRoadmapSection'), { ssr: true });
 const PublicRelationshipSearch = nextDynamic(() => import('@/components/PublicRelationshipSearch'), { ssr: false });
-const SinglesPreview = nextDynamic(() => import('@/components/SinglesPreview'), { ssr: true });
-const CertificatePreview = nextDynamic(() => import('@/components/CertificatePreview'), { ssr: true });
-const HowItWorksSection = nextDynamic(() => import('@/components/HowItWorksSection'), { ssr: true });
-const TrustSafetySection = nextDynamic(() => import('@/components/TrustSafetySection'), { ssr: true });
-const SupportSection = nextDynamic(() => import('@/components/SupportSection'), { ssr: true });
-const FinalCTASection = nextDynamic(() => import('@/components/FinalCTASection'), { ssr: true });
-
-/* Committed: Trust-first dating & relationship platform. Human, warm, premium, mobile-first. */
 
 export const dynamic = 'force-static';
 
-const singlesItems = [
-  'Create verified profile',
-  'Check if someone is truly single',
-  'Meet & message safely',
-  'Explore community posts',
+const appTabs = [
+  { label: 'Home', icon: Shield },
+  { label: 'Feed', icon: Heart },
+  { label: 'Reels', icon: Film },
+  { label: 'Dating', icon: Sparkles },
+  { label: 'Search', icon: Search },
+  { label: 'Messages', icon: MessageCircle },
+  { label: 'Profile', icon: User },
 ];
 
-const couplesItems = [
-  'Register your relationship',
-  'Digital certificate',
-  'Anniversary reminders',
-  'Protection against duplicate registrations',
+const featureCards = [
+  {
+    icon: Shield,
+    title: 'Register relationships',
+    text: 'Create a verified relationship record with partner confirmation and admin review when needed.',
+  },
+  {
+    icon: Sparkles,
+    title: 'Find love safely',
+    text: 'Dating profiles, likes, matches, preferences, and safer messaging in the same app.',
+  },
+  {
+    icon: Briefcase,
+    title: 'Book professionals',
+    text: 'Connect with approved relationship professionals and mentors when support is needed.',
+  },
 ];
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-[#0b0b14]">
+    <div className="min-h-screen bg-slate-950 text-white">
       <Navbar />
+      <main>
+        <section className="mx-auto grid min-h-[calc(100vh-72px)] max-w-6xl items-center gap-10 px-5 pb-14 pt-24 md:grid-cols-[1fr_420px] md:px-8">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-4 py-2 text-sm font-black text-blue-100">
+              <Heart className="h-4 w-4 fill-pink-500 text-pink-500" />
+              Relationships, dating, community, and support
+            </div>
+            <h1 className="mt-6 max-w-3xl text-5xl font-black tracking-tight sm:text-6xl">
+              Committed
+            </h1>
+            <p className="mt-5 max-w-2xl text-xl leading-8 text-slate-300">
+              Verify relationships, find meaningful love, share community moments, message safely, and get help from trusted professionals.
+            </p>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <Link href="/sign-up" className="rounded-[20px] bg-blue-600 px-7 py-4 text-center text-base font-black text-white shadow-xl shadow-blue-600/25">
+                Create account
+              </Link>
+              <Link href={PLAY_STORE_URL !== '#' ? PLAY_STORE_URL : APK_DOWNLOAD_URL} className="rounded-[20px] border border-white/15 bg-white/10 px-7 py-4 text-center text-base font-black text-white">
+                Download app
+              </Link>
+            </div>
+          </div>
 
-      <main className="overflow-x-hidden">
-        {/* Premium Dark Hero - negative margin pulls it under nav for seamless dark */}
-        <div className="-mt-16 md:-mt-[4.5rem]">
-          <PremiumDarkHero />
-        </div>
-
-        {/* Curved divider */}
-        <div className="relative -mt-px h-16 overflow-hidden bg-[#faf9ff]">
-          <svg className="absolute bottom-0 left-0 w-full" viewBox="0 0 1440 60" preserveAspectRatio="none">
-            <path
-              fill="#faf5ff"
-              d="M0 60V20C360 0 720 0 1080 20 1260 30 1350 40 1440 50V60H0Z"
-            />
-          </svg>
-        </div>
-
-        {/* Section 1 — The Problem (premium, emotional) */}
-        <ProblemSection />
-
-        {/* Section 2 — The Solution (premium, emotional) */}
-        <SolutionSection />
-
-        <ProductExperienceSection />
-
-        <PublicRelationshipSearch />
-
-        <WebPlatformRoadmapSection />
-
-        {/* Curved divider */}
-        <div className="relative h-12 overflow-hidden bg-[#faf9fc]">
-          <svg className="absolute bottom-0 left-0 w-full" viewBox="0 0 1440 48" preserveAspectRatio="none">
-            <path fill="#fdf4ff" d="M0 48V0h1440v24c-240 12-480 24-720 24S480 36 240 48H0Z" />
-          </svg>
-        </div>
-
-        {/* Section 3 — For Singles */}
-        <section id="singles" className="relative overflow-hidden bg-gradient-to-b from-[#fdf4ff] to-[#faf9ff] py-24 md:py-32">
-          <div className="mx-auto max-w-6xl px-6 md:px-10">
-            <div className="grid items-center gap-16 lg:grid-cols-2 lg:gap-20">
-              <AnimatedSection className="order-2 lg:order-1">
-                <h2 className="font-display text-4xl font-bold text-slate-900 sm:text-5xl">For Singles</h2>
-                <ul className="mt-8 space-y-4">
-                  {singlesItems.map((item) => (
-                    <li key={item} className="flex items-center gap-3 text-lg text-slate-600">
-                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-100">
-                        <svg className="h-3.5 w-3.5 text-violet-600" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      </span>
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-8 text-slate-600">Know who&apos;s verified before you fall.</p>
-                <Link
-                  href="/sign-up"
-                  className="btn-glow mt-8 inline-flex min-h-[52px] items-center justify-center rounded-2xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-rose-500 px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-violet-500/30 hover:shadow-violet-500/40"
-                >
-                  Create Verified Profile
-                </Link>
-              </AnimatedSection>
-              <AnimatedSection delay={0.1} className="order-1 lg:order-2">
-                <div className="relative">
-                  <div className="overflow-hidden rounded-3xl shadow-[var(--shadow-float)]">
-                    <Image
-                      src={stockImages.single}
-                      alt="Confident single person"
-                      width={600}
-                      height={400}
-                      sizes="(max-width: 1024px) 100vw, 600px"
-                      className="aspect-[4/3] w-full object-cover"
-                    />
+          <div className="mx-auto w-full max-w-[360px] rounded-[34px] border border-white/10 bg-slate-100 p-3 shadow-2xl shadow-blue-950/40">
+            <div className="overflow-hidden rounded-[28px] bg-slate-50 text-slate-950">
+              <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
+                <div>
+                  <p className="text-xs font-bold text-slate-400">Welcome back,</p>
+                  <p className="text-xl font-black">Committed</p>
+                </div>
+                <div className="grid h-11 w-11 place-items-center rounded-full bg-gradient-to-br from-pink-500 to-blue-600 font-black text-white">C</div>
+              </div>
+              <div className="space-y-3 p-4">
+                <div className="rounded-[24px] bg-blue-600 p-4 text-white">
+                  <Shield className="h-7 w-7" />
+                  <p className="mt-4 text-lg font-black">Relationship Status</p>
+                  <p className="text-sm text-blue-100">Register, verify, and protect your relationship record.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-[20px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+                    <Sparkles className="h-6 w-6 text-blue-600" />
+                    <p className="mt-3 font-black">Dating</p>
                   </div>
-                  <div className="mt-6 lg:absolute lg:bottom-6 lg:right-6 lg:mt-0 lg:max-w-[220px]">
-                    <SinglesPreview />
+                  <div className="rounded-[20px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+                    <Briefcase className="h-6 w-6 text-blue-600" />
+                    <p className="mt-3 font-black">Professionals</p>
                   </div>
                 </div>
-              </AnimatedSection>
+                <div className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+                  <div className="flex items-center gap-3">
+                    <div className="grid h-10 w-10 place-items-center rounded-full bg-pink-100 text-pink-600">
+                      <Bell className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="font-black">One app experience</p>
+                      <p className="text-sm text-slate-500">Feed, reels, messages, dating, and profile.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-7 border-t border-slate-200 bg-white py-2">
+                {appTabs.map(({ label, icon: Icon }) => (
+                  <div key={label} className="flex flex-col items-center gap-1 text-[9px] font-bold text-slate-400">
+                    <Icon className={`h-4 w-4 ${label === 'Dating' ? 'text-blue-600' : ''}`} />
+                    {label}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </section>
 
-        {/* Section 4 — For Couples */}
-        <section id="couples" className="border-t border-slate-200/50 bg-white py-24 md:py-32">
-          <div className="mx-auto max-w-6xl px-6 md:px-10">
-            <div className="grid items-center gap-16 lg:grid-cols-2 lg:gap-20">
-              <AnimatedSection className="order-2 lg:order-2">
-                <h2 className="font-display text-4xl font-bold text-slate-900 sm:text-5xl">For Couples</h2>
-                <ul className="mt-8 space-y-4">
-                  {couplesItems.map((item) => (
-                    <li key={item} className="flex items-center gap-3 text-lg text-slate-600">
-                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-rose-100">
-                        <svg className="h-3.5 w-3.5 text-rose-600" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      </span>
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-8 font-medium text-violet-600">Because &quot;It&apos;s complicated&quot; isn&apos;t a verification status.</p>
-                <Link
-                  href="/sign-up"
-                  className="btn-glow mt-8 inline-flex min-h-[52px] items-center justify-center rounded-2xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-rose-500 px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-violet-500/30 hover:shadow-violet-500/40"
-                >
-                  Register Relationship
-                </Link>
-              </AnimatedSection>
-              <AnimatedSection delay={0.1} className="order-1 lg:order-1">
-                <div className="relative">
-                  <div className="overflow-hidden rounded-3xl shadow-[var(--shadow-float)]">
-                    <Image
-                      src={stockImages.couple}
-                      alt="Happy couple together"
-                      width={600}
-                      height={400}
-                      sizes="(max-width: 1024px) 100vw, 600px"
-                      className="aspect-[4/3] w-full object-cover"
-                    />
-                  </div>
-                  <div className="mt-6 lg:absolute lg:bottom-6 lg:left-6 lg:mt-0 lg:max-w-[240px]">
-                    <CertificatePreview />
-                  </div>
-                </div>
-              </AnimatedSection>
-            </div>
+        <section className="bg-slate-50 py-14 text-slate-950">
+          <div className="mx-auto max-w-6xl px-5 md:px-8">
+            <PublicRelationshipSearch />
           </div>
         </section>
 
-        {/* Section 5 — Trust & Safety (premium, trust-focused) */}
-        <TrustSafetySection />
-
-        {/* Section 6 — Support (premium, emotionally reassuring) */}
-        <SupportSection />
-
-        {/* Section 7 — How It Works (premium emotional timeline) */}
-        <HowItWorksSection />
-
-        {/* Final CTA */}
-        <FinalCTASection />
+        <section className="bg-white py-16 text-slate-950">
+          <div className="mx-auto max-w-6xl px-5 md:px-8">
+            <div className="grid gap-4 md:grid-cols-3">
+              {featureCards.map(({ icon: Icon, title, text }) => (
+                <article key={title} className="rounded-[24px] border border-slate-200 bg-white p-6 shadow-sm">
+                  <Icon className="h-9 w-9 text-blue-600" />
+                  <h2 className="mt-5 text-2xl font-black">{title}</h2>
+                  <p className="mt-3 text-sm leading-6 text-slate-600">{text}</p>
+                </article>
+              ))}
+            </div>
+            <div className="mt-10 rounded-[28px] bg-slate-950 p-6 text-white md:flex md:items-center md:justify-between">
+              <div>
+                <p className="flex items-center gap-2 text-lg font-black">
+                  <CheckCircle2 className="h-6 w-6 text-blue-300" />
+                  Same Committed experience
+                </p>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
+                  Use the app on mobile, open shared links on the web, and keep verification, dating, search, and messaging connected.
+                </p>
+              </div>
+              <Link href="/auth" className="mt-5 inline-flex rounded-[18px] bg-blue-600 px-6 py-3 font-black text-white md:mt-0">
+                Open web app
+              </Link>
+            </div>
+          </div>
+        </section>
       </main>
-
       <Footer />
     </div>
   );

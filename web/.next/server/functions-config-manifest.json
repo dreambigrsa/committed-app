@@ -1,1 +1,0 @@
-{"version":1,"functions":{"/api/auth/send-verification-code":{},"/api/auth/reset-password":{},"/api/auth/request-password-reset":{},"/api/auth/send-verification":{},"/api/auth/verify-email":{},"/api/cron/send-follow-up-emails":{"maxDuration":60},"/":{}}}

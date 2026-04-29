@@ -8,19 +8,19 @@ import WebAppButton from '@/components/WebAppButton';
 
 const phases = [
   {
-    label: 'Now',
-    title: 'Public website + deep links',
-    body: 'Landing, download, shared posts, reels, dating profiles, password reset, email verification, and app-opening routes stay protected.',
+    label: 'Access',
+    title: 'Start on web or mobile',
+    body: 'Visitors can sign up, sign in, verify email, download the app, or open shared content from the same trusted domain.',
   },
   {
-    label: 'Next',
-    title: 'Browser account experience',
-    body: 'Real web sign in/sign up, verify email, legal acceptance, AI consent, settings, and relationship registration.',
+    label: 'Account',
+    title: 'Protected onboarding',
+    body: 'Signed-in users are guided through email verification, required legal documents, and Committed AI consent before entering the product.',
   },
   {
-    label: 'Then',
-    title: 'Full feature parity',
-    body: 'Dating, messages, feed, reels, professionals, promotions, subscriptions, and admin trust tools inside the same website.',
+    label: 'Product',
+    title: 'Feature modules',
+    body: 'Dating, relationship verification, messages, feed, reels, professionals, promotions, settings, and admin tools are organized as browser modules.',
   },
 ];
 
@@ -67,12 +67,12 @@ export default function WebPlatformRoadmapSection() {
               variants={itemVariants(reduced)}
               className="mt-5 font-display text-4xl font-extrabold leading-tight text-slate-950 sm:text-5xl"
             >
-              One domain for the website, app links, and web product.
+              One domain for public pages, shared links, and the web app.
             </motion.h2>
             <motion.p variants={itemVariants(reduced)} className="mt-5 text-lg leading-8 text-slate-600">
-              We can keep `committed.dreambig.org.za` as the public front door and add logged-in product
-              routes under the same Next.js app. The mobile app links keep working because `/post`, `/reel`,
-              `/dating/user-profile`, `/download`, and auth callback routes remain untouched.
+              committed.dreambig.org.za remains the public front door. It also hosts logged-in web routes,
+              while existing mobile deep-link pages for posts, reels, dating profiles, downloads, referrals,
+              password reset, and email verification keep working.
             </motion.p>
 
             <motion.div variants={itemVariants(reduced)} className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -134,7 +134,7 @@ export default function WebPlatformRoadmapSection() {
 
         <div className="mt-10 flex items-center justify-center gap-3 rounded-2xl border border-violet-200 bg-violet-50 px-5 py-4 text-center text-sm font-medium text-violet-900">
           <Workflow className="hidden h-5 w-5 shrink-0 sm:block" />
-          Build the browser app step by step, but preserve the mobile app ecosystem at every step.
+          The website now supports browser entry while preserving the mobile app ecosystem and shared links.
         </div>
       </div>
     </section>

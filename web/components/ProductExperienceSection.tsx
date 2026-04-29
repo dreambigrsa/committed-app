@@ -18,38 +18,38 @@ import { DownloadButton } from '@/components/DownloadCTA';
 const experiences = [
   {
     icon: Heart,
-    title: 'Dating that feels safer',
-    body: 'Verified profiles, intentional matching, likes, matches, dates, and playful ways to start real conversations.',
+    title: 'Dating with intention',
+    body: 'Create a dating profile, set preferences, discover people, react with likes or stars, match when the interest is mutual, and continue the conversation safely.',
     accent: 'from-rose-500 to-pink-500',
   },
   {
     icon: ShieldCheck,
-    title: 'Relationship registry',
-    body: 'Register, verify, search, and protect relationships with privacy controls and clear verification status.',
+    title: 'Relationship verification',
+    body: 'Register a relationship, invite or name a partner, choose privacy, upload verification details, and let trusted review flows confirm the relationship.',
     accent: 'from-sky-500 to-cyan-500',
   },
   {
     icon: MessageCircleHeart,
-    title: 'Messages with support',
-    body: 'Chat naturally, with Committed AI and professional help available when users genuinely need it.',
+    title: 'Messaging and support',
+    body: 'Message matches and connections, receive thoughtful Committed AI support prompts, and get guided access to professionals when deeper help is needed.',
     accent: 'from-violet-500 to-fuchsia-500',
   },
   {
     icon: Newspaper,
-    title: 'Community feed',
-    body: 'Posts, reels, comments, status updates, sharing, boosted promotions, and moments people can engage with.',
+    title: 'Community, posts, and reels',
+    body: 'Share posts, reels, comments, statuses, and promoted content so members can learn, connect, celebrate, and support one another.',
     accent: 'from-amber-500 to-orange-500',
   },
   {
     icon: CalendarHeart,
     title: 'Professionals and bookings',
-    body: 'Therapists, mentors, counselors, session requests, bookings, reviews, and guided support flows.',
+    body: 'Find therapists, mentors, counselors, and relationship professionals, then request sessions, manage availability, reviews, and bookings.',
     accent: 'from-emerald-500 to-teal-500',
   },
   {
     icon: Users,
-    title: 'Admin trust controls',
-    body: 'Approvals, reports, relationship verification, professionals, ads, payments, users, and safety tools.',
+    title: 'Admin trust operations',
+    body: 'Review users, relationships, reports, professional requests, ads, payments, moderation queues, and safety decisions from one operational system.',
     accent: 'from-slate-700 to-slate-950',
   },
 ];
@@ -83,19 +83,18 @@ export default function ProductExperienceSection() {
                 className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm"
               >
                 <Sparkles className="h-4 w-4" />
-                More than a landing page
+                Built for real relationship trust
               </motion.div>
               <motion.h2
                 variants={itemVariants(reduced)}
                 className="mt-5 font-display text-4xl font-extrabold leading-tight text-slate-950 sm:text-5xl"
               >
-                A full trust-first relationship platform, now coming to web.
+                One platform for dating, verification, support, and community.
               </motion.h2>
             </div>
             <motion.p variants={itemVariants(reduced)} className="text-lg leading-8 text-slate-600">
-              The website should show the real product: verified dating, relationship protection, support,
-              community, professionals, and admin trust tools. Users can still download the app, but they can
-              also start from the browser on the same domain.
+              Committed helps people meet intentionally, verify relationship status, protect public trust,
+              get relationship support, and use the same shared links across web and mobile.
             </motion.p>
           </div>
 
@@ -123,7 +122,8 @@ export default function ProductExperienceSection() {
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.22em] text-rose-200">Same domain, same trust</p>
               <p className="mt-2 max-w-2xl text-lg text-slate-200">
-                Keep shared links, app downloads, and deep links working while adding the browser app inside this website.
+                Use Committed in the browser or continue in the mobile app. Shared posts, reels, dating profiles,
+                downloads, and verification links stay on committed.dreambig.org.za.
               </p>
             </div>
             <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">

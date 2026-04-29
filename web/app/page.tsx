@@ -12,6 +12,7 @@ const ProblemSection = nextDynamic(() => import('@/components/ProblemSection'), 
 const SolutionSection = nextDynamic(() => import('@/components/SolutionSection'), { ssr: true });
 const ProductExperienceSection = nextDynamic(() => import('@/components/ProductExperienceSection'), { ssr: true });
 const WebPlatformRoadmapSection = nextDynamic(() => import('@/components/WebPlatformRoadmapSection'), { ssr: true });
+const PublicRelationshipSearch = nextDynamic(() => import('@/components/PublicRelationshipSearch'), { ssr: false });
 const SinglesPreview = nextDynamic(() => import('@/components/SinglesPreview'), { ssr: true });
 const CertificatePreview = nextDynamic(() => import('@/components/CertificatePreview'), { ssr: true });
 const HowItWorksSection = nextDynamic(() => import('@/components/HowItWorksSection'), { ssr: true });
@@ -65,6 +66,8 @@ export default function HomePage() {
         <SolutionSection />
 
         <ProductExperienceSection />
+
+        <PublicRelationshipSearch />
 
         <WebPlatformRoadmapSection />
 

@@ -127,7 +127,7 @@ export default function ProfileScreen() {
   const handleReportFalseRelationship = async (relationshipId: string) => {
     Alert.alert(
       'Report False Relationship',
-      'Are you sure this relationship is incorrect? This will notify administrators for review.',
+      'This sends the relationship to admins for review. It will not hide, remove, or change the relationship unless an admin confirms it is fake.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -138,7 +138,7 @@ export default function ProfileScreen() {
               await reportFalseRelationship(relationshipId);
               Alert.alert(
                 'Report Submitted',
-                'Your report has been submitted. Administrators will review it shortly.',
+                'Your report has been submitted. The relationship will remain visible while administrators review it.',
                 [{ text: 'OK' }]
               );
             } catch (error: any) {

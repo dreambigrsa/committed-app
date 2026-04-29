@@ -17,6 +17,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
 import * as DatingService from '@/lib/dating-service';
 import { Image as ExpoImage } from 'expo-image';
+import { navigateToDatingHome } from '@/lib/dating-navigation';
 
 export default function MatchesScreen() {
   const router = useRouter();
@@ -109,7 +110,7 @@ export default function MatchesScreen() {
           </Text>
           <TouchableOpacity
             style={styles.primaryButton}
-            onPress={() => router.back()}
+            onPress={() => navigateToDatingHome(router)}
           >
             <Text style={styles.primaryButtonText}>Start Swiping</Text>
           </TouchableOpacity>

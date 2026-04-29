@@ -17,6 +17,7 @@ import { Image as ExpoImage } from 'expo-image';
 import { BlurView } from 'expo-blur';
 import { useFocusEffect } from '@react-navigation/native';
 import PremiumModal from '@/components/PremiumModal';
+import { navigateToDatingHome } from '@/lib/dating-navigation';
 
 export default function LikesReceivedScreen() {
   const router = useRouter();
@@ -125,7 +126,7 @@ export default function LikesReceivedScreen() {
           </Text>
           <TouchableOpacity
             style={styles.primaryButton}
-            onPress={() => router.back()}
+            onPress={() => navigateToDatingHome(router)}
           >
             <Text style={styles.primaryButtonText}>Start Swiping</Text>
           </TouchableOpacity>

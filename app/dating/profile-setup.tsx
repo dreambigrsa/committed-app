@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { ArrowLeft, Plus, X, MapPin, Eye, Trash2 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
@@ -23,8 +23,11 @@ import * as Location from 'expo-location';
 import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '@/lib/supabase';
 import { assertMediaWithinLimit, getAdaptiveImageQuality, optimizeImageForUpload } from '@/lib/media-optimizer';
+import { navigateToDatingHome } from '@/lib/dating-navigation';
 
 const RELATIONSHIP_GOALS = ['Long-term', 'Short-term', 'Friendship', 'Marriage', 'Casual'];
+const RELIGION_OPTIONS = ['Christian', 'Muslim', 'Jewish', 'Hindu', 'Buddhist', 'Traditional', 'Spiritual', 'Agnostic', 'Atheist', 'Other', 'Prefer not to say'];
+const EDUCATION_OPTIONS = ['High school', 'Diploma', 'Bachelor\'s', 'Master\'s', 'Doctorate', 'Trade/Technical', 'Self-taught', 'Prefer not to say'];
 
 export default function ProfileSetupScreen() {
   const router = useRouter();
@@ -98,6 +101,11 @@ export default function ProfileSetupScreen() {
   const [whatImLookingFor, setWhatImLookingFor] = useState('');
   const [kids, setKids] = useState<'have_kids' | 'want_kids' | 'dont_want_kids' | 'have_and_want_more' | 'not_sure' | ''>('');
   const [work, setWork] = useState('');
+  const [religion, setReligion] = useState('');
+  const [education, setEducation] = useState('');
+  const [heightCm, setHeightCm] = useState('');
+  const [exercise, setExercise] = useState<'often' | 'sometimes' | 'rarely' | 'prefer_not_to_say' | ''>('');
+  const [pets, setPets] = useState<'have_pets' | 'want_pets' | 'no_pets' | 'prefer_not_to_say' | ''>('');
   const [smoke, setSmoke] = useState<'yes' | 'no' | 'sometimes' | 'prefer_not_to_say' | ''>('');
   const [drink, setDrink] = useState<'yes' | 'no' | 'sometimes' | 'prefer_not_to_say' | ''>('');
   const [prompts, setPrompts] = useState<{ question: string; answer: string }[]>([]);
@@ -114,7 +122,7 @@ export default function ProfileSetupScreen() {
       setAgeRangeMin(existingProfile.age_range_min?.toString() || '18');
       setAgeRangeMax(existingProfile.age_range_max?.toString() || '99');
       setMaxDistanceKm(existingProfile.max_distance_km?.toString() || '50');
-      setIsActive(existingProfile.is_active || true);
+      setIsActive(existingProfile.is_active ?? true);
       
       // Load new comprehensive features
       setHeadline(existingProfile.headline || '');
@@ -132,6 +140,11 @@ export default function ProfileSetupScreen() {
       setWhatImLookingFor(existingProfile.what_im_looking_for || '');
       setKids(existingProfile.kids || '');
       setWork(existingProfile.work || '');
+      setReligion(existingProfile.religion || '');
+      setEducation(existingProfile.education || '');
+      setHeightCm(existingProfile.height_cm?.toString() || '');
+      setExercise(existingProfile.exercise || '');
+      setPets(existingProfile.pets || '');
       setSmoke(existingProfile.smoke || '');
       setDrink(existingProfile.drink || '');
       setPrompts(existingProfile.prompts || []);
@@ -482,17 +495,40 @@ export default function ProfileSetupScreen() {
   const handleSave = async () => {
     try {
       setIsSaving(true);
+      const parsedAge = age ? parseInt(age, 10) : undefined;
+      const parsedMinAge = ageRangeMin ? parseInt(ageRangeMin, 10) : undefined;
+      const parsedMaxAge = ageRangeMax ? parseInt(ageRangeMax, 10) : undefined;
+      const parsedDistance = maxDistanceKm ? parseInt(maxDistanceKm, 10) : undefined;
+      const parsedHeight = heightCm ? parseInt(heightCm, 10) : undefined;
+
+      if (parsedAge !== undefined && (parsedAge < 18 || parsedAge > 99)) {
+        Alert.alert('Check your age', 'Dating profiles must use an age between 18 and 99.');
+        return;
+      }
+      if (parsedMinAge !== undefined && parsedMaxAge !== undefined && parsedMinAge > parsedMaxAge) {
+        Alert.alert('Check age range', 'Minimum age cannot be higher than maximum age.');
+        return;
+      }
+      if (parsedDistance !== undefined && (parsedDistance < 1 || parsedDistance > 500)) {
+        Alert.alert('Check distance', 'Maximum distance must be between 1 and 500 km.');
+        return;
+      }
+      if (parsedHeight !== undefined && (parsedHeight < 90 || parsedHeight > 250)) {
+        Alert.alert('Check height', 'Height must be between 90 and 250 cm.');
+        return;
+      }
+
       await DatingService.createOrUpdateDatingProfile({
         bio,
-        age: age ? parseInt(age) : undefined,
+        age: parsedAge,
         location_city: locationCity || undefined,
         relationship_goals: relationshipGoals,
         interests,
         gender: gender ? gender : undefined,
         looking_for: lookingFor,
-        age_range_min: ageRangeMin ? parseInt(ageRangeMin) : undefined,
-        age_range_max: ageRangeMax ? parseInt(ageRangeMax) : undefined,
-        max_distance_km: maxDistanceKm ? parseInt(maxDistanceKm) : undefined,
+        age_range_min: parsedMinAge,
+        age_range_max: parsedMaxAge,
+        max_distance_km: parsedDistance,
         is_active: isActive,
         headline: headline || undefined,
         intro_voice_url: introVoiceUrl || undefined,
@@ -510,12 +546,17 @@ export default function ProfileSetupScreen() {
         what_im_looking_for: whatImLookingFor || undefined,
         kids: kids || undefined,
         work: work || undefined,
+        religion: religion || undefined,
+        education: education || undefined,
+        height_cm: parsedHeight,
+        exercise: exercise || undefined,
+        pets: pets || undefined,
         smoke: smoke || undefined,
         drink: drink || undefined,
         prompts: prompts.length > 0 ? prompts : undefined,
       });
       Alert.alert('Success', 'Profile updated successfully!');
-      router.back();
+      navigateToDatingHome(router);
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to update profile');
     } finally {
@@ -542,6 +583,7 @@ export default function ProfileSetupScreen() {
   if (loadingProfile) {
     return (
       <SafeAreaView style={styles.container}>
+        <Stack.Screen options={{ headerShown: false }} />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
@@ -551,9 +593,10 @@ export default function ProfileSetupScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.header}>
         <TouchableOpacity 
-          onPress={() => router.back()}
+          onPress={() => navigateToDatingHome(router)}
           style={styles.backButton}
         >
           <ArrowLeft size={24} color={colors.text.primary} />
@@ -1116,6 +1159,92 @@ export default function ProfileSetupScreen() {
           </View>
 
           <View style={styles.preferenceRow}>
+            <Text style={styles.preferenceLabel}>Religion / Faith:</Text>
+            <View style={styles.tagsContainer}>
+              {RELIGION_OPTIONS.map((option) => (
+                <TouchableOpacity
+                  key={option}
+                  style={[styles.tag, religion === option && styles.tagSelected]}
+                  onPress={() => setReligion(religion === option ? '' : option)}
+                >
+                  <Text style={[styles.tagText, religion === option && styles.tagTextSelected]}>
+                    {option}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.preferenceRow}>
+            <Text style={styles.preferenceLabel}>Education:</Text>
+            <View style={styles.tagsContainer}>
+              {EDUCATION_OPTIONS.map((option) => (
+                <TouchableOpacity
+                  key={option}
+                  style={[styles.tag, education === option && styles.tagSelected]}
+                  onPress={() => setEducation(education === option ? '' : option)}
+                >
+                  <Text style={[styles.tagText, education === option && styles.tagTextSelected]}>
+                    {option}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.preferenceRow}>
+            <Text style={styles.preferenceLabel}>Height (cm):</Text>
+            <TextInput
+              style={[styles.textInput, { marginTop: 8 }]}
+              placeholder="e.g., 170"
+              placeholderTextColor={colors.text.tertiary}
+              value={heightCm}
+              onChangeText={setHeightCm}
+              keyboardType="numeric"
+              maxLength={3}
+            />
+          </View>
+
+          <View style={styles.preferenceRow}>
+            <Text style={styles.preferenceLabel}>Exercise:</Text>
+            <View style={styles.radioGroup}>
+              {(['often', 'sometimes', 'rarely', 'prefer_not_to_say'] as const).map((option) => (
+                <TouchableOpacity
+                  key={option}
+                  style={styles.radioOption}
+                  onPress={() => setExercise(exercise === option ? '' : option)}
+                >
+                  <View style={[styles.radio, exercise === option && styles.radioSelected]} />
+                  <Text style={styles.radioLabel}>
+                    {option === 'prefer_not_to_say' ? 'Prefer not to say' : option.charAt(0).toUpperCase() + option.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.preferenceRow}>
+            <Text style={styles.preferenceLabel}>Pets:</Text>
+            <View style={styles.radioGroup}>
+              {[
+                { value: 'have_pets', label: 'Have pets' },
+                { value: 'want_pets', label: 'Want pets' },
+                { value: 'no_pets', label: 'No pets' },
+                { value: 'prefer_not_to_say', label: 'Prefer not to say' },
+              ].map((option) => (
+                <TouchableOpacity
+                  key={option.value}
+                  style={styles.radioOption}
+                  onPress={() => setPets(pets === option.value ? '' : option.value as any)}
+                >
+                  <View style={[styles.radio, pets === option.value && styles.radioSelected]} />
+                  <Text style={styles.radioLabel}>{option.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.preferenceRow}>
             <Text style={styles.preferenceLabel}>Smoke:</Text>
             <View style={styles.radioGroup}>
               {['yes', 'no', 'sometimes', 'prefer_not_to_say'].map((option) => (
@@ -1263,7 +1392,7 @@ export default function ProfileSetupScreen() {
                       try {
                         await DatingService.deleteDatingProfile();
                         Alert.alert('Success', 'Your dating profile has been deleted');
-                        router.back();
+                        navigateToDatingHome(router);
                       } catch (error: any) {
                         Alert.alert('Error', error.message || 'Failed to delete profile');
                       }
@@ -1286,7 +1415,7 @@ const createStyles = (colors: any) =>
   StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: colors.background.primary,
+      backgroundColor: colors.background.secondary,
     },
     header: {
       flexDirection: 'row',
@@ -1294,7 +1423,7 @@ const createStyles = (colors: any) =>
       justifyContent: 'space-between',
       paddingHorizontal: 20,
       paddingTop: 12,
-      paddingBottom: 16,
+      paddingBottom: 14,
       backgroundColor: colors.background.primary,
       borderBottomWidth: 1,
       borderBottomColor: colors.border.light,
@@ -1306,7 +1435,7 @@ const createStyles = (colors: any) =>
     },
     backButton: {
       padding: 8,
-      borderRadius: 12,
+      borderRadius: 10,
       backgroundColor: colors.background.secondary,
     },
     headerCenter: {
@@ -1328,7 +1457,7 @@ const createStyles = (colors: any) =>
     },
     previewHeaderButton: {
       padding: 10,
-      borderRadius: 12,
+      borderRadius: 10,
       backgroundColor: colors.primary + '15',
       borderWidth: 1,
       borderColor: colors.primary + '30',
@@ -1342,14 +1471,14 @@ const createStyles = (colors: any) =>
       flex: 1,
     },
     scrollContent: {
-      padding: 16,
+      padding: 14,
       paddingBottom: 40,
     },
     sectionCard: {
-      backgroundColor: colors.background.secondary,
-      borderRadius: 16,
-      padding: 20,
-      marginBottom: 16,
+      backgroundColor: colors.background.primary,
+      borderRadius: 14,
+      padding: 18,
+      marginBottom: 14,
       borderWidth: 1,
       borderColor: colors.border.light,
       shadowColor: '#000',
@@ -1365,7 +1494,7 @@ const createStyles = (colors: any) =>
       marginBottom: 16,
     },
     sectionTitle: {
-      fontSize: 20,
+      fontSize: 19,
       fontWeight: '700',
       color: colors.text.primary,
       marginBottom: 4,
@@ -1388,9 +1517,9 @@ const createStyles = (colors: any) =>
       marginTop: 8,
     },
     photoItem: {
-      width: 130,
-      height: 180,
-      borderRadius: 16,
+      width: 122,
+      height: 170,
+      borderRadius: 14,
       overflow: 'hidden',
       position: 'relative',
       shadowColor: '#000',
@@ -1440,9 +1569,9 @@ const createStyles = (colors: any) =>
       elevation: 4,
     },
     addPhotoButton: {
-      width: 130,
-      height: 180,
-      borderRadius: 16,
+      width: 122,
+      height: 170,
+      borderRadius: 14,
       borderWidth: 2.5,
       borderColor: colors.primary + '40',
       borderStyle: 'dashed',
@@ -1451,8 +1580,8 @@ const createStyles = (colors: any) =>
       backgroundColor: colors.primary + '08',
     },
     textInput: {
-      backgroundColor: colors.background.primary,
-      borderRadius: 14,
+      backgroundColor: colors.background.secondary,
+      borderRadius: 12,
       padding: 16,
       fontSize: 16,
       color: colors.text.primary,

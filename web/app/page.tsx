@@ -10,6 +10,8 @@ import { stockImages } from '@/lib/stock-images';
 /* Lazy-load below-the-fold sections to reduce initial JS bundle */
 const ProblemSection = nextDynamic(() => import('@/components/ProblemSection'), { ssr: true });
 const SolutionSection = nextDynamic(() => import('@/components/SolutionSection'), { ssr: true });
+const ProductExperienceSection = nextDynamic(() => import('@/components/ProductExperienceSection'), { ssr: true });
+const WebPlatformRoadmapSection = nextDynamic(() => import('@/components/WebPlatformRoadmapSection'), { ssr: true });
 const SinglesPreview = nextDynamic(() => import('@/components/SinglesPreview'), { ssr: true });
 const CertificatePreview = nextDynamic(() => import('@/components/CertificatePreview'), { ssr: true });
 const HowItWorksSection = nextDynamic(() => import('@/components/HowItWorksSection'), { ssr: true });
@@ -61,6 +63,10 @@ export default function HomePage() {
 
         {/* Section 2 — The Solution (premium, emotional) */}
         <SolutionSection />
+
+        <ProductExperienceSection />
+
+        <WebPlatformRoadmapSection />
 
         {/* Curved divider */}
         <div className="relative h-12 overflow-hidden bg-[#faf9fc]">

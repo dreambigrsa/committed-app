@@ -21,6 +21,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useApp } from '@/contexts/AppContext';
 import LoginPromptModal from '@/components/LoginPromptModal';
 import type { Comment } from '@/types';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const DESKTOP_BREAKPOINT = 600;
 
@@ -48,6 +49,7 @@ export default function PostDeepLinkScreen() {
   const { colors } = useTheme();
   const { isAuthenticated } = useAuth();
   const { currentUser, sharePost, addComment } = useApp();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const params = useLocalSearchParams<{ postId?: string }>();
   const postId = (params?.postId != null ? String(params.postId) : '').trim();
@@ -503,7 +505,7 @@ export default function PostDeepLinkScreen() {
                 <View style={styles.spacer} />
               </ScrollView>
               {isAuthenticated && currentUser && (
-                <View style={styles.composer}>
+                <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
                   <TextInput
                     ref={inputRef}
                     style={styles.composerInput}
@@ -526,7 +528,7 @@ export default function PostDeepLinkScreen() {
               )}
             </View>
           </View>
-          <View style={styles.footer}>
+          <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
             <TouchableOpacity style={styles.buttonSecondary} onPress={() => router.replace('/(tabs)/feed' as any)}>
               <Text style={styles.buttonSecondaryText}>Open Feed</Text>
             </TouchableOpacity>

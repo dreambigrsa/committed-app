@@ -31,6 +31,7 @@ export default function AdminUsersScreen() {
   const [restrictions, setRestrictions] = useState<any[]>([]);
   const [sampleUsersCount, setSampleUsersCount] = useState<number>(0);
   const [isManagingSamples, setIsManagingSamples] = useState(false);
+  const [userActionId, setUserActionId] = useState<string | null>(null);
 
   useEffect(() => {
     loadUsers();
@@ -58,38 +59,25 @@ export default function AdminUsersScreen() {
       if (error) throw error;
 
       if (data) {
-        // Check ban status - use database field as primary source
-        // Also check for active "all" restrictions
-        const usersWithBanStatus = await Promise.all(
-          data.map(async (u: any) => {
-            let isBanned = !!u.banned_at;
-            
-            // Also check if user has "all" restriction
-            if (!isBanned) {
-              try {
-                const { data: restrictions } = await supabase
-                  .from('user_restrictions')
-                  .select('restricted_feature')
-                  .eq('user_id', u.id)
-                  .eq('restricted_feature', 'all')
-                  .eq('is_active', true)
-                  .limit(1);
-                
-                isBanned = !!(restrictions && restrictions.length > 0);
-              } catch {
-                // If we can't check restrictions, rely on database field
-                console.log('Could not check restrictions for user:', u.id);
-              }
-            }
-            
-            return {
-              ...u,
-              isBanned,
-            };
-          })
-        );
+        const userIds = data.map((u: any) => u.id).filter(Boolean);
+        let restrictedUserIds = new Set<string>();
 
-        const formattedUsers: (User & { isBanned?: boolean; bannedAt?: string; bannedBy?: string; banReason?: string })[] = usersWithBanStatus.map((u: any) => ({
+        if (userIds.length > 0) {
+          const { data: activeRestrictions, error: restrictionsError } = await supabase
+            .from('user_restrictions')
+            .select('user_id')
+            .in('user_id', userIds)
+            .eq('restricted_feature', 'all')
+            .eq('is_active', true);
+
+          if (restrictionsError) {
+            console.warn('Could not check user restrictions:', restrictionsError);
+          } else {
+            restrictedUserIds = new Set((activeRestrictions || []).map((restriction: any) => restriction.user_id));
+          }
+        }
+
+        const formattedUsers: (User & { isBanned?: boolean; bannedAt?: string; bannedBy?: string; banReason?: string })[] = data.map((u: any) => ({
           id: u.id || '',
           fullName: u.full_name || 'Unknown',
           email: u.email || '',
@@ -102,7 +90,7 @@ export default function AdminUsersScreen() {
             id: u.id_verified || false,
           },
           createdAt: u.created_at || new Date().toISOString(),
-          isBanned: u.isBanned || false,
+          isBanned: !!u.banned_at || restrictedUserIds.has(u.id),
           bannedAt: u.banned_at || undefined,
           bannedBy: u.banned_by || undefined,
           banReason: u.ban_reason || undefined,
@@ -146,15 +134,23 @@ export default function AdminUsersScreen() {
                 }
                 
                 // Remove all active restrictions
-                await supabase
+                const { error: restrictionError } = await supabase
                   .from('user_restrictions')
                   .update({ is_active: false })
                   .eq('user_id', userId)
                   .eq('is_active', true);
+
+                if (restrictionError) throw restrictionError;
+
+                setUsers(prev => prev.map(user => (
+                  user.id === userId
+                    ? { ...(user as any), isBanned: false, bannedAt: undefined, bannedBy: undefined, banReason: undefined }
+                    : user
+                )) as any);
                 
                 Alert.alert('Success', 'User has been unbanned');
                 // Force reload users to update button state
-                await loadUsers();
+                void loadUsers();
               } catch (error: any) {
                 console.error('Unban error:', error);
                 Alert.alert('Error', error?.message || 'Failed to unban user');
@@ -191,7 +187,7 @@ export default function AdminUsersScreen() {
                 }
                 
                 // Add restriction for all features
-                await supabase
+                const { error: restrictionError } = await supabase
                   .from('user_restrictions')
                   .insert({
                     user_id: userId,
@@ -200,10 +196,18 @@ export default function AdminUsersScreen() {
                     restricted_by: currentUser?.id,
                     is_active: true,
                   });
+
+                if (restrictionError) throw restrictionError;
+
+                setUsers(prev => prev.map(user => (
+                  user.id === userId
+                    ? { ...(user as any), isBanned: true, bannedAt: new Date().toISOString(), bannedBy: currentUser?.id, banReason: 'Banned by admin' }
+                    : user
+                )) as any);
                 
                 Alert.alert('Success', 'User has been banned');
                 // Force reload users to update button state
-                await loadUsers();
+                void loadUsers();
               } catch (error: any) {
                 console.error('Ban error:', error);
                 Alert.alert('Error', error?.message || 'Failed to ban user');
@@ -244,20 +248,37 @@ export default function AdminUsersScreen() {
 
   const handleVerifyUser = async (userId: string, verificationType: 'phone' | 'email' | 'id') => {
     try {
+      setUserActionId(`${userId}:${verificationType}`);
       const updateData: any = {};
       if (verificationType === 'phone') updateData.phone_verified = true;
       if (verificationType === 'email') updateData.email_verified = true;
       if (verificationType === 'id') updateData.id_verified = true;
 
-      await supabase
+      const { error } = await supabase
         .from('users')
         .update(updateData)
         .eq('id', userId);
 
+      if (error) throw error;
+
+      setUsers(prev => prev.map(user => (
+        user.id === userId
+          ? {
+              ...user,
+              verifications: {
+                ...user.verifications,
+                [verificationType]: true,
+              },
+            }
+          : user
+      )));
       Alert.alert('Success', `User ${verificationType} verified`);
-      loadUsers();
-    } catch {
-      Alert.alert('Error', 'Failed to verify user');
+      void loadUsers();
+    } catch (error: any) {
+      console.error('Verify user error:', error);
+      Alert.alert('Error', error?.message || 'Failed to verify user');
+    } finally {
+      setUserActionId(null);
     }
   };
 
@@ -322,57 +343,44 @@ export default function AdminUsersScreen() {
       return;
     }
 
+    const updateRole = async (role: User['role']) => {
+      try {
+        setUserActionId(`${userId}:role`);
+        const { error } = await supabase.from('users').update({ role }).eq('id', userId);
+        if (error) throw error;
+
+        setUsers(prev => prev.map(user => (
+          user.id === userId ? { ...user, role } : user
+        )));
+        Alert.alert('Success', `Role updated to ${role.replace('_', ' ')}`);
+        void loadUsers();
+      } catch (error: any) {
+        console.error('Update role error:', error);
+        Alert.alert('Error', error?.message || 'Failed to update role');
+      } finally {
+        setUserActionId(null);
+      }
+    };
+
     Alert.alert(
       'Change User Role',
       'Select new role for this user:',
       [
         {
           text: 'User',
-          onPress: async () => {
-            try {
-              await supabase.from('users').update({ role: 'user' }).eq('id', userId);
-              Alert.alert('Success', 'Role updated to User');
-              loadUsers();
-            } catch {
-              Alert.alert('Error', 'Failed to update role');
-            }
-          },
+          onPress: () => updateRole('user'),
         },
         {
           text: 'Moderator',
-          onPress: async () => {
-            try {
-              await supabase.from('users').update({ role: 'moderator' }).eq('id', userId);
-              Alert.alert('Success', 'Role updated to Moderator');
-              loadUsers();
-            } catch {
-              Alert.alert('Error', 'Failed to update role');
-            }
-          },
+          onPress: () => updateRole('moderator'),
         },
         {
           text: 'Admin',
-          onPress: async () => {
-            try {
-              await supabase.from('users').update({ role: 'admin' }).eq('id', userId);
-              Alert.alert('Success', 'Role updated to Admin');
-              loadUsers();
-            } catch {
-              Alert.alert('Error', 'Failed to update role');
-            }
-          },
+          onPress: () => updateRole('admin'),
         },
         currentUser.role === 'super_admin' && {
           text: 'Super Admin',
-          onPress: async () => {
-            try {
-              await supabase.from('users').update({ role: 'super_admin' }).eq('id', userId);
-              Alert.alert('Success', 'Role updated to Super Admin');
-              loadUsers();
-            } catch {
-              Alert.alert('Error', 'Failed to update role');
-            }
-          },
+          onPress: () => updateRole('super_admin'),
         },
         { text: 'Cancel', style: 'cancel' },
       ].filter(Boolean) as any
@@ -581,28 +589,55 @@ export default function AdminUsersScreen() {
 
                 <View style={styles.verificationsRow}>
                   <TouchableOpacity
-                    style={[styles.verificationBadge, user.verifications.phone && styles.verified]}
+                    style={[
+                      styles.verificationBadge,
+                      user.verifications.phone && styles.verified,
+                      userActionId === `${user.id}:phone` && styles.disabledButton,
+                    ]}
                     onPress={() => !user.verifications.phone && handleVerifyUser(user.id, 'phone')}
+                    disabled={user.verifications.phone || userActionId === `${user.id}:phone`}
                   >
-                    <Text style={styles.verificationText}>
-                      Phone {user.verifications.phone ? '✓' : '✗'}
-                    </Text>
+                    {userActionId === `${user.id}:phone` ? (
+                      <ActivityIndicator size="small" color={colors.text.primary} />
+                    ) : (
+                      <Text style={styles.verificationText}>
+                        Phone {user.verifications.phone ? 'OK' : 'X'}
+                      </Text>
+                    )}
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.verificationBadge, user.verifications.email && styles.verified]}
+                    style={[
+                      styles.verificationBadge,
+                      user.verifications.email && styles.verified,
+                      userActionId === `${user.id}:email` && styles.disabledButton,
+                    ]}
                     onPress={() => !user.verifications.email && handleVerifyUser(user.id, 'email')}
+                    disabled={user.verifications.email || userActionId === `${user.id}:email`}
                   >
-                    <Text style={styles.verificationText}>
-                      Email {user.verifications.email ? '✓' : '✗'}
-                    </Text>
+                    {userActionId === `${user.id}:email` ? (
+                      <ActivityIndicator size="small" color={colors.text.primary} />
+                    ) : (
+                      <Text style={styles.verificationText}>
+                        Email {user.verifications.email ? 'OK' : 'X'}
+                      </Text>
+                    )}
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.verificationBadge, user.verifications.id && styles.verified]}
+                    style={[
+                      styles.verificationBadge,
+                      user.verifications.id && styles.verified,
+                      userActionId === `${user.id}:id` && styles.disabledButton,
+                    ]}
                     onPress={() => !user.verifications.id && handleVerifyUser(user.id, 'id')}
+                    disabled={user.verifications.id || userActionId === `${user.id}:id`}
                   >
-                    <Text style={styles.verificationText}>
-                      ID {user.verifications.id ? '✓' : '✗'}
-                    </Text>
+                    {userActionId === `${user.id}:id` ? (
+                      <ActivityIndicator size="small" color={colors.text.primary} />
+                    ) : (
+                      <Text style={styles.verificationText}>
+                        ID {user.verifications.id ? 'OK' : 'X'}
+                      </Text>
+                    )}
                   </TouchableOpacity>
                 </View>
 
@@ -611,10 +646,15 @@ export default function AdminUsersScreen() {
                     <View style={styles.userActions}>
                       {currentUser.role === 'super_admin' && (
                         <TouchableOpacity
-                          style={[styles.actionButton, styles.editButton]}
+                          style={[styles.actionButton, styles.editButton, userActionId === `${user.id}:role` && styles.disabledButton]}
                           onPress={() => handleChangeRole(user.id, user.role)}
+                          disabled={userActionId === `${user.id}:role`}
                         >
-                          <Edit2 size={16} color={colors.text.white} />
+                          {userActionId === `${user.id}:role` ? (
+                            <ActivityIndicator size="small" color={colors.text.white} />
+                          ) : (
+                            <Edit2 size={16} color={colors.text.white} />
+                          )}
                           <Text style={styles.actionButtonText}>Role</Text>
                         </TouchableOpacity>
                       )}

@@ -16,6 +16,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import * as DatingService from '@/lib/dating-service';
 import * as Location from 'expo-location';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { navigateToDatingHome } from '@/lib/dating-navigation';
 
 const DEFAULT_DRESS_CODES = ['casual', 'smart_casual', 'formal', 'beach', 'outdoor'];
 const DEFAULT_BUDGET_RANGES = ['low', 'medium', 'high'];
@@ -32,7 +33,6 @@ export default function CreateDateRequestScreen() {
   const [dateOptions, setDateOptions] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [, setShowMatchSelector] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -48,8 +48,8 @@ export default function CreateDateRequestScreen() {
           const foundMatch = matchesData?.find((m: any) => m.id === matchId);
           setMatch(foundMatch);
         } else if (matchesData && matchesData.length > 0) {
-          // If no matchId provided but user has matches, show selector
-          setShowMatchSelector(true);
+          // If no matchId is provided, default to the newest match so the form is usable.
+          setMatch(matchesData[0]);
         }
         
         setDateOptions(optionsData);
@@ -190,7 +190,7 @@ export default function CreateDateRequestScreen() {
       });
 
       Alert.alert('Success', 'Date request sent!', [
-        { text: 'OK', onPress: () => router.back() },
+        { text: 'OK', onPress: () => navigateToDatingHome(router) },
       ]);
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to create date request');

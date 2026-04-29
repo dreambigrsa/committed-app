@@ -16,10 +16,10 @@ import { buildPostLink, buildReelLink } from '@/lib/deep-link-service';
 import { getStoredReferralCode, clearStoredReferralCode } from '@/lib/referral-storage';
 
 /** Reject if Supabase (or any) promise hangs — common on slow mobile networks. */
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
-    promise.then(
+    Promise.resolve(promise).then(
       (v) => {
         clearTimeout(t);
         resolve(v);
@@ -32,6 +32,48 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   });
 }
 
+async function endActiveRelationshipRows(relationshipId: string, endDate: string) {
+  const { data: relationship, error: relationshipError } = await supabase
+    .from('relationships')
+    .select('id,user_id,partner_user_id')
+    .eq('id', relationshipId)
+    .maybeSingle();
+
+  if (relationshipError) throw relationshipError;
+  if (!relationship) throw new Error('Relationship not found');
+
+  const relationshipIds = [relationship.id];
+  if (relationship.user_id && relationship.partner_user_id) {
+    const { data: reciprocalRows, error: reciprocalError } = await supabase
+      .from('relationships')
+      .select('id')
+      .eq('user_id', relationship.partner_user_id)
+      .eq('partner_user_id', relationship.user_id)
+      .in('status', ['pending', 'verified']);
+
+    if (reciprocalError) throw reciprocalError;
+    reciprocalRows?.forEach((row: any) => {
+      if (row.id && !relationshipIds.includes(row.id)) relationshipIds.push(row.id);
+    });
+  }
+
+  const { data: endedRows, error: endError } = await supabase
+    .from('relationships')
+    .update({
+      status: 'ended',
+      end_date: endDate,
+    })
+    .in('id', relationshipIds)
+    .select('id,status,end_date,user_id,partner_user_id');
+
+  if (endError) throw endError;
+  if (!endedRows || endedRows.length === 0) {
+    throw new Error('No relationship rows were ended. Relationship update permission may be missing.');
+  }
+
+  return { relationship, endedRows };
+}
+
 const STATUS_CACHE_TTL_MS = 60 * 1000;
 const STATUS_HEARTBEAT_MS = 2 * 60 * 1000;
 const NOTIFICATION_POLL_MS = 45 * 1000;
@@ -41,7 +83,7 @@ const COMMITTED_AI_EMAIL = 'ai@committed.app';
 export const [AppContext, useApp] = createContextHook(() => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const { user: authUser, session: authSession, syncAuthState, authLoading, authInitialized } = useAuth();
+  const { user: authUser, session: authSession, syncAuthState, authLoading, authInitialized, signOut: authSignOut } = useAuth();
   const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [relationshipRequests, setRelationshipRequests] = useState<RelationshipRequest[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
@@ -66,9 +108,11 @@ export const [AppContext, useApp] = createContextHook(() => {
   const notificationPollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const setupRealtimeSubscriptionsRef = useRef<((userId: string) => void) | null>(null);
   const cacheHydrationInFlightRef = useRef<Record<string, boolean>>({});
+  const cacheWriteTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const [userStatuses, setUserStatuses] = useState<Record<string, UserStatus>>({}); // userId -> UserStatus
   const statusUpdateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const userStatusesRef = useRef<Record<string, UserStatus>>({});
   const userStatusFetchedAtRef = useRef<Record<string, number>>({});
   const [statusRealtimeChannels, setStatusRealtimeChannels] = useState<RealtimeChannel[]>([]);
   const isLoggingOutRef = useRef<boolean>(false); // Track if logout is in progress
@@ -82,8 +126,19 @@ export const [AppContext, useApp] = createContextHook(() => {
   const authEmptyReloadAttemptsRef = useRef<Record<string, number>>({});
   const authBootstrapInFlightRef = useRef<boolean>(false);
   const lastAuthBootstrapUserRef = useRef<string | null>(null);
+  const initialActiveStatusUserRef = useRef<string | null>(null);
   /** Monotonic id for loadUserData — avoids isLoading stuck/races when session object changes often. */
   const loadUserDataGenerationRef = useRef(0);
+
+  useEffect(() => {
+    userStatusesRef.current = userStatuses;
+  }, [userStatuses]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      initialActiveStatusUserRef.current = null;
+    }
+  }, [currentUser?.id]);
 
   const getCacheKey = useCallback((userId: string, section: string) => {
     return `${CACHE_PREFIX}${userId}:${section}`;
@@ -96,6 +151,19 @@ export const [AppContext, useApp] = createContextHook(() => {
       // Cache write failures should never block app flow.
     }
   }, [getCacheKey]);
+
+  const writeCacheDebounced = useCallback((userId: string, section: string, value: unknown, delayMs = 500) => {
+    const timerKey = `${userId}:${section}`;
+    const existingTimer = cacheWriteTimersRef.current[timerKey];
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+
+    cacheWriteTimersRef.current[timerKey] = setTimeout(() => {
+      delete cacheWriteTimersRef.current[timerKey];
+      writeCache(userId, section, value).catch(() => {});
+    }, delayMs);
+  }, [writeCache]);
 
   const readCache = useCallback(async <T,>(userId: string, section: string): Promise<T | null> => {
     try {
@@ -135,38 +203,38 @@ export const [AppContext, useApp] = createContextHook(() => {
   useEffect(() => {
     if (!cacheUserId || currentUser?.id !== cacheUserId) return;
     if (cacheHydrationInFlightRef.current[cacheUserId]) return;
-    writeCache(cacheUserId, 'currentUser', currentUser).catch(() => {});
-  }, [cacheUserId, currentUser, writeCache]);
+    writeCacheDebounced(cacheUserId, 'currentUser', currentUser, 200);
+  }, [cacheUserId, currentUser, writeCacheDebounced]);
 
   useEffect(() => {
     if (!cacheUserId || currentUser?.id !== cacheUserId) return;
     if (cacheHydrationInFlightRef.current[cacheUserId]) return;
-    writeCache(cacheUserId, 'posts', posts).catch(() => {});
-  }, [cacheUserId, currentUser?.id, posts, writeCache]);
+    writeCacheDebounced(cacheUserId, 'posts', posts);
+  }, [cacheUserId, currentUser?.id, posts, writeCacheDebounced]);
 
   useEffect(() => {
     if (!cacheUserId || currentUser?.id !== cacheUserId) return;
     if (cacheHydrationInFlightRef.current[cacheUserId]) return;
-    writeCache(cacheUserId, 'reels', reels).catch(() => {});
-  }, [cacheUserId, currentUser?.id, reels, writeCache]);
+    writeCacheDebounced(cacheUserId, 'reels', reels);
+  }, [cacheUserId, currentUser?.id, reels, writeCacheDebounced]);
 
   useEffect(() => {
     if (!cacheUserId || currentUser?.id !== cacheUserId) return;
     if (cacheHydrationInFlightRef.current[cacheUserId]) return;
-    writeCache(cacheUserId, 'notifications', notifications).catch(() => {});
-  }, [cacheUserId, currentUser?.id, notifications, writeCache]);
+    writeCacheDebounced(cacheUserId, 'notifications', notifications);
+  }, [cacheUserId, currentUser?.id, notifications, writeCacheDebounced]);
 
   useEffect(() => {
     if (!cacheUserId || currentUser?.id !== cacheUserId) return;
     if (cacheHydrationInFlightRef.current[cacheUserId]) return;
-    writeCache(cacheUserId, 'conversations', conversations).catch(() => {});
-  }, [cacheUserId, currentUser?.id, conversations, writeCache]);
+    writeCacheDebounced(cacheUserId, 'conversations', conversations);
+  }, [cacheUserId, currentUser?.id, conversations, writeCacheDebounced]);
 
   useEffect(() => {
     if (!cacheUserId || currentUser?.id !== cacheUserId) return;
     if (cacheHydrationInFlightRef.current[cacheUserId]) return;
-    writeCache(cacheUserId, 'messages', messages).catch(() => {});
-  }, [cacheUserId, currentUser?.id, messages, writeCache]);
+    writeCacheDebounced(cacheUserId, 'messages', messages, 800);
+  }, [cacheUserId, currentUser?.id, messages, writeCacheDebounced]);
 
   // Ban modal state
   const [banModalVisible, setBanModalVisible] = useState(false);
@@ -228,6 +296,12 @@ export const [AppContext, useApp] = createContextHook(() => {
 
     if (!authUser?.id) {
       lastLoadedAuthUserIdRef.current = null;
+      if (isLoggingOutRef.current) {
+        setCurrentUser(null);
+        setSession(null);
+        setIsLoading(false);
+        return;
+      }
       setIsLoading(true);
       if (authRecoveryInFlightRef.current) return;
       authRecoveryInFlightRef.current = true;
@@ -420,6 +494,10 @@ export const [AppContext, useApp] = createContextHook(() => {
         } else {
           throw userFetchErr;
         }
+      }
+
+      if (loadUserDataGenerationRef.current !== gen || isLoggingOutRef.current) {
+        return;
       }
 
       if (userError && userError.code === 'PGRST116') {
@@ -851,7 +929,8 @@ export const [AppContext, useApp] = createContextHook(() => {
           participant_users:participant_ids
         `)
         .contains('participant_ids', [userId])
-        .order('last_message_at', { ascending: false });
+        .order('last_message_at', { ascending: false })
+        .limit(50);
 
       if (conversationsData && conversationsData.length > 0) {
         // Load messages to calculate accurate last messages
@@ -862,7 +941,7 @@ export const [AppContext, useApp] = createContextHook(() => {
           .select('*')
           .in('conversation_id', conversationIds)
           .order('created_at', { ascending: false })
-          .limit(conversationIds.length * 100); // Limit initial load for performance
+          .limit(Math.min(conversationIds.length * 50, 500)); // Keep startup bounded for performance
         
         // Reverse to get chronological order after limiting
         const sortedMessages = messagesData ? [...messagesData].reverse() : [];
@@ -978,26 +1057,45 @@ export const [AppContext, useApp] = createContextHook(() => {
         markStage('conversations_loaded');
       }
 
-      const currentPostIds = (uniquePostsData || []).map((p: any) => p.id);
-      const { data: commentsData } = currentPostIds.length > 0
-        ? await supabase
-            .from('comments')
-            .select(`
-              *,
-              users!comments_user_id_fkey(full_name, profile_picture),
-              stickers!comments_sticker_id_fkey(image_url, is_animated)
-            `)
-            .in('post_id', currentPostIds)
-            .order('created_at', { ascending: true })
-        : { data: [] as any[] };
+      setupRealtimeSubscriptions(userId);
+      markStage('realtime_subscriptions_ready');
 
-      const commentIds = (commentsData || []).map((c: any) => c.id);
-      const { data: commentLikesData } = commentIds.length > 0
-        ? await supabase
-            .from('comment_likes')
-            .select('comment_id, user_id')
-            .in('comment_id', commentIds)
-        : { data: [] as any[] };
+      const currentPostIds = (uniquePostsData || []).map((p: any) => p.id);
+      let commentsData: any[] = [];
+      let commentLikesData: any[] = [];
+      try {
+        const commentsResult = currentPostIds.length > 0
+          ? await withTimeout(
+              supabase
+                .from('comments')
+                .select(`
+                  *,
+                  users!comments_user_id_fkey(full_name, profile_picture),
+                  stickers!comments_sticker_id_fkey(image_url, is_animated)
+                `)
+                .in('post_id', currentPostIds)
+                .order('created_at', { ascending: true }),
+              8000,
+              'initial_post_comments_fetch'
+            )
+          : { data: [] as any[] };
+        commentsData = commentsResult.data || [];
+
+        const commentIds = commentsData.map((c: any) => c.id);
+        const likesResult = commentIds.length > 0
+          ? await withTimeout(
+              supabase
+                .from('comment_likes')
+                .select('comment_id, user_id')
+                .in('comment_id', commentIds),
+              5000,
+              'initial_post_comment_likes_fetch'
+            )
+          : { data: [] as any[] };
+        commentLikesData = likesResult.data || [];
+      } catch (commentLoadError) {
+        if (__DEV__) console.warn('[AppContext] initial post comments skipped:', commentLoadError);
+      }
 
       if (commentsData) {
         // Create a map of comment likes
@@ -1123,25 +1221,41 @@ export const [AppContext, useApp] = createContextHook(() => {
       }
 
       const currentReelIds = (reelsData || []).map((r: any) => r.id);
-      const { data: reelCommentsData } = currentReelIds.length > 0
-        ? await supabase
-            .from('reel_comments')
-            .select(`
-              *,
-              users!reel_comments_user_id_fkey(full_name, profile_picture),
-              stickers!reel_comments_sticker_id_fkey(image_url, is_animated)
-            `)
-            .in('reel_id', currentReelIds)
-            .order('created_at', { ascending: true })
-        : { data: [] as any[] };
+      let reelCommentsData: any[] = [];
+      let reelCommentLikesData: any[] = [];
+      try {
+        const reelCommentsResult = currentReelIds.length > 0
+          ? await withTimeout(
+              supabase
+                .from('reel_comments')
+                .select(`
+                  *,
+                  users!reel_comments_user_id_fkey(full_name, profile_picture),
+                  stickers!reel_comments_sticker_id_fkey(image_url, is_animated)
+                `)
+                .in('reel_id', currentReelIds)
+                .order('created_at', { ascending: true }),
+              8000,
+              'initial_reel_comments_fetch'
+            )
+          : { data: [] as any[] };
+        reelCommentsData = reelCommentsResult.data || [];
 
-      const reelCommentIds = (reelCommentsData || []).map((c: any) => c.id);
-      const { data: reelCommentLikesData } = reelCommentIds.length > 0
-        ? await supabase
-            .from('reel_comment_likes')
-            .select('comment_id, user_id')
-            .in('comment_id', reelCommentIds)
-        : { data: [] as any[] };
+        const reelCommentIds = reelCommentsData.map((c: any) => c.id);
+        const reelLikesResult = reelCommentIds.length > 0
+          ? await withTimeout(
+              supabase
+                .from('reel_comment_likes')
+                .select('comment_id, user_id')
+                .in('comment_id', reelCommentIds),
+              5000,
+              'initial_reel_comment_likes_fetch'
+            )
+          : { data: [] as any[] };
+        reelCommentLikesData = reelLikesResult.data || [];
+      } catch (reelCommentLoadError) {
+        if (__DEV__) console.warn('[AppContext] initial reel comments skipped:', reelCommentLoadError);
+      }
 
       if (reelCommentsData) {
         // Create a map of comment likes
@@ -1201,9 +1315,6 @@ export const [AppContext, useApp] = createContextHook(() => {
         setReelComments(commentsByReel);
         markStage('reel_comments_loaded');
       }
-
-      setupRealtimeSubscriptions(userId);
-      markStage('realtime_subscriptions_ready');
 
       if (__DEV__) {
         console.log(
@@ -1586,7 +1697,7 @@ export const [AppContext, useApp] = createContextHook(() => {
         const userId = currentUser?.id;
         if (userId) {
           const now = new Date().toISOString();
-          const existing = userStatuses[userId];
+          const existing = userStatusesRef.current[userId];
           await supabase
             .from('user_status')
             .upsert({
@@ -1712,7 +1823,7 @@ export const [AppContext, useApp] = createContextHook(() => {
       // Reset logout flag even on error
       isLoggingOutRef.current = false;
     }
-  }, [statusRealtimeChannels, currentUser?.id, userStatuses]);
+  }, [statusRealtimeChannels, currentUser?.id]);
 
   const deleteAccount = useCallback(async () => {
     if (!currentUser) {
@@ -1720,10 +1831,38 @@ export const [AppContext, useApp] = createContextHook(() => {
     }
 
     try {
-      // Call the database function to delete the account
-      // This will delete the auth user, which cascades to delete all related data
-      // due to ON DELETE CASCADE constraints in the schema
-      const { error } = await supabase.rpc('delete_user_account');
+      isLoggingOutRef.current = true;
+      loadUserDataGenerationRef.current += 1;
+
+      subscriptionsRef.current.forEach(channel => {
+        try {
+          supabase.removeChannel(channel);
+        } catch {}
+      });
+      subscriptionsRef.current = [];
+
+      statusRealtimeChannels.forEach(channel => {
+        try {
+          supabase.removeChannel(channel);
+        } catch {}
+      });
+      setStatusRealtimeChannels([]);
+
+      if (notificationPollIntervalRef.current) {
+        clearInterval(notificationPollIntervalRef.current);
+        notificationPollIntervalRef.current = null;
+      }
+
+      if (statusUpdateIntervalRef.current) {
+        clearInterval(statusUpdateIntervalRef.current);
+        statusUpdateIntervalRef.current = null;
+      }
+
+      const { error } = await withTimeout(
+        supabase.rpc('delete_user_account'),
+        30000,
+        'delete_account'
+      );
 
       if (error) {
         console.error('Delete account error:', error);
@@ -1747,16 +1886,26 @@ export const [AppContext, useApp] = createContextHook(() => {
       setCertificates([]);
       setAnniversaries([]);
       setReelComments({});
+      setLegalAcceptanceStatus(null);
+      setHasCompletedOnboarding(null);
+      setUserStatuses({});
+      loadUserDataGenerationRef.current += 1;
+      lastLoadedAuthUserIdRef.current = null;
 
-      // Sign out to clear auth session
-      await supabase.auth.signOut();
+      await withTimeout(authSignOut(), 12000, 'delete_account_signout').catch((error) => {
+        console.warn('Sign out after account deletion did not complete:', error?.message || error);
+        setCurrentUser(null);
+        setSession(null);
+      });
 
+      isLoggingOutRef.current = false;
       return true;
     } catch (error: any) {
+      isLoggingOutRef.current = false;
       console.error('Delete account error:', error);
       throw error;
     }
-  }, [currentUser]);
+  }, [currentUser, statusRealtimeChannels, authSignOut]);
 
   const resetPassword = useCallback(async (email: string) => {
     if (__DEV__) console.log('[resetPassword] email:', email);
@@ -2229,7 +2378,9 @@ export const [AppContext, useApp] = createContextHook(() => {
     partnerFacePhoto?: string,
     partnerDateOfBirthMonth?: number,
     partnerDateOfBirthYear?: number,
-    partnerCity?: string
+    partnerCity?: string,
+    relationshipStartDate?: string,
+    privacyLevel: Relationship['privacyLevel'] = 'public'
   ) => {
     if (!currentUser) return null;
     
@@ -2355,7 +2506,8 @@ export const [AppContext, useApp] = createContextHook(() => {
           partner_user_id: partnerData?.id,
           type,
           status: 'pending',
-          privacy_level: 'public',
+          start_date: relationshipStartDate || new Date().toISOString(),
+          privacy_level: privacyLevel,
           partner_face_photo: partnerFacePhoto,
           partner_date_of_birth_month: partnerDateOfBirthMonth,
           partner_date_of_birth_year: partnerDateOfBirthYear,
@@ -2412,7 +2564,7 @@ export const [AppContext, useApp] = createContextHook(() => {
         type,
         status: 'pending',
         startDate: relationshipData.start_date,
-        privacyLevel: 'public',
+        privacyLevel,
         partnerFacePhoto: relationshipData.partner_face_photo,
         partnerDateOfBirthMonth: relationshipData.partner_date_of_birth_month,
         partnerDateOfBirthYear: relationshipData.partner_date_of_birth_year,
@@ -2436,7 +2588,7 @@ export const [AppContext, useApp] = createContextHook(() => {
       return newRelationship;
     } catch (error) {
       console.error('Create relationship error:', error);
-      return null;
+      throw error;
     }
   }, [currentUser, refreshRelationships, createNotification]);
 
@@ -2444,58 +2596,53 @@ export const [AppContext, useApp] = createContextHook(() => {
     if (!currentUser) return;
     
     try {
-      const { error } = await supabase
-        .from('relationship_requests')
-        .update({ status: 'accepted' })
-        .eq('id', requestId);
-
-      if (error) {
-        // If offline, queue for later sync
-        if (error.message?.includes('network') || error.message?.includes('fetch')) {
-          await queueRelationshipChange({
-            type: 'accept',
-            relationshipId: requestId,
-            data: { status: 'accepted' },
-          });
-          throw new Error('Request acceptance queued for sync. Will be processed when connection is restored.');
-        }
-        throw error;
-      }
-
-      const { data: request } = await supabase
+      const { data: request, error: requestFetchError } = await supabase
         .from('relationship_requests')
         .select('id,from_user_id,relationship_type')
         .eq('id', requestId)
         .single();
 
+      if (requestFetchError) throw requestFetchError;
+
       if (request) {
         // Get the requester's relationship record to get all details
-        const { data: requesterRelationship } = await supabase
+        const { data: requesterRelationship, error: requesterRelationshipError } = await supabase
           .from('relationships')
-          .select('start_date,privacy_level,partner_face_photo,partner_date_of_birth_month,partner_date_of_birth_year,partner_city')
+          .select('id,start_date,privacy_level,partner_face_photo,partner_date_of_birth_month,partner_date_of_birth_year,partner_city')
           .eq('user_id', request.from_user_id)
           .in('status', ['pending', 'verified'])
           .single();
 
+        if (requesterRelationshipError) throw requesterRelationshipError;
+
         // Get the requester's user info (name, phone)
-        const { data: requesterUser } = await supabase
+        const { data: requesterUser, error: requesterUserError } = await supabase
           .from('users')
           .select('id, full_name, phone_number')
           .eq('id', request.from_user_id)
           .single();
 
+        if (requesterUserError) throw requesterUserError;
+
         if (requesterRelationship && requesterUser) {
           const verifiedDate = new Date().toISOString();
 
           // Update the requester's relationship record
-        await supabase
-          .from('relationships')
-          .update({
-            status: 'verified',
+          const { data: requesterUpdateData, error: requesterUpdateError } = await supabase
+            .from('relationships')
+            .update({
+              status: 'verified',
               verified_date: verifiedDate,
-            partner_user_id: currentUser.id,
-          })
-          .eq('user_id', request.from_user_id);
+              partner_user_id: currentUser.id,
+            })
+            .eq('id', requesterRelationship.id)
+            .select('id,status,verified_date')
+            .maybeSingle();
+
+          if (requesterUpdateError) throw requesterUpdateError;
+          if (!requesterUpdateData) {
+            throw new Error('Requester relationship was not updated. Relationship update permission may be missing.');
+          }
 
           // Check if accepter already has a relationship record
           const { data: existingAccepterRelationship } = await supabase
@@ -2507,7 +2654,7 @@ export const [AppContext, useApp] = createContextHook(() => {
 
           if (existingAccepterRelationship) {
             // Update existing relationship record for accepter
-            await supabase
+            const { data: accepterUpdateData, error: accepterUpdateError } = await supabase
               .from('relationships')
               .update({
                 status: 'verified',
@@ -2519,10 +2666,17 @@ export const [AppContext, useApp] = createContextHook(() => {
                 start_date: requesterRelationship.start_date,
                 privacy_level: requesterRelationship.privacy_level,
               })
-              .eq('user_id', currentUser.id);
+              .eq('id', existingAccepterRelationship.id)
+              .select('id,status,verified_date')
+              .maybeSingle();
+
+            if (accepterUpdateError) throw accepterUpdateError;
+            if (!accepterUpdateData) {
+              throw new Error('Your relationship record was not updated. Please try again.');
+            }
           } else {
             // Create new relationship record for accepter
-            await supabase
+            const { data: accepterInsertData, error: accepterInsertError } = await supabase
               .from('relationships')
               .insert({
                 user_id: currentUser.id,
@@ -2538,17 +2692,46 @@ export const [AppContext, useApp] = createContextHook(() => {
                 partner_date_of_birth_month: requesterRelationship.partner_date_of_birth_month,
                 partner_date_of_birth_year: requesterRelationship.partner_date_of_birth_year,
                 partner_city: requesterRelationship.partner_city,
-              });
+              })
+              .select('id,status,verified_date')
+              .single();
+
+            if (accepterInsertError) throw accepterInsertError;
+            if (!accepterInsertData) {
+              throw new Error('Your relationship record was not created. Please try again.');
+            }
           }
 
-        // Send notification to the requester that the relationship was verified
-        await createNotification(
-          request.from_user_id,
-          'relationship_verified',
-          'Relationship Verified',
-          `${currentUser.fullName} accepted your ${request.relationship_type} relationship request`,
-          { relationshipId: request.id }
-        );
+          const { data: requestAcceptData, error: requestAcceptError } = await supabase
+            .from('relationship_requests')
+            .update({ status: 'accepted' })
+            .eq('id', requestId)
+            .select('id,status')
+            .maybeSingle();
+
+          if (requestAcceptError) {
+            if (requestAcceptError.message?.includes('network') || requestAcceptError.message?.includes('fetch')) {
+              await queueRelationshipChange({
+                type: 'accept',
+                relationshipId: requestId,
+                data: { status: 'accepted' },
+              });
+              throw new Error('Request acceptance queued for sync. Will be processed when connection is restored.');
+            }
+            throw requestAcceptError;
+          }
+          if (!requestAcceptData) {
+            throw new Error('Relationship request was not marked accepted. Please try again.');
+          }
+
+          // Send notification to the requester that the relationship was verified
+          await createNotification(
+            request.from_user_id,
+            'relationship_verified',
+            'Relationship Verified',
+            `${currentUser.fullName} accepted your ${request.relationship_type} relationship request`,
+            { relationshipId: request.id }
+          );
         }
       }
 
@@ -2561,10 +2744,17 @@ export const [AppContext, useApp] = createContextHook(() => {
 
   const rejectRelationshipRequest = useCallback(async (requestId: string) => {
     try {
-      await supabase
+      const { data, error } = await supabase
         .from('relationship_requests')
         .update({ status: 'rejected' })
-        .eq('id', requestId);
+        .eq('id', requestId)
+        .select('id,status')
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!data) {
+        throw new Error('Relationship request was not rejected. Please try again.');
+      }
 
       // Refresh relationships to update request list
       await refreshRelationships();
@@ -2604,11 +2794,47 @@ export const [AppContext, useApp] = createContextHook(() => {
           // Get user's relationship
           const { data: userRel } = await supabase
             .from('relationships')
-            .select('type, status, partner_name, partner_phone, partner_user_id, partner_face_photo')
-            .eq('user_id', u.id)
+            .select(`
+              id,
+              user_id,
+              partner_user_id,
+              type,
+              status,
+              partner_name,
+              partner_phone,
+              partner_face_photo,
+              privacy_level,
+              users!relationships_user_id_fkey(full_name, phone_number, profile_picture)
+            `)
+            .or(`user_id.eq.${u.id},partner_user_id.eq.${u.id}`)
             .in('status', ['pending', 'verified'])
             .limit(1)
-            .single();
+            .maybeSingle();
+
+          const relationshipOwnerUser = Array.isArray(userRel?.users)
+            ? userRel?.users[0]
+            : userRel?.users;
+          const isRelationshipOwner = userRel?.user_id === u.id;
+          const relationshipPartnerName = userRel
+            ? isRelationshipOwner
+              ? userRel.partner_name
+              : relationshipOwnerUser?.full_name
+            : undefined;
+          const relationshipPartnerPhone = userRel
+            ? isRelationshipOwner
+              ? userRel.partner_phone
+              : relationshipOwnerUser?.phone_number
+            : undefined;
+          const relationshipPartnerUserId = userRel
+            ? isRelationshipOwner
+              ? userRel.partner_user_id
+              : userRel.user_id
+            : undefined;
+          const relationshipFacePhoto = userRel
+            ? isRelationshipOwner
+              ? userRel.partner_face_photo
+              : relationshipOwnerUser?.profile_picture
+            : undefined;
 
           return {
             id: u.id,
@@ -2621,9 +2847,11 @@ export const [AppContext, useApp] = createContextHook(() => {
             isRegisteredUser: true,
             relationshipType: userRel?.type,
             relationshipStatus: userRel?.status,
-            partnerName: userRel?.partner_name,
-            partnerPhone: userRel?.partner_phone,
-            partnerUserId: userRel?.partner_user_id,
+            relationshipPrivacy: userRel?.privacy_level,
+            partnerName: relationshipPartnerName,
+            partnerPhone: relationshipPartnerPhone,
+            partnerUserId: relationshipPartnerUserId,
+            partnerFacePhoto: relationshipFacePhoto,
             verifications: {
               phone: u.phone_verified || false,
               email: u.email_verified || false,
@@ -2645,6 +2873,7 @@ export const [AppContext, useApp] = createContextHook(() => {
           partner_face_photo,
           type,
           status,
+          privacy_level,
           user_id,
           users!relationships_user_id_fkey(full_name, phone_number, profile_picture)
         `)
@@ -2662,6 +2891,7 @@ export const [AppContext, useApp] = createContextHook(() => {
           isRegisteredUser: false,
           relationshipType: rel.type,
           relationshipStatus: rel.status,
+          relationshipPrivacy: rel.privacy_level,
           partnerName: rel.users?.full_name,
           partnerPhone: rel.users?.phone_number,
           partnerUserId: rel.user_id,
@@ -2803,6 +3033,55 @@ export const [AppContext, useApp] = createContextHook(() => {
 
       const relationshipIds = userRelationships.map(r => r.id);
 
+      const now = new Date().toISOString();
+      const { data: overdueDisputes, error: overdueError } = await supabase
+        .from('disputes')
+        .select('id,relationship_id,auto_resolve_at')
+        .in('relationship_id', relationshipIds)
+        .eq('dispute_type', 'end_relationship')
+        .eq('status', 'pending')
+        .lte('auto_resolve_at', now);
+
+      if (overdueError) throw overdueError;
+
+      for (const overdue of overdueDisputes || []) {
+        try {
+          const endDate = new Date().toISOString();
+          const { endedRows } = await endActiveRelationshipRows(overdue.relationship_id, endDate);
+          const { data: resolvedDispute, error: resolveError } = await supabase
+            .from('disputes')
+            .update({
+              status: 'auto_resolved',
+              resolution: 'auto_resolved',
+              resolved_at: endDate,
+            })
+            .eq('id', overdue.id)
+            .eq('status', 'pending')
+            .select('id,status,resolution')
+            .maybeSingle();
+
+          if (resolveError) throw resolveError;
+          if (!resolvedDispute) {
+            throw new Error('Overdue dispute was not auto-resolved. Dispute update permission may be missing.');
+          }
+
+          const notifiedUserIds = Array.from(new Set(
+            endedRows.flatMap((row: any) => [row.user_id, row.partner_user_id]).filter(Boolean)
+          ));
+          for (const userId of notifiedUserIds) {
+            await createNotification(
+              userId,
+              'relationship_ended',
+              'Relationship Ended',
+              'An end relationship request was auto-resolved after 7 days.',
+              { relationshipId: overdue.relationship_id, disputeId: overdue.id, autoResolved: true }
+            );
+          }
+        } catch (autoResolveError) {
+          console.error('Auto-resolve end relationship dispute error:', autoResolveError);
+        }
+      }
+
       // Get pending end relationship disputes for these relationships
       const { data: disputesData } = await supabase
         .from('disputes')
@@ -2851,6 +3130,7 @@ export const [AppContext, useApp] = createContextHook(() => {
           partnerName: isInitiator ? partnerName : currentUser.fullName,
           relationshipType: relationship.type,
           description: d.description,
+          autoResolveAt: d.auto_resolve_at,
           createdAt: d.created_at,
           type: 'end_relationship' as const,
         };
@@ -2861,7 +3141,12 @@ export const [AppContext, useApp] = createContextHook(() => {
       console.error('Error getting pending end relationship requests:', error);
       return [];
     }
-  }, [currentUser]);
+  }, [currentUser, createNotification]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    void getPendingEndRelationshipRequests();
+  }, [currentUser?.id, getPendingEndRelationshipRequests]);
 
   // Helper function to check if user is restricted from a feature
   const checkUserRestriction = useCallback(async (userId: string, feature: string): Promise<{ 
@@ -2971,13 +3256,13 @@ export const [AppContext, useApp] = createContextHook(() => {
         createdAt: data.created_at,
       };
 
-      setPosts([newPost, ...posts]);
+      setPosts(prev => [newPost, ...prev.filter(post => post.id !== newPost.id)]);
       return newPost;
     } catch (error) {
       console.error('Create post error:', error);
       return null;
     }
-  }, [currentUser, posts]);
+  }, [currentUser]);
 
   const createReel = useCallback(async (videoUrl: string, caption: string, thumbnailUrl?: string) => {
     if (!currentUser) return null;
@@ -3019,13 +3304,13 @@ export const [AppContext, useApp] = createContextHook(() => {
         createdAt: data.created_at,
       };
 
-      setReels([newReel, ...reels]);
+      setReels(prev => [newReel, ...prev.filter(reel => reel.id !== newReel.id)]);
       return newReel;
     } catch (error) {
       console.error('Create reel error:', error);
       return null;
     }
-  }, [currentUser, reels]);
+  }, [currentUser]);
 
   const toggleLike = useCallback(async (postId: string) => {
     if (!currentUser) return;
@@ -3279,39 +3564,38 @@ export const [AppContext, useApp] = createContextHook(() => {
     if (!currentUser) return null;
     
     // Check if user is restricted from sending messages
-    const restriction = await checkUserRestriction(currentUser.id, 'messages');
-    if (showBanModal(restriction)) {
-      return null;
+    try {
+      const restriction = await withTimeout(
+        checkUserRestriction(currentUser.id, 'messages'),
+        1800,
+        'message_restriction_check'
+      );
+      if (showBanModal(restriction)) {
+        return null;
+      }
+    } catch (restrictionError) {
+      if (__DEV__) console.warn('Message restriction check timed out, allowing send:', restrictionError);
     }
 
-    // Check dating message limits (only for non-AI 2-participant conversations)
+    // Check dating message limits without blocking every message on extra lookups.
     try {
-      const { data: conversation } = await supabase
-        .from('conversations')
-        .select('participant_ids')
-        .eq('id', conversationId)
-        .single();
-
-      if (!aiUserIdRef.current) {
-        const { data: aiUserData } = await supabase
-          .from('users')
-          .select('id')
-          .eq('email', COMMITTED_AI_EMAIL)
-          .maybeSingle();
-        aiUserIdRef.current = aiUserData?.id || null;
-      }
-
-      const participantIds: string[] = Array.isArray(conversation?.participant_ids)
-        ? conversation.participant_ids
+      const localConversation = conversations.find((conv) => conv.id === conversationId);
+      const participantIds: string[] = Array.isArray(localConversation?.participants)
+        ? localConversation.participants
         : [];
       const isAIConversation =
         receiverId === aiUserIdRef.current ||
-        (aiUserIdRef.current ? participantIds.includes(aiUserIdRef.current) : false);
+        (aiUserIdRef.current ? participantIds.includes(aiUserIdRef.current) : false) ||
+        !!localConversation?.participantNames?.some((name) => name === 'Committed AI');
 
       // Only enforce dating limits for regular user-to-user conversations.
       if (!isAIConversation && participantIds.length === 2) {
         const { checkDatingMessageLimit } = await import('@/lib/dating-message-limits');
-        const limitCheck = await checkDatingMessageLimit(conversationId);
+        const limitCheck = await withTimeout(
+          checkDatingMessageLimit(conversationId),
+          1800,
+          'dating_message_limit_check'
+        );
         
         if (!limitCheck.allowed) {
           // Import and show premium modal if available
@@ -3390,11 +3674,16 @@ export const [AppContext, useApp] = createContextHook(() => {
         statusPreviewUrl: messageData.status_preview_url,
       };
       
-      const updatedMessages = {
-        ...messages,
-        [conversationId]: [...(messages[conversationId] || []), newMessage],
-      };
-      setMessages(updatedMessages);
+      setMessages(prev => {
+        const conversationMessages = prev[conversationId] || [];
+        if (conversationMessages.some((message) => message.id === newMessage.id)) {
+          return prev;
+        }
+        return {
+          ...prev,
+          [conversationId]: [...conversationMessages, newMessage],
+        };
+      });
       
       // Update conversation last message
       const lastMessageText = messageType === 'image' 
@@ -3405,14 +3694,18 @@ export const [AppContext, useApp] = createContextHook(() => {
       
       const lastMessageAt = new Date().toISOString();
       
-      // Update conversation in database
-      await supabase
+      // Update conversation in database in the background; the message send itself
+      // should not wait on metadata or notification side effects.
+      supabase
         .from('conversations')
         .update({
           last_message: lastMessageText,
           last_message_at: lastMessageAt,
         })
-        .eq('id', conversationId);
+        .eq('id', conversationId)
+        .then(({ error }) => {
+          if (error) console.error('Failed to update conversation last message:', error);
+        });
       
       // Optimistically update local conversations state immediately
       setConversations(prev => {
@@ -3434,13 +3727,13 @@ export const [AppContext, useApp] = createContextHook(() => {
       
       // Send notification to receiver (only if receiver is not the sender)
       if (receiverId !== currentUser.id) {
-        await createNotification(
+        createNotification(
           receiverId,
           'message',
           'New Message',
           `${currentUser.fullName}: ${lastMessageText.substring(0, 50)}${lastMessageText.length > 50 ? '...' : ''}`,
           { conversationId, senderId: currentUser.id }
-        );
+        ).catch(err => console.error('Failed to send message notification:', err));
       }
       
       return newMessage;
@@ -3448,7 +3741,7 @@ export const [AppContext, useApp] = createContextHook(() => {
       console.error('Send message error:', error);
       return null;
     }
-  }, [currentUser, messages, createNotification]);
+  }, [currentUser, conversations, createNotification]);
 
   const getConversation = useCallback((conversationId: string) => {
     return conversations.find(c => c.id === conversationId);
@@ -3794,12 +4087,13 @@ export const [AppContext, useApp] = createContextHook(() => {
         return existingInState;
       }
 
-      // Check if a conversation already exists between these two users in database
-      // Query for conversations that contain the current user, then filter for the other user
+      // Check only conversations that contain both users. Querying every conversation
+      // for the current user makes first-message flows noticeably slower.
       const { data: existingConversations, error: queryError } = await supabase
         .from('conversations')
         .select('*')
-        .contains('participant_ids', [currentUser.id]);
+        .contains('participant_ids', [currentUser.id, otherUserId])
+        .limit(5);
 
       if (queryError) {
         console.error('Error querying conversations:', queryError);
@@ -3813,15 +4107,10 @@ export const [AppContext, useApp] = createContextHook(() => {
         const isTwoParticipants = participants.length === 2;
         
         if (hasCurrentUser && hasOtherUser && isTwoParticipants) {
-          console.log('Found existing conversation:', conv.id, 'with participants:', participants);
           return true;
         }
         return false;
       });
-
-      if (!existingConv) {
-        console.log('No existing conversation found between', currentUser.id, 'and', otherUserId);
-      }
 
       if (existingConv) {
         // Conversation exists, return it
@@ -3919,8 +4208,9 @@ export const [AppContext, useApp] = createContextHook(() => {
   const createAdvertisement = useCallback(async (adData: Omit<Advertisement, 'id' | 'impressions' | 'clicks' | 'createdAt' | 'updatedAt'>) => {
     if (!currentUser) return null;
     const isAdmin = currentUser.role === 'admin' || currentUser.role === 'super_admin' || currentUser.role === 'moderator';
-    // Users can create ads; only admins auto-approve if needed. Default pending.
+    // Users can create ads; creative and payment are reviewed before delivery.
     const status = adData.status || (isAdmin ? 'pending' : 'pending');
+    const active = isAdmin ? adData.active : false;
     
     try {
       const { data, error } = await supabase
@@ -3932,7 +4222,7 @@ export const [AppContext, useApp] = createContextHook(() => {
           link_url: adData.linkUrl,
           type: adData.type,
           placement: adData.placement,
-          active: adData.active,
+          active,
           created_by: currentUser.id,
           user_id: adData.userId || currentUser.id,
           status,
@@ -4009,7 +4299,29 @@ export const [AppContext, useApp] = createContextHook(() => {
   const updateAdvertisement = useCallback(async (adId: string, updates: Partial<Advertisement>) => {
     if (!currentUser) return;
     const isReviewer = currentUser.role === 'admin' || currentUser.role === 'super_admin' || currentUser.role === 'moderator';
-    const targetAd = advertisements.find(a => a.id === adId);
+    let targetAd = advertisements.find(a => a.id === adId);
+    if (!targetAd && !isReviewer) {
+      const { data: ownershipRow, error: ownershipError } = await supabase
+        .from('advertisements')
+        .select('id,user_id,created_by,status,billing_status')
+        .eq('id', adId)
+        .maybeSingle();
+
+      if (ownershipError) {
+        console.error('Advertisement ownership check error:', ownershipError);
+        return;
+      }
+
+      if (ownershipRow) {
+        targetAd = {
+          id: ownershipRow.id,
+          userId: ownershipRow.user_id,
+          createdBy: ownershipRow.created_by,
+          status: ownershipRow.status,
+          billingStatus: ownershipRow.billing_status,
+        } as Advertisement;
+      }
+    }
     const isOwner = !!targetAd && (targetAd.userId === currentUser.id || targetAd.createdBy === currentUser.id);
     if (!isReviewer && !isOwner) return;
     
@@ -4033,7 +4345,8 @@ export const [AppContext, useApp] = createContextHook(() => {
         if (!ownerAllowed.includes(k)) return false;
         if (k === 'status') {
           // Owners can only move to pending/paused/draft (not approve/reject)
-          return updates.status === 'pending' || updates.status === 'paused' || updates.status === 'draft';
+          if (updates.status === 'pending' || updates.status === 'paused' || updates.status === 'draft') return true;
+          return updates.status === 'approved' && targetAd?.status === 'paused' && targetAd?.billingStatus === 'paid';
         }
         return true;
       };
@@ -4055,6 +4368,10 @@ export const [AppContext, useApp] = createContextHook(() => {
       if (updates.startDate !== undefined && canSet('startDate')) updateData.start_date = updates.startDate;
       if (updates.endDate !== undefined && canSet('endDate')) updateData.end_date = updates.endDate;
       if (updates.targeting !== undefined && canSet('targeting')) updateData.targeting = updates.targeting;
+      if (!isReviewer && updates.status !== undefined && canSet('status')) {
+        updateData.status = updates.status;
+        updateData.active = updates.status === 'approved' && targetAd?.billingStatus === 'paid';
+      }
 
       if (isReviewer) {
         if (updates.active !== undefined) updateData.active = updates.active;
@@ -4067,6 +4384,8 @@ export const [AppContext, useApp] = createContextHook(() => {
         if (updates.sponsorName !== undefined) updateData.sponsor_name = updates.sponsorName;
         if (updates.sponsorVerified !== undefined) updateData.sponsor_verified = updates.sponsorVerified;
       }
+
+      if (Object.keys(updateData).length === 0) return;
 
       const { error } = await supabase
         .from('advertisements')
@@ -4087,7 +4406,27 @@ export const [AppContext, useApp] = createContextHook(() => {
   const deleteAdvertisement = useCallback(async (adId: string) => {
     if (!currentUser) return;
     const isReviewer = currentUser.role === 'admin' || currentUser.role === 'super_admin' || currentUser.role === 'moderator';
-    const targetAd = advertisements.find(a => a.id === adId);
+    let targetAd = advertisements.find(a => a.id === adId);
+    if (!targetAd && !isReviewer) {
+      const { data: ownershipRow, error: ownershipError } = await supabase
+        .from('advertisements')
+        .select('id,user_id,created_by')
+        .eq('id', adId)
+        .maybeSingle();
+
+      if (ownershipError) {
+        console.error('Advertisement ownership check error:', ownershipError);
+        return;
+      }
+
+      if (ownershipRow) {
+        targetAd = {
+          id: ownershipRow.id,
+          userId: ownershipRow.user_id,
+          createdBy: ownershipRow.created_by,
+        } as Advertisement;
+      }
+    }
     const isOwner = !!targetAd && (targetAd.userId === currentUser.id || targetAd.createdBy === currentUser.id);
     if (!isReviewer && !isOwner) return;
     
@@ -5893,91 +6232,48 @@ export const [AppContext, useApp] = createContextHook(() => {
     if (!currentUser) return;
     
     try {
-      const { data: dispute } = await supabase
+      const { data: dispute, error: disputeFetchError } = await supabase
         .from('disputes')
         .select('*')
         .eq('id', disputeId)
-        .single();
+        .maybeSingle();
 
+      if (disputeFetchError) throw disputeFetchError;
       if (!dispute) return;
 
-      // Update dispute status
-      await supabase
+      const endDate = new Date().toISOString();
+      const { endedRows } = await endActiveRelationshipRows(dispute.relationship_id, endDate);
+
+      const { data: resolvedDispute, error: resolveError } = await supabase
         .from('disputes')
         .update({
           status: 'resolved',
           resolution: 'confirmed',
-          resolved_at: new Date().toISOString(),
+          resolved_at: endDate,
           resolved_by: currentUser.id,
         })
-        .eq('id', disputeId);
+        .eq('id', disputeId)
+        .eq('status', 'pending')
+        .select('id,status,resolution')
+        .maybeSingle();
 
-      // End the relationship - update both partners' relationship records
-      const { data: relationship } = await supabase
-        .from('relationships')
-        .select('user_id, partner_user_id')
-        .eq('id', dispute.relationship_id)
-        .single();
+      if (resolveError) throw resolveError;
+      if (!resolvedDispute) {
+        throw new Error('Relationship ended, but dispute could not be resolved. Please refresh and check dispute permissions.');
+      }
 
-      if (relationship && relationship.partner_user_id) {
-        const endDate = new Date().toISOString();
-        const userId1 = relationship.user_id;
-        const userId2 = relationship.partner_user_id;
-        
-        // Update the first relationship record (the one from the dispute)
-        const { error: updateError1 } = await supabase
-        .from('relationships')
-        .update({
-          status: 'ended',
-            end_date: endDate,
-        })
-        .eq('id', dispute.relationship_id);
-
-        if (updateError1) {
-          console.error('Error updating relationship:', updateError1);
-        }
-
-        // Find and update the partner's relationship record (swapped user_id and partner_user_id)
-        // This is the record where user_id is the partner and partner_user_id is the requester
-        const { data: partnerRelationships } = await supabase
-        .from('relationships')
-          .select('id')
-          .eq('user_id', userId2)
-          .eq('partner_user_id', userId1)
-          .eq('status', 'verified');
-
-        if (partnerRelationships && partnerRelationships.length > 0) {
-          const partnerRelId = partnerRelationships[0].id;
-          // Only update if it's a different record
-          if (partnerRelId !== dispute.relationship_id) {
-            const { error: updateError2 } = await supabase
-              .from('relationships')
-              .update({
-                status: 'ended',
-                end_date: endDate,
-              })
-              .eq('id', partnerRelId);
-
-            if (updateError2) {
-              console.error('Error updating partner relationship:', updateError2);
-            }
-          }
-        }
-
-        // Get the other partner to send notification
-        const otherPartnerId = relationship.user_id === currentUser.id 
-          ? relationship.partner_user_id 
-          : relationship.user_id;
-        
-        if (otherPartnerId) {
-          await createNotification(
-            otherPartnerId,
-            'relationship_ended',
-            'Relationship Ended',
-            `Your relationship has been ended`,
-            { relationshipId: dispute.relationship_id }
-          );
-        }
+      const notifiedUserIds = Array.from(new Set(
+        endedRows.flatMap((row: any) => [row.user_id, row.partner_user_id]).filter(Boolean)
+      ));
+      for (const userId of notifiedUserIds) {
+        if (userId === currentUser.id) continue;
+        await createNotification(
+          userId,
+          'relationship_ended',
+          'Relationship Ended',
+          'Your relationship has been ended.',
+          { relationshipId: dispute.relationship_id, disputeId, endedRelationshipIds: endedRows.map((row: any) => row.id) }
+        );
       }
 
       await logActivity('end_relationship_confirmed', 'relationship', dispute.relationship_id);
@@ -6049,12 +6345,15 @@ export const [AppContext, useApp] = createContextHook(() => {
         throw new Error('Unauthorized');
       }
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('posts')
         .delete()
-        .eq('id', postId);
+        .eq('id', postId)
+        .select('id')
+        .maybeSingle();
 
       if (error) throw error;
+      if (!data) throw new Error('Post was not deleted. Admin delete permission may be missing.');
 
       const updatedPosts = posts.filter(p => p.id !== postId);
       setPosts(updatedPosts);
@@ -6423,14 +6722,41 @@ export const [AppContext, useApp] = createContextHook(() => {
     if (!currentUser) return;
     const id = postId?.trim();
     if (!id) return;
-    
-    const post = posts.find(p => p.id === id);
-      if (!post) return;
 
-    const { app: appLink, web: webLink } = buildPostLink(id);
+    let post = posts.find(p => p.id === id);
+    if (!post) {
+      const { data: postData, error: postError } = await supabase
+        .from('posts')
+        .select(`
+          id,
+          content,
+          users!posts_user_id_fkey(full_name)
+        `)
+        .eq('id', id)
+        .maybeSingle();
+
+      if (postError) {
+        console.error('Share post lookup error:', postError);
+      }
+
+      if (postData) {
+        post = {
+          id: postData.id,
+          content: postData.content || '',
+          userName: (postData.users as any)?.full_name || 'Committed user',
+        } as Post;
+      }
+    }
+
+    if (!post) {
+      Alert.alert('Post unavailable', 'This post could not be loaded for sharing.');
+      return;
+    }
+
+    const { web: webLink } = buildPostLink(id);
     const downloadUrl = 'https://dreambig.org.za/committed';
       const preview = post.content ? `${post.content.substring(0, 100)}...` : 'View this post in Committed';
-    const shareText = `${preview}\n\nOpen in app: ${appLink}\nOr in browser: ${webLink}\nDownload Committed: ${downloadUrl}`;
+    const shareText = `${preview}\n\nView post: ${webLink}\nDownload Committed: ${downloadUrl}`;
       
     try {
       const Share = require('react-native').Share;
@@ -6443,7 +6769,7 @@ export const [AppContext, useApp] = createContextHook(() => {
       
       const result = await Share.share({
         message: shareText,
-        url: appLink,
+        url: webLink,
         title: `Post by ${post.userName}`,
       });
       if (result.action === Share.sharedAction) {
@@ -6451,7 +6777,7 @@ export const [AppContext, useApp] = createContextHook(() => {
       }
     } catch (error: any) {
       console.error('Share post error:', error);
-      const fallbackText = `${post.content ? post.content.substring(0, 100) + '...' : 'View this post'}\n\nOpen in app: ${appLink}\nOr in browser: ${webLink}`;
+      const fallbackText = `${post.content ? post.content.substring(0, 100) + '...' : 'View this post'}\n\nView post: ${webLink}`;
       try {
         const copied = await tryCopyToClipboard(fallbackText);
             if (copied) {
@@ -6473,13 +6799,40 @@ export const [AppContext, useApp] = createContextHook(() => {
     if (!id) return;
     
     try {
-      const reel = reels.find(r => r.id === id);
-      if (!reel) return;
+      let reel = reels.find(r => r.id === id);
+      if (!reel) {
+        const { data: reelData, error: reelError } = await supabase
+          .from('reels')
+          .select(`
+            id,
+            caption,
+            users!reels_user_id_fkey(full_name)
+          `)
+          .eq('id', id)
+          .maybeSingle();
 
-      const { app: appLink, web: webLink } = buildReelLink(id);
+        if (reelError) {
+          console.error('Share reel lookup error:', reelError);
+        }
+
+        if (reelData) {
+          reel = {
+            id: reelData.id,
+            caption: reelData.caption || '',
+            userName: (reelData.users as any)?.full_name || 'Committed user',
+          } as Reel;
+        }
+      }
+
+      if (!reel) {
+        Alert.alert('Reel unavailable', 'This reel could not be loaded for sharing.');
+        return;
+      }
+
+      const { web: webLink } = buildReelLink(id);
       const downloadUrl = 'https://dreambig.org.za/committed';
       const preview = reel.caption ? `${reel.caption.substring(0, 100)}...` : 'View this reel in Committed';
-      const shareText = `${preview}\n\nOpen in app: ${appLink}\nOr in browser: ${webLink}\nDownload Committed: ${downloadUrl}`;
+      const shareText = `${preview}\n\nWatch reel: ${webLink}\nDownload Committed: ${downloadUrl}`;
       
       const Share = require('react-native').Share;
       if (!Share?.share) {
@@ -6491,7 +6844,7 @@ export const [AppContext, useApp] = createContextHook(() => {
       
       const result = await Share.share({
         message: shareText,
-        url: appLink,
+        url: webLink,
         title: `Reel by ${reel.userName}`,
       });
       if (result.action === Share.sharedAction) {
@@ -6500,10 +6853,10 @@ export const [AppContext, useApp] = createContextHook(() => {
     } catch (error: any) {
       console.error('Share reel error:', error);
       const reelFallback = reels.find(r => r.id === id);
-      const { app: appLinkF, web: webLinkF } = buildReelLink(id);
+      const { web: webLinkF } = buildReelLink(id);
       const fallbackText = reelFallback
-        ? `${reelFallback.caption ? reelFallback.caption.substring(0, 100) + '...' : 'View this reel'}\n\nOpen in app: ${appLinkF}\nOr in browser: ${webLinkF}`
-        : `View this reel\n\nOpen in app: ${appLinkF}\nOr in browser: ${webLinkF}`;
+        ? `${reelFallback.caption ? reelFallback.caption.substring(0, 100) + '...' : 'View this reel'}\n\nWatch reel: ${webLinkF}`
+        : `View this reel\n\nWatch reel: ${webLinkF}`;
       try {
         const copied = await tryCopyToClipboard(fallbackText);
             if (copied) {
@@ -6549,7 +6902,7 @@ export const [AppContext, useApp] = createContextHook(() => {
     }
     
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('posts')
         .update({
           moderation_status: 'rejected',
@@ -6557,9 +6910,12 @@ export const [AppContext, useApp] = createContextHook(() => {
           moderated_at: new Date().toISOString(),
           moderated_by: currentUser.id,
         })
-        .eq('id', postId);
+        .eq('id', postId)
+        .select('id,moderation_status')
+        .maybeSingle();
 
       if (error) throw error;
+      if (!data) throw new Error('Post was not rejected. Admin moderation permission may be missing.');
 
       const updatedPosts = posts.filter(p => p.id !== postId);
       setPosts(updatedPosts);
@@ -6578,12 +6934,15 @@ export const [AppContext, useApp] = createContextHook(() => {
     }
     
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('reels')
         .delete()
-        .eq('id', reelId);
+        .eq('id', reelId)
+        .select('id')
+        .maybeSingle();
 
       if (error) throw error;
+      if (!data) throw new Error('Reel was not deleted. Admin delete permission may be missing.');
 
       const updatedReels = reels.filter(r => r.id !== reelId);
       setReels(updatedReels);
@@ -6602,7 +6961,7 @@ export const [AppContext, useApp] = createContextHook(() => {
     }
     
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('reels')
         .update({
           moderation_status: 'rejected',
@@ -6610,9 +6969,12 @@ export const [AppContext, useApp] = createContextHook(() => {
           moderated_at: new Date().toISOString(),
           moderated_by: currentUser.id,
         })
-        .eq('id', reelId);
+        .eq('id', reelId)
+        .select('id,moderation_status')
+        .maybeSingle();
 
       if (error) throw error;
+      if (!data) throw new Error('Reel was not rejected. Admin moderation permission may be missing.');
 
       const updatedReels = reels.filter(r => r.id !== reelId);
       setReels(updatedReels);
@@ -7072,7 +7434,7 @@ export const [AppContext, useApp] = createContextHook(() => {
         updateData.custom_status_text = customStatusText || null;
       }
 
-      const existing = userStatuses[currentUser.id];
+      const existing = userStatusesRef.current[currentUser.id];
       const { error } = await supabase
         .from('user_status')
         .upsert({
@@ -7109,7 +7471,7 @@ export const [AppContext, useApp] = createContextHook(() => {
       console.error('Update user status error:', error);
       return false;
     }
-  }, [currentUser, userStatuses]);
+  }, [currentUser]);
 
   const updateStatusPrivacy = useCallback(async (
     statusVisibility: StatusVisibility,
@@ -7118,7 +7480,7 @@ export const [AppContext, useApp] = createContextHook(() => {
     if (!currentUser) return false;
 
     try {
-      const existing = userStatuses[currentUser.id];
+      const existing = userStatusesRef.current[currentUser.id];
       const now = new Date().toISOString();
       const { error } = await supabase
         .from('user_status')
@@ -7155,13 +7517,13 @@ export const [AppContext, useApp] = createContextHook(() => {
       console.error('Update status privacy error:', error);
       return false;
     }
-  }, [currentUser, userStatuses]);
+  }, [currentUser]);
 
   const getUserStatus = useCallback(async (
     userId: string,
     opts?: { forceFresh?: boolean }
   ): Promise<UserStatus | null> => {
-    const cached = userStatuses[userId];
+    const cached = userStatusesRef.current[userId];
     const fetchedAt = userStatusFetchedAtRef.current[userId];
     if (!opts?.forceFresh && cached && fetchedAt && Date.now() - fetchedAt < STATUS_CACHE_TTL_MS) {
       return cached;
@@ -7232,10 +7594,11 @@ export const [AppContext, useApp] = createContextHook(() => {
     setUserStatuses(prev => ({ ...prev, [userId]: finalStatus }));
     
     return finalStatus;
-  }, [loadUserStatus, userStatuses]);
+  }, [loadUserStatus]);
 
   const startStatusTracking = useCallback(() => {
     if (!currentUser) return;
+    const userId = currentUser.id;
 
     // Clear existing interval
     if (statusUpdateIntervalRef.current) {
@@ -7245,7 +7608,7 @@ export const [AppContext, useApp] = createContextHook(() => {
 
     // Update last_active_at at lower frequency to reduce network usage.
     const interval = setInterval(async () => {
-      if (currentUser) {
+      if (userId) {
         if (appStateRef.current !== 'active') return;
         const now = new Date();
         
@@ -7254,7 +7617,7 @@ export const [AppContext, useApp] = createContextHook(() => {
         const { data: currentStatusData, error: fetchError } = await supabase
           .from('user_status')
           .select('status_type')
-          .eq('user_id', currentUser.id)
+          .eq('user_id', userId)
           .single();
 
         if (currentStatusData && !fetchError) {
@@ -7273,11 +7636,11 @@ export const [AppContext, useApp] = createContextHook(() => {
             updateData.status_type = newStatusType;
           }
 
-          const existing = userStatuses[currentUser.id];
+          const existing = userStatusesRef.current[userId];
           const { error } = await supabase
             .from('user_status')
             .upsert({
-              user_id: currentUser.id,
+              user_id: userId,
               status_type: updateData.status_type ?? currentStatusData.status_type,
               custom_status_text: existing?.customStatusText ?? null,
               last_active_at: updateData.last_active_at,
@@ -7290,11 +7653,11 @@ export const [AppContext, useApp] = createContextHook(() => {
 
           if (!error) {
             setUserStatuses(prev => {
-              const existing = prev[currentUser.id];
+              const existing = prev[userId];
               if (existing) {
                 return {
                   ...prev,
-                  [currentUser.id]: {
+                  [userId]: {
                     ...existing,
                     statusType: newStatusType,
                     lastActiveAt: now.toISOString(),
@@ -7310,7 +7673,7 @@ export const [AppContext, useApp] = createContextHook(() => {
           const { error: insertError } = await supabase
             .from('user_status')
             .insert({
-              user_id: currentUser.id,
+              user_id: userId,
               status_type: 'online',
               last_active_at: now.toISOString(),
               status_visibility: 'everyone',
@@ -7319,25 +7682,26 @@ export const [AppContext, useApp] = createContextHook(() => {
 
           if (!insertError) {
             const newStatus: UserStatus = {
-              userId: currentUser.id,
+              userId,
               statusType: 'online',
               lastActiveAt: now.toISOString(),
               statusVisibility: 'everyone',
               lastSeenVisibility: 'everyone',
               updatedAt: now.toISOString(),
             };
-            setUserStatuses(prev => ({ ...prev, [currentUser.id]: newStatus }));
+            setUserStatuses(prev => ({ ...prev, [userId]: newStatus }));
           }
         }
       }
     }, STATUS_HEARTBEAT_MS);
 
     statusUpdateIntervalRef.current = interval;
-  }, [currentUser, userStatuses]);
+  }, [currentUser?.id]);
 
   // Handle app state changes (foreground/background)
   useEffect(() => {
     if (!currentUser) return;
+    const userId = currentUser.id;
 
     const handleAppStateChange = async (nextAppState: AppStateStatus) => {
       appStateRef.current = nextAppState;
@@ -7354,11 +7718,11 @@ export const [AppContext, useApp] = createContextHook(() => {
         }
 
         // Update status to online and last_active_at to NOW
-        const existing = userStatuses[currentUser.id];
+        const existing = userStatusesRef.current[userId];
         const { error } = await supabase
           .from('user_status')
           .upsert({
-            user_id: currentUser.id,
+            user_id: userId,
             status_type: 'online',
             last_active_at: now,
             updated_at: now,
@@ -7371,10 +7735,10 @@ export const [AppContext, useApp] = createContextHook(() => {
 
         if (!error) {
           setUserStatuses(prev => {
-            const existing = prev[currentUser.id];
+            const existing = prev[userId];
             return {
               ...prev,
-              [currentUser.id]: {
+              [userId]: {
                 ...existing,
                 statusType: 'online',
                 lastActiveAt: now,
@@ -7400,11 +7764,11 @@ export const [AppContext, useApp] = createContextHook(() => {
 
         // Update last_active_at to NOW (actual time they left)
         // Set status to 'away' (will become offline after timeout)
-        const existing = userStatuses[currentUser.id];
+        const existing = userStatusesRef.current[userId];
         const { error } = await supabase
           .from('user_status')
           .upsert({
-            user_id: currentUser.id,
+            user_id: userId,
             status_type: 'away',
             last_active_at: now, // Update to actual time they left
             updated_at: now,
@@ -7417,10 +7781,10 @@ export const [AppContext, useApp] = createContextHook(() => {
 
         if (!error) {
           setUserStatuses(prev => {
-            const existing = prev[currentUser.id];
+            const existing = prev[userId];
             return {
               ...prev,
-              [currentUser.id]: {
+              [userId]: {
                 ...existing,
                 statusType: 'away',
                 lastActiveAt: now, // Actual time they left
@@ -7434,9 +7798,10 @@ export const [AppContext, useApp] = createContextHook(() => {
 
     // Get initial app state
     const currentAppState = AppState.currentState;
-    if (currentAppState === 'active' && currentUser) {
+    if (currentAppState === 'active' && initialActiveStatusUserRef.current !== userId) {
+      initialActiveStatusUserRef.current = userId;
       // App is already active, set to online
-      handleAppStateChange('active');
+      void handleAppStateChange('active');
     }
 
     const subscription = AppState.addEventListener('change', handleAppStateChange);
@@ -7444,7 +7809,7 @@ export const [AppContext, useApp] = createContextHook(() => {
     return () => {
       subscription.remove();
     };
-  }, [currentUser, userStatuses, startStatusTracking, recoverDataOnResume]);
+  }, [currentUser?.id, startStatusTracking, recoverDataOnResume]);
 
   // Cleanup interval on unmount or logout
   useEffect(() => {
@@ -7453,6 +7818,8 @@ export const [AppContext, useApp] = createContextHook(() => {
         clearInterval(statusUpdateIntervalRef.current);
         statusUpdateIntervalRef.current = null;
       }
+      Object.values(cacheWriteTimersRef.current).forEach((timer) => clearTimeout(timer));
+      cacheWriteTimersRef.current = {};
     };
   }, []);
 

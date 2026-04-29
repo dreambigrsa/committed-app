@@ -21,12 +21,13 @@ const INTENDED_ROUTE_KEY = '@committed/intended_route';
 let intendedRouteSync: string | null = null;
 const DEBUG = __DEV__;
 
-export type DeepLinkType = 'referral' | 'post' | 'reel' | 'verify-email' | 'auth-callback' | 'unknown';
+export type DeepLinkType = 'referral' | 'post' | 'reel' | 'dating-profile' | 'verify-email' | 'auth-callback' | 'unknown';
 
 export interface ParsedDeepLink {
   type: DeepLinkType;
   postId?: string;
   reelId?: string;
+  datingUserId?: string;
   referralCode?: string;
   params: Record<string, string>;
   rawUrl: string;
@@ -124,6 +125,13 @@ export function parseDeepLink(url: string): ParsedDeepLink | null {
       return { type: 'reel', reelId: reelMatch[1], params, rawUrl };
     }
 
+    // Dating profile: /dating/user-profile?userId=:id or /dating/user-profile/:id
+    const datingProfileMatch = path.match(/^dating\/user-profile\/([^/]+)/i);
+    const datingUserId = params.userId || params.user_id || datingProfileMatch?.[1];
+    if ((pathLower === 'dating/user-profile' || datingProfileMatch) && datingUserId) {
+      return { type: 'dating-profile', datingUserId, params: { ...params, userId: datingUserId }, rawUrl };
+    }
+
     return { type: 'unknown', params, rawUrl };
   } catch (e) {
     if (DEBUG) console.warn('[DeepLink] parse error', e);
@@ -171,14 +179,13 @@ export function isAuthLink(url: string): boolean {
 
 // In-memory pending (one at a time; cleared when processed)
 let pendingParsed: ParsedDeepLink | null = null;
-let lastHandledUrl: string | null = null;
 const pendingListeners = new Set<() => void>();
 
 export function setPendingDeepLink(url: string): void {
   const parsed = parseDeepLink(url);
   if (!parsed) return;
   if (parsed.type === 'auth-callback' || parsed.type === 'verify-email') return;
-  if (lastHandledUrl === url) return;
+  if (pendingParsed?.rawUrl === url) return;
   log('setPendingDeepLink', parsed.type, parsed);
   pendingParsed = parsed;
   pendingListeners.forEach((listener) => {
@@ -192,13 +199,12 @@ export function setPendingDeepLink(url: string): void {
 
 export function getAndClearPendingDeepLink(): ParsedDeepLink | null {
   const p = pendingParsed;
-  if (p) lastHandledUrl = p.rawUrl;
   pendingParsed = null;
   return p;
 }
 
 export function markDeepLinkHandled(url: string): void {
-  lastHandledUrl = url;
+  if (pendingParsed?.rawUrl === url) pendingParsed = null;
 }
 
 /** Subscribe to pending deep-link updates (for AppGate to react on warm links). */
@@ -258,6 +264,16 @@ export function buildReelLink(reelId: string): { app: string; web: string } {
   return {
     app: `${SCHEME}://reel/${reelId}`,
     web: `${base}/reel/${reelId}`,
+  };
+}
+
+export function buildDatingProfileLink(userId: string): { app: string; web: string } {
+  if (!userId) return { app: '', web: '' };
+  const encoded = encodeURIComponent(userId);
+  const base = getWebOriginDefault() || 'https://committed.app';
+  return {
+    app: `${SCHEME}:///dating/user-profile?userId=${encoded}`,
+    web: `${base}/dating/user-profile?userId=${encoded}`,
   };
 }
 

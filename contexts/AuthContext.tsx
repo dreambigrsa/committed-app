@@ -32,6 +32,21 @@ function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string): Pro
   });
 }
 
+function isAuthTimeoutError(err: unknown) {
+  const msg = (err instanceof Error ? err.message : String(err ?? '')).toLowerCase();
+  return msg.includes('auth_refresh_session timed out') || msg.includes('auth_profile_hydrate timed out');
+}
+
+function logAuthRecoverableError(label: string, err: unknown) {
+  if (isAuthTimeoutError(err)) {
+    const msg = err instanceof Error ? err.message : String(err ?? 'unknown auth timeout');
+    console.warn(`${label} ${msg}`);
+    return;
+  }
+
+  console.error(label, err);
+}
+
 // Minimal auth user for routing decisions
 export interface AuthUser {
   id: string;
@@ -183,7 +198,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         setProfileHydrated(true);
       } catch (err) {
-        console.error('AuthContext hydrate error:', err);
+        logAuthRecoverableError('AuthContext hydrate error:', err);
         if (clearOnError) {
           logAuthEvent('hydrate_cleared_state', {
             code: errorToAuthCode(err),
@@ -273,7 +288,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         hydrateFromSession(s, { isPasswordRecovery: !!isRecovery, clearOnError: false }).catch((err: any) => {
           const msg = (err?.message ?? String(err)) ?? '';
           if (!msg.includes('aborted') && !msg.includes('signal')) {
-            console.error('hydrateFromSession error:', err);
+            logAuthRecoverableError('hydrateFromSession error:', err);
             logAuthEvent('hydrate_failed_after_restore', { code: errorToAuthCode(err) });
           }
         });
@@ -348,7 +363,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch (err: any) {
           const msg = (err?.message ?? String(err)) ?? '';
           if (!msg.includes('aborted') && !msg.includes('signal')) {
-            console.error('onAuthStateChange hydrate error:', err);
+            logAuthRecoverableError('onAuthStateChange hydrate error:', err);
             logAuthEvent('hydrate_failed_listener', { code: errorToAuthCode(err) });
           }
         }
@@ -586,7 +601,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (msg.includes('aborted') || msg.includes('signal')) {
             return !!session || !!user;
           }
-          console.error('syncAuthState error:', err);
+          logAuthRecoverableError('syncAuthState error:', err);
           logAuthEvent('sync_error', { reason: opts?.reason ?? 'manual', code: errorToAuthCode(err) });
           return !!session || !!user;
         } finally {

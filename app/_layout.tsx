@@ -1,3 +1,4 @@
+import "@/lib/production-console";
 import { Stack, useRouter } from "expo-router";
 import * as Linking from "expo-linking";
 import * as SplashScreen from "expo-splash-screen";
@@ -13,6 +14,7 @@ import AppGate from "@/components/AppGate";
 import NotificationToast from "../components/NotificationToast";
 import BanMessageModal from "@/components/BanMessageModal";
 import LegalAcceptanceEnforcer from "@/components/LegalAcceptanceEnforcer";
+import CommittedAIConsentEnforcer from "@/components/CommittedAIConsentEnforcer";
 import { setPendingAuthUrl } from "@/lib/pending-auth-url";
 import { setPendingPasswordRecovery } from "@/lib/pending-password-recovery";
 import { setPendingDeepLink, isAuthLink, parseDeepLink, getCustomVerifyOrResetRoute } from "@/lib/deep-link-service";
@@ -40,7 +42,7 @@ function RootLayoutNav() {
           router.replace("/auth-callback");
           return;
         }
-        if (href && (href.includes("post/") || href.includes("reel/") || href.includes("referral"))) {
+        if (href && (href.includes("post/") || href.includes("reel/") || href.includes("dating/user-profile") || href.includes("referral"))) {
           setPendingDeepLink(href);
           return;
         }
@@ -134,8 +136,9 @@ function StackContent() {
         <Stack.Screen name="settings/become-professional" options={{ headerShown: true, title: "Become a Professional" }} />
         <Stack.Screen name="settings/professional-availability" options={{ headerShown: true, title: "Professional Availability" }} />
         <Stack.Screen name="professional/session-requests" options={{ headerShown: true, title: "Session Requests" }} />
-        <Stack.Screen name="dating/premium" options={{ headerShown: true, title: "Go Premium" }} />
-        <Stack.Screen name="dating/payment-submit" options={{ headerShown: true, title: "Submit Payment" }} />
+        <Stack.Screen name="dating" options={{ headerShown: false }} />
+        <Stack.Screen name="dating/premium" options={{ headerShown: false }} />
+        <Stack.Screen name="dating/payment-submit" options={{ headerShown: false }} />
         <Stack.Screen name="+not-found" />
       </Stack>
       <NotificationToast />
@@ -151,6 +154,7 @@ function StackContent() {
         />
       )}
       <LegalAcceptanceEnforcer />
+      <CommittedAIConsentEnforcer />
     </>
   );
 }

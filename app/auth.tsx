@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   View,
@@ -10,8 +10,9 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
-import { Shield, Heart, ArrowLeft, Eye, EyeOff } from 'lucide-react-native';
+import { Shield, Heart, ArrowLeft, Eye, EyeOff, ChevronDown, Search, X } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -20,6 +21,7 @@ import LegalAcceptanceCheckbox from '@/components/LegalAcceptanceCheckbox';
 import MessageModal from '@/components/MessageModal';
 import { LegalDocument } from '@/types';
 import { checkUserLegalAcceptances } from '@/lib/legal-enforcement';
+import { COUNTRY_CALLING_CODES, DEFAULT_COUNTRY_CALLING_CODE } from '@/lib/country-calling-codes';
 
 export default function AuthScreen() {
   const router = useRouter();
@@ -37,6 +39,9 @@ export default function AuthScreen() {
     phoneNumber: '',
     password: '',
   });
+  const [selectedCountry, setSelectedCountry] = useState(DEFAULT_COUNTRY_CALLING_CODE);
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const [countrySearch, setCountrySearch] = useState('');
   const [legalDocuments, setLegalDocuments] = useState<LegalDocument[]>([]);
   const [legalAcceptances, setLegalAcceptances] = useState<Record<string, boolean>>({});
   const [loadingLegalDocs, setLoadingLegalDocs] = useState(false);
@@ -54,6 +59,22 @@ export default function AuthScreen() {
       prev.onCloseExtra?.();
       return { ...prev, visible: false };
     });
+  };
+
+  const filteredCountries = useMemo(() => {
+    const query = countrySearch.trim().toLowerCase();
+    if (!query) return COUNTRY_CALLING_CODES;
+    return COUNTRY_CALLING_CODES.filter((country) =>
+      country.name.toLowerCase().includes(query) ||
+      country.iso2.toLowerCase().includes(query) ||
+      country.dialCode.includes(query.replace(/[^\d+]/g, ''))
+    );
+  }, [countrySearch]);
+
+  const getSignupPhoneNumber = () => {
+    const phoneInput = formData.phoneNumber.trim();
+    if (phoneInput.startsWith('+')) return phoneInput;
+    return `${selectedCountry.dialCode}${phoneInput.replace(/\D/g, '')}`;
   };
 
   useEffect(() => {
@@ -326,17 +347,61 @@ export default function AuthScreen() {
     }
   };
 
+  const persistSignupLegalAcceptances = async (userId: string) => {
+    try {
+      let userRecordExists = false;
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const { data: userRecord } = await supabase
+          .from('users')
+          .select('id')
+          .eq('id', userId)
+          .maybeSingle();
+
+        if (userRecord) {
+          userRecordExists = true;
+          break;
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      if (!userRecordExists) return;
+
+      await saveLegalAcceptances(userId, true);
+      const acceptanceStatus = await checkUserLegalAcceptances(userId);
+      if (acceptanceStatus.hasAllRequired) {
+        updateUser({ acceptedLegalDocs: true });
+      }
+    } catch (error: any) {
+      console.warn('Failed to persist signup legal acceptances in background:', error?.message || error);
+    }
+  };
+
   const handleAuth = async () => {
     setIsLoading(true);
     setMessageModal((prev) => ({ ...prev, visible: false }));
     try {
       if (isSignUp) {
+        const signupPhoneNumber = getSignupPhoneNumber();
+
         if (!formData.fullName || !formData.email || !formData.phoneNumber || !formData.password) {
           setMessageModal({
             visible: true,
             variant: 'error',
             title: 'Missing information',
             message: 'Please fill in all fields to create your account.',
+            buttonText: 'OK',
+          });
+          setIsLoading(false);
+          return;
+        }
+
+        if (signupPhoneNumber.replace(/\D/g, '').length < 8) {
+          setMessageModal({
+            visible: true,
+            variant: 'error',
+            title: 'Invalid phone number',
+            message: 'Please select your country code and enter a valid phone number.',
             buttonText: 'OK',
           });
           setIsLoading(false);
@@ -373,108 +438,27 @@ export default function AuthScreen() {
           return;
         }
 
-        const user = await signup(formData.fullName, formData.email, formData.phoneNumber, formData.password);
-        
-        // Save legal acceptances after successful signup
-        // Wait a moment for user record to be created by trigger
-        if (user?.id) {
-          try {
-            // Quick check for user record (should exist by now from trigger)
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            let userRecordExists = false;
-            let quickChecks = 0;
-            const maxQuickChecks = 3; // Only 3 quick checks (1.5 seconds max)
-            
-            while (!userRecordExists && quickChecks < maxQuickChecks) {
-              const { data: userRecord } = await supabase
-                .from('users')
-                .select('id')
-                .eq('id', user.id)
-                .maybeSingle();
-              
-              if (userRecord) {
-                userRecordExists = true;
-                console.log('User record found, saving legal acceptances...');
-                break;
-              }
-              
-              quickChecks++;
-              if (quickChecks < maxQuickChecks) {
-                await new Promise(resolve => setTimeout(resolve, 500));
-              }
-            }
-            
-            if (userRecordExists) {
-              // User record exists - save legal acceptances
-              // Pass isSignupContext=true since we're in signup flow
-              try {
-                await saveLegalAcceptances(user.id, true);
-                
-                // Quick verify
-                await new Promise(resolve => setTimeout(resolve, 300));
-                const acceptanceStatus = await checkUserLegalAcceptances(user.id);
-                
-                if (acceptanceStatus.hasAllRequired) {
-                  console.log('Legal acceptances successfully saved');
-                  updateUser({ acceptedLegalDocs: true });
-                } else {
-                  console.warn('Legal acceptances may not be fully saved, but continuing...');
-                }
-              } catch (error: any) {
-                const errorMessage = error?.message || JSON.stringify(error);
-                console.warn('Failed to save legal acceptances (user can accept later):', errorMessage);
-                
-                // If it's an RLS error, show a helpful modal
-                if (error?.code === '42501') {
-                  setMessageModal({
-                    visible: true,
-                    variant: 'info',
-                    title: 'Database configuration required',
-                    message:
-                      'Your account was created, but a database setting needs to be updated. Please run the SQL in migrations/FIX-RLS-WITH-FUNCTION.sql in your Supabase SQL Editor. This is a one-time setup.',
-                    buttonText: 'OK',
-                  });
-                }
-                // Don't block signup
-              }
-            } else {
-              console.log('User record not ready yet. Legal acceptances will be saved when user logs in.');
-              // Don't block signup - user can accept documents later
-            }
-          } catch (error: any) {
-            console.warn('Error checking user record for legal acceptances:', error?.message);
-            // Don't block signup
-          }
-        }
-        
-        // Always redirect, even if there were errors above
-        // Check if email confirmation is required and redirect immediately
+        const user = await signup(formData.fullName, formData.email, signupPhoneNumber, formData.password);
+
+        // Move to the next screen immediately. Slow profile/legal persistence can finish
+        // in the background; blocking here caused a blank transition on first signup.
         try {
           const { data: { session } } = await supabase.auth.getSession();
-          const emailConfirmed = !!session?.user?.email_confirmed_at;
           if (session?.user?.id) {
-            await syncAuthState({ reason: 'signup_success_bootstrap', refreshToken: true }).catch(() => false);
+            void syncAuthState({ reason: 'signup_success_bootstrap', refreshToken: true }).catch(() => false);
           }
-          
-          // Redirect immediately - verify-email screen will render instantly
-          // Don't clear loading until after redirect completes
-          if (!emailConfirmed) {
-              // Redirect to email verification screen
-              router.replace('/verify-email');
-              // Keep loading visible during transition, then clear it
-              setTimeout(() => setIsLoading(false), 300);
-            } else {
-              // Email already confirmed, redirect to index which will check onboarding
-              router.replace('/');
-              // Clear loading after redirect starts
-              setTimeout(() => setIsLoading(false), 300);
-            }
+
+          // New accounts always enter the product flow through Verify Email.
+          // If the backend already marks the email verified, that screen checks once and AppGate
+          // moves forward to Legal -> AI -> Home without competing redirects.
+          router.replace('/verify-email');
         } catch (redirectError) {
           console.error('Error during redirect after signup:', redirectError);
-          // Fallback: always go to verify-email if we can't check status
           router.replace('/verify-email');
-          setTimeout(() => setIsLoading(false), 300);
+        }
+
+        if (user?.id) {
+          void persistSignupLegalAcceptances(user.id);
         }
       } else {
         if (!formData.email || !formData.password) {
@@ -706,14 +690,27 @@ export default function AuthScreen() {
           {isSignUp && !showForgotPassword && (
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Phone Number</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="+1 (555) 000-0000"
-                placeholderTextColor={colors.text.tertiary}
-                value={formData.phoneNumber}
-                onChangeText={(text) => setFormData({ ...formData, phoneNumber: text })}
-                keyboardType="phone-pad"
-              />
+              <View style={styles.phoneInputRow}>
+                <TouchableOpacity
+                  style={styles.countryCodeButton}
+                  onPress={() => setShowCountryPicker(true)}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Select country code"
+                >
+                  <Text style={styles.countryCodeIso}>{selectedCountry.iso2}</Text>
+                  <Text style={styles.countryCodeText}>{selectedCountry.dialCode}</Text>
+                  <ChevronDown size={16} color={colors.text.secondary} />
+                </TouchableOpacity>
+                <TextInput
+                  style={styles.phoneTextInput}
+                  placeholder="Phone number"
+                  placeholderTextColor={colors.text.tertiary}
+                  value={formData.phoneNumber}
+                  onChangeText={(text) => setFormData({ ...formData, phoneNumber: text })}
+                  keyboardType="phone-pad"
+                />
+              </View>
             </View>
           )}
 
@@ -823,6 +820,63 @@ export default function AuthScreen() {
           )}
         </View>
       </ScrollView>
+
+      <Modal
+        visible={showCountryPicker}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowCountryPicker(false)}
+      >
+        <View style={styles.countryModalOverlay}>
+          <View style={styles.countryModal}>
+            <View style={styles.countryModalHeader}>
+              <Text style={styles.countryModalTitle}>Select Country Code</Text>
+              <TouchableOpacity
+                style={styles.countryModalClose}
+                onPress={() => setShowCountryPicker(false)}
+                accessibilityLabel="Close country code picker"
+              >
+                <X size={22} color={colors.text.primary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.countrySearchBox}>
+              <Search size={18} color={colors.text.secondary} />
+              <TextInput
+                style={styles.countrySearchInput}
+                placeholder="Search country or code"
+                placeholderTextColor={colors.text.tertiary}
+                value={countrySearch}
+                onChangeText={setCountrySearch}
+                autoCapitalize="none"
+              />
+            </View>
+
+            <ScrollView style={styles.countryList} keyboardShouldPersistTaps="handled">
+              {filteredCountries.map((country) => (
+                <TouchableOpacity
+                  key={`${country.iso2}-${country.name}`}
+                  style={[
+                    styles.countryOption,
+                    selectedCountry.iso2 === country.iso2 && styles.countryOptionSelected,
+                  ]}
+                  onPress={() => {
+                    setSelectedCountry(country);
+                    setCountrySearch('');
+                    setShowCountryPicker(false);
+                  }}
+                >
+                  <View style={styles.countryOptionTextCol}>
+                    <Text style={styles.countryOptionName}>{country.name}</Text>
+                    <Text style={styles.countryOptionIso}>{country.iso2}</Text>
+                  </View>
+                  <Text style={styles.countryOptionCode}>{country.dialCode}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       <MessageModal
         visible={messageModal.visible}
@@ -950,6 +1004,126 @@ const createStyles = (colors: typeof import('@/constants/colors').default) => St
     color: colors.text.primary,
     borderWidth: 1,
     borderColor: colors.border.light,
+  },
+  phoneInputRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 8,
+  },
+  countryCodeButton: {
+    minWidth: 112,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    backgroundColor: colors.background.secondary,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    paddingHorizontal: 10,
+  },
+  countryCodeIso: {
+    fontSize: 13,
+    fontWeight: '800' as const,
+    color: colors.text.primary,
+  },
+  countryCodeText: {
+    fontSize: 15,
+    fontWeight: '700' as const,
+    color: colors.text.secondary,
+  },
+  phoneTextInput: {
+    flex: 1,
+    backgroundColor: colors.background.secondary,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: colors.text.primary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+  },
+  countryModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    justifyContent: 'flex-end',
+  },
+  countryModal: {
+    maxHeight: '82%',
+    backgroundColor: colors.background.primary,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 18,
+    paddingBottom: 28,
+  },
+  countryModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  countryModalTitle: {
+    fontSize: 20,
+    fontWeight: '800' as const,
+    color: colors.text.primary,
+  },
+  countryModalClose: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background.secondary,
+  },
+  countrySearchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.background.secondary,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+  },
+  countrySearchInput: {
+    flex: 1,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: colors.text.primary,
+  },
+  countryList: {
+    maxHeight: 460,
+  },
+  countryOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 13,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+  },
+  countryOptionSelected: {
+    backgroundColor: colors.primary + '18',
+  },
+  countryOptionTextCol: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  countryOptionName: {
+    fontSize: 15,
+    fontWeight: '700' as const,
+    color: colors.text.primary,
+  },
+  countryOptionIso: {
+    fontSize: 12,
+    color: colors.text.tertiary,
+    marginTop: 2,
+  },
+  countryOptionCode: {
+    fontSize: 16,
+    fontWeight: '800' as const,
+    color: colors.primary,
   },
   authButton: {
     backgroundColor: colors.primary,

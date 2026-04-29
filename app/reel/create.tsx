@@ -137,7 +137,10 @@ export default function CreateReelScreen() {
     try {
       const uploadedVideoUrl = await uploadVideo(videoUri);
       
-      await createReel(uploadedVideoUrl, caption.trim());
+      const reel = await createReel(uploadedVideoUrl, caption.trim());
+      if (!reel) {
+        throw new Error('Reel could not be created. Please try again.');
+      }
       
       Alert.alert('Success', 'Reel posted successfully!');
       router.back();

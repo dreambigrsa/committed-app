@@ -22,6 +22,7 @@ export default function AdminRelationshipsScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [relationshipActionId, setRelationshipActionId] = useState<string | null>(null);
 
   useEffect(() => {
     loadRelationships();
@@ -73,18 +74,35 @@ export default function AdminRelationshipsScreen() {
 
   const handleVerifyRelationship = async (relationshipId: string) => {
     try {
-      await supabase
+      setRelationshipActionId(relationshipId);
+      const verifiedDate = new Date().toISOString();
+      const { data, error } = await supabase
         .from('relationships')
         .update({
           status: 'verified',
-          verified_date: new Date().toISOString(),
+          verified_date: verifiedDate,
         })
-        .eq('id', relationshipId);
+        .eq('id', relationshipId)
+        .select('id,status,verified_date')
+        .maybeSingle();
 
+      if (error) throw error;
+      if (!data) {
+        throw new Error('Relationship was not updated. Admin relationship update permission is missing in Supabase RLS.');
+      }
+
+      setRelationships(prev => prev.map(relationship => (
+        relationship.id === relationshipId
+          ? { ...relationship, status: 'verified', verifiedDate: data.verified_date || verifiedDate }
+          : relationship
+      )));
       Alert.alert('Success', 'Relationship verified');
-      loadRelationships();
-    } catch {
-      Alert.alert('Error', 'Failed to verify relationship');
+      void loadRelationships();
+    } catch (error: any) {
+      console.error('Verify relationship error:', error);
+      Alert.alert('Error', error?.message || 'Failed to verify relationship');
+    } finally {
+      setRelationshipActionId(null);
     }
   };
 
@@ -99,18 +117,35 @@ export default function AdminRelationshipsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await supabase
+              setRelationshipActionId(relationshipId);
+              const endDate = new Date().toISOString();
+              const { data, error } = await supabase
                 .from('relationships')
                 .update({
                   status: 'ended',
-                  end_date: new Date().toISOString(),
+                  end_date: endDate,
                 })
-                .eq('id', relationshipId);
+                .eq('id', relationshipId)
+                .select('id,status,end_date')
+                .maybeSingle();
 
+              if (error) throw error;
+              if (!data) {
+                throw new Error('Relationship was not updated. Admin relationship update permission is missing in Supabase RLS.');
+              }
+
+              setRelationships(prev => prev.map(relationship => (
+                relationship.id === relationshipId
+                  ? { ...relationship, status: 'ended', endDate: data.end_date || endDate }
+                  : relationship
+              )));
               Alert.alert('Success', 'Relationship rejected');
-              loadRelationships();
-            } catch {
-              Alert.alert('Error', 'Failed to reject relationship');
+              void loadRelationships();
+            } catch (error: any) {
+              console.error('Reject relationship error:', error);
+              Alert.alert('Error', error?.message || 'Failed to reject relationship');
+            } finally {
+              setRelationshipActionId(null);
             }
           },
         },
@@ -120,15 +155,16 @@ export default function AdminRelationshipsScreen() {
 
   const handleEndRelationship = async (relationshipId: string) => {
     Alert.alert(
-      'End Relationship',
-      'This will send an end relationship request to both partners. The relationship will end once they confirm or after 7 days. Continue?',
+      'Request Relationship End',
+      'This does not end the relationship immediately. It notifies both partners, lets either partner confirm or reject, and auto-ends only if no one rejects within 7 days.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'End Relationship',
+          text: 'Send Request',
           style: 'destructive',
           onPress: async () => {
             try {
+              setRelationshipActionId(relationshipId);
               // Fetch relationship to get partner IDs
               const { data: relationship, error: relError } = await supabase
                 .from('relationships')
@@ -138,6 +174,25 @@ export default function AdminRelationshipsScreen() {
 
               if (relError || !relationship) {
                 throw new Error('Relationship not found');
+              }
+
+              const { data: existingDispute, error: existingDisputeError } = await supabase
+                .from('disputes')
+                .select('id,auto_resolve_at')
+                .eq('relationship_id', relationshipId)
+                .eq('dispute_type', 'end_relationship')
+                .eq('status', 'pending')
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              if (existingDisputeError) throw existingDisputeError;
+              if (existingDispute) {
+                Alert.alert(
+                  'Already Pending',
+                  `An end request already exists for this relationship. It will auto-resolve on ${new Date(existingDispute.auto_resolve_at).toLocaleString()}.`
+                );
+                return;
               }
 
               // Create dispute for ending relationship
@@ -150,11 +205,11 @@ export default function AdminRelationshipsScreen() {
                   relationship_id: relationshipId,
                   initiated_by: currentUser!.id,
                   dispute_type: 'end_relationship',
-                  description: 'Admin ended relationship',
+                  description: 'Admin requested relationship end review',
                   status: 'pending',
                   auto_resolve_at: autoResolveDate.toISOString(),
                 })
-                .select()
+                .select('id,relationship_id,status,auto_resolve_at')
                 .single();
 
               if (disputeError) throw disputeError;
@@ -168,8 +223,8 @@ export default function AdminRelationshipsScreen() {
                   await supabase.from('notifications').insert({
                     user_id: partnerId,
                     type: 'relationship_end_request',
-                    title: 'End Relationship Request',
-                    message: 'An administrator has requested to end your relationship. Please confirm or it will auto-resolve in 7 days.',
+                    title: 'Relationship End Review',
+                    message: 'An administrator opened a relationship end review. Confirm to end it, or reject to keep it active. If no one rejects within 7 days, it will auto-end.',
                     data: { relationshipId, disputeId: dispute.id, adminInitiated: true },
                   });
                 } catch (notifError) {
@@ -181,19 +236,21 @@ export default function AdminRelationshipsScreen() {
               if (notificationErrors > 0) {
                 Alert.alert(
                   'Request Created',
-                  'End relationship request created, but some notifications may have failed. Partners can still see the request in their disputes section.',
+                  'End review created, but some notifications may have failed. Partners can still see the request in Notifications.',
                   [{ text: 'OK', onPress: () => loadRelationships() }]
                 );
               } else {
                 Alert.alert(
                   'Success',
-                  'End relationship request created. Both partners will be notified.',
+                  'End review created. Both partners can confirm or reject it in Notifications.',
                   [{ text: 'OK', onPress: () => loadRelationships() }]
                 );
               }
             } catch (error: any) {
               console.error('End relationship error:', error);
               Alert.alert('Error', error?.message || 'Failed to end relationship');
+            } finally {
+              setRelationshipActionId(null);
             }
           },
         },
@@ -212,21 +269,30 @@ export default function AdminRelationshipsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              const { error } = await supabase
+              setRelationshipActionId(relationshipId);
+              const { data, error } = await supabase
                 .from('relationships')
                 .delete()
-                .eq('id', relationshipId);
+                .eq('id', relationshipId)
+                .select('id')
+                .maybeSingle();
 
               if (error) throw error;
+              if (!data) {
+                throw new Error('Relationship was not deleted. Admin relationship delete permission is missing in Supabase RLS.');
+              }
 
+              setRelationships(prev => prev.filter(relationship => relationship.id !== relationshipId));
               Alert.alert('Success', 'Relationship deleted');
-              loadRelationships();
+              void loadRelationships();
             } catch (error: any) {
               console.error('Delete relationship error:', error);
               Alert.alert(
                 'Error', 
                 error?.message || 'Failed to delete relationship'
               );
+            } finally {
+              setRelationshipActionId(null);
             }
           },
         },
@@ -277,6 +343,10 @@ export default function AdminRelationshipsScreen() {
           <View style={styles.relationshipsList}>
             {relationships.map((relationship) => (
               <View key={relationship.id} style={styles.relationshipCard}>
+                {(() => {
+                  const isWorking = relationshipActionId === relationship.id;
+                  return (
+                    <>
                 <View style={styles.cardHeader}>
                   <Heart size={24} color={colors.primary} fill={colors.primary} />
                   <View style={[
@@ -325,15 +395,21 @@ export default function AdminRelationshipsScreen() {
                   {relationship.status === 'pending' && (
                     <>
                       <TouchableOpacity
-                        style={[styles.actionButton, styles.verifyButton]}
+                        style={[styles.actionButton, styles.verifyButton, isWorking && styles.disabledButton]}
                         onPress={() => handleVerifyRelationship(relationship.id)}
+                        disabled={isWorking}
                       >
-                        <CheckCircle size={16} color={colors.text.white} />
+                        {isWorking ? (
+                          <ActivityIndicator size="small" color={colors.text.white} />
+                        ) : (
+                          <CheckCircle size={16} color={colors.text.white} />
+                        )}
                         <Text style={styles.actionButtonText}>Verify</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={[styles.actionButton, styles.rejectButton]}
+                        style={[styles.actionButton, styles.rejectButton, isWorking && styles.disabledButton]}
                         onPress={() => handleRejectRelationship(relationship.id)}
+                        disabled={isWorking}
                       >
                         <XCircle size={16} color={colors.text.white} />
                         <Text style={styles.actionButtonText}>Reject</Text>
@@ -345,22 +421,27 @@ export default function AdminRelationshipsScreen() {
                   <View style={styles.adminActions}>
                     {relationship.status === 'verified' && (
                       <TouchableOpacity
-                        style={[styles.adminButton, styles.endButton]}
+                        style={[styles.adminButton, styles.endButton, isWorking && styles.disabledButton]}
                         onPress={() => handleEndRelationship(relationship.id)}
+                        disabled={isWorking}
                       >
                         <AlertTriangle size={16} color={colors.text.white} />
-                        <Text style={styles.adminButtonText}>End Relationship</Text>
+                        <Text style={styles.adminButtonText}>Request End Review</Text>
                       </TouchableOpacity>
                     )}
                     <TouchableOpacity
-                      style={[styles.adminButton, styles.deleteButton]}
+                      style={[styles.adminButton, styles.deleteButton, isWorking && styles.disabledButton]}
                       onPress={() => handleDeleteRelationship(relationship.id)}
+                      disabled={isWorking}
                     >
                       <XCircle size={16} color={colors.text.white} />
                       <Text style={styles.adminButtonText}>Delete</Text>
                     </TouchableOpacity>
                   </View>
                 )}
+                    </>
+                  );
+                })()}
               </View>
             ))}
 
@@ -556,6 +637,9 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontSize: 14,
     fontWeight: '600' as const,
     color: colors.text.white,
+  },
+  disabledButton: {
+    opacity: 0.65,
   },
   emptyState: {
     paddingVertical: 80,

@@ -21,12 +21,64 @@ import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Advertisement } from '@/types';
 
+const mapAdRow = (
+  ad: any,
+  analytics: {
+    impressions: number;
+    clicks: number;
+    likes?: number;
+    comments?: number;
+    shares?: number;
+    spend?: number;
+    bidMultiplier?: number;
+    effectiveCpm?: number;
+    effectiveCpc?: number;
+    effectiveCpe?: number;
+  } = { impressions: 0, clicks: 0 }
+): Advertisement => ({
+  id: ad.id,
+  title: ad.title,
+  description: ad.description,
+  imageUrl: ad.image_url,
+  linkUrl: ad.link_url,
+  type: ad.type,
+  placement: ad.placement,
+  active: ad.active,
+  impressions: analytics.impressions,
+  clicks: analytics.clicks,
+  createdBy: ad.created_by,
+  createdAt: ad.created_at,
+  updatedAt: ad.updated_at,
+  ctaType: ad.cta_type,
+  ctaPhone: ad.cta_phone,
+  ctaMessage: ad.cta_message,
+  ctaMessengerId: ad.cta_messenger_id,
+  ctaUrl: ad.cta_url,
+  sponsorName: ad.sponsor_name,
+  sponsorVerified: ad.sponsor_verified,
+  userId: ad.user_id,
+  status: ad.status,
+  rejectionReason: ad.rejection_reason,
+  startDate: ad.start_date,
+  endDate: ad.end_date,
+  dailyBudget: ad.daily_budget,
+  totalBudget: ad.total_budget,
+  spend: analytics.spend ?? ad.spend,
+  billingStatus: ad.billing_status,
+  billingProvider: ad.billing_provider,
+  billingTxnId: ad.billing_txn_id,
+  promotedPostId: ad.promoted_post_id,
+  promotedReelId: ad.promoted_reel_id,
+  targeting: ad.targeting,
+});
+
 export default function AdminAdvertisementsScreen() {
   const { currentUser, createAdvertisement, updateAdvertisement, deleteAdvertisement } = useApp();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [advertisements, setAdvertisements] = useState<Advertisement[]>([]);
   const [loading, setLoading] = useState(true);
+  const [actionAdId, setActionAdId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
   const [editingAd, setEditingAd] = useState<Advertisement | null>(null);
@@ -152,37 +204,47 @@ export default function AdminAdvertisementsScreen() {
       if (adsError) throw adsError;
 
       if (adsData && adsData.length > 0) {
-        // Get all ad IDs
         const adIds = adsData.map((ad: any) => ad.id);
 
-        // Get impression counts from tracking table
-        const { data: impressionsData } = await supabase
-          .from('advertisement_impressions')
-          .select('advertisement_id')
-          .in('advertisement_id', adIds);
+        const [impressionsRes, clicksRes, engagementsRes] = await Promise.all([
+          supabase
+            .from('advertisement_impressions')
+            .select('advertisement_id')
+            .in('advertisement_id', adIds),
+          supabase
+            .from('advertisement_clicks')
+            .select('advertisement_id')
+            .in('advertisement_id', adIds),
+          supabase
+            .from('ad_engagements')
+            .select('advertisement_id, engagement_type')
+            .in('advertisement_id', adIds),
+        ]);
 
-        // Get click counts from tracking table
-        const { data: clicksData } = await supabase
-          .from('advertisement_clicks')
-          .select('advertisement_id')
-          .in('advertisement_id', adIds);
-
-        // Calculate counts for each ad
         const impressionsMap = new Map<string, number>();
         const clicksMap = new Map<string, number>();
+        const engagementsMap = new Map<string, { likes: number; comments: number; shares: number }>();
 
-        impressionsData?.forEach((imp: any) => {
+        impressionsRes.data?.forEach((imp: any) => {
           const count = impressionsMap.get(imp.advertisement_id) || 0;
           impressionsMap.set(imp.advertisement_id, count + 1);
         });
 
-        clicksData?.forEach((click: any) => {
+        clicksRes.data?.forEach((click: any) => {
           const count = clicksMap.get(click.advertisement_id) || 0;
           clicksMap.set(click.advertisement_id, count + 1);
         });
 
-        // Format advertisements with real-time analytics
+        engagementsRes.data?.forEach((eng: any) => {
+          const entry = engagementsMap.get(eng.advertisement_id) || { likes: 0, comments: 0, shares: 0 };
+          if (eng.engagement_type === 'like') entry.likes += 1;
+          if (eng.engagement_type === 'comment') entry.comments += 1;
+          if (eng.engagement_type === 'share') entry.shares += 1;
+          engagementsMap.set(eng.advertisement_id, entry);
+        });
+
         const formattedAds: Advertisement[] = [];
+        const spendUpdates: { id: string; spend: number }[] = [];
 
         // Build a simple competition map by niche+placement for bidding
         const activeApproved = adsData.filter(
@@ -199,16 +261,10 @@ export default function AdminAdvertisementsScreen() {
         for (const ad of adsData) {
           const impressions = impressionsMap.get(ad.id) || 0;
           const clicks = clicksMap.get(ad.id) || 0;
-          
-          // Get engagements (likes, comments, shares)
-          const { data: engagementsData } = await supabase
-            .from('ad_engagements')
-            .select('engagement_type')
-            .eq('advertisement_id', ad.id);
-          const engagements = engagementsData || [];
-          const likes = engagements.filter((e: any) => e.engagement_type === 'like').length;
-          const comments = engagements.filter((e: any) => e.engagement_type === 'comment').length;
-          const shares = engagements.filter((e: any) => e.engagement_type === 'share').length;
+          const engagementSummary = engagementsMap.get(ad.id) || { likes: 0, comments: 0, shares: 0 };
+          const likes = engagementSummary.likes;
+          const comments = engagementSummary.comments;
+          const shares = engagementSummary.shares;
           const totalEngagements = likes + comments + shares;
           
           const placement = ad.placement || 'feed';
@@ -232,48 +288,22 @@ export default function AdminAdvertisementsScreen() {
             spend = Math.min(spend, Number(ad.total_budget));
           }
 
-          // Persist computed spend so My Ads shows it too
-          await supabase
-            .from('advertisements')
-            .update({ spend })
-            .eq('id', ad.id);
+          if (Number(ad.spend || 0).toFixed(2) !== spend.toFixed(2)) {
+            spendUpdates.push({ id: ad.id, spend });
+          }
 
-          const adObj: Advertisement = {
-            id: ad.id,
-            title: ad.title,
-            description: ad.description,
-            imageUrl: ad.image_url,
-            linkUrl: ad.link_url,
-            type: ad.type,
-            placement: ad.placement,
-            active: ad.active,
+          const adObj: Advertisement = mapAdRow(ad, {
             impressions,
             clicks,
-            createdBy: ad.created_by,
-            createdAt: ad.created_at,
-            updatedAt: ad.updated_at,
-            ctaType: ad.cta_type,
-            ctaPhone: ad.cta_phone,
-            ctaMessage: ad.cta_message,
-            ctaMessengerId: ad.cta_messenger_id,
-            ctaUrl: ad.cta_url,
-            sponsorName: ad.sponsor_name,
-            sponsorVerified: ad.sponsor_verified,
-            userId: ad.user_id,
-            status: ad.status,
-            rejectionReason: ad.rejection_reason,
-            startDate: ad.start_date,
-            endDate: ad.end_date,
-            dailyBudget: ad.daily_budget,
-            totalBudget: ad.total_budget,
+            likes,
+            comments,
+            shares,
             spend,
-            billingStatus: ad.billing_status,
-            billingProvider: ad.billing_provider,
-            billingTxnId: ad.billing_txn_id,
-            promotedPostId: ad.promoted_post_id,
-            promotedReelId: ad.promoted_reel_id,
-            targeting: ad.targeting,
-          };
+            bidMultiplier: multiplier,
+            effectiveCpm: effectiveCPM,
+            effectiveCpc: effectiveCPC,
+            effectiveCpe: effectiveCPE,
+          });
           
           // Add UI-only properties
           (adObj as any).effectiveCpm = effectiveCPM;
@@ -289,6 +319,13 @@ export default function AdminAdvertisementsScreen() {
         }
 
         setAdvertisements(formattedAds);
+        if (spendUpdates.length > 0) {
+          void Promise.all(
+            spendUpdates.map((entry) =>
+              supabase.from('advertisements').update({ spend: entry.spend }).eq('id', entry.id)
+            )
+          ).catch((error) => console.error('Failed to persist ad spend updates:', error));
+        }
       } else {
         setAdvertisements([]);
       }
@@ -387,32 +424,77 @@ export default function AdminAdvertisementsScreen() {
   };
 
   const handleApprove = async (ad: Advertisement) => {
-    await updateAdvertisement(ad.id, { status: 'approved', rejectionReason: '', active: true, billingStatus: 'paid', billingProvider: ad.billingProvider || 'manual' });
-    setAdvertisements((prev) =>
-      prev.map((a) =>
-        a.id === ad.id
-          ? { ...a, status: 'approved', rejectionReason: '', active: true, billingStatus: 'paid', billingProvider: a.billingProvider || 'manual' }
-          : a
-      )
-    );
+    try {
+      setActionAdId(ad.id);
+      const nextActive = ad.billingStatus === 'paid';
+      await updateAdvertisement(ad.id, { status: 'approved', rejectionReason: '', active: nextActive });
+      setAdvertisements((prev) =>
+        prev.map((a) =>
+          a.id === ad.id
+            ? { ...a, status: 'approved', rejectionReason: '', active: nextActive }
+            : a
+        )
+      );
+      if (!nextActive) {
+        Alert.alert('Creative approved', 'This ad will start after its payment is approved or marked paid.');
+      }
+    } finally {
+      setActionAdId(null);
+    }
   };
 
   const handleReject = async (ad: Advertisement) => {
     Alert.alert('Reject ad', 'Add a rejection reason', [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Reject',
-        style: 'destructive',
-        onPress: async () => {
-          await updateAdvertisement(ad.id, { status: 'rejected', active: false, rejectionReason: 'Rejected by admin', billingStatus: 'unpaid' });
-          setAdvertisements((prev) =>
-            prev.map((a) =>
-              a.id === ad.id ? { ...a, status: 'rejected', active: false, rejectionReason: 'Rejected by admin', billingStatus: 'unpaid' } : a
-            )
-          );
+          text: 'Reject',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setActionAdId(ad.id);
+              await updateAdvertisement(ad.id, { status: 'rejected', active: false, rejectionReason: 'Rejected by admin' });
+              setAdvertisements((prev) =>
+                prev.map((a) =>
+                  a.id === ad.id ? { ...a, status: 'rejected', active: false, rejectionReason: 'Rejected by admin' } : a
+                )
+              );
+            } finally {
+              setActionAdId(null);
+            }
         },
       },
     ]);
+  };
+
+  const ensureManualReceipt = async (ad: Advertisement) => {
+    if (!ad.userId) return;
+    const { data: existing } = await supabase
+      .from('ad_payment_receipts')
+      .select('id')
+      .eq('advertisement_id', ad.id)
+      .eq('user_id', ad.userId)
+      .limit(1)
+      .maybeSingle();
+
+    if (existing?.id) return;
+
+    const receiptNumber = `AD-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.random()
+      .toString(36)
+      .slice(2, 8)
+      .toUpperCase()}`;
+
+    const { error } = await supabase
+      .from('ad_payment_receipts')
+      .insert({
+        advertisement_id: ad.id,
+        user_id: ad.userId,
+        amount: Number(ad.totalBudget || ad.dailyBudget || 0),
+        currency: 'USD',
+        receipt_number: receiptNumber,
+        issued_at: new Date().toISOString(),
+      });
+
+    if (error) throw error;
   };
 
   const handleMarkPaid = async (ad: Advertisement) => {
@@ -424,12 +506,36 @@ export default function AdminAdvertisementsScreen() {
         {
           text: 'Mark paid',
           onPress: async () => {
-            await updateAdvertisement(ad.id, { billingStatus: 'paid', billingProvider: ad.billingProvider || 'manual', active: true });
-            setAdvertisements((prev) => prev.map((a) => (a.id === ad.id ? { ...a, billingStatus: 'paid', billingProvider: ad.billingProvider || 'manual', active: true } : a)));
+            try {
+              setActionAdId(ad.id);
+              const nextActive = ad.status === 'approved';
+              await updateAdvertisement(ad.id, { billingStatus: 'paid', billingProvider: ad.billingProvider || 'manual', active: nextActive });
+              await ensureManualReceipt(ad);
+              setAdvertisements((prev) => prev.map((a) => (a.id === ad.id ? { ...a, billingStatus: 'paid', billingProvider: ad.billingProvider || 'manual', active: nextActive } : a)));
+              if (!nextActive) {
+                Alert.alert('Payment marked paid', 'Approve the creative before this ad starts running.');
+              }
+            } catch (error: any) {
+              Alert.alert('Error', error?.message || 'Failed to mark ad as paid');
+            } finally {
+              setActionAdId(null);
+            }
           },
         },
       ],
     );
+  };
+
+  const handleMarkUnpaid = async (ad: Advertisement) => {
+    try {
+      setActionAdId(ad.id);
+      await updateAdvertisement(ad.id, { billingStatus: 'unpaid', active: false });
+      setAdvertisements((prev) =>
+        prev.map((a) => (a.id === ad.id ? { ...a, billingStatus: 'unpaid', active: false } : a))
+      );
+    } finally {
+      setActionAdId(null);
+    }
   };
 
   const saveAd = async () => {
@@ -557,8 +663,12 @@ export default function AdminAdvertisementsScreen() {
   };
 
   const handleToggleActive = async (ad: Advertisement) => {
+    if (!ad.active && (ad.status !== 'approved' || ad.billingStatus !== 'paid')) {
+      Alert.alert('Cannot activate yet', 'Approve the creative and confirm payment before activating this ad.');
+      return;
+    }
     await updateAdvertisement(ad.id, { active: !ad.active });
-    loadAdvertisements(); // Reload to update status
+    setAdvertisements((prev) => prev.map((item) => (item.id === ad.id ? { ...item, active: !item.active } : item)));
   };
 
   const getCTR = (ad: Advertisement) => {
@@ -695,14 +805,22 @@ export default function AdminAdvertisementsScreen() {
                         <CheckCircle2 size={18} color={colors.text.white} />
                         <Text style={styles.primaryActionText}>Approved</Text>
                       </View>
-                      <TouchableOpacity style={[styles.primaryAction, styles.primaryActionDanger]} onPress={() => handleReject(ad)}>
+                      <TouchableOpacity
+                        style={[styles.primaryAction, styles.primaryActionDanger, actionAdId === ad.id && styles.disabledButton]}
+                        onPress={() => handleReject(ad)}
+                        disabled={actionAdId === ad.id}
+                      >
                         <XCircle size={18} color={colors.text.white} />
                         <Text style={styles.primaryActionText}>Reject</Text>
                       </TouchableOpacity>
                     </>
                   ) : ad.status === 'rejected' ? (
                     <>
-                      <TouchableOpacity style={[styles.primaryAction, styles.primaryActionSuccess]} onPress={() => handleApprove(ad)}>
+                      <TouchableOpacity
+                        style={[styles.primaryAction, styles.primaryActionSuccess, actionAdId === ad.id && styles.disabledButton]}
+                        onPress={() => handleApprove(ad)}
+                        disabled={actionAdId === ad.id}
+                      >
                         <CheckCircle2 size={18} color={colors.text.white} />
                         <Text style={styles.primaryActionText}>Approve</Text>
                       </TouchableOpacity>
@@ -713,11 +831,19 @@ export default function AdminAdvertisementsScreen() {
                     </>
                   ) : (
                     <>
-                      <TouchableOpacity style={[styles.primaryAction, styles.primaryActionSuccess]} onPress={() => handleApprove(ad)}>
+                      <TouchableOpacity
+                        style={[styles.primaryAction, styles.primaryActionSuccess, actionAdId === ad.id && styles.disabledButton]}
+                        onPress={() => handleApprove(ad)}
+                        disabled={actionAdId === ad.id}
+                      >
                         <CheckCircle2 size={18} color={colors.text.white} />
                         <Text style={styles.primaryActionText}>Approve</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity style={[styles.primaryAction, styles.primaryActionDanger]} onPress={() => handleReject(ad)}>
+                      <TouchableOpacity
+                        style={[styles.primaryAction, styles.primaryActionDanger, actionAdId === ad.id && styles.disabledButton]}
+                        onPress={() => handleReject(ad)}
+                        disabled={actionAdId === ad.id}
+                      >
                         <XCircle size={18} color={colors.text.white} />
                         <Text style={styles.primaryActionText}>Reject</Text>
                       </TouchableOpacity>
@@ -726,13 +852,18 @@ export default function AdminAdvertisementsScreen() {
                 </View>
 
                 <View style={styles.secondaryActions}>
-                  <TouchableOpacity style={[styles.primaryAction, styles.primaryActionBrand]} onPress={() => handleMarkPaid(ad)}>
+                  <TouchableOpacity
+                    style={[styles.primaryAction, styles.primaryActionBrand, actionAdId === ad.id && styles.disabledButton]}
+                    onPress={() => handleMarkPaid(ad)}
+                    disabled={actionAdId === ad.id || ad.billingStatus === 'paid'}
+                  >
                     <DollarSign size={18} color={colors.text.white} />
                     <Text style={styles.primaryActionText}>Mark Paid (manual)</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={styles.secondaryAction}
-                    onPress={() => updateAdvertisement(ad.id, { billingStatus: 'unpaid', active: false })}
+                    style={[styles.secondaryAction, actionAdId === ad.id && styles.disabledButton]}
+                    onPress={() => handleMarkUnpaid(ad)}
+                    disabled={actionAdId === ad.id || ad.billingStatus !== 'paid'}
                   >
                     <PauseCircle size={16} color={colors.text.primary} />
                     <Text style={styles.secondaryActionText}>Mark Unpaid</Text>

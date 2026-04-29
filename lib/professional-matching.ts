@@ -5,7 +5,7 @@
 
 import { supabase } from './supabase';
 import { ProfessionalProfile, ProfessionalRole, ProfessionalStatus } from '@/types';
-import { isInQuietHours, canProfessionalAcceptSession as checkAvailability, getEffectiveProfessionalStatus } from './professional-availability';
+import { isInQuietHours, canProfessionalAcceptSession as checkAvailability } from './professional-availability';
 
 export interface MatchingCriteria {
   roleId?: string;
@@ -62,7 +62,9 @@ export async function findMatchingProfessionals(
       query = query.eq('online_availability', true);
     }
 
-    const { data: profiles, error } = await query;
+    const { data: profiles, error } = await query
+      .order('rating_average', { ascending: false, nullsFirst: false })
+      .limit(Math.max(limit * 4, 20));
 
     if (error) throw error;
     if (!profiles || profiles.length === 0) return [];
@@ -76,6 +78,16 @@ export async function findMatchingProfessionals(
 
     const statusMap = new Map(
       (statuses || []).map((s: any) => [s.professional_id, s])
+    );
+    const userIds = Array.from(new Set(profiles.map((p: any) => p.user_id).filter(Boolean)));
+    const { data: userStatuses } = userIds.length > 0
+      ? await supabase
+          .from('user_status')
+          .select('user_id, status_type, last_active_at')
+          .in('user_id', userIds)
+      : { data: [] as any[] };
+    const userStatusMap = new Map(
+      (userStatuses || []).map((s: any) => [s.user_id, s])
     );
 
     // Filter and score professionals
@@ -102,19 +114,11 @@ export async function findMatchingProfessionals(
         status_override: false,
       };
 
-      // Get effective status (hybrid approach: combines automatic user_status with manual preference)
-      let effectiveStatus: 'online' | 'busy' | 'away' | 'offline' = statusDataFinal.status;
-      try {
-        const effective = await getEffectiveProfessionalStatus(
-          profile.user_id, // Professional's user_id (not professional_id)
-          statusDataFinal.status as 'online' | 'busy' | 'away' | 'offline',
-          statusDataFinal.status_override || false
-        );
-        effectiveStatus = effective.status;
-      } catch (error) {
-        // Fallback to preference if calculation fails
-        console.warn(`Error calculating effective status for professional ${profile.id}:`, error);
-      }
+      const effectiveStatus = getEffectiveStatusFromCachedUserStatus(
+        userStatusMap.get(profile.user_id),
+        statusDataFinal.status as 'online' | 'busy' | 'away' | 'offline',
+        statusDataFinal.status_override || false
+      );
 
       // Skip offline/away/busy professionals if online only is strictly required (use effective status)
       // Busy professionals are not available, so filter them out
@@ -196,6 +200,39 @@ export async function findMatchingProfessionals(
     console.error('Error finding matching professionals:', error?.message || error);
     return [];
   }
+}
+
+function getEffectiveStatusFromCachedUserStatus(
+  userStatusData: any,
+  professionalStatusPreference: 'online' | 'busy' | 'away' | 'offline',
+  isAdminOverride: boolean
+): 'online' | 'busy' | 'away' | 'offline' {
+  if (isAdminOverride || professionalStatusPreference === 'busy' || professionalStatusPreference === 'offline') {
+    return professionalStatusPreference;
+  }
+
+  if (!userStatusData?.last_active_at) {
+    return professionalStatusPreference;
+  }
+
+  const diffMins = Math.floor((Date.now() - new Date(userStatusData.last_active_at).getTime()) / 60000);
+  let calculatedStatus: 'online' | 'busy' | 'away' | 'offline';
+
+  if (userStatusData.status_type === 'busy') {
+    calculatedStatus = 'busy';
+  } else if (diffMins <= 5) {
+    calculatedStatus = 'online';
+  } else if (diffMins <= 15) {
+    calculatedStatus = 'away';
+  } else {
+    calculatedStatus = 'offline';
+  }
+
+  if (professionalStatusPreference === 'away') {
+    return calculatedStatus === 'offline' ? 'away' : calculatedStatus;
+  }
+
+  return calculatedStatus;
 }
 
 /**

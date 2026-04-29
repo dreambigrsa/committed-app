@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { Check, X, Eye, Clock, DollarSign, CreditCard, Shield } from 'lucide-react-native';
@@ -61,6 +62,46 @@ export default function AdminPaymentVerificationsScreen() {
 
   const handleVerify = async (submissionId: string, status: 'approved' | 'rejected') => {
     if (status === 'rejected') {
+      const rejectPayment = async (reason?: string) => {
+        try {
+          const verifyAdsPayment =
+            PaymentAdminService.verifyAdPayment ?? PaymentAdminService.verifyPayment;
+          if (submissionType === 'ads') {
+            await verifyAdsPayment(
+              submissionId,
+              'rejected',
+              reason || 'Payment verification failed'
+            );
+          } else {
+            await PaymentAdminService.verifyPayment(
+              submissionId,
+              'rejected',
+              reason || 'Payment verification failed'
+            );
+          }
+          Alert.alert('Success', 'Payment rejected');
+          loadSubmissions();
+        } catch (error: any) {
+          Alert.alert('Error', error.message || 'Failed to reject payment');
+        }
+      };
+
+      if (Platform.OS !== 'ios') {
+        Alert.alert(
+          'Reject Payment',
+          'Reject this payment submission? You can add detailed notes from the admin payment record if needed.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Reject',
+              style: 'destructive',
+              onPress: () => rejectPayment(),
+            },
+          ]
+        );
+        return;
+      }
+
       Alert.prompt(
         'Reject Payment',
         'Please provide a reason for rejection:',
@@ -69,29 +110,7 @@ export default function AdminPaymentVerificationsScreen() {
           {
             text: 'Reject',
             style: 'destructive',
-            onPress: async (reason?: string) => {
-              try {
-                const verifyAdsPayment =
-                  PaymentAdminService.verifyAdPayment ?? PaymentAdminService.verifyPayment;
-                if (submissionType === 'ads') {
-                  await verifyAdsPayment(
-                    submissionId,
-                    'rejected',
-                    reason || 'Payment verification failed'
-                  );
-                } else {
-                  await PaymentAdminService.verifyPayment(
-                    submissionId,
-                    'rejected',
-                    reason || 'Payment verification failed'
-                  );
-                }
-                Alert.alert('Success', 'Payment rejected');
-                loadSubmissions();
-              } catch (error: any) {
-                Alert.alert('Error', error.message || 'Failed to reject payment');
-              }
-            },
+            onPress: rejectPayment,
           },
         ],
         'plain-text'
@@ -680,4 +699,3 @@ const createStyles = (colors: any) =>
       textAlign: 'center',
     },
   });
-

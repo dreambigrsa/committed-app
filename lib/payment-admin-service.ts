@@ -76,12 +76,15 @@ export async function updatePaymentMethod(
 }
 
 export async function deletePaymentMethod(methodId: string) {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('payment_methods')
     .delete()
-    .eq('id', methodId);
+    .eq('id', methodId)
+    .select('id')
+    .maybeSingle();
 
   if (error) throw error;
+  if (!data) throw new Error('Payment method was not deleted. Admin delete permission may be missing.');
 }
 
 // ============================================
@@ -97,6 +100,7 @@ export async function getPaymentSubmissions(status?: 'all' | 'pending' | 'approv
       subscription_plan:subscription_plans!payment_submissions_subscription_plan_id_fkey(id, name, price_monthly, price_yearly),
       payment_method:payment_methods!payment_submissions_payment_method_id_fkey(id, name, icon_emoji)
     `)
+    .is('advertisement_id', null)
     .order('created_at', { ascending: false });
 
   if (status && status !== 'all') {
@@ -203,33 +207,50 @@ export async function verifyAdPayment(
         ? { billing_status: 'paid', status: 'approved', active: true }
         : { billing_status: 'failed', status: 'rejected', active: false };
 
-    const { error: adError } = await supabase
+    const { data: updatedAd, error: adError } = await supabase
       .from('advertisements')
       .update(adUpdates)
-      .eq('id', data.advertisement.id);
+      .eq('id', data.advertisement.id)
+      .select('id,status,billing_status,active')
+      .maybeSingle();
 
     if (adError) throw adError;
+    if (!updatedAd) {
+      throw new Error('Payment was updated, but the advertisement was not updated. Admin ad update permission may be missing.');
+    }
   }
 
   if (status === 'approved' && data?.advertisement?.id && data?.user?.id) {
-    const receiptNumber = `AD-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.random()
-      .toString(36)
-      .slice(2, 8)
-      .toUpperCase()}`;
-
-    const { error: receiptError } = await supabase
+    const { data: existingReceipt, error: existingReceiptError } = await supabase
       .from('ad_payment_receipts')
-      .insert({
-        advertisement_id: data.advertisement.id,
-        payment_submission_id: data.id,
-        user_id: data.user.id,
-        amount: data.amount,
-        currency: data.currency || 'USD',
-        receipt_number: receiptNumber,
-        issued_at: new Date().toISOString(),
-      });
+      .select('id, receipt_number')
+      .eq('payment_submission_id', data.id)
+      .limit(1)
+      .maybeSingle();
 
-    if (receiptError) throw receiptError;
+    if (existingReceiptError) throw existingReceiptError;
+
+    let receiptNumber = existingReceipt?.receipt_number;
+    if (!existingReceipt) {
+      receiptNumber = `AD-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.random()
+        .toString(36)
+        .slice(2, 8)
+        .toUpperCase()}`;
+
+      const { error: receiptError } = await supabase
+        .from('ad_payment_receipts')
+        .insert({
+          advertisement_id: data.advertisement.id,
+          payment_submission_id: data.id,
+          user_id: data.user.id,
+          amount: data.amount,
+          currency: data.currency || 'USD',
+          receipt_number: receiptNumber,
+          issued_at: new Date().toISOString(),
+        });
+
+      if (receiptError) throw receiptError;
+    }
 
     await supabase.rpc('create_notification', {
       p_user_id: data.user.id,

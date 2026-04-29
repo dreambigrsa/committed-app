@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,65 @@ import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Notification, NotificationType } from '@/types';
 import { supabase } from '@/lib/supabase';
+
+type NotificationWithSource = Notification & { source: 'notification' | 'alert' };
+
+const NotificationMessage = React.memo(function NotificationMessage({
+  message,
+  notification,
+  styles,
+  extractUsername,
+  onUserPress,
+}: {
+  message: string;
+  notification: NotificationWithSource;
+  styles: any;
+  extractUsername: (message: string, notification: NotificationWithSource) => Promise<{ username: string; userId: string } | null>;
+  onUserPress: (userId: string) => void;
+}) {
+  const [usernameInfo, setUsernameInfo] = useState<{ username: string; userId: string } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadUsername = async () => {
+      const info = await extractUsername(message, notification);
+      if (!cancelled) {
+        setUsernameInfo(info);
+      }
+    };
+    loadUsername();
+    return () => {
+      cancelled = true;
+    };
+  }, [extractUsername, message, notification]);
+
+  if (usernameInfo && usernameInfo.userId && usernameInfo.username) {
+    const usernameRegex = new RegExp(usernameInfo.username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    const parts = message.split(usernameRegex);
+    const match = message.match(usernameRegex);
+
+    if (match && parts.length >= 2) {
+      return (
+        <Text style={[styles.notificationText, !notification.read && styles.unreadText]}>
+          {parts[0]}
+          <Text
+            style={[styles.notificationText, !notification.read && styles.unreadText, styles.clickableUsername]}
+            onPress={() => onUserPress(usernameInfo.userId)}
+          >
+            {match[0]}
+          </Text>
+          {parts.slice(1).join(match[0])}
+        </Text>
+      );
+    }
+  }
+
+  return (
+    <Text style={[styles.notificationText, !notification.read && styles.unreadText]}>
+      {message}
+    </Text>
+  );
+});
 
 export default function NotificationsScreen() {
   const router = useRouter();
@@ -94,17 +153,17 @@ export default function NotificationsScreen() {
 
   const handleEndRelationshipReject = async (disputeId: string, notificationId?: string) => {
     Alert.alert(
-      'Reject End Request',
-      'Are you sure you want to reject this end relationship request? The relationship will continue.',
+      'Keep Relationship Active',
+      'Rejecting this end review keeps the relationship active and stops the 7-day auto-end.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Reject',
+          text: 'Keep Active',
           style: 'destructive',
           onPress: async () => {
             try {
               // Update dispute status to rejected
-              const { error } = await supabase
+              const { data, error } = await supabase
                 .from('disputes')
                 .update({
                   status: 'resolved',
@@ -112,9 +171,15 @@ export default function NotificationsScreen() {
                   resolved_at: new Date().toISOString(),
                   resolved_by: currentUser?.id,
                 })
-                .eq('id', disputeId);
+                .eq('id', disputeId)
+                .eq('status', 'pending')
+                .select('id,status,resolution')
+                .maybeSingle();
 
               if (error) throw error;
+              if (!data) {
+                throw new Error('End relationship request was not rejected. It may have already been handled.');
+              }
               
               if (notificationId) {
                 await markNotificationAsRead(notificationId);
@@ -124,7 +189,7 @@ export default function NotificationsScreen() {
               const requests = await getPendingEndRelationshipRequests();
               setPendingEndRequests(requests);
               
-              Alert.alert('Request Rejected', 'The end relationship request has been rejected. Your relationship continues.');
+              Alert.alert('Relationship Kept', 'The end review was rejected. Your relationship continues.');
             } catch (error: any) {
               console.error('Error rejecting end relationship:', error);
               Alert.alert('Error', error?.message || 'Failed to reject request');
@@ -190,7 +255,7 @@ export default function NotificationsScreen() {
   const unreadNotifications = notifications.filter(n => !n.read);
   const unreadAlerts = cheatingAlerts.filter(a => !a.read);
 
-  const allNotifications = [
+  const allNotifications = useMemo(() => [
     ...notifications.map(n => ({ ...n, source: 'notification' as const })),
     ...cheatingAlerts.map(a => ({
       id: a.id,
@@ -203,7 +268,7 @@ export default function NotificationsScreen() {
       createdAt: a.createdAt,
       source: 'alert' as const,
     }))
-  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [notifications, cheatingAlerts]);
 
   const handleNotificationPress = async (notification: Notification & { source: 'notification' | 'alert' }) => {
     if (!notification.read) {
@@ -320,7 +385,7 @@ export default function NotificationsScreen() {
     );
   };
 
-  const fetchUserName = async (userId: string): Promise<string | null> => {
+  const fetchUserName = useCallback(async (userId: string): Promise<string | null> => {
     // Check cache first
     if (userCache[userId]) {
       return userCache[userId];
@@ -342,9 +407,9 @@ export default function NotificationsScreen() {
       console.error('Error fetching user name:', error);
       return null;
     }
-  };
+  }, [userCache]);
 
-  const extractUsername = async (message: string, notification: Notification & { source: 'notification' | 'alert' }): Promise<{ username: string; userId: string } | null> => {
+  const extractUsername = useCallback(async (message: string, notification: NotificationWithSource): Promise<{ username: string; userId: string } | null> => {
     const data = notification.data || {};
     
     // First, try to get userId from notification data (most reliable)
@@ -389,57 +454,7 @@ export default function NotificationsScreen() {
       }
     }
     return null;
-  };
-
-  const NotificationMessage = ({ message, notification }: { message: string; notification: Notification & { source: 'notification' | 'alert' } }) => {
-    const [usernameInfo, setUsernameInfo] = useState<{ username: string; userId: string } | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
-
-    useEffect(() => {
-      const loadUsername = async () => {
-        const info = await extractUsername(message, notification);
-        setUsernameInfo(info);
-        setIsLoading(false);
-      };
-      loadUsername();
-    }, [message, notification]);
-
-    if (isLoading) {
-      return (
-        <Text style={[styles.notificationText, !notification.read && styles.unreadText]}>
-          {message}
-        </Text>
-      );
-    }
-
-    if (usernameInfo && usernameInfo.userId && usernameInfo.username) {
-      // Split message by username, handling case-insensitive matching
-      const usernameRegex = new RegExp(usernameInfo.username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      const parts = message.split(usernameRegex);
-      const match = message.match(usernameRegex);
-      
-      if (match && parts.length >= 2) {
-        return (
-          <Text style={[styles.notificationText, !notification.read && styles.unreadText]}>
-            {parts[0]}
-            <Text
-              style={[styles.notificationText, !notification.read && styles.unreadText, styles.clickableUsername]}
-              onPress={() => router.push(`/profile/${usernameInfo.userId}` as any)}
-            >
-              {match[0]}
-            </Text>
-            {parts.slice(1).join(match[0])}
-          </Text>
-        );
-      }
-    }
-
-    return (
-      <Text style={[styles.notificationText, !notification.read && styles.unreadText]}>
-        {message}
-      </Text>
-    );
-  };
+  }, [fetchUserName, posts, reels, userCache]);
 
   const renderNotificationItem = ({ item }: { item: Notification & { source: 'notification' | 'alert' } }) => {
     const isRelationshipRequest = item.type === 'relationship_request';
@@ -456,7 +471,13 @@ export default function NotificationsScreen() {
           </View>
           <View style={styles.notificationContent}>
             <Text style={styles.notificationTitle}>{item.title}</Text>
-            <NotificationMessage message={item.message} notification={item} />
+            <NotificationMessage
+              message={item.message}
+              notification={item}
+              styles={styles}
+              extractUsername={extractUsername}
+              onUserPress={(userId) => router.push(`/profile/${userId}` as any)}
+            />
             <Text style={styles.notificationTime}>{formatTimeAgo(item.createdAt)}</Text>
           </View>
           {!item.read && <View style={styles.unreadDot} />}
@@ -529,11 +550,15 @@ export default function NotificationsScreen() {
             <HeartOff size={28} color={colors.danger} />
           </View>
           <View style={styles.requestInfo}>
-            <Text style={styles.requestTitle}>End Relationship Request</Text>
+            <Text style={styles.requestTitle}>Relationship End Review</Text>
             <Text style={styles.requestText}>
-              <Text style={styles.requestName}>{item.initiatedByName}</Text> wants to
-              end your {getRelationshipTypeLabel(item.relationshipType).toLowerCase()}
+              <Text style={styles.requestName}>{item.initiatedByName}</Text> opened a review to end your {getRelationshipTypeLabel(item.relationshipType).toLowerCase()}
             </Text>
+            {item.autoResolveAt && (
+              <Text style={styles.requestDate}>
+                Auto-ends if nobody rejects by {new Date(item.autoResolveAt).toLocaleString()}
+              </Text>
+            )}
             <Text style={styles.requestDate}>
               {new Date(item.createdAt).toLocaleDateString('en-US', {
                 month: 'short',
@@ -552,14 +577,14 @@ export default function NotificationsScreen() {
           onPress={() => handleEndRelationshipReject(item.disputeId)}
         >
           <X size={20} color={colors.text.white} />
-          <Text style={styles.rejectButtonText}>Reject</Text>
+          <Text style={styles.rejectButtonText}>Keep Active</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.actionButton, styles.acceptButton]}
           onPress={() => handleEndRelationshipAccept(item.disputeId)}
         >
           <Check size={20} color={colors.text.white} />
-          <Text style={styles.acceptButtonText}>Accept</Text>
+          <Text style={styles.acceptButtonText}>End</Text>
         </TouchableOpacity>
       </View>
     </View>

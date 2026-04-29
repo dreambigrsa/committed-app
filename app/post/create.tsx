@@ -124,8 +124,7 @@ export default function CreatePostScreen() {
         }
       } catch (error) {
         console.error('Failed to upload media item:', error);
-        // Continue with other items instead of failing completely
-        // This allows partial success
+        throw error;
       }
     }
     
@@ -143,6 +142,9 @@ export default function CreatePostScreen() {
       let uploadedMediaUrls: string[] = [];
       if (media.length > 0) {
         uploadedMediaUrls = await uploadMedia(media);
+        if (uploadedMediaUrls.length !== media.length) {
+          throw new Error('Some media failed to upload. Please try again.');
+        }
       }
       
       const hasVideo = media.some(m => m.kind === 'video');
@@ -153,7 +155,10 @@ export default function CreatePostScreen() {
       } else if (hasVideo) {
         mediaType = 'video';
       }
-      await createPost(content.trim(), uploadedMediaUrls, mediaType);
+      const post = await createPost(content.trim(), uploadedMediaUrls, mediaType);
+      if (!post) {
+        throw new Error('Post could not be created. Please try again.');
+      }
       
       Alert.alert('Success', 'Post created successfully!');
       router.back();
@@ -233,6 +238,7 @@ export default function CreatePostScreen() {
                 onChangeText={setContent}
                 multiline
                 autoFocus
+                maxLength={1000}
               />
               <View style={styles.cardFooter}>
                 <Text style={styles.counter}>{content.length}/1000</Text>

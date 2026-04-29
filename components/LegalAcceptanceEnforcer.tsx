@@ -8,20 +8,18 @@ import LegalReminderBanner from './LegalReminderBanner';
 import { LegalDocument } from '@/types';
 import { checkUserLegalAcceptances } from '@/lib/legal-enforcement';
 
-/** Time until we surface the full legal sheet again after the user taps "Close" (soft reminder). */
 const LEGAL_FULL_SHEET_REMINDER_MS = 5 * 60 * 1000;
-
 type LegalSurface = 'sheet' | 'reminder';
 
 /**
- * Soft legal UX (production-friendly):
- * - Full-screen sheet can be dismissed; a top banner reminds users to accept.
- * - After a delay, the sheet can appear again (gentle nudge) if still pending.
- * - Legal status still comes from AppContext once loaded (no duplicate bootstrap fetch).
+ * Required legal UX with a soft surface:
+ * - Once email is verified, required legal documents must be accepted before Committed AI onboarding.
+ * - The full sheet can be closed into a persistent reminder banner and will reappear later.
+ * - Users can still open/read a legal document route, then return to the sheet.
  */
 export default function LegalAcceptanceEnforcer() {
   const { currentUser, legalAcceptanceStatus, setLegalAcceptanceStatus, checkOnboardingStatus } = useApp();
-  const { user: authUser, updateUser, syncAuthState } = useAuth();
+  const { user: authUser, updateUser, syncAuthState, profileHydrated } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [surface, setSurface] = useState<LegalSurface>('sheet');
@@ -37,15 +35,31 @@ export default function LegalAcceptanceEnforcer() {
   const isOnVerifyEmail =
     pathname === '/verify-email' || pathname === 'verify-email' || pathname?.endsWith('/verify-email');
 
-  const legalActionRequired = Boolean(
-    emailVerifiedForProductFlow &&
-      !isOnVerifyEmail &&
-      effectiveUserId &&
-      !authUser?.acceptedLegalDocs &&
-      legalAcceptanceStatus !== null &&
+  const isAuthOrPublicRoute =
+    pathname === '/' ||
+    pathname === '/auth' ||
+    pathname === '/sign-in' ||
+    pathname === '/sign-up' ||
+    pathname === '/signup' ||
+    pathname === '/auth-callback' ||
+    pathname === '/reset-password' ||
+    isOnVerifyEmail;
+
+  const legalStatusNeedsAction = Boolean(
+    legalAcceptanceStatus &&
       !legalAcceptanceStatus.hasAllRequired &&
       (legalAcceptanceStatus.missingDocuments.length > 0 ||
         legalAcceptanceStatus.needsReAcceptance.length > 0)
+  );
+
+  const legalActionRequired = Boolean(
+    profileHydrated &&
+      emailVerifiedForProductFlow &&
+      !isAuthOrPublicRoute &&
+      effectiveUserId &&
+      authUser &&
+      authUser.acceptedLegalDocs !== true &&
+      legalStatusNeedsAction
   );
 
   // When pending legal first becomes true (e.g. after login), show the sheet — not only a banner.
@@ -53,11 +67,9 @@ export default function LegalAcceptanceEnforcer() {
     if (legalActionRequired && !prevPendingRef.current) {
       setSurface('sheet');
     }
-    if (!legalActionRequired) {
-      if (reminderTimerRef.current) {
-        clearTimeout(reminderTimerRef.current);
-        reminderTimerRef.current = null;
-      }
+    if (!legalActionRequired && reminderTimerRef.current) {
+      clearTimeout(reminderTimerRef.current);
+      reminderTimerRef.current = null;
     }
     prevPendingRef.current = legalActionRequired;
   }, [legalActionRequired]);
@@ -162,6 +174,67 @@ export default function LegalAcceptanceEnforcer() {
   const isOnResetPassword = pathname === '/reset-password';
   const isOnLegalRoute = pathname?.startsWith('/legal/');
 
+  const handleDismissSheet = () => {
+    setSurface('reminder');
+    if (reminderTimerRef.current) {
+      clearTimeout(reminderTimerRef.current);
+      reminderTimerRef.current = null;
+    }
+    reminderTimerRef.current = setTimeout(() => {
+      reminderTimerRef.current = null;
+      if (legalActionRequired) {
+        setSurface('sheet');
+      }
+    }, LEGAL_FULL_SHEET_REMINDER_MS);
+  };
+
+  const handleOpenFromBanner = () => {
+    if (reminderTimerRef.current) {
+      clearTimeout(reminderTimerRef.current);
+      reminderTimerRef.current = null;
+    }
+    setSurface('sheet');
+  };
+
+  useEffect(() => {
+    return () => {
+      if (reminderTimerRef.current) clearTimeout(reminderTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (legalAcceptanceStatus !== null) return;
+    if (!effectiveUserId || !emailVerifiedForProductFlow || authUser?.acceptedLegalDocs) return;
+    if (!profileHydrated || isOnResetPassword || isOnLegalRoute || isOnVerifyEmail || isAuthOrPublicRoute) return;
+
+    let cancelled = false;
+    checkUserLegalAcceptances(effectiveUserId)
+      .then((status) => {
+        if (cancelled) return;
+        setLegalAcceptanceStatus(status);
+        if (status.hasAllRequired) {
+          updateUser({ acceptedLegalDocs: true });
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    legalAcceptanceStatus,
+    effectiveUserId,
+    emailVerifiedForProductFlow,
+    authUser?.acceptedLegalDocs,
+    isOnResetPassword,
+    isOnLegalRoute,
+    isOnVerifyEmail,
+    setLegalAcceptanceStatus,
+    updateUser,
+    profileHydrated,
+    isAuthOrPublicRoute,
+  ]);
+
   // If AuthContext says user already accepted, sync AppContext so UI clears.
   useEffect(() => {
     if (authUser?.acceptedLegalDocs && currentUser && legalAcceptanceStatus !== null && !legalAcceptanceStatus.hasAllRequired) {
@@ -175,7 +248,8 @@ export default function LegalAcceptanceEnforcer() {
 
   // Re-verify from DB when status suggests we may need to show (single pass per dependency set).
   useEffect(() => {
-    if (isOnResetPassword || isOnLegalRoute || isOnVerifyEmail) return;
+    if (isOnResetPassword || isOnLegalRoute || isOnVerifyEmail || isAuthOrPublicRoute) return;
+    if (!profileHydrated) return;
     if (!emailVerifiedForProductFlow) return;
     if (authUser?.acceptedLegalDocs) return;
     if (!isViewingDocument && effectiveUserId && legalAcceptanceStatus !== null) {
@@ -208,35 +282,9 @@ export default function LegalAcceptanceEnforcer() {
     authUser?.acceptedLegalDocs,
     setLegalAcceptanceStatus,
     updateUser,
+    profileHydrated,
+    isAuthOrPublicRoute,
   ]);
-
-  const handleDismissSheet = () => {
-    setSurface('reminder');
-    if (reminderTimerRef.current) {
-      clearTimeout(reminderTimerRef.current);
-      reminderTimerRef.current = null;
-    }
-    reminderTimerRef.current = setTimeout(() => {
-      reminderTimerRef.current = null;
-      if (legalActionRequired) {
-        setSurface('sheet');
-      }
-    }, LEGAL_FULL_SHEET_REMINDER_MS);
-  };
-
-  const handleOpenFromBanner = () => {
-    if (reminderTimerRef.current) {
-      clearTimeout(reminderTimerRef.current);
-      reminderTimerRef.current = null;
-    }
-    setSurface('sheet');
-  };
-
-  useEffect(() => {
-    return () => {
-      if (reminderTimerRef.current) clearTimeout(reminderTimerRef.current);
-    };
-  }, []);
 
   const showFullScreen =
     legalActionRequired &&
@@ -260,7 +308,7 @@ export default function LegalAcceptanceEnforcer() {
       {showBanner ? (
         <LegalReminderBanner
           onOpen={handleOpenFromBanner}
-          subtitle="Tap to review. We'll remind you again with a full prompt if needed."
+          subtitle="Tap to review and accept required documents before continuing onboarding."
         />
       ) : null}
       <LegalAcceptanceModal

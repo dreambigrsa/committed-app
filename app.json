@@ -16,6 +16,9 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.committed.app",
+      "associatedDomains": [
+        "applinks:committed.dreambig.org.za"
+      ],
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Allow $(PRODUCT_NAME) to access your photos",
         "NSCameraUsageDescription": "Allow $(PRODUCT_NAME) to access your camera",
@@ -55,7 +58,34 @@
         "READ_MEDIA_VISUAL_USER_SELECTED",
         "ACCESS_MEDIA_LOCATION"
       ],
-      "blockedPermissions": []
+      "blockedPermissions": [],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "committed.dreambig.org.za",
+              "pathPrefix": "/post"
+            },
+            {
+              "scheme": "https",
+              "host": "committed.dreambig.org.za",
+              "pathPrefix": "/reel"
+            },
+            {
+              "scheme": "https",
+              "host": "committed.dreambig.org.za",
+              "pathPrefix": "/dating/user-profile"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
@@ -115,7 +145,7 @@
       },
       "openaiApiKey": {},
       "eas": {
-        "projectId": "bf1ae79b-7014-4c21-b198-3048c6d3b3dd"
+        "projectId": "1ce53350-c138-459b-b181-9a1a06406108"
       }
     }
   }

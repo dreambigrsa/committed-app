@@ -39,8 +39,11 @@ export default function VerifyEmailScreen() {
   const slideAnim = useRef(new Animated.Value(50)).current;
   const hasAutoSentRef = useRef(false);
 
+  const goToPostVerificationFlow = () => {
+    router.replace('/(tabs)/home' as any);
+  };
+
   const refreshVerifiedAuthState = async () => {
-    updateUser({ emailVerified: true });
     await supabase.auth.refreshSession().catch(() => {});
     const synced = await syncAuthState({ reason: 'email_verified', refreshToken: true }).catch(() => false);
     if (!synced) {
@@ -68,7 +71,7 @@ export default function VerifyEmailScreen() {
           await new Promise((r) => setTimeout(r, 1200)); // Brief wait for session to propagate (e.g. same-device verify)
           session = (await supabase.auth.getSession()).data.session;
         }
-        if (session) router.replace('/');
+        if (session) goToPostVerificationFlow();
         else router.replace('/auth?mode=signin&verified=1' as any); // verified=1 so auth screen uses longer sign-in timeout
       } else {
         setTokenResult('error');
@@ -110,7 +113,7 @@ export default function VerifyEmailScreen() {
     checkVerified().then((verified) => {
       if (verified && isMounted) {
         // User just verified (e.g. returned from browser); AuthContext is updated, go straight to app
-        router.replace('/');
+        goToPostVerificationFlow();
         return;
       }
       if (verified || !isMounted) return;
@@ -191,7 +194,7 @@ export default function VerifyEmailScreen() {
         setIsVerified(verified);
         if (verified) {
           await refreshVerifiedAuthState();
-          router.replace('/');
+          goToPostVerificationFlow();
         }
         else if (showMessage) alert('Email not verified yet.\n\nCheck your inbox and click the verification link. If you just clicked it, wait a few seconds.');
       } else {
@@ -317,7 +320,7 @@ export default function VerifyEmailScreen() {
               </Text>
               <TouchableOpacity
                 style={styles.continueButton}
-                onPress={() => router.replace('/')}
+                onPress={goToPostVerificationFlow}
               >
                 <Text style={styles.continueButtonText}>Continue to App</Text>
               </TouchableOpacity>

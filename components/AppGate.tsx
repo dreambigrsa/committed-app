@@ -7,15 +7,15 @@
  * 1. Password recovery → /reset-password
  * 2. Email not verified (JWT before hydrate; DB is_verified after) → /verify-email
  * 3. Verified but profile still loading → /(tabs)/home shell (avoids onboarding with false minimal-user flags)
- * 4. Onboarding not completed (e.g. Committed AI consent) → /onboarding
- * 5. Else → home
+ * 4. Else → home
  *
  * Legal acceptance is **not** a navigation gate — `LegalAcceptanceEnforcer` uses a dismissible sheet + banner
- * reminders (soft UX). Returning users skip verify/onboarding when already completed.
+ * reminders (soft UX). Committed AI consent also uses a soft reminder over the home shell.
  */
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
+import { useApp } from '@/contexts/AppContext';
 import SplashScreen from './SplashScreen';
 import {
   getAndClearPendingDeepLink,
@@ -28,11 +28,41 @@ import { setStoredReferralCode } from '@/lib/referral-storage';
 import { hasPendingPasswordRecovery } from '@/lib/pending-password-recovery';
 import { isCallbackProcessing } from '@/lib/auth-callback-state';
 
+const SIGNED_IN_APP_ROUTE_ROOTS = [
+  '/(tabs)',
+  '/home',
+  '/feed',
+  '/reels',
+  '/dating',
+  '/search',
+  '/notifications',
+  '/messages',
+  '/profile',
+  '/post',
+  '/reel',
+  '/status',
+  '/status-item',
+  '/bookings',
+  '/ads',
+  '/admin',
+  '/professional',
+  '/relationship',
+  '/verification',
+  '/anniversary',
+  '/certificates',
+  '/settings',
+];
+
+function isSignedInAppRoute(pathname: string) {
+  return SIGNED_IN_APP_ROUTE_ROOTS.some((root) => pathname === root || pathname.startsWith(`${root}/`));
+}
+
 export default function AppGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { user, authLoading, authReady, authInitialized, isAuthenticated, profileHydrated, syncAuthState, forceAuthBootstrapUnblock } =
     useAuth();
+  const { legalAcceptanceStatus, hasCompletedOnboarding } = useApp();
   const lastTargetRef = useRef<string | null>(null);
   const appliedIntendedRouteRef = useRef(false);
 
@@ -40,6 +70,7 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
   useLayoutEffect(() => {
     lastTargetRef.current = null;
   }, [user?.id]);
+
   /** Bumped when a deep link is queued so routing re-runs (warm links after AppGate mounted). */
   const [pendingDeepLinkSignal, setPendingDeepLinkSignal] = useState(0);
 
@@ -61,14 +92,22 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
     }
 
     const pending = getAndClearPendingDeepLink();
+    let pendingRoute: string | null = null;
     if (pending) {
-      if (__DEV__) console.log('[AppGate] Deep link:', pending.type, pending.postId ?? pending.reelId ?? pending.referralCode);
+      if (__DEV__) console.log('[AppGate] Deep link:', pending.type, pending.postId ?? pending.reelId ?? pending.datingUserId ?? pending.referralCode);
       if (pending.type === 'referral' && pending.referralCode) {
         setStoredReferralCode(pending.referralCode).catch(() => {});
       } else if (pending.type === 'post' && pending.postId) {
-        setIntendedRoute(`/post/${pending.postId}`).catch(() => {});
+        pendingRoute = `/post/${pending.postId}`;
       } else if (pending.type === 'reel' && pending.reelId) {
-        setIntendedRoute(`/reel/${pending.reelId}`).catch(() => {});
+        pendingRoute = `/reel/${pending.reelId}`;
+      } else if (pending.type === 'dating-profile' && pending.datingUserId) {
+        pendingRoute = `/dating/user-profile?userId=${encodeURIComponent(pending.datingUserId)}`;
+      }
+
+      if (pendingRoute) {
+        appliedIntendedRouteRef.current = false;
+        setIntendedRoute(pendingRoute).catch(() => {});
       }
     }
 
@@ -98,36 +137,37 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
       lastTargetRef.current = current;
       return;
     }
+    if (
+      isAuthenticated &&
+      user?.emailVerified &&
+      isSignedInAppRoute(current)
+    ) {
+      lastTargetRef.current = current;
+      return;
+    }
 
     let target: string;
-    const hasPendingPost = pending?.type === 'post' && pending?.postId;
-    const hasPendingReel = pending?.type === 'reel' && pending?.reelId;
     const urlHasRecovery =
       typeof window !== 'undefined' && !!window.location?.href?.includes('type=recovery');
     const inRecoveryFlow = user?.isPasswordRecovery || urlHasRecovery || hasPendingPasswordRecovery();
     if (hasPendingPasswordRecovery()) {
       target = '/reset-password';
     } else if (!isAuthenticated || !user) {
-      if (hasPendingPost) {
-        target = `/post/${pending!.postId!}`;
-      } else if (hasPendingReel) {
-        target = `/reel/${pending!.reelId!}`;
-      } else {
-        target = '/';
-      }
+      target = current === '/' ? '/' : '/auth';
     } else if (inRecoveryFlow) {
       // Recovery: must go to reset-password first; do not redirect to home.
       target = '/reset-password';
+    } else if (!profileHydrated) {
+      // While DB profile flags hydrate, use the session email state. Already verified
+      // sign-ins should not flash through /verify-email.
+      target = user.emailVerified ? '/(tabs)/home' : '/verify-email';
     } else if (!user.emailVerified) {
       // New signups (and anyone not verified in DB/JWT) stay on verify until confirmed.
       target = '/verify-email';
-    } else if (!profileHydrated) {
-      // Email is verified but profile/onboarding flags are still loading from Supabase.
-      // Land on app shell only — do not send to onboarding with false defaults from minimal user.
+    } else if (pendingRoute) {
+      target = pendingRoute;
+    } else if (!user.acceptedLegalDocs) {
       target = '/(tabs)/home';
-    } else if (!user.completedOnboarding) {
-      // Committed AI consent & onboarding steps — legal docs use soft modal + banner, not routing.
-      target = '/onboarding';
     } else {
       target = '/(tabs)/home';
     }
@@ -158,9 +198,13 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
     lastTargetRef.current = target;
 
     // Same route: skip. Allow tab-to-tab when target is home (don't force home tab on every tick).
-    const onTabs = current.startsWith('/(tabs)');
+    const onTabs = isSignedInAppRoute(current);
     const sameRoute =
       current === target ||
+      (current.startsWith('/post/') && target.startsWith('/post/') && current === target) ||
+      (current.startsWith('/reel/') && target.startsWith('/reel/') && current === target) ||
+      (current.startsWith('/dating/user-profile') && target.startsWith('/dating/user-profile') && current === target) ||
+      (current.startsWith('/messages/') && target.startsWith('/messages/') && current === target) ||
       (target === '/(tabs)/home' && onTabs);
     if (sameRoute) return;
 
@@ -168,13 +212,14 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
       router.replace(target as any);
     }, 0);
     return () => clearTimeout(id);
-  }, [authInitialized, authReady, authLoading, isAuthenticated, user, pathname, router, pendingDeepLinkSignal, profileHydrated]);
+  }, [authInitialized, authReady, authLoading, isAuthenticated, user, pathname, router, pendingDeepLinkSignal, profileHydrated, legalAcceptanceStatus, hasCompletedOnboarding]);
 
   // After we're on main app, navigate to intended route once (e.g. post/reel from deep link)
   useEffect(() => {
     if (!authInitialized || !authReady || authLoading || !isAuthenticated || !user || appliedIntendedRouteRef.current) return;
     const current = pathname || '/';
-    const onMainApp = current.startsWith('/(tabs)') || current.startsWith('/post') || current.startsWith('/reel/');
+    const onMainApp =
+      isSignedInAppRoute(current);
     if (!onMainApp) return;
 
     getIntendedRoute().then((route) => {

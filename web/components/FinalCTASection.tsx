@@ -6,6 +6,7 @@ import { useRef } from 'react';
 import { motion, useInView, useReducedMotion } from 'framer-motion';
 import { DownloadButton } from '@/components/DownloadCTA';
 import { Check } from 'lucide-react';
+import WebAppButton from '@/components/WebAppButton';
 
 const trustItems = [
   'Verified profiles only',
@@ -75,6 +76,12 @@ export default function FinalCTASection() {
             >
               Sign Up — It’s Free
             </Link>
+            <WebAppButton
+              path="/auth"
+              label="Continue on Web"
+              variant="outline"
+              className="min-w-[180px] !min-h-[56px] !rounded-2xl !border-violet-200/80 !bg-white/95 !px-10 !py-4 !text-lg !text-violet-700 !shadow-sm transition-all duration-200 hover:!-translate-y-0.5 hover:!border-violet-300 hover:!bg-violet-50/80"
+            />
             <DownloadButton
               label="Download App"
               className="min-w-[180px] !border-violet-200/80 !bg-white/95 !text-violet-700 !shadow-sm transition-all duration-200 hover:!-translate-y-0.5 hover:!border-violet-300 hover:!bg-violet-50/80"

@@ -17,6 +17,8 @@ export interface CreateBookingRequest {
   locationAddress?: string;
   locationNotes?: string;
   bookingNotes?: string;
+  bookingFeeAmount?: number | null;
+  bookingFeeCurrency?: string | null;
 }
 
 export interface RescheduleBookingRequest {
@@ -39,23 +41,8 @@ export async function createProfessionalBooking(
   request: CreateBookingRequest
 ): Promise<{ session: ProfessionalSession | null; error?: string }> {
   try {
-    // Get professional pricing info
-    const { data: profile, error: profileError } = await supabase
-      .from('professional_profiles')
-      .select('pricing_info')
-      .eq('id', request.professionalId)
-      .single();
-
-    if (profileError) throw profileError;
-
-    const pricingInfo = profile?.pricing_info;
-    let bookingFeeAmount: number | null = null;
-    let bookingFeeCurrency: string | null = null;
-
-    if (pricingInfo && pricingInfo.rate) {
-      bookingFeeAmount = pricingInfo.rate;
-      bookingFeeCurrency = pricingInfo.currency || 'USD';
-    }
+    const bookingFeeAmount = request.bookingFeeAmount ?? null;
+    const bookingFeeCurrency = request.bookingFeeCurrency ?? (bookingFeeAmount ? 'USD' : null);
 
     const { data, error } = await supabase
       .from('professional_sessions')

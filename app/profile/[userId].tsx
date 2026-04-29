@@ -19,7 +19,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CheckCircle2, Heart, Shield, UserPlus, UserMinus, MessageCircle, Grid, Film, X, UserX, MoreVertical, Flag } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { User, Post, Reel } from '@/types';
+import { User, Post, Reel, UserStatus } from '@/types';
 import { supabase } from '@/lib/supabase';
 import ReportContentModal from '@/components/ReportContentModal';
 import StatusIndicator from '@/components/StatusIndicator';
@@ -33,6 +33,10 @@ const itemWidth = Math.floor((width - GRID_HORIZONTAL_PADDING * 2 - GRID_GAP * 2
 type TabType = 'posts' | 'reels';
 const PROFILE_FETCH_TIMEOUT_MS = 15000;
 const STATUS_FETCH_TIMEOUT_MS = 10000;
+
+function listFingerprint(items: { id: string; createdAt?: string; updatedAt?: string }[]): string {
+  return items.map((item) => `${item.id}:${item.updatedAt ?? item.createdAt ?? ''}`).join('|');
+}
 
 function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -71,23 +75,40 @@ export default function UserProfileScreen() {
   const [isBlocking, setIsBlocking] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
   const [reportingProfile, setReportingProfile] = useState(false);
-  const [userStatus, setUserStatus] = useState<any>(null);
+  const [userStatus, setUserStatus] = useState<UserStatus | null>(null);
   const [mediaProfile, setMediaProfile] = useState<AdaptiveMediaProfile | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const imageViewerScrollRef = useRef<ScrollView>(null);
+  const profileRequestIdRef = useRef(0);
+  const getUserStatusRef = useRef(getUserStatus);
   
   const relationship = user ? getUserRelationship(user.id) : null;
 
   useEffect(() => {
+    getUserStatusRef.current = getUserStatus;
+  }, [getUserStatus]);
+
+  const setStableUserStatus = (next: UserStatus | null) => {
+    setUserStatus((prev) => {
+      if (!prev || !next) return next;
+      const same =
+        prev.userId === next.userId &&
+        prev.statusType === next.statusType &&
+        prev.customStatusText === next.customStatusText &&
+        prev.lastActiveAt === next.lastActiveAt &&
+        prev.statusVisibility === next.statusVisibility &&
+        prev.lastSeenVisibility === next.lastSeenVisibility;
+      return same ? prev : next;
+    });
+  };
+
+  useEffect(() => {
     if (userId) {
-      loadUserProfile();
-      checkFollowStatus();
       loadFollowCounts();
-      checkBlockStatus();
-      loadUserStatus();
+      void loadUserProfile({ showLoader: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load on userId change
-  }, [userId, checkIsFollowing, checkIsBlocked]);
+  }, [userId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -114,14 +135,14 @@ export default function UserProfileScreen() {
   const loadUserStatus = async () => {
     if (!userId) return;
     try {
-      if (getUserStatus) {
+      if (getUserStatusRef.current) {
         const status = await withTimeout(
-          getUserStatus(userId),
+          getUserStatusRef.current(userId),
           STATUS_FETCH_TIMEOUT_MS,
           'profile_status_fetch'
         );
         if (status) {
-          setUserStatus(status);
+          setStableUserStatus(status);
           return;
         }
       }
@@ -140,7 +161,7 @@ export default function UserProfileScreen() {
         'profile_status_direct_fetch'
       );
       if (data) {
-        setUserStatus({
+        setStableUserStatus({
           userId: data.user_id,
           statusType: data.status_type,
           lastActiveAt: data.last_active_at,
@@ -149,45 +170,53 @@ export default function UserProfileScreen() {
           updatedAt: data.updated_at,
         });
       } else {
-        setUserStatus({
-          userId,
-          statusType: 'offline',
-          lastActiveAt: new Date().toISOString(),
-          statusVisibility: 'everyone',
-          lastSeenVisibility: 'everyone',
-          updatedAt: new Date().toISOString(),
+        setUserStatus((prev) => {
+          if (prev?.userId === userId) return prev;
+          const now = new Date().toISOString();
+          return {
+            userId,
+            statusType: 'offline',
+            lastActiveAt: now,
+            statusVisibility: 'everyone',
+            lastSeenVisibility: 'everyone',
+            updatedAt: now,
+          };
         });
       }
     } catch {
       // Ensure indicator still shows a deterministic state.
-      setUserStatus({
-        userId,
-        statusType: 'offline',
-        lastActiveAt: new Date().toISOString(),
-        statusVisibility: 'everyone',
-        lastSeenVisibility: 'everyone',
-        updatedAt: new Date().toISOString(),
+      setUserStatus((prev) => {
+        if (prev?.userId === userId) return prev;
+        const now = new Date().toISOString();
+        return {
+          userId,
+          statusType: 'offline',
+          lastActiveAt: now,
+          statusVisibility: 'everyone',
+          lastSeenVisibility: 'everyone',
+          updatedAt: now,
+        };
       });
     }
   };
 
   useEffect(() => {
-    loadUserStatus();
+    void loadUserStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load on userId change
-  }, [userId, getUserStatus]);
+  }, [userId]);
 
   // Subscribe to real-time status updates and refresh periodically
   useEffect(() => {
-    if (!userId || !getUserStatus) return;
+    if (!userId) return;
 
     // Load status immediately
     const refreshStatus = async () => {
-      const status = await getUserStatus(userId);
-      setUserStatus(status);
+      const status = await getUserStatusRef.current(userId);
+      setStableUserStatus(status);
     };
-    refreshStatus();
 
     let isMounted = true;
+    void refreshStatus();
 
     // Refresh less frequently to reduce background network calls.
     const refreshInterval = setInterval(() => {
@@ -208,9 +237,9 @@ export default function UserProfileScreen() {
         },
         async (_payload) => {
           if (!isMounted) return;
-          const status = await getUserStatus(userId);
+          const status = await getUserStatusRef.current(userId);
           if (isMounted) {
-            setUserStatus(status);
+            setStableUserStatus(status);
           }
         }
       )
@@ -221,40 +250,49 @@ export default function UserProfileScreen() {
       clearInterval(refreshInterval);
       supabase.removeChannel(channel);
     };
-  }, [userId, getUserStatus]);
+  }, [userId]);
 
   useEffect(() => {
-    void loadUserContent();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on userId/content change
+    void loadUserContent({ fetchDirectReels: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync from app context only
   }, [allPosts, allReels, userId, currentUser?.id]);
+
+  useEffect(() => {
+    void loadUserContent({ fetchDirectReels: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- direct profile content load only when profile/viewer changes
+  }, [userId, currentUser?.id]);
 
   // Sync local isFollowing state with AppContext's isFollowing function
   useEffect(() => {
-    if (userId && currentUser) {
+    if (userId && currentUser?.id) {
       setIsFollowing(checkIsFollowing(userId));
-    }
-  }, [userId, currentUser, checkIsFollowing]);
-
-  const checkBlockStatus = () => {
-    if (userId && currentUser) {
       setIsBlocked(checkIsBlocked(userId));
     }
-  };
+  }, [userId, currentUser?.id, checkIsFollowing, checkIsBlocked]);
 
-  const loadUserProfile = async () => {
+  const loadUserProfile = async (opts?: { showLoader?: boolean }) => {
+    const targetUserId = typeof userId === 'string' ? userId : '';
+    if (!targetUserId) {
+      setIsLoading(false);
+      return;
+    }
+
+    const requestId = ++profileRequestIdRef.current;
+    const shouldShowLoader = opts?.showLoader ?? (!user || user.id !== targetUserId);
     try {
-      setIsLoading(true);
+      if (shouldShowLoader) setIsLoading(true);
       const { data, error } = await withTimeout(
         supabase
           .from('users')
           .select('id,full_name,email,phone_number,profile_picture,role,phone_verified,email_verified,id_verified,created_at')
-          .eq('id', userId)
+          .eq('id', targetUserId)
           .single(),
         PROFILE_FETCH_TIMEOUT_MS,
         'profile_user_fetch'
       );
 
       if (error) throw error;
+      if (requestId !== profileRequestIdRef.current) return;
 
       if (data) {
         const userProfile: User = {
@@ -274,15 +312,16 @@ export default function UserProfileScreen() {
         setUser(userProfile);
       }
     } catch (error) {
+      if (requestId !== profileRequestIdRef.current) return;
       console.error('Failed to load user profile:', error);
       // Fallback: render profile shell from content caches if DB fetch is slow/unavailable.
-      const fallbackFromPost = allPosts.find((p) => p.userId === userId);
-      const fallbackFromReel = allReels.find((r) => r.userId === userId);
+      const fallbackFromPost = allPosts.find((p) => p.userId === targetUserId);
+      const fallbackFromReel = allReels.find((r) => r.userId === targetUserId);
       const fallbackName = fallbackFromPost?.userName || fallbackFromReel?.userName;
       const fallbackAvatar = fallbackFromPost?.userAvatar || fallbackFromReel?.userAvatar;
-      if (userId && fallbackName) {
+      if (targetUserId && fallbackName) {
         setUser({
-          id: userId,
+          id: targetUserId,
           fullName: fallbackName,
           email: '',
           phoneNumber: '',
@@ -293,11 +332,11 @@ export default function UserProfileScreen() {
         });
       }
     } finally {
-      setIsLoading(false);
+      if (requestId === profileRequestIdRef.current) setIsLoading(false);
     }
   };
 
-  const loadUserContent = async () => {
+  const loadUserContent = async (opts?: { fetchDirectReels?: boolean }) => {
     if (!userId) {
       setUserPosts([]);
       setUserReels([]);
@@ -306,8 +345,10 @@ export default function UserProfileScreen() {
 
     const postsFromContext = allPosts.filter(p => p.userId === userId);
     const reelsFromContext = allReels.filter(r => r.userId === userId);
-    setUserPosts(postsFromContext);
-    setUserReels(reelsFromContext);
+    setUserPosts((prev) => listFingerprint(prev) === listFingerprint(postsFromContext) ? prev : postsFromContext);
+    setUserReels((prev) => listFingerprint(prev) === listFingerprint(reelsFromContext) ? prev : reelsFromContext);
+
+    if (!opts?.fetchDirectReels) return;
 
     // Fallback: profile pages need direct user-scoped content in case the global
     // feed context is limited/paginated and doesn't include this user's older reels/posts.
@@ -367,7 +408,7 @@ export default function UserProfileScreen() {
           viewCount: r.view_count || 0,
           createdAt: r.created_at,
         }));
-        setUserReels(formattedReels);
+        setUserReels((prev) => listFingerprint(prev) === listFingerprint(formattedReels) ? prev : formattedReels);
       }
     } catch (error) {
       console.error('Failed to load user reels directly:', error);
@@ -385,8 +426,8 @@ export default function UserProfileScreen() {
     setRefreshing(true);
     try {
       await Promise.allSettled([
-        loadUserProfile(),
-        loadUserContent(),
+        loadUserProfile({ showLoader: false }),
+        loadUserContent({ fetchDirectReels: true }),
         checkFollowStatus(),
         loadFollowCounts(),
         Promise.resolve(loadUserStatus()),

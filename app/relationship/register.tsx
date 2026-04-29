@@ -12,9 +12,10 @@ import {
   Animated,
   Alert,
   Modal,
+  Share,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
-import { Heart, X, Search, CheckCircle2, Camera, Calendar, Info, AlertCircle, CheckCircle } from 'lucide-react-native';
+import { Heart, X, Search, CheckCircle2, Camera, Calendar, Info, AlertCircle, CheckCircle, Lock, Globe2, ShieldCheck, HeartHandshake } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useApp } from '@/contexts/AppContext';
@@ -26,12 +27,42 @@ import { supabase } from '@/lib/supabase';
 import { assertMediaWithinLimit, getAdaptiveImageQuality, optimizeImageForUpload } from '@/lib/media-optimizer';
 import LegalAcceptanceCheckbox from '@/components/LegalAcceptanceCheckbox';
 
-const RELATIONSHIP_TYPES: { value: RelationshipType; label: string }[] = [
-  { value: 'married', label: 'Married' },
-  { value: 'engaged', label: 'Engaged' },
-  { value: 'serious', label: 'Serious Relationship' },
-  { value: 'dating', label: 'Dating' },
+const RELATIONSHIP_TYPES: { value: RelationshipType; label: string; description: string }[] = [
+  { value: 'married', label: 'Married', description: 'A legally or customarily recognized marriage.' },
+  { value: 'engaged', label: 'Engaged', description: 'You have both agreed to get married.' },
+  { value: 'serious', label: 'Serious Relationship', description: 'A committed, exclusive long-term relationship.' },
+  { value: 'dating', label: 'Dating', description: 'You are dating and want the connection registered.' },
 ];
+
+const PRIVACY_OPTIONS: { value: 'public' | 'private' | 'verified-only'; label: string; description: string }[] = [
+  { value: 'private', label: 'Private', description: 'Only you, your partner, admins, and moderators can verify or manage it.' },
+  { value: 'verified-only', label: 'Verified members', description: 'Visible inside Committed to users with verified accounts.' },
+  { value: 'public', label: 'Public registry', description: 'Visible in public search after the relationship is verified.' },
+];
+
+const getDateStringFromParts = (day?: string, month?: string, year?: string) => {
+  if (!day || !month || !year) return undefined;
+  const parsedDay = parseInt(day, 10);
+  const parsedMonth = parseInt(month, 10);
+  const parsedYear = parseInt(year, 10);
+  if (!parsedDay || !parsedMonth || !parsedYear) return undefined;
+  const date = new Date(parsedYear, parsedMonth - 1, parsedDay);
+  if (
+    date.getFullYear() !== parsedYear ||
+    date.getMonth() !== parsedMonth - 1 ||
+    date.getDate() !== parsedDay ||
+    date.getTime() > Date.now()
+  ) {
+    return undefined;
+  }
+  return `${parsedYear}-${String(parsedMonth).padStart(2, '0')}-${String(parsedDay).padStart(2, '0')}`;
+};
+
+const getDisplayDateFromParts = (day?: string, month?: string, year?: string) => {
+  const dateString = getDateStringFromParts(day, month, year);
+  if (!dateString) return '';
+  return dateString.split('-').reverse().join('/');
+};
 
 export default function RegisterRelationshipScreen() {
   const router = useRouter();
@@ -74,6 +105,10 @@ export default function RegisterRelationshipScreen() {
     partnerDateOfBirthMonth: '',
     partnerDateOfBirthYear: '',
     partnerCity: '',
+    relationshipStartDay: '',
+    relationshipStartMonth: '',
+    relationshipStartYear: '',
+    privacyLevel: 'private' as 'public' | 'private' | 'verified-only',
   });
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -263,21 +298,34 @@ export default function RegisterRelationshipScreen() {
 
       if (!result.canceled && result.assets[0]) {
         setUploadingPhoto(true);
-        const optimizedUri = await optimizeImageForUpload(result.assets[0].uri);
-        await assertMediaWithinLimit(optimizedUri, 'image');
-        const fileExt = optimizedUri.split('.').pop() || 'jpg';
+        const asset = result.assets[0] as ImagePicker.ImagePickerAsset & { file?: File };
+        const optimizedUri = Platform.OS === 'web'
+          ? asset.uri
+          : await optimizeImageForUpload(asset.uri);
+        if (Platform.OS !== 'web') {
+          await assertMediaWithinLimit(optimizedUri, 'image');
+        } else if (asset.file && asset.file.size > 5 * 1024 * 1024) {
+          throw new Error('Image is too large. Please choose a file under 5MB.');
+        }
+
+        const sourceName = asset.fileName || asset.file?.name || optimizedUri.split('/').pop() || 'partner-face.jpg';
+        const rawExt = sourceName.split('.').pop()?.split('?')[0]?.toLowerCase() || 'jpg';
+        const fileExt = ['jpg', 'jpeg', 'png', 'webp'].includes(rawExt) ? rawExt : 'jpg';
         const fileName = `partner-face-${Date.now()}.${fileExt}`;
         const filePath = `partner-photos/${fileName}`;
 
-        let bytes: Uint8Array;
+        let uploadBody: Uint8Array | Blob;
+        const contentType = asset.file?.type || `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`;
 
         // Handle web vs native platforms differently
         if (Platform.OS === 'web') {
-          // For web, use fetch to read the file
-          const response = await fetch(optimizedUri);
-          const blob = await response.blob();
-          const arrayBuffer = await blob.arrayBuffer();
-          bytes = new Uint8Array(arrayBuffer);
+          if (asset.file) {
+            uploadBody = asset.file;
+          } else {
+            const response = await fetch(optimizedUri);
+            if (!response.ok) throw new Error('Could not read selected image.');
+            uploadBody = await response.blob();
+          }
         } else {
           // For native platforms, use FileSystem
           const base64 = await FileSystem.readAsStringAsync(optimizedUri, {
@@ -286,16 +334,18 @@ export default function RegisterRelationshipScreen() {
           
           // Convert base64 to Uint8Array
           const binaryString = atob(base64);
-          bytes = new Uint8Array(binaryString.length);
+          const bytes = new Uint8Array(binaryString.length);
           for (let i = 0; i < binaryString.length; i++) {
             bytes[i] = binaryString.charCodeAt(i);
           }
+          uploadBody = bytes;
         }
 
         const { error } = await supabase.storage
           .from('avatars')
-          .upload(filePath, bytes, {
-            contentType: `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`,
+          .upload(filePath, uploadBody, {
+            contentType,
+            upsert: false,
           });
 
         if (error) throw error;
@@ -309,7 +359,7 @@ export default function RegisterRelationshipScreen() {
       }
     } catch (error) {
       console.error('Failed to upload photo:', error);
-      Alert.alert('Error', 'Failed to upload photo. Please try again.');
+      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to upload photo. Please try again.');
       setUploadingPhoto(false);
     }
   };
@@ -359,8 +409,13 @@ export default function RegisterRelationshipScreen() {
       const partnerDateOfBirthYear = formData.partnerDateOfBirthYear 
         ? parseInt(formData.partnerDateOfBirthYear, 10) 
         : undefined;
+      const relationshipStartDate = getDateStringFromParts(
+        formData.relationshipStartDay,
+        formData.relationshipStartMonth,
+        formData.relationshipStartYear
+      );
 
-      await createRelationship(
+      const relationship = await createRelationship(
         formData.partnerName,
         formData.partnerPhone,
         formData.type,
@@ -368,23 +423,44 @@ export default function RegisterRelationshipScreen() {
         formData.partnerFacePhoto,
         partnerDateOfBirthMonth,
         partnerDateOfBirthYear,
-        formData.partnerCity || undefined
+        formData.partnerCity || undefined,
+        relationshipStartDate,
+        formData.privacyLevel
       );
+
+      if (!relationship) {
+        throw new Error('Relationship could not be registered. Please check the details and try again.');
+      }
 
       // Save relationship consent acceptance
       if (currentUser?.id && relationshipConsentAccepted && relationshipConsentDoc) {
         await saveRelationshipConsent(currentUser.id);
       }
       
+      const successButtons = [
+        !selectedUser
+          ? {
+              text: 'Share Invite',
+              onPress: () => {
+                void Share.share({
+                  title: 'Join me on Committed',
+                  message: `${currentUser?.fullName || 'Someone'} registered your relationship on Committed. Join with this phone number to confirm it: https://committed.dreambig.org.za/sign-up`,
+                  url: 'https://committed.dreambig.org.za/sign-up',
+                }).catch(() => {});
+                router.back();
+              },
+            }
+          : null,
+        {
+          text: 'OK',
+          onPress: () => router.back(),
+        },
+      ].filter(Boolean) as { text: string; onPress: () => void }[];
+
       Alert.alert(
         'Success!',
         'Your relationship has been registered. Your partner will receive a notification to confirm.',
-        [
-          {
-            text: 'OK',
-            onPress: () => router.back(),
-          },
-        ]
+        successButtons
       );
     } catch (error: any) {
       console.error('Failed to register relationship:', error);
@@ -436,7 +512,7 @@ export default function RegisterRelationshipScreen() {
               {step === 1 && "Let's start with your partner's information"}
               {step === 2 && "How can we reach your partner?"}
               {step === 3 && "Upload a clear face photo of your partner"}
-              {step === 4 && "What type of relationship is this?"}
+              {step === 4 && "Add your relationship details and privacy"}
               {step === 5 && "Review and confirm your relationship registration"}
             </Text>
           </View>
@@ -616,6 +692,17 @@ export default function RegisterRelationshipScreen() {
                     </Text>
                   </View>
                 )}
+                <View style={styles.inviteInfoCard}>
+                  <View style={styles.inviteInfoIcon}>
+                    <Heart size={18} color={colors.danger} fill={colors.danger} />
+                  </View>
+                  <View style={styles.inviteInfoTextCol}>
+                    <Text style={styles.inviteInfoTitle}>Invite by phone or link</Text>
+                    <Text style={styles.inviteInfoText}>
+                      Add their phone to notify or link them. If they are not on Committed yet, share the invite after registering so they can sign up and confirm.
+                    </Text>
+                  </View>
+                </View>
                 <TextInput
                   style={styles.input}
                   placeholder="+1 (555) 000-0000"
@@ -657,7 +744,7 @@ export default function RegisterRelationshipScreen() {
                   </View>
                 )}
                 <Text style={styles.helperText}>
-                  Required: Upload a clear, front-facing photo of your partner for verification
+                  Required: Upload a clear, front-facing photo of your partner for verification. Next you will add relationship type, start date, privacy, consent, and preview everything before submitting.
                 </Text>
                 
                 {formData.partnerFacePhoto ? (
@@ -832,24 +919,35 @@ export default function RegisterRelationshipScreen() {
                     </Text>
                   </View>
                 )}
-                <View style={styles.typeOptions}>
+                <View style={styles.optionGrid}>
                   {RELATIONSHIP_TYPES.map((type) => (
                     <TouchableOpacity
                       key={type.value}
                       style={[
-                        styles.typeOption,
-                        formData.type === type.value && styles.typeOptionActive,
+                        styles.choiceCard,
+                        formData.type === type.value && styles.choiceCardActive,
                       ]}
                       onPress={() => setFormData({ ...formData, type: type.value })}
                     >
-                      <Text
-                        style={[
-                          styles.typeOptionText,
-                          formData.type === type.value && styles.typeOptionTextActive,
-                        ]}
-                      >
-                        {type.label}
-                      </Text>
+                      <View style={styles.choiceIconWrap}>
+                        <HeartHandshake size={22} color={formData.type === type.value ? colors.primary : colors.text.secondary} />
+                      </View>
+                      <View style={styles.choiceCopy}>
+                        <Text
+                          style={[
+                            styles.choiceTitle,
+                            formData.type === type.value && styles.choiceTitleActive,
+                          ]}
+                        >
+                          {type.label}
+                        </Text>
+                        <Text style={styles.choiceDescription}>{type.description}</Text>
+                      </View>
+                      {formData.type === type.value && (
+                        <View style={styles.choiceCheck}>
+                          <CheckCircle2 size={18} color={colors.primary} />
+                        </View>
+                      )}
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -857,6 +955,114 @@ export default function RegisterRelationshipScreen() {
                   <Text style={styles.infoText}>
                     Your relationship type will be visible to others once verified. Make sure to select the type that accurately represents your relationship status.
                   </Text>
+                </View>
+
+                <View style={styles.detailSection}>
+                  <Text style={styles.sectionLabel}>When did the relationship start?</Text>
+                  <Text style={styles.helperText}>
+                    Optional, but recommended for anniversaries, relationship milestones, and couple memories.
+                  </Text>
+                  <View style={styles.dateOfBirthRow}>
+                    <View style={styles.dateInputGroup}>
+                      <Text style={styles.dateInputLabel}>Day</Text>
+                      <View style={styles.dateInputContainer}>
+                        <TextInput
+                          style={styles.dateInput}
+                          placeholder="DD"
+                          placeholderTextColor={colors.text.tertiary}
+                          value={formData.relationshipStartDay}
+                          onChangeText={(text) => {
+                            const num = text.replace(/[^0-9]/g, '');
+                            if (num === '' || (parseInt(num, 10) >= 1 && parseInt(num, 10) <= 31)) {
+                              setFormData({ ...formData, relationshipStartDay: num });
+                            }
+                          }}
+                          keyboardType="number-pad"
+                          maxLength={2}
+                        />
+                      </View>
+                    </View>
+                    <View style={styles.dateInputGroup}>
+                      <Text style={styles.dateInputLabel}>Month</Text>
+                      <View style={styles.dateInputContainer}>
+                        <TextInput
+                          style={styles.dateInput}
+                          placeholder="MM"
+                          placeholderTextColor={colors.text.tertiary}
+                          value={formData.relationshipStartMonth}
+                          onChangeText={(text) => {
+                            const num = text.replace(/[^0-9]/g, '');
+                            if (num === '' || (parseInt(num, 10) >= 1 && parseInt(num, 10) <= 12)) {
+                              setFormData({ ...formData, relationshipStartMonth: num });
+                            }
+                          }}
+                          keyboardType="number-pad"
+                          maxLength={2}
+                        />
+                      </View>
+                    </View>
+                    <View style={styles.dateInputGroup}>
+                      <Text style={styles.dateInputLabel}>Year</Text>
+                      <View style={styles.dateInputContainer}>
+                        <TextInput
+                          style={styles.dateInput}
+                          placeholder="YYYY"
+                          placeholderTextColor={colors.text.tertiary}
+                          value={formData.relationshipStartYear}
+                          onChangeText={(text) => {
+                            const num = text.replace(/[^0-9]/g, '');
+                            const currentYear = new Date().getFullYear();
+                            if (num === '' || (parseInt(num, 10) >= 1900 && parseInt(num, 10) <= currentYear)) {
+                              setFormData({ ...formData, relationshipStartYear: num });
+                            }
+                          }}
+                          keyboardType="number-pad"
+                          maxLength={4}
+                        />
+                      </View>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.detailSection}>
+                  <Text style={styles.sectionLabel}>Relationship visibility</Text>
+                  <Text style={styles.helperText}>
+                    You can keep it private while still allowing your partner, admins, or moderators to verify it.
+                  </Text>
+                  <View style={styles.optionGrid}>
+                    {PRIVACY_OPTIONS.map((option) => (
+                      <TouchableOpacity
+                        key={option.value}
+                        style={[
+                          styles.choiceCard,
+                          formData.privacyLevel === option.value && styles.choiceCardActive,
+                        ]}
+                        onPress={() => setFormData({ ...formData, privacyLevel: option.value })}
+                      >
+                        <View style={styles.choiceIconWrap}>
+                          {option.value === 'private' && <Lock size={22} color={formData.privacyLevel === option.value ? colors.primary : colors.text.secondary} />}
+                          {option.value === 'verified-only' && <ShieldCheck size={22} color={formData.privacyLevel === option.value ? colors.primary : colors.text.secondary} />}
+                          {option.value === 'public' && <Globe2 size={22} color={formData.privacyLevel === option.value ? colors.primary : colors.text.secondary} />}
+                        </View>
+                        <View style={styles.choiceCopy}>
+                          <Text
+                            style={[
+                              styles.choiceTitle,
+                              formData.privacyLevel === option.value && styles.choiceTitleActive,
+                            ]}
+                          >
+                            {option.label}
+                          </Text>
+                          <Text style={styles.choiceDescription}>{option.description}</Text>
+                        </View>
+                        {formData.privacyLevel === option.value && (
+                          <View style={styles.choiceCheck}>
+                            <CheckCircle2 size={18} color={colors.primary} />
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    ))}
+                  </View>
                 </View>
               </View>
             )}
@@ -899,7 +1105,13 @@ export default function RegisterRelationshipScreen() {
                     <View style={styles.consentPoint}>
                       <CheckCircle size={20} color={colors.secondary} />
                       <Text style={styles.consentPointText}>
-                        False relationship registrations may result in account restrictions
+                      False relationship registrations may result in account restrictions
+                      </Text>
+                    </View>
+                    <View style={styles.consentPoint}>
+                      <CheckCircle size={20} color={colors.secondary} />
+                      <Text style={styles.consentPointText}>
+                        My partner, or an admin/moderator where needed, can verify this registration
                       </Text>
                     </View>
                   </View>
@@ -993,10 +1205,27 @@ export default function RegisterRelationshipScreen() {
                   </View>
                   
                   <View style={styles.previewSection}>
-                    <Text style={styles.previewSectionTitle}>Relationship Type</Text>
+                    <Text style={styles.previewSectionTitle}>Relationship Details</Text>
                     <View style={styles.previewRow}>
+                      <Text style={styles.previewLabel}>Type:</Text>
                       <Text style={styles.previewValue}>
                         {RELATIONSHIP_TYPES.find(t => t.value === formData.type)?.label || formData.type}
+                      </Text>
+                    </View>
+                    <View style={styles.previewRow}>
+                      <Text style={styles.previewLabel}>Start:</Text>
+                      <Text style={styles.previewValue}>
+                        {getDisplayDateFromParts(
+                          formData.relationshipStartDay,
+                          formData.relationshipStartMonth,
+                          formData.relationshipStartYear
+                        ) || 'Not provided'}
+                      </Text>
+                    </View>
+                    <View style={styles.previewRow}>
+                      <Text style={styles.previewLabel}>Visibility:</Text>
+                      <Text style={styles.previewValue}>
+                        {PRIVACY_OPTIONS.find(option => option.value === formData.privacyLevel)?.label || 'Private'}
                       </Text>
                     </View>
                   </View>
@@ -1373,6 +1602,62 @@ const createStyles = (colors: any) => StyleSheet.create({
   typeOptions: {
     gap: 12,
   },
+  optionGrid: {
+    gap: 12,
+    marginBottom: 16,
+  },
+  choiceCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: colors.background.primary,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  choiceCardActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary + '10',
+  },
+  choiceIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background.secondary,
+  },
+  choiceCopy: {
+    flex: 1,
+  },
+  choiceTitle: {
+    fontSize: 16,
+    fontWeight: '800' as const,
+    color: colors.text.primary,
+    marginBottom: 3,
+  },
+  choiceTitleActive: {
+    color: colors.primary,
+  },
+  choiceDescription: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.text.secondary,
+  },
+  choiceCheck: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary + '15',
+  },
   typeOption: {
     backgroundColor: colors.background.primary,
     borderRadius: 16,
@@ -1501,6 +1786,58 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontWeight: '600' as const,
     color: colors.text.primary,
     marginBottom: 16,
+  },
+  detailSection: {
+    marginTop: 24,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.light,
+  },
+  sectionLabel: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+    color: colors.text.primary,
+    marginBottom: 8,
+  },
+  optionDescription: {
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.text.secondary,
+    textAlign: 'center',
+  },
+  inviteInfoCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: colors.danger + '10',
+    borderWidth: 1,
+    borderColor: colors.danger + '25',
+    marginBottom: 14,
+  },
+  inviteInfoIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background.primary,
+  },
+  inviteInfoTextCol: {
+    flex: 1,
+  },
+  inviteInfoTitle: {
+    fontSize: 14,
+    fontWeight: '800' as const,
+    color: colors.text.primary,
+    marginBottom: 4,
+  },
+  inviteInfoText: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.text.secondary,
   },
   dateOfBirthSection: {
     marginBottom: 16,

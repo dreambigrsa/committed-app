@@ -9,11 +9,12 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { DatingPhoto } from '@/types';
 import { AdaptiveMediaProfile, getAdaptiveImageUrl, getAdaptiveMediaProfile } from '@/lib/adaptive-media';
+import { navigateToDatingHome } from '@/lib/dating-navigation';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -88,9 +89,10 @@ export default function PhotoGalleryScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <Stack.Screen options={{ headerShown: false }} />
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.closeButton}>
+        <TouchableOpacity onPress={() => navigateToDatingHome(router)} style={styles.closeButton}>
           <X size={24} color={colors.text.white} />
         </TouchableOpacity>
         <View style={styles.headerInfo}>

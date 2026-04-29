@@ -10,6 +10,7 @@ import {
   Alert,
   Modal,
   TextInput,
+  Platform,
 } from 'react-native';
 import { Stack } from 'expo-router';
 import { UserCheck, CheckCircle, XCircle, Clock } from 'lucide-react-native';
@@ -32,6 +33,11 @@ export default function AdminProfessionalProfilesScreen() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [reviewNotes, setReviewNotes] = useState('');
 
+  const pendingApplications = useMemo(
+    () => applications.filter((app: any) => app.status === 'pending' || app.status === 'under_review'),
+    [applications]
+  );
+
   useEffect(() => {
     if (tab === 'applications') {
       loadApplications();
@@ -50,6 +56,7 @@ export default function AdminProfessionalProfilesScreen() {
           user:users!professional_applications_user_id_fkey(*),
           role:professional_roles!professional_applications_role_id_fkey(*)
         `)
+        .in('status', ['pending', 'under_review'])
         .order('created_at', { ascending: false });
       
       if (error) throw error;
@@ -95,43 +102,96 @@ export default function AdminProfessionalProfilesScreen() {
           text: 'Approve',
           onPress: async () => {
             try {
-              // Create professional profile from application
-              const { error: profileError } = await supabase
+              const userId = app.user_id || app.userId;
+              const roleId = app.role_id || app.roleId;
+              const applicationData = app.application_data || app.applicationData || {};
+
+              if (!userId || !roleId) {
+                throw new Error('Application is missing user or role information');
+              }
+
+              const { data: existingProfile, error: existingProfileError } = await supabase
                 .from('professional_profiles')
-                .insert([{
-                  user_id: app.user_id || app.userId,
-                  role_id: app.role_id || app.roleId,
-                  full_name: app.user?.full_name || app.user?.fullName || 'Professional',
-                  bio: app.application_data?.bio || app.applicationData?.bio || null,
-                  credentials: app.application_data?.credentials || app.applicationData?.credentials || [],
-                  credential_documents: app.application_data?.credential_documents || app.applicationData?.credentialDocuments || [],
-                  location: app.application_data?.location || app.applicationData?.location || null,
+                .select('id, full_name, bio, credentials, credential_documents, location')
+                .eq('user_id', userId)
+                .maybeSingle();
+
+              if (existingProfileError) throw existingProfileError;
+
+              const now = new Date().toISOString();
+              const fullName = app.user?.full_name || app.user?.fullName || existingProfile?.full_name || 'Professional';
+
+              // Create or update the professional profile. A user can only have one
+              // professional profile, so approvals must be idempotent.
+              const { data: profile, error: profileError } = await supabase
+                .from('professional_profiles')
+                .upsert({
+                  user_id: userId,
+                  role_id: roleId,
+                  full_name: fullName,
+                  bio: applicationData.bio ?? existingProfile?.bio ?? null,
+                  credentials: applicationData.credentials ?? existingProfile?.credentials ?? [],
+                  credential_documents:
+                    applicationData.credential_documents ??
+                    applicationData.credentialDocuments ??
+                    existingProfile?.credential_documents ??
+                    [],
+                  location: applicationData.location ?? existingProfile?.location ?? null,
                   approval_status: 'approved',
+                  rejection_reason: null,
                   approved_by: currentUser?.id,
-                  approved_at: new Date().toISOString(),
-                }])
-                .select()
+                  approved_at: now,
+                  updated_at: now,
+                }, { onConflict: 'user_id' })
+                .select('id')
                 .single();
 
               if (profileError) throw profileError;
 
-              // Update application status
-              const { error: updateError } = await supabase
+              if (profile?.id) {
+                const { error: statusError } = await supabase
+                  .from('professional_status')
+                  .upsert({
+                    professional_id: profile.id,
+                    status: 'offline',
+                    updated_at: now,
+                  }, { onConflict: 'professional_id', ignoreDuplicates: true });
+
+                if (statusError) {
+                  console.warn('Professional status already exists or could not be initialized:', statusError);
+                }
+              }
+
+              // Update every outstanding application for this user. A user can only
+              // have one professional profile, so no old pending rows should remain.
+              const { data: updatedApplications, error: updateError } = await supabase
                 .from('professional_applications')
                 .update({
                   status: 'approved',
                   reviewed_by: currentUser?.id,
-                  reviewed_at: new Date().toISOString(),
+                  reviewed_at: now,
                   review_notes: reviewNotes || null,
                 })
-                .eq('id', application.id);
+                .eq('user_id', userId)
+                .in('status', ['pending', 'under_review'])
+                .select('id');
 
               if (updateError) throw updateError;
+              if (!updatedApplications || updatedApplications.length === 0) {
+                throw new Error('Profile was approved, but the application status could not be updated. Please run the professional applications admin update RLS migration.');
+              }
 
-              Alert.alert('Success', 'Application approved and profile created');
+              setApplications(prev => prev.filter((item: any) => {
+                const itemUserId = item.user_id || item.userId;
+                return itemUserId !== userId;
+              }));
+
+              Alert.alert('Success', existingProfile ? 'Application approved and profile updated' : 'Application approved and profile created');
               setShowDetailModal(false);
+              setSelectedItem(null);
+              setReviewNotes('');
               loadApplications();
-              if (tab === 'profiles') loadProfiles();
+              loadProfiles();
             } catch (error: any) {
               console.error('Error approving application:', error);
               Alert.alert('Error', error.message || 'Failed to approve application');
@@ -143,6 +203,50 @@ export default function AdminProfessionalProfilesScreen() {
   };
 
   const handleRejectApplication = async (application: any) => {
+    const rejectApplication = async (reason?: string) => {
+      try {
+        const { data: updatedApplications, error } = await supabase
+          .from('professional_applications')
+          .update({
+            status: 'rejected',
+            reviewed_by: currentUser?.id,
+            reviewed_at: new Date().toISOString(),
+            rejection_reason: reason || reviewNotes || 'Application rejected',
+            review_notes: reviewNotes || null,
+          })
+          .eq('id', application.id)
+          .select('id');
+
+        if (error) throw error;
+        if (!updatedApplications || updatedApplications.length === 0) {
+          throw new Error('Application could not be rejected. Please run the professional applications admin update RLS migration.');
+        }
+
+        Alert.alert('Success', 'Application rejected');
+        setShowDetailModal(false);
+        loadApplications();
+      } catch (error: any) {
+        console.error('Error rejecting application:', error);
+        Alert.alert('Error', error.message || 'Failed to reject application');
+      }
+    };
+
+    if (Platform.OS !== 'ios') {
+      Alert.alert(
+        'Reject Application',
+        'Reject this professional application? The review notes field will be used as the rejection reason when available.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Reject',
+            style: 'destructive',
+            onPress: () => rejectApplication(),
+          },
+        ]
+      );
+      return;
+    }
+
     Alert.prompt(
       'Reject Application',
       'Please provide a reason for rejection:',
@@ -150,29 +254,8 @@ export default function AdminProfessionalProfilesScreen() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Reject',
-          onPress: async (reason: string | undefined) => {
-            try {
-              const { error } = await supabase
-                .from('professional_applications')
-                .update({
-                  status: 'rejected',
-                  reviewed_by: currentUser?.id,
-                  reviewed_at: new Date().toISOString(),
-                  rejection_reason: reason || 'Application rejected',
-                  review_notes: reviewNotes || null,
-                })
-                .eq('id', application.id);
-
-              if (error) throw error;
-
-              Alert.alert('Success', 'Application rejected');
-              setShowDetailModal(false);
-              loadApplications();
-            } catch (error: any) {
-              console.error('Error rejecting application:', error);
-              Alert.alert('Error', error.message || 'Failed to reject application');
-            }
-          },
+          style: 'destructive',
+          onPress: rejectApplication,
         },
       ],
       'plain-text'
@@ -191,7 +274,7 @@ export default function AdminProfessionalProfilesScreen() {
           text: 'Confirm',
           onPress: async () => {
             try {
-              const { error } = await supabase
+              const { data: updatedProfile, error } = await supabase
                 .from('professional_profiles')
                 .update({
                   approval_status: newStatus,
@@ -199,9 +282,14 @@ export default function AdminProfessionalProfilesScreen() {
                   approved_at: newStatus === 'approved' ? new Date().toISOString() : (profile.approved_at || profile.approvedAt),
                   updated_at: new Date().toISOString(),
                 })
-                .eq('id', profile.id);
+                .eq('id', profile.id)
+                .select('id,approval_status,updated_at')
+                .maybeSingle();
 
               if (error) throw error;
+              if (!updatedProfile) {
+                throw new Error('Professional profile was not updated. Admin profile update permission may be missing.');
+              }
 
               Alert.alert('Success', `Professional ${newStatus === 'suspended' ? 'suspended' : 'activated'}`);
               setShowDetailModal(false);
@@ -227,12 +315,17 @@ export default function AdminProfessionalProfilesScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              const { error } = await supabase
+              const { data: deletedProfile, error } = await supabase
                 .from('professional_profiles')
                 .delete()
-                .eq('id', profile.id);
+                .eq('id', profile.id)
+                .select('id')
+                .maybeSingle();
 
               if (error) throw error;
+              if (!deletedProfile) {
+                throw new Error('Professional profile was not deleted. Admin delete permission may be missing.');
+              }
 
               Alert.alert('Success', 'Professional profile deleted');
               setShowDetailModal(false);
@@ -259,15 +352,20 @@ export default function AdminProfessionalProfilesScreen() {
           text: 'Confirm',
           onPress: async () => {
             try {
-              const { error } = await supabase
+              const { data: updatedProfile, error } = await supabase
                 .from('professional_profiles')
                 .update({
                   is_active: newStatus,
                   updated_at: new Date().toISOString(),
                 })
-                .eq('id', profile.id);
+                .eq('id', profile.id)
+                .select('id,is_active,updated_at')
+                .maybeSingle();
 
               if (error) throw error;
+              if (!updatedProfile) {
+                throw new Error('Service status was not updated. Admin profile update permission may be missing.');
+              }
 
               Alert.alert('Success', `Service ${newStatus ? 'resumed' : 'paused'}`);
               setShowDetailModal(false);
@@ -323,7 +421,7 @@ export default function AdminProfessionalProfilesScreen() {
           onPress={() => setTab('applications')}
         >
           <Text style={[styles.tabText, tab === 'applications' && styles.activeTabText]}>
-            Applications ({applications.length})
+            Applications ({pendingApplications.length})
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -344,13 +442,13 @@ export default function AdminProfessionalProfilesScreen() {
         <ScrollView style={styles.content}>
           {tab === 'applications' ? (
             <View style={styles.list}>
-              {applications.length === 0 ? (
+              {pendingApplications.length === 0 ? (
                 <View style={styles.emptyContainer}>
                   <UserCheck size={64} color={themeColors.text.tertiary} />
-                  <Text style={styles.emptyText}>No applications</Text>
+                  <Text style={styles.emptyText}>No pending applications</Text>
                 </View>
               ) : (
-                applications.map((app: any) => {
+                pendingApplications.map((app: any) => {
                   const StatusIcon = getStatusIcon(app.status);
                   return (
                     <TouchableOpacity
@@ -944,4 +1042,3 @@ const createStyles = (colors: any) => StyleSheet.create({
     color: colors.text.white,
   },
 });
-

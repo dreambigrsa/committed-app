@@ -70,7 +70,7 @@ export default function SettingsScreen() {
 
   // All hooks must be declared before any early returns
   const [editMode, setEditMode] = useState(false);
-  const [, setIsDeleting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   // Basic Information
@@ -125,6 +125,7 @@ export default function SettingsScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [pendingEndRequest, setPendingEndRequest] = useState<any>(null);
+  const isMountedRef = useRef(true);
 
   // App Preferences - Now managed by contexts (LanguageContext and ThemeContext)
 
@@ -135,6 +136,12 @@ export default function SettingsScreen() {
       useNativeDriver: true,
     }).start();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refs are stable
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
   }, []);
 
   // Check for pending end relationship disputes
@@ -436,10 +443,6 @@ export default function SettingsScreen() {
     }
   };
 
-  if (!currentUser) {
-    return null;
-  }
-
   const handleSaveProfile = async () => {
     if (!currentUser) return;
     
@@ -478,6 +481,7 @@ export default function SettingsScreen() {
   };
 
   const handleProfilePhotoChange = async () => {
+    if (!currentUser) return;
     try {
       const quality = await getAdaptiveImageQuality();
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -769,18 +773,9 @@ export default function SettingsScreen() {
                       const success = await deleteAccount();
                       
                       if (success) {
-                        Alert.alert(
-                          'Account Deleted',
-                          'Your account has been permanently deleted. You will be redirected to the login page.',
-                          [
-                            {
-                              text: 'OK',
-                              onPress: () => {
-                                router.replace('/auth');
-                              },
-                            },
-                          ]
-                        );
+                        // AppGate/AuthContext handle post-deletion routing. Avoid manual navigate
+                        // during auth teardown; it can race RootLayout mount on web/native.
+                        return;
                       }
                     } catch (error: any) {
                       console.error('Failed to delete account:', error);
@@ -794,7 +789,9 @@ export default function SettingsScreen() {
                       
                       Alert.alert('Error', errorMessage);
                     } finally {
-                      setIsDeleting(false);
+                      if (isMountedRef.current) {
+                        setIsDeleting(false);
+                      }
                     }
                   },
                 },
@@ -823,6 +820,7 @@ export default function SettingsScreen() {
   };
 
   const getVerificationStatus = (type: 'phone' | 'email' | 'id') => {
+    if (!currentUser) return false;
     if (type === 'phone') return currentUser.verifications.phone;
     if (type === 'email') return currentUser.verifications.email;
     if (type === 'id') return currentUser.verifications.id;
@@ -878,6 +876,15 @@ export default function SettingsScreen() {
         }}
       />
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background.secondary }]}>
+        {!currentUser ? (
+          <View style={styles.emptyStateWrap}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.emptyStateTitle}>Finishing sign-out...</Text>
+            <Text style={styles.emptyStateText}>
+              Please wait while we complete account cleanup.
+            </Text>
+          </View>
+        ) : (
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
@@ -1713,14 +1720,21 @@ export default function SettingsScreen() {
           {/* Delete Account */}
           <View style={styles.section}>
             <TouchableOpacity
-              style={styles.dangerCard}
+              style={[styles.dangerCard, isDeleting && styles.dangerCardDisabled]}
               onPress={handleDeleteAccount}
+              disabled={isDeleting}
             >
-              <Trash2 size={24} color={colors.danger} />
+              {isDeleting ? (
+                <ActivityIndicator size="small" color={colors.danger} />
+              ) : (
+                <Trash2 size={24} color={colors.danger} />
+              )}
               <View style={styles.dangerContent}>
-                <Text style={styles.dangerTitle}>Delete Account</Text>
+                <Text style={styles.dangerTitle}>{isDeleting ? 'Deleting account...' : 'Delete Account'}</Text>
                 <Text style={styles.dangerText}>
-                  Permanently delete your account and all associated data. This action cannot be undone.
+                  {isDeleting
+                    ? 'Please wait while we securely close your account.'
+                    : 'Permanently delete your account and all associated data. This action cannot be undone.'}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -1806,6 +1820,7 @@ export default function SettingsScreen() {
             </Text>
           </View>
         </ScrollView>
+        )}
 
         {/* Date Picker Modal */}
         <Modal
@@ -2391,6 +2406,26 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontSize: 13,
     color: colors.text.secondary,
     lineHeight: 18,
+  },
+  emptyStateWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    gap: 8,
+  },
+  emptyStateTitle: {
+    marginTop: 10,
+    fontSize: 18,
+    fontWeight: '700' as const,
+    color: colors.text.primary,
+    textAlign: 'center',
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    lineHeight: 20,
   },
   dateInputContainer: {
     flexDirection: 'row',

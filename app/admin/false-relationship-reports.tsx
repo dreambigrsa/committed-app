@@ -12,7 +12,7 @@ import {
   TextInput,
 } from 'react-native';
 import { Stack } from 'expo-router';
-import { AlertTriangle, CheckCircle, XCircle, Eye, Shield } from 'lucide-react-native';
+import { AlertTriangle, CheckCircle, XCircle, Eye, Shield, Clock, HeartOff, Trash2 } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -28,6 +28,7 @@ export default function AdminFalseRelationshipReportsScreen() {
   const [showModal, setShowModal] = useState<boolean>(false);
   const [resolution, setResolution] = useState<string>('');
   const [filter, setFilter] = useState<'all' | 'pending' | 'reviewing' | 'resolved' | 'dismissed'>('all');
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   useEffect(() => {
     loadReports();
@@ -41,7 +42,7 @@ export default function AdminFalseRelationshipReportsScreen() {
         .from('false_relationship_reports')
         .select(`
           *,
-          relationship:relationships(id, user_id, partner_name, partner_phone, partner_user_id, type, status),
+          relationship:relationships(id, user_id, partner_name, partner_phone, partner_user_id, type, status, start_date, verified_date, privacy_level),
           reporter:users!false_relationship_reports_reported_by_fkey(id, full_name, email, phone_number),
           resolver:users!false_relationship_reports_resolved_by_fkey(id, full_name)
         `)
@@ -86,89 +87,238 @@ export default function AdminFalseRelationshipReportsScreen() {
     }
   };
 
-  const handleResolve = async (reportId: string, action: 'resolved' | 'dismissed') => {
-    if (!resolution.trim() && action === 'resolved') {
-      Alert.alert('Error', 'Please provide a resolution note');
-      return;
-    }
+  const notifyReporter = async (
+    report: FalseRelationshipReport,
+    title: string,
+    message: string,
+    extraData?: Record<string, any>
+  ) => {
+    await supabase.from('notifications').insert({
+      user_id: report.reportedBy,
+      type: 'false_relationship_resolved',
+      title,
+      message,
+      data: { reportId: report.id, relationshipId: report.relationshipId, ...extraData },
+    });
+  };
 
+  const closeReportModal = () => {
+    setShowModal(false);
+    setResolution('');
+    setSelectedReport(null);
+  };
+
+  const markUnderReview = async (report: FalseRelationshipReport) => {
     try {
-      const { error } = await supabase
+      setActionLoading('reviewing');
+      const { data, error } = await supabase
         .from('false_relationship_reports')
         .update({
-          status: action,
-          resolution: resolution.trim() || null,
+          status: 'reviewing',
+          resolution: resolution.trim() || 'Admin is reviewing this report. Relationship remains visible until a final decision is made.',
+          resolved_by: currentUser?.id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', report.id)
+        .select('id,status')
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!data) throw new Error('Report was not marked under review. Admin update permission may be missing.');
+
+      await notifyReporter(
+        report,
+        'Report Under Review',
+        'Your false relationship report is under admin review. The relationship remains visible until a final decision is made.'
+      );
+
+      closeReportModal();
+      await loadReports();
+      Alert.alert('Under review', 'The report is now under review. The relationship has not been changed.');
+    } catch (error: any) {
+      console.error('Error marking report under review:', error);
+      Alert.alert('Error', error?.message || 'Failed to mark report under review');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const dismissReportAndKeepRelationship = async (report: FalseRelationshipReport) => {
+    try {
+      setActionLoading('dismiss');
+      const note = resolution.trim() || 'Admin reviewed the report and kept the relationship active.';
+      const { data, error } = await supabase
+        .from('false_relationship_reports')
+        .update({
+          status: 'dismissed',
+          resolution: note,
           resolved_by: currentUser?.id,
           resolved_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq('id', reportId);
+        .eq('relationship_id', report.relationshipId)
+        .in('status', ['pending', 'reviewing'])
+        .select('id,status');
 
       if (error) throw error;
-
-      // If resolved, optionally end the relationship
-      if (action === 'resolved' && selectedReport) {
-        Alert.alert(
-          'Relationship Action',
-          'Would you like to end this relationship?',
-          [
-            { text: 'No', style: 'cancel' },
-            {
-              text: 'Yes, End Relationship',
-              style: 'destructive',
-              onPress: async () => {
-                try {
-                  await supabase
-                    .from('relationships')
-                    .update({
-                      status: 'ended',
-                      end_date: new Date().toISOString(),
-                    })
-                    .eq('id', selectedReport.relationshipId);
-
-                  // Notify both partners
-                  const relationship = (selectedReport as any).relationship;
-                  if (relationship) {
-                    const partnerIds = [relationship.user_id, relationship.partner_user_id].filter(Boolean);
-                    for (const partnerId of partnerIds) {
-                      await supabase.from('notifications').insert({
-                        user_id: partnerId,
-                        type: 'false_relationship_resolved',
-                        title: 'Relationship Removed',
-                        message: 'Your relationship has been removed due to a false relationship report.',
-                        data: { relationshipId: relationship.id },
-                      });
-                    }
-                  }
-                } catch (error) {
-                  console.error('Error ending relationship:', error);
-                }
-              },
-            },
-          ]
-        );
+      if (!data || data.length === 0) {
+        throw new Error('Report was not dismissed. Admin update permission may be missing.');
       }
 
-      // Notify the reporter
-      if (selectedReport) {
-        await supabase.from('notifications').insert({
-          user_id: selectedReport.reportedBy,
-          type: 'false_relationship_resolved',
-          title: `Report ${action === 'resolved' ? 'Resolved' : 'Dismissed'}`,
-          message: `Your false relationship report has been ${action === 'resolved' ? 'resolved' : 'dismissed'}.`,
-          data: { reportId },
-        });
-      }
+      await notifyReporter(
+        report,
+        'Report Dismissed',
+        'An admin reviewed your report and kept the relationship active.',
+        { affectedReports: data.length }
+      );
 
-      setShowModal(false);
-      setResolution('');
-      setSelectedReport(null);
-      loadReports();
-      Alert.alert('Success', `Report ${action === 'resolved' ? 'resolved' : 'dismissed'} successfully`);
+      closeReportModal();
+      await loadReports();
+      Alert.alert('Relationship kept', 'The report was dismissed. The relationship stays visible in profile and search.');
     } catch (error: any) {
-      console.error('Error resolving report:', error);
-      Alert.alert('Error', error?.message || 'Failed to resolve report');
+      console.error('Error dismissing report:', error);
+      Alert.alert('Error', error?.message || 'Failed to dismiss report');
+    } finally {
+      setActionLoading(null);
     }
+  };
+
+  const confirmFakeAndEndRelationship = async (report: FalseRelationshipReport) => {
+    const relationship = (report as any).relationship;
+    if (!relationship) {
+      Alert.alert('Error', 'Relationship details are missing. Refresh and try again.');
+      return;
+    }
+
+    Alert.alert(
+      'Confirm Fake Relationship',
+      'This is the only action that removes the relationship from profiles and search. It will end this relationship for both sides and resolve all open reports for it.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'End Relationship',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setActionLoading('end');
+              const now = new Date().toISOString();
+              const note = resolution.trim() || 'Admin confirmed this relationship is false and ended it.';
+
+              const reciprocalIds = [relationship.id];
+              if (relationship.user_id && relationship.partner_user_id) {
+                const { data: reciprocalRows, error: reciprocalError } = await supabase
+                  .from('relationships')
+                  .select('id')
+                  .eq('user_id', relationship.partner_user_id)
+                  .eq('partner_user_id', relationship.user_id)
+                  .in('status', ['pending', 'verified']);
+
+                if (reciprocalError) throw reciprocalError;
+                reciprocalRows?.forEach((row: any) => {
+                  if (row.id && !reciprocalIds.includes(row.id)) reciprocalIds.push(row.id);
+                });
+              }
+
+              const { data: endedRows, error: endError } = await supabase
+                .from('relationships')
+                .update({
+                  status: 'ended',
+                  end_date: now,
+                })
+                .in('id', reciprocalIds)
+                .select('id,status,end_date');
+
+              if (endError) throw endError;
+              if (!endedRows || endedRows.length === 0) {
+                throw new Error('Relationship was not ended. Admin relationship update permission may be missing.');
+              }
+
+              const { data: resolvedReports, error: reportError } = await supabase
+                .from('false_relationship_reports')
+                .update({
+                  status: 'resolved',
+                  resolution: note,
+                  resolved_by: currentUser?.id,
+                  resolved_at: now,
+                  updated_at: now,
+                })
+                .eq('relationship_id', report.relationshipId)
+                .in('status', ['pending', 'reviewing'])
+                .select('id,status');
+
+              if (reportError) throw reportError;
+              if (!resolvedReports || resolvedReports.length === 0) {
+                throw new Error('Relationship was ended, but the report was not resolved. Please refresh and check report permissions.');
+              }
+
+              const partnerIds = [relationship.user_id, relationship.partner_user_id].filter(Boolean);
+              for (const partnerId of partnerIds) {
+                await supabase.from('notifications').insert({
+                  user_id: partnerId,
+                  type: 'false_relationship_resolved',
+                  title: 'Relationship Removed',
+                  message: 'An admin reviewed a false relationship report and removed this relationship.',
+                  data: { relationshipId: relationship.id, affectedRelationshipIds: endedRows.map((row: any) => row.id) },
+                });
+              }
+
+              await notifyReporter(
+                report,
+                'Report Resolved',
+                'An admin confirmed your report and removed the false relationship.',
+                { endedRelationships: endedRows.length, affectedReports: resolvedReports.length }
+              );
+
+              closeReportModal();
+              await loadReports();
+              Alert.alert('Relationship ended', 'The false relationship was ended for both sides and removed from active profile/search results.');
+            } catch (error: any) {
+              console.error('Error ending false relationship:', error);
+              Alert.alert('Error', error?.message || 'Failed to end relationship');
+            } finally {
+              setActionLoading(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const deleteReportCase = async (report: FalseRelationshipReport) => {
+    Alert.alert(
+      'Delete Report Case',
+      'This only deletes the report record. It does not change the relationship.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Report',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setActionLoading('delete');
+              const { data, error } = await supabase
+                .from('false_relationship_reports')
+                .delete()
+                .eq('id', report.id)
+                .select('id')
+                .maybeSingle();
+
+              if (error) throw error;
+              if (!data) throw new Error('Report was not deleted. Admin delete permission may be missing.');
+
+              closeReportModal();
+              await loadReports();
+              Alert.alert('Report deleted', 'The report case was deleted. The relationship was not changed.');
+            } catch (error: any) {
+              console.error('Error deleting report:', error);
+              Alert.alert('Error', error?.message || 'Failed to delete report');
+            } finally {
+              setActionLoading(null);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const openReportModal = (report: FalseRelationshipReport) => {
@@ -354,6 +504,18 @@ export default function AdminFalseRelationshipReportsScreen() {
                     </Text>
                   </View>
 
+                  <View style={styles.flowCard}>
+                    <View style={styles.flowIcon}>
+                      <Shield size={18} color={colors.primary} />
+                    </View>
+                    <View style={styles.flowCopy}>
+                      <Text style={styles.flowTitle}>Review rule</Text>
+                      <Text style={styles.flowText}>
+                        A report never hides or removes a relationship by itself. Only confirming it as fake ends it.
+                      </Text>
+                    </View>
+                  </View>
+
                   {(selectedReport as any).relationship && (
                     <View style={styles.modalSection}>
                       <Text style={styles.modalLabel}>Relationship:</Text>
@@ -387,10 +549,10 @@ export default function AdminFalseRelationshipReportsScreen() {
 
                   {selectedReport.status !== 'resolved' && selectedReport.status !== 'dismissed' && (
                     <View style={styles.modalSection}>
-                      <Text style={styles.modalLabel}>Resolution Note:</Text>
+                      <Text style={styles.modalLabel}>Admin Note:</Text>
                       <TextInput
                         style={styles.resolutionInput}
-                        placeholder="Enter resolution notes..."
+                        placeholder="Add review notes for this decision..."
                         placeholderTextColor={colors.text.tertiary}
                         multiline
                         numberOfLines={4}
@@ -413,20 +575,50 @@ export default function AdminFalseRelationshipReportsScreen() {
                   )}
 
                   {selectedReport.status !== 'resolved' && selectedReport.status !== 'dismissed' && (
-                    <View style={styles.modalActions}>
+                    <View style={styles.decisionList}>
                       <TouchableOpacity
-                        style={[styles.actionButton, styles.dismissButton]}
-                        onPress={() => handleResolve(selectedReport.id, 'dismissed')}
+                        style={[styles.decisionButton, styles.reviewButton, actionLoading === 'reviewing' && styles.disabledButton]}
+                        onPress={() => markUnderReview(selectedReport)}
+                        disabled={!!actionLoading}
                       >
-                        <XCircle size={20} color={colors.danger} />
-                        <Text style={styles.dismissButtonText}>Dismiss</Text>
+                        <Clock size={20} color={colors.primary} />
+                        <View style={styles.decisionCopy}>
+                          <Text style={[styles.decisionTitle, { color: colors.primary }]}>Mark under review</Text>
+                          <Text style={styles.decisionText}>Keeps the relationship visible while admins investigate.</Text>
+                        </View>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={[styles.actionButton, styles.resolveButton]}
-                        onPress={() => handleResolve(selectedReport.id, 'resolved')}
+                        style={[styles.decisionButton, styles.keepButton, actionLoading === 'dismiss' && styles.disabledButton]}
+                        onPress={() => dismissReportAndKeepRelationship(selectedReport)}
+                        disabled={!!actionLoading}
                       >
                         <CheckCircle size={20} color={colors.success} />
-                        <Text style={styles.resolveButtonText}>Resolve</Text>
+                        <View style={styles.decisionCopy}>
+                          <Text style={[styles.decisionTitle, { color: colors.success }]}>Dismiss report, keep relationship</Text>
+                          <Text style={styles.decisionText}>Use when the report is wrong or unproven. Profile and search stay unchanged.</Text>
+                        </View>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.decisionButton, styles.endRelationshipButton, actionLoading === 'end' && styles.disabledButton]}
+                        onPress={() => confirmFakeAndEndRelationship(selectedReport)}
+                        disabled={!!actionLoading}
+                      >
+                        <HeartOff size={20} color={colors.danger} />
+                        <View style={styles.decisionCopy}>
+                          <Text style={[styles.decisionTitle, { color: colors.danger }]}>Confirm fake and end relationship</Text>
+                          <Text style={styles.decisionText}>Only this removes the relationship from active profiles and search.</Text>
+                        </View>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.decisionButton, styles.deleteCaseButton, actionLoading === 'delete' && styles.disabledButton]}
+                        onPress={() => deleteReportCase(selectedReport)}
+                        disabled={!!actionLoading}
+                      >
+                        <Trash2 size={20} color={colors.text.secondary} />
+                        <View style={styles.decisionCopy}>
+                          <Text style={[styles.decisionTitle, { color: colors.text.primary }]}>Delete report case</Text>
+                          <Text style={styles.decisionText}>Deletes only this report record. The relationship is not changed.</Text>
+                        </View>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -644,6 +836,38 @@ const createStyles = (colors: any) => StyleSheet.create({
     textDecorationLine: 'underline',
     marginBottom: 4,
   },
+  flowCard: {
+    flexDirection: 'row',
+    gap: 12,
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: colors.primary + '12',
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+    marginBottom: 20,
+  },
+  flowIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background.primary,
+  },
+  flowCopy: {
+    flex: 1,
+  },
+  flowTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.text.primary,
+    marginBottom: 4,
+  },
+  flowText: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.text.secondary,
+  },
   resolutionInput: {
     backgroundColor: colors.background.secondary,
     borderRadius: 8,
@@ -659,6 +883,51 @@ const createStyles = (colors: any) => StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginTop: 20,
+  },
+  decisionList: {
+    gap: 10,
+    marginTop: 8,
+    paddingBottom: 8,
+  },
+  decisionButton: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  reviewButton: {
+    backgroundColor: colors.primary + '12',
+    borderColor: colors.primary + '35',
+  },
+  keepButton: {
+    backgroundColor: colors.success + '12',
+    borderColor: colors.success + '35',
+  },
+  endRelationshipButton: {
+    backgroundColor: colors.danger + '12',
+    borderColor: colors.danger + '35',
+  },
+  deleteCaseButton: {
+    backgroundColor: colors.background.secondary,
+    borderColor: colors.border,
+  },
+  decisionCopy: {
+    flex: 1,
+  },
+  decisionTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: 3,
+  },
+  decisionText: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.text.secondary,
+  },
+  disabledButton: {
+    opacity: 0.55,
   },
   actionButton: {
     flex: 1,
@@ -690,4 +959,3 @@ const createStyles = (colors: any) => StyleSheet.create({
     color: colors.success,
   },
 });
-

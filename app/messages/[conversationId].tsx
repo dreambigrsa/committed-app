@@ -19,6 +19,7 @@ import {
   Animated,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ArrowLeft, Send, Image as ImageIcon, FileText, X, Settings, Download, Smile, ChevronUp, ChevronDown , ExternalLink , Users, Shield } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { Video, ResizeMode } from 'expo-av';
@@ -214,10 +215,55 @@ export default function ConversationDetailScreen() {
   const recordedImpressions = useRef<Set<string>>(new Set());
   const failedAdImages = useRef<Set<string>>(new Set());
   const handleDeleteMessageRef = useRef<((messageId: string, isSender: boolean) => Promise<void>) | null>(null);
+  const helpSuggestionDismissedAtRef = useRef(0);
+  const helpSuggestionDismissedAtMessageCountRef = useRef(0);
+  const aiUserMessageCountRef = useRef(0);
   const isAdminUser = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
   
   // Check if this is an AI conversation
   const isAIConversation = conversation?.participants?.some((p: string) => p === aiUserId);
+
+  const shouldShowHelpSuggestion = useCallback(() => {
+    if (!isAIConversation || professionalSession || showRequestHelpModal || showHelpSuggestionModal) {
+      return false;
+    }
+
+    const dismissedAt = helpSuggestionDismissedAtRef.current;
+    if (!dismissedAt) return true;
+
+    const minutesSinceDismiss = (Date.now() - dismissedAt) / 60000;
+    const userMessagesSinceDismiss =
+      aiUserMessageCountRef.current - helpSuggestionDismissedAtMessageCountRef.current;
+
+    return minutesSinceDismiss >= 5 && userMessagesSinceDismiss >= 2;
+  }, [isAIConversation, professionalSession, showRequestHelpModal, showHelpSuggestionModal]);
+
+  const dismissHelpSuggestion = useCallback(() => {
+    const dismissedAt = Date.now();
+    helpSuggestionDismissedAtRef.current = dismissedAt;
+    helpSuggestionDismissedAtMessageCountRef.current = aiUserMessageCountRef.current;
+    setShowHelpSuggestionModal(false);
+    AsyncStorage.setItem(
+      `help_suggestion_dismissed:${conversationId}`,
+      JSON.stringify({
+        dismissedAt,
+        messageCount: aiUserMessageCountRef.current,
+      })
+    ).catch(() => {});
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (!conversationId) return;
+    const key = `help_suggestion_dismissed:${conversationId}`;
+    AsyncStorage.getItem(key)
+      .then((raw) => {
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        helpSuggestionDismissedAtRef.current = Number(parsed.dismissedAt || 0);
+        helpSuggestionDismissedAtMessageCountRef.current = Number(parsed.messageCount || 0);
+      })
+      .catch(() => {});
+  }, [conversationId]);
   
   // Animation for attachment buttons
   const attachmentButtonsOpacity = useRef(new Animated.Value(1)).current;
@@ -1253,6 +1299,7 @@ export default function ConversationDetailScreen() {
           }
           
           // This is a conversation with the AI, trigger AI response
+          aiUserMessageCountRef.current += 1;
           const typingId = `ai_typing_${Date.now()}`;
           let statusUpdateInterval: ReturnType<typeof setInterval> | null = null;
           
@@ -1265,6 +1312,7 @@ export default function ConversationDetailScreen() {
               'Analyzing your message…',
               'Generating response…',
             ];
+            statusMessages.splice(0, statusMessages.length, 'Committed AI is responding...');
             let statusIndex = 0;
             
             const updateStatusMessage = () => {
@@ -1300,8 +1348,9 @@ export default function ConversationDetailScreen() {
                 }, 50);
               });
               
-              // Update status message every 1.5 seconds to show progress
-              statusUpdateInterval = setInterval(updateStatusMessage, 1500);
+              if (statusMessages.length > 1) {
+                statusUpdateInterval = setInterval(updateStatusMessage, 1500);
+              }
               
               return updated;
             });
@@ -1395,13 +1444,15 @@ export default function ConversationDetailScreen() {
                 });
               }
               
-              if (aiResponse.suggestProfessionalHelp && !professionalSession) {
+              if (aiResponse.suggestProfessionalHelp && shouldShowHelpSuggestion()) {
                 // Show beautiful custom modal instead of basic alert
                 const professionalType = aiResponse.suggestedProfessionalType || 'professional';
                 setTimeout(() => {
-                  setSuggestedProfessionalType(professionalType);
-                  setShowHelpSuggestionModal(true);
-                  console.log('[Conversation] Setting help suggestion modal to visible');
+                  if (shouldShowHelpSuggestion()) {
+                    setSuggestedProfessionalType(professionalType);
+                    setShowHelpSuggestionModal(true);
+                    console.log('[Conversation] Setting help suggestion modal to visible');
+                  }
                 }, 1000); // Small delay to let AI message appear first
               }
 
@@ -2880,7 +2931,7 @@ export default function ConversationDetailScreen() {
       {isAIConversation && currentUser && (
         <ProfessionalHelpSuggestionModal
           visible={showHelpSuggestionModal}
-          onClose={() => setShowHelpSuggestionModal(false)}
+          onClose={dismissHelpSuggestion}
           onConfirm={() => {
             setShowHelpSuggestionModal(false);
             setShowRequestHelpModal(true);

@@ -201,10 +201,13 @@ async function processQueuedChange(
                 
                 if (resolution === 'local') {
                   // Apply local changes
-                  await supabase
+                  const { data: localUpdateData, error: localUpdateError } = await supabase
                     .from('relationships')
                     .update(change.data)
-                    .eq('id', change.relationshipId);
+                    .eq('id', change.relationshipId)
+                    .select('id,updated_at')
+                    .maybeSingle();
+                  if (localUpdateError || !localUpdateData) return 'error';
                   return 'synced';
                 } else if (resolution === 'server') {
                   // Keep server version
@@ -212,10 +215,13 @@ async function processQueuedChange(
                 } else {
                   // Merge changes
                   const merged = { ...serverRel, ...change.data };
-                  await supabase
+                  const { data: mergeUpdateData, error: mergeUpdateError } = await supabase
                     .from('relationships')
                     .update(merged)
-                    .eq('id', change.relationshipId);
+                    .eq('id', change.relationshipId)
+                    .select('id,updated_at')
+                    .maybeSingle();
+                  if (mergeUpdateError || !mergeUpdateData) return 'error';
                   return 'synced';
                 }
               }
@@ -225,12 +231,15 @@ async function processQueuedChange(
         }
         
         // Apply update
-        const { error: updateError } = await supabase
+        const { data: updateData, error: updateError } = await supabase
           .from('relationships')
           .update(change.data)
-          .eq('id', change.relationshipId);
+          .eq('id', change.relationshipId)
+          .select('id,updated_at')
+          .maybeSingle();
         
         if (updateError) throw updateError;
+        if (!updateData) return 'error';
         return 'synced';
 
       case 'delete':
@@ -253,10 +262,13 @@ async function processQueuedChange(
             ? { status: 'ended', end_date: new Date().toISOString() }
             : { status: 'ended' };
           
-          await supabase
+          const { data: endData, error: endError } = await supabase
             .from('relationships')
             .update(updateData)
-            .eq('id', change.relationshipId);
+            .eq('id', change.relationshipId)
+            .select('id,status,end_date')
+            .maybeSingle();
+          if (endError || !endData) return 'error';
           
           return 'synced';
         }
@@ -266,10 +278,13 @@ async function processQueuedChange(
       case 'reject':
         // Handle relationship request acceptance/rejection
         if (change.relationshipId) {
-          await supabase
+          const { data: requestData, error: requestError } = await supabase
             .from('relationship_requests')
             .update({ status: change.type === 'accept' ? 'accepted' : 'rejected' })
-            .eq('id', change.relationshipId);
+            .eq('id', change.relationshipId)
+            .select('id,status')
+            .maybeSingle();
+          if (requestError || !requestData) return 'error';
           return 'synced';
         }
         return 'error';
@@ -349,17 +364,27 @@ export async function resolveConflict(
     
     // Apply resolution
     if (resolution === 'local') {
-      await supabase
+      const { data: localResolveData, error: localResolveError } = await supabase
         .from('relationships')
         .update(conflict.localChange.data)
-        .eq('id', conflict.relationshipId);
+        .eq('id', conflict.relationshipId)
+        .select('id,updated_at')
+        .maybeSingle();
+      if (localResolveError || !localResolveData) {
+        throw localResolveError || new Error('Relationship conflict local resolution did not update a row');
+      }
     } else if (resolution === 'server') {
       // Keep server version, no action needed
     } else if (resolution === 'merge' && mergedData) {
-      await supabase
+      const { data: mergeResolveData, error: mergeResolveError } = await supabase
         .from('relationships')
         .update(mergedData)
-        .eq('id', conflict.relationshipId);
+        .eq('id', conflict.relationshipId)
+        .select('id,updated_at')
+        .maybeSingle();
+      if (mergeResolveError || !mergeResolveData) {
+        throw mergeResolveError || new Error('Relationship conflict merge resolution did not update a row');
+      }
     }
     
     // Mark as resolved

@@ -10,9 +10,10 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Share,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Heart, Star, MapPin, Calendar, Users, Video, Image as ImageIcon, Share2, MoreVertical, Shield, CheckCircle2, Crown, Clock, MessageCircle, Smile, Coffee, Home, Church, Briefcase, Mountain, Flag } from 'lucide-react-native';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import { ArrowLeft, Heart, Star, MapPin, Calendar, Users, Video, Image as ImageIcon, Share2, MoreVertical, Shield, CheckCircle2, Crown, Clock, MessageCircle, Smile, Coffee, Home, Church, Briefcase, Mountain, Flag, BookOpen, Ruler, Dumbbell, PawPrint, Sparkles } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
 import { Image as ExpoImage } from 'expo-image';
@@ -24,8 +25,13 @@ import { supabase } from '@/lib/supabase';
 import ReportContentModal from '@/components/ReportContentModal';
 import PremiumModal from '@/components/PremiumModal';
 import { AdaptiveMediaProfile, getAdaptiveImageUrl, getAdaptiveMediaProfile } from '@/lib/adaptive-media';
+import { buildDatingProfileLink } from '@/lib/deep-link-service';
+import { navigateToDatingHome } from '@/lib/dating-navigation';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+const formatProfileValue = (value: string) =>
+  value.replace(/_/g, ' ').replace(/\b\w/g, (letter: string) => letter.toUpperCase());
 
 export default function UserProfileScreen() {
   const router = useRouter();
@@ -47,6 +53,16 @@ export default function UserProfileScreen() {
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [premiumFeature, setPremiumFeature] = useState<{ name?: string; description?: string }>({});
   const [mediaProfile, setMediaProfile] = useState<AdaptiveMediaProfile | null>(null);
+  const [reactionInFlight, setReactionInFlight] = useState<'like' | 'superLike' | null>(null);
+  const [reactionFeedback, setReactionFeedback] = useState<null | {
+    type: 'like' | 'superLike' | 'match';
+    name: string;
+  }>(null);
+  const [reactionState, setReactionState] = useState({
+    liked: false,
+    superLiked: false,
+    matched: false,
+  });
 
   useEffect(() => {
     loadProfile();
@@ -76,15 +92,19 @@ export default function UserProfileScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       setIsOwnProfile(user?.id === params.userId);
       
-      const [profileData, badgesData, subscriptionData] = await Promise.all([
+      const [profileData, badgesData, subscriptionData, reactionData] = await Promise.all([
         DatingService.getDatingProfile(params.userId),
         ProfileEnhancements.getUserBadges(params.userId).catch(() => []),
         user?.id === params.userId ? DatingService.getSubscriptionInfo().catch(() => null) : Promise.resolve(null),
+        user?.id && user.id !== params.userId
+          ? DatingService.getDatingReactionState(params.userId).catch(() => ({ liked: false, superLiked: false, matched: false }))
+          : Promise.resolve({ liked: false, superLiked: false, matched: false }),
       ]);
       
       setProfile(profileData);
       setBadges(badgesData);
       setSubscription(subscriptionData);
+      setReactionState(reactionData);
       
       // Update last_active_at when viewing someone else's profile
       if (user?.id && user.id !== params.userId && profileData) {
@@ -118,7 +138,7 @@ export default function UserProfileScreen() {
     } catch (error: any) {
       console.error('Error loading profile:', error);
       Alert.alert('Error', 'Failed to load profile');
-      router.back();
+      navigateToDatingHome(router);
     } finally {
       setLoading(false);
     }
@@ -126,41 +146,82 @@ export default function UserProfileScreen() {
 
   const handleLike = async () => {
     try {
+      if (reactionInFlight) return;
+      setReactionInFlight('like');
       const result = await DatingService.likeUser(params.userId, false);
       if (result.isMatch) {
-        Alert.alert("It's a Match!", `You and ${profile?.user?.full_name || 'this person'} liked each other!`);
+        setReactionState({ liked: true, superLiked: !!result.like?.is_super_like, matched: true });
+        setReactionFeedback({
+          type: 'match',
+          name: profile?.user?.full_name || 'this profile',
+        });
       } else {
-        Alert.alert('Liked!', 'Your like has been sent');
+        setReactionState((prev) => ({ ...prev, liked: true }));
+        setReactionFeedback({
+          type: 'like',
+          name: profile?.user?.full_name || 'this profile',
+        });
       }
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to like user');
+    } finally {
+      setReactionInFlight(null);
     }
   };
 
   const handleSuperLike = async () => {
     try {
+      if (reactionInFlight) return;
+      setReactionInFlight('superLike');
       const result = await DatingService.likeUser(params.userId, true);
       if (result.isMatch) {
-        Alert.alert("It's a Match!", `You and ${profile?.user?.full_name || 'this person'} liked each other!`);
+        setReactionState({ liked: true, superLiked: true, matched: true });
+        setReactionFeedback({
+          type: 'match',
+          name: profile?.user?.full_name || 'this profile',
+        });
       } else {
-        Alert.alert('Super Liked!', 'Your super like has been sent');
+        setReactionState((prev) => ({ ...prev, liked: true, superLiked: true }));
+        setReactionFeedback({
+          type: 'superLike',
+          name: profile?.user?.full_name || 'this profile',
+        });
       }
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to super like user');
+    } finally {
+      setReactionInFlight(null);
     }
   };
 
   const handleShare = async () => {
     try {
       if (!profile) return;
-      
-      const shareText = `Check out ${profile.user?.full_name || 'this profile'} on Committed Dating!`;
-      Alert.alert('Share Profile', shareText, [
-        { text: 'OK' }
-      ]);
+
+      const { web: webLink } = buildDatingProfileLink(params.userId);
+      const displayName = profile.user?.full_name || 'this profile';
+      const shareText = `Check out ${displayName} on Committed Dating.\n\nView profile: ${webLink}`;
+      await Share.share({
+        message: shareText,
+        url: webLink,
+        title: `${displayName} on Committed Dating`,
+      });
     } catch (error: any) {
       console.error('Share error:', error);
       Alert.alert('Error', 'Failed to share profile');
+    }
+  };
+
+  const handleMessageMatch = async () => {
+    try {
+      const conversation = await createOrGetConversation(params.userId);
+      if (!conversation) {
+        Alert.alert('Error', 'Could not open conversation');
+        return;
+      }
+      router.push(`/messages/${conversation.id}` as any);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to open conversation');
     }
   };
 
@@ -249,6 +310,7 @@ export default function UserProfileScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
+        <Stack.Screen options={{ headerShown: false }} />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
@@ -259,6 +321,7 @@ export default function UserProfileScreen() {
   if (!profile) {
     return (
       <SafeAreaView style={styles.container}>
+        <Stack.Screen options={{ headerShown: false }} />
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>Profile not found</Text>
         </View>
@@ -271,9 +334,10 @@ export default function UserProfileScreen() {
   const primaryPhoto = photos.find((p: any) => p.is_primary) || photos[0];
   return (
     <SafeAreaView style={styles.container}>
+      <Stack.Screen options={{ headerShown: false }} />
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.headerButton}>
+        <TouchableOpacity onPress={() => navigateToDatingHome(router)} style={styles.headerButton}>
           <ArrowLeft size={24} color={colors.text.primary} />
         </TouchableOpacity>
         <View style={styles.headerActions}>
@@ -346,25 +410,80 @@ export default function UserProfileScreen() {
         <View style={styles.actionButtons}>
           <TouchableOpacity
             style={[styles.actionButton, styles.passButton]}
-            onPress={() => router.back()}
+            onPress={() => navigateToDatingHome(router)}
           >
             <Text style={styles.actionButtonText}>✕</Text>
           </TouchableOpacity>
           
           <TouchableOpacity
-            style={[styles.actionButton, styles.superLikeButton]}
+            style={[
+              styles.actionButton,
+              styles.superLikeButton,
+              reactionState.superLiked && styles.actionButtonSelected,
+              (reactionInFlight || reactionState.superLiked || reactionState.matched) && styles.actionButtonDisabled,
+            ]}
             onPress={handleSuperLike}
+            disabled={!!reactionInFlight || reactionState.superLiked || reactionState.matched}
           >
-            <Star size={28} color="#fff" fill="#fff" />
+            {reactionState.superLiked ? (
+              <CheckCircle2 size={28} color="#fff" fill="#fff" />
+            ) : (
+              <Star size={28} color="#fff" fill="#fff" />
+            )}
           </TouchableOpacity>
           
           <TouchableOpacity
-            style={[styles.actionButton, styles.likeButton]}
+            style={[
+              styles.actionButton,
+              styles.likeButton,
+              reactionState.liked && styles.actionButtonSelected,
+              (reactionInFlight || reactionState.liked || reactionState.matched) && styles.actionButtonDisabled,
+            ]}
             onPress={handleLike}
+            disabled={!!reactionInFlight || reactionState.liked || reactionState.matched}
           >
-            <Heart size={28} color="#fff" fill="#fff" />
+            {reactionState.liked ? (
+              <CheckCircle2 size={28} color="#fff" fill="#fff" />
+            ) : (
+              <Heart size={28} color="#fff" fill="#fff" />
+            )}
           </TouchableOpacity>
         </View>
+
+        {!isOwnProfile && (reactionState.liked || reactionState.matched) && (
+          <View style={styles.reactionStatusCard}>
+            <View style={styles.reactionStatusIcon}>
+              {reactionState.matched ? (
+                <MessageCircle size={20} color="#fff" />
+              ) : reactionState.superLiked ? (
+                <Star size={20} color="#fff" fill="#fff" />
+              ) : (
+                <Heart size={20} color="#fff" fill="#fff" />
+              )}
+            </View>
+            <View style={styles.reactionStatusCopy}>
+              <Text style={styles.reactionStatusTitle}>
+                {reactionState.matched
+                  ? "It's a match"
+                  : reactionState.superLiked
+                    ? 'Super like sent'
+                    : 'You liked this profile'}
+              </Text>
+              <Text style={styles.reactionStatusText}>
+                {reactionState.matched
+                  ? 'You can start a conversation whenever you are ready.'
+                  : reactionState.superLiked
+                    ? 'They will see that you are extra interested.'
+                    : 'If they like you back, you will become a match.'}
+              </Text>
+            </View>
+            {reactionState.matched && (
+              <TouchableOpacity style={styles.reactionStatusButton} onPress={handleMessageMatch}>
+                <Text style={styles.reactionStatusButtonText}>Message</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
         {/* Conversation Starters */}
         {conversationStarters.length > 0 && (
@@ -520,7 +639,7 @@ export default function UserProfileScreen() {
         )}
 
         {/* Lifestyle */}
-        {(profile.kids || profile.work || profile.smoke || profile.drink) && (
+        {(profile.kids || profile.work || profile.religion || profile.education || profile.height_cm || profile.exercise || profile.pets || profile.smoke || profile.drink) && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Lifestyle</Text>
             <View style={styles.infoGrid}>
@@ -528,9 +647,7 @@ export default function UserProfileScreen() {
                 <View style={styles.infoItem}>
                   <Users size={20} color={colors.primary} />
                   <Text style={styles.infoLabel}>Kids</Text>
-                  <Text style={styles.infoValue}>
-                    {profile.kids.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
-                  </Text>
+                  <Text style={styles.infoValue}>{formatProfileValue(profile.kids)}</Text>
                 </View>
               )}
               {profile.work && (
@@ -540,21 +657,52 @@ export default function UserProfileScreen() {
                   <Text style={styles.infoValue}>{profile.work}</Text>
                 </View>
               )}
+              {profile.religion && (
+                <View style={styles.infoItem}>
+                  <Church size={20} color={colors.primary} />
+                  <Text style={styles.infoLabel}>Faith</Text>
+                  <Text style={styles.infoValue}>{profile.religion}</Text>
+                </View>
+              )}
+              {profile.education && (
+                <View style={styles.infoItem}>
+                  <BookOpen size={20} color={colors.primary} />
+                  <Text style={styles.infoLabel}>Education</Text>
+                  <Text style={styles.infoValue}>{profile.education}</Text>
+                </View>
+              )}
+              {profile.height_cm && (
+                <View style={styles.infoItem}>
+                  <Ruler size={20} color={colors.primary} />
+                  <Text style={styles.infoLabel}>Height</Text>
+                  <Text style={styles.infoValue}>{profile.height_cm} cm</Text>
+                </View>
+              )}
+              {profile.exercise && (
+                <View style={styles.infoItem}>
+                  <Dumbbell size={20} color={colors.primary} />
+                  <Text style={styles.infoLabel}>Exercise</Text>
+                  <Text style={styles.infoValue}>{formatProfileValue(profile.exercise)}</Text>
+                </View>
+              )}
+              {profile.pets && (
+                <View style={styles.infoItem}>
+                  <PawPrint size={20} color={colors.primary} />
+                  <Text style={styles.infoLabel}>Pets</Text>
+                  <Text style={styles.infoValue}>{formatProfileValue(profile.pets)}</Text>
+                </View>
+              )}
               {profile.smoke && (
                 <View style={styles.infoItem}>
                   <Text style={styles.infoLabel}>Smoke</Text>
-                  <Text style={styles.infoValue}>
-                    {profile.smoke.charAt(0).toUpperCase() + profile.smoke.slice(1).replace('_', ' ')}
-                  </Text>
+                  <Text style={styles.infoValue}>{formatProfileValue(profile.smoke)}</Text>
                 </View>
               )}
               {profile.drink && (
                 <View style={styles.infoItem}>
                   <Coffee size={20} color={colors.primary} />
                   <Text style={styles.infoLabel}>Drink</Text>
-                  <Text style={styles.infoValue}>
-                    {profile.drink.charAt(0).toUpperCase() + profile.drink.slice(1).replace('_', ' ')}
-                  </Text>
+                  <Text style={styles.infoValue}>{formatProfileValue(profile.drink)}</Text>
                 </View>
               )}
             </View>
@@ -736,6 +884,71 @@ export default function UserProfileScreen() {
           )}
         </View>
       </ScrollView>
+
+      <Modal
+        visible={!!reactionFeedback}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setReactionFeedback(null)}
+      >
+        <View style={styles.reactionOverlay}>
+          <View style={styles.reactionCard}>
+            <LinearGradient
+              colors={
+                reactionFeedback?.type === 'match'
+                  ? [colors.danger, colors.primary]
+                  : reactionFeedback?.type === 'superLike'
+                  ? [colors.primary, colors.accent]
+                  : [colors.success, colors.primary]
+              }
+              style={styles.reactionHero}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <View style={styles.reactionIconRing}>
+                {reactionFeedback?.type === 'match' ? (
+                  <Sparkles size={46} color="#fff" fill="#fff" />
+                ) : reactionFeedback?.type === 'superLike' ? (
+                  <Star size={44} color="#fff" fill="#fff" />
+                ) : (
+                  <Heart size={48} color="#fff" fill="#fff" />
+                )}
+              </View>
+            </LinearGradient>
+            <View style={styles.reactionContent}>
+              <Text style={styles.reactionTitle}>
+                {reactionFeedback?.type === 'match'
+                  ? "It's a match"
+                  : reactionFeedback?.type === 'superLike'
+                    ? 'Super Like sent'
+                    : 'Liked'}
+              </Text>
+              <Text style={styles.reactionText}>
+                {reactionFeedback?.type === 'match'
+                  ? `You and ${reactionFeedback?.name} liked each other. Time to start a real conversation.`
+                  : reactionFeedback?.type === 'superLike'
+                  ? `${reactionFeedback?.name} will see that you are extra interested.`
+                  : `${reactionFeedback?.name} will see your like if they check their dating likes.`}
+              </Text>
+              <TouchableOpacity
+                style={styles.reactionButton}
+                onPress={() => {
+                  if (reactionFeedback?.type === 'match') {
+                    setReactionFeedback(null);
+                    void handleMessageMatch();
+                    return;
+                  }
+                  setReactionFeedback(null);
+                }}
+              >
+                <Text style={styles.reactionButtonText}>
+                  {reactionFeedback?.type === 'match' ? 'Send a message' : 'Keep exploring'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Menu Modal */}
       <Modal
@@ -942,10 +1155,63 @@ const createStyles = (colors: any) =>
     likeButton: {
       backgroundColor: colors.success,
     },
+    actionButtonSelected: {
+      borderWidth: 3,
+      borderColor: 'rgba(255, 255, 255, 0.86)',
+      shadowOpacity: 0.18,
+    },
+    actionButtonDisabled: {
+      opacity: 0.78,
+    },
     actionButtonText: {
       fontSize: 32,
       color: '#fff',
       fontWeight: '700',
+    },
+    reactionStatusCard: {
+      marginHorizontal: 20,
+      marginBottom: 20,
+      padding: 16,
+      borderRadius: 20,
+      backgroundColor: colors.primary + '12',
+      borderWidth: 1,
+      borderColor: colors.primary + '28',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    reactionStatusIcon: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primary,
+    },
+    reactionStatusCopy: {
+      flex: 1,
+      gap: 3,
+    },
+    reactionStatusTitle: {
+      fontSize: 15,
+      fontWeight: '800',
+      color: colors.text.primary,
+    },
+    reactionStatusText: {
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.text.secondary,
+    },
+    reactionStatusButton: {
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 14,
+      backgroundColor: colors.primary,
+    },
+    reactionStatusButtonText: {
+      color: '#fff',
+      fontSize: 13,
+      fontWeight: '800',
     },
     section: {
       paddingHorizontal: 20,
@@ -1351,6 +1617,73 @@ const createStyles = (colors: any) =>
       flex: 1,
       backgroundColor: 'rgba(0, 0, 0, 0.5)',
       justifyContent: 'flex-end',
+    },
+    reactionOverlay: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 24,
+      backgroundColor: 'rgba(0, 0, 0, 0.58)',
+    },
+    reactionCard: {
+      width: '100%',
+      maxWidth: 360,
+      overflow: 'hidden',
+      borderRadius: 28,
+      backgroundColor: colors.background.primary,
+      borderWidth: 1,
+      borderColor: colors.border.light,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 18 },
+      shadowOpacity: 0.35,
+      shadowRadius: 28,
+      elevation: 18,
+    },
+    reactionHero: {
+      height: 136,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    reactionIconRing: {
+      width: 86,
+      height: 86,
+      borderRadius: 43,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(255, 255, 255, 0.22)',
+      borderWidth: 2,
+      borderColor: 'rgba(255, 255, 255, 0.55)',
+    },
+    reactionContent: {
+      padding: 22,
+      alignItems: 'center',
+      gap: 12,
+    },
+    reactionTitle: {
+      fontSize: 25,
+      fontWeight: '800',
+      color: colors.text.primary,
+      textAlign: 'center',
+      letterSpacing: 0,
+    },
+    reactionText: {
+      fontSize: 15,
+      lineHeight: 22,
+      color: colors.text.secondary,
+      textAlign: 'center',
+    },
+    reactionButton: {
+      marginTop: 8,
+      width: '100%',
+      paddingVertical: 15,
+      borderRadius: 16,
+      backgroundColor: colors.primary,
+      alignItems: 'center',
+    },
+    reactionButtonText: {
+      color: '#fff',
+      fontSize: 16,
+      fontWeight: '800',
     },
     menuContainer: {
       backgroundColor: colors.background.primary,

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Menu, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { buildWebAppUrl } from '@/lib/appLinks';
 
 const navLinks = [
   { href: '#how-it-works', label: 'How It Works' },
@@ -72,6 +73,16 @@ export default function Navbar() {
 
         <div className="hidden lg:flex items-center gap-3">
           <Link
+            href={buildWebAppUrl('/auth')}
+            className={`rounded-xl border-2 px-5 py-2.5 text-sm font-semibold transition-colors ${
+              isDark
+                ? 'border-white/40 text-white hover:bg-white/15'
+                : 'border-violet-600 text-violet-600 hover:bg-violet-50'
+            }`}
+          >
+            Open Web App
+          </Link>
+          <Link
             href="/download"
             className={`rounded-xl border-2 px-5 py-2.5 text-sm font-semibold transition-colors ${
               isDark
@@ -135,6 +146,17 @@ export default function Navbar() {
                 ))}
               </ul>
               <div className="mt-4 flex flex-col gap-3">
+                <Link
+                  href={buildWebAppUrl('/auth')}
+                  className={`block rounded-xl border-2 py-3 text-center font-semibold ${
+                    isDark
+                      ? 'border-white/40 text-white hover:bg-white/15'
+                      : 'border-violet-600 text-violet-600'
+                  }`}
+                  onClick={() => setOpen(false)}
+                >
+                  Open Web App
+                </Link>
                 <Link
                   href="/download"
                   className={`block rounded-xl border-2 py-3 text-center font-semibold ${

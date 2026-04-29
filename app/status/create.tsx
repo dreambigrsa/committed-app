@@ -53,7 +53,7 @@ import {
 } from 'lucide-react-native';
 import StickerPicker from '@/components/StickerPicker';
 import { Sticker } from '@/types';
-import { getAdaptiveImageQuality } from '@/lib/media-optimizer';
+import { assertMediaWithinLimit, getAdaptiveImageQuality, optimizeImageForUpload } from '@/lib/media-optimizer';
 
 const { width, height } = Dimensions.get('window');
 const GRID_ITEM_SIZE = (width - 48) / 3;
@@ -551,7 +551,20 @@ export default function CreateStatusScreen() {
     setIsPosting(true);
     try {
       // If background image is set, use it as mediaUri
-      const finalMediaUri = backgroundImageUri || mediaUri;
+      let finalMediaUri = backgroundImageUri || mediaUri;
+      let finalBackgroundImageUri = backgroundImageUri;
+
+      if (contentType === 'image' && finalMediaUri) {
+        finalMediaUri = await optimizeImageForUpload(finalMediaUri);
+        await assertMediaWithinLimit(finalMediaUri, 'image');
+      } else if (contentType === 'video' && finalMediaUri) {
+        await assertMediaWithinLimit(finalMediaUri, 'video');
+      }
+
+      if (contentType === 'text' && finalBackgroundImageUri) {
+        finalBackgroundImageUri = await optimizeImageForUpload(finalBackgroundImageUri);
+        await assertMediaWithinLimit(finalBackgroundImageUri, 'image');
+      }
       
       // Prepare customization data
       const customization = {
@@ -561,7 +574,7 @@ export default function CreateStatusScreen() {
         textAlignment: textAlignment,
         textPositionX: overlayEnabled ? overlayPos.x : 0.5,
         textPositionY: overlayEnabled ? overlayPos.y : 0.5,
-        backgroundImageUri: contentType === 'text' ? backgroundImageUri : null,
+        backgroundImageUri: contentType === 'text' ? finalBackgroundImageUri : null,
         stickers: selectedStickers.map((sticker) => {
           console.log('📌 Preparing sticker for save:', {
             id: sticker.id,

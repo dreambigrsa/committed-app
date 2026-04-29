@@ -23,6 +23,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useApp } from '@/contexts/AppContext';
 import { assertMediaWithinLimit, getAdaptiveImageQuality, optimizeImageForUpload } from '@/lib/media-optimizer';
+import { navigateToDatingHome } from '@/lib/dating-navigation';
 
 export default function PaymentSubmitScreen() {
   const router = useRouter();
@@ -60,7 +61,7 @@ export default function PaymentSubmitScreen() {
 
       if (planError || !planData) {
         Alert.alert('Error', 'Plan not found');
-        router.back();
+        navigateToDatingHome(router);
         return;
       }
 
@@ -244,7 +245,7 @@ export default function PaymentSubmitScreen() {
           title: 'Submit Payment',
           headerShown: true,
           headerLeft: () => (
-            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <TouchableOpacity onPress={() => navigateToDatingHome(router)} style={styles.backButton}>
               <ArrowLeft size={24} color={colors.text.primary} />
             </TouchableOpacity>
           ),

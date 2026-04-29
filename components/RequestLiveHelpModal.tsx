@@ -47,9 +47,14 @@ export default function RequestLiveHelpModal({
   const [requesting, setRequesting] = useState(false);
 
   useEffect(() => {
+    let isActive = true;
     if (visible) {
-      loadRoles();
-      generateSummary();
+      const prepareModal = async () => {
+        const loadedRoles = await loadRoles();
+        if (!isActive) return;
+        void generateSummary(loadedRoles);
+      };
+      void prepareModal();
     } else {
       // Reset state when modal closes
       setSelectedRole(null);
@@ -57,10 +62,13 @@ export default function RequestLiveHelpModal({
       setConsentGiven(false);
       setAiSummary('');
     }
+    return () => {
+      isActive = false;
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- generateSummary on visible
   }, [visible]);
 
-  const loadRoles = async () => {
+  const loadRoles = async (): Promise<ProfessionalRole[]> => {
     try {
       const { data, error } = await supabase
         .from('professional_roles')
@@ -75,15 +83,18 @@ export default function RequestLiveHelpModal({
       }
       
       console.log('[RequestLiveHelpModal] Loaded roles:', data?.length || 0);
-      setRoles(data || []);
+      const loadedRoles = data || [];
+      setRoles(loadedRoles);
+      return loadedRoles;
     } catch (error: any) {
       console.error('[RequestLiveHelpModal] Error loading professional roles:', error);
       // Don't show alert - just log the error so modal can still be used
       setRoles([]);
+      return [];
     }
   };
 
-  const generateSummary = async () => {
+  const generateSummary = async (availableRoles: ProfessionalRole[] = roles) => {
     setSummarizing(true);
     try {
       // Check if we have enough conversation history for a meaningful summary
@@ -119,7 +130,7 @@ export default function RequestLiveHelpModal({
       );
 
       if (suggestedRoleId) {
-        const suggestedRole = roles.find((r) => r.id === suggestedRoleId);
+        const suggestedRole = availableRoles.find((r) => r.id === suggestedRoleId);
         if (suggestedRole) {
           setSelectedRole(suggestedRole);
           loadMatchesForRole(suggestedRole.id);

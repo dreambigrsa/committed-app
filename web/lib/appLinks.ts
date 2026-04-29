@@ -5,12 +5,26 @@
 
 export const APP_SCHEME = process.env.NEXT_PUBLIC_DEEPLINK_SCHEME || 'committed://';
 export const WEB_BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://committed.dreambig.org.za';
+export const WEB_APP_URL =
+  process.env.NEXT_PUBLIC_WEB_APP_URL ||
+  process.env.NEXT_PUBLIC_EXPO_WEB_APP_URL ||
+  WEB_BASE_URL;
 export const APP_STORE_URL = process.env.NEXT_PUBLIC_APP_STORE_URL || '#';
 export const PLAY_STORE_URL = process.env.NEXT_PUBLIC_PLAY_STORE_URL || '#';
 /** Direct APK download (put committed.apk in web/public/downloads/) */
 export const APK_DOWNLOAD_URL =
   process.env.NEXT_PUBLIC_APK_DOWNLOAD_URL || `${WEB_BASE_URL}/downloads/committed.apk`;
 export const UNIVERSAL_DOWNLOAD_URL = `${WEB_BASE_URL}/download`;
+
+export function buildAppDeepLink(path: string): string {
+  const normalizedScheme = APP_SCHEME.endsWith('://')
+    ? APP_SCHEME
+    : APP_SCHEME.endsWith(':')
+      ? `${APP_SCHEME}//`
+      : `${APP_SCHEME}://`;
+  const normalizedPath = path.replace(/^\/+/, '');
+  return `${normalizedScheme}/${normalizedPath}`;
+}
 
 /** @deprecated Use APP_SCHEME */
 export const DEEPLINK_SCHEME = APP_SCHEME;
@@ -32,6 +46,7 @@ export const deepLinks = {
   /** Shared content links (must match mobile app buildPostLink, buildReelLink, buildReferralLink) */
   post: (id: string) => `${APP_SCHEME}post/${id}`,
   reel: (id: string) => `${APP_SCHEME}reel/${id}`,
+  datingProfile: (userId: string) => buildAppDeepLink(`dating/user-profile?userId=${encodeURIComponent(userId)}`),
   referral: (code: string) => `${APP_SCHEME}referral?ref=${encodeURIComponent(code)}`,
 } as const;
 
@@ -42,8 +57,18 @@ export function buildPostWebUrl(id: string): string {
 export function buildReelWebUrl(id: string): string {
   return `${WEB_BASE_URL}/reel/${id}`;
 }
+export function buildDatingProfileWebUrl(userId: string): string {
+  return `${WEB_BASE_URL}/dating/user-profile?userId=${encodeURIComponent(userId)}`;
+}
 export function buildReferralWebUrl(code: string): string {
   return `${WEB_BASE_URL}/referral/${encodeURIComponent(code)}`;
+}
+
+/** Build a logged-in web app URL. Use this for "Continue on web" CTAs. */
+export function buildWebAppUrl(path = '/'): string {
+  const base = WEB_APP_URL.replace(/\/+$/, '');
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return `${base}${normalizedPath}`;
 }
 
 /** Fallback web URL when app isn't installed */

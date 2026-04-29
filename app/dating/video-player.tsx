@@ -11,6 +11,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { X } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Video, ResizeMode } from 'expo-av';
+import { navigateToDatingHome } from '@/lib/dating-navigation';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -58,7 +59,7 @@ export default function VideoPlayerScreen() {
     <SafeAreaView style={styles.container}>
       <TouchableOpacity
         style={styles.closeButton}
-        onPress={() => router.back()}
+        onPress={() => navigateToDatingHome(router)}
       >
         <X size={24} color="#fff" />
       </TouchableOpacity>

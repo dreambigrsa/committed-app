@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
 import { Advertisement } from '@/types';
@@ -138,7 +138,7 @@ export default function MyAdsScreen() {
   };
 
   const handlePauseResume = async (ad: Advertisement) => {
-    const newStatus = ad.status === 'paused' ? 'pending' : 'paused';
+    const newStatus = ad.status === 'paused' ? (ad.billingStatus === 'paid' ? 'approved' : 'pending') : 'paused';
     await updateAdvertisement(ad.id, { status: newStatus });
     setAds((prev) => prev.map((a) => (a.id === ad.id ? { ...a, status: newStatus } : a)));
   };
@@ -172,10 +172,12 @@ export default function MyAdsScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>My Ads</Text>
-          <Text style={styles.headerSubtitle}>Monitor performance, tweak targeting, and boost again in one place.</Text>
+        <View style={styles.headerCopy}>
+          <Text style={styles.headerEyebrow}>Promotions</Text>
+          <Text style={styles.headerTitle}>Ad Center</Text>
+          <Text style={styles.headerSubtitle}>Track performance, manage receipts, and launch new boosts.</Text>
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity style={styles.newButtonSecondary} onPress={() => router.push('/ads/invoices' as any)}>
@@ -315,8 +317,14 @@ export default function MyAdsScreen() {
           ))}
           {ads.length === 0 && (
             <View style={styles.empty}>
+              <View style={styles.emptyIcon}>
+                <FileText size={28} color={colors.primary} />
+              </View>
               <Text style={styles.emptyTitle}>No ads yet</Text>
-              <Text style={styles.emptyDesc}>Tap “Boost” on your post/reel, or “Create Ad” to make a standalone ad.</Text>
+              <Text style={styles.emptyDesc}>Boost a post or reel, or create a standalone ad to start tracking performance here.</Text>
+              <TouchableOpacity style={styles.emptyButton} onPress={() => router.push('/ads/promote')}>
+                <Text style={styles.emptyButtonText}>Create Ad</Text>
+              </TouchableOpacity>
             </View>
           )}
         </ScrollView>
@@ -328,17 +336,19 @@ export default function MyAdsScreen() {
 const createStyles = (colors: any) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background.secondary },
-    header: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', padding: 20, paddingBottom: 12, backgroundColor: colors.background.primary, borderBottomWidth: 1, borderBottomColor: colors.border.light },
-    headerTitle: { fontSize: 24, fontWeight: '800', color: colors.text.primary },
-    headerSubtitle: { marginTop: 4, fontSize: 12, color: colors.text.secondary, maxWidth: 220 },
-    headerActions: { flexDirection: 'row', gap: 8, marginLeft: 12 },
-    newButton: { backgroundColor: colors.primary, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
+    header: { padding: 20, paddingBottom: 14, backgroundColor: colors.background.primary, borderBottomWidth: 1, borderBottomColor: colors.border.light },
+    headerCopy: { marginBottom: 14 },
+    headerEyebrow: { fontSize: 12, fontWeight: '800', color: colors.primary, textTransform: 'uppercase', marginBottom: 4 },
+    headerTitle: { fontSize: 28, fontWeight: '800', color: colors.text.primary },
+    headerSubtitle: { marginTop: 4, fontSize: 13, lineHeight: 18, color: colors.text.secondary },
+    headerActions: { flexDirection: 'row', gap: 8 },
+    newButton: { backgroundColor: colors.primary, paddingHorizontal: 16, paddingVertical: 11, borderRadius: 10, minWidth: 76, alignItems: 'center' },
     newButtonText: { color: colors.text.white, fontWeight: '700' },
-    newButtonSecondary: { backgroundColor: colors.background.secondary, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border.light, flexDirection: 'row', alignItems: 'center', gap: 6 },
+    newButtonSecondary: { flex: 1, backgroundColor: colors.background.secondary, paddingHorizontal: 12, paddingVertical: 11, borderRadius: 10, borderWidth: 1, borderColor: colors.border.light, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
     newButtonSecondaryText: { color: colors.text.primary, fontWeight: '700' },
     loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    list: { paddingHorizontal: 16, paddingTop: 12 },
-    card: { backgroundColor: colors.background.primary, borderRadius: 18, marginBottom: 14, borderWidth: 1, borderColor: colors.border.light, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 2, overflow: 'hidden' },
+    list: { paddingHorizontal: 16, paddingTop: 14 },
+    card: { backgroundColor: colors.background.primary, borderRadius: 14, marginBottom: 14, borderWidth: 1, borderColor: colors.border.light, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 2, overflow: 'hidden' },
     featuredImage: { width: '100%', height: 200, backgroundColor: colors.background.secondary },
     rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     row: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
@@ -374,8 +384,11 @@ const createStyles = (colors: any) =>
     secondaryActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
     secondaryAction: { flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 12, backgroundColor: colors.background.secondary, borderWidth: 1, borderColor: colors.border.light },
     secondaryActionText: { color: colors.text.primary, fontWeight: '600' },
-    empty: { padding: 24, alignItems: 'center' },
+    empty: { marginTop: 36, marginHorizontal: 8, padding: 24, alignItems: 'center', backgroundColor: colors.background.primary, borderRadius: 14, borderWidth: 1, borderColor: colors.border.light },
+    emptyIcon: { width: 58, height: 58, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary + '14', marginBottom: 14 },
     emptyTitle: { fontSize: 18, fontWeight: '700', color: colors.text.primary },
-    emptyDesc: { marginTop: 6, color: colors.text.secondary, textAlign: 'center' },
+    emptyDesc: { marginTop: 6, color: colors.text.secondary, textAlign: 'center', lineHeight: 20 },
+    emptyButton: { marginTop: 18, backgroundColor: colors.primary, paddingHorizontal: 22, paddingVertical: 12, borderRadius: 10 },
+    emptyButtonText: { color: colors.text.white, fontWeight: '800' },
   });
 

@@ -16,6 +16,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import * as DatingService from '@/lib/dating-service';
 import * as Location from 'expo-location';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { navigateToDatingHome } from '@/lib/dating-navigation';
 
 const DEFAULT_DRESS_CODES = ['casual', 'smart_casual', 'formal', 'beach', 'outdoor'];
 const DEFAULT_BUDGET_RANGES = ['low', 'medium', 'high'];
@@ -197,7 +198,7 @@ export default function EditDateRequestScreen() {
       });
 
       Alert.alert('Success', 'Date request updated!', [
-        { text: 'OK', onPress: () => router.back() },
+        { text: 'OK', onPress: () => navigateToDatingHome(router) },
       ]);
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to update date request');
@@ -223,7 +224,7 @@ export default function EditDateRequestScreen() {
         <Stack.Screen options={{ title: 'Edit Date Request', headerShown: true }} />
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>Date request not found</Text>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <TouchableOpacity style={styles.backButton} onPress={() => navigateToDatingHome(router)}>
             <Text style={styles.backButtonText}>Go Back</Text>
           </TouchableOpacity>
         </View>

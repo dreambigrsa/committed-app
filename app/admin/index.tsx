@@ -243,6 +243,15 @@ export default function AdminDashboardScreen() {
           visible: true,
         },
         {
+          title: 'Ad Payments',
+          icon: CreditCard,
+          description: 'Verify promotion payments',
+          route: '/admin/payment-verifications?type=ads',
+          color: '#16A085',
+          gradient: ['#16A085', '#138D75'],
+          visible: currentUser.role === 'super_admin' || currentUser.role === 'admin',
+        },
+        {
           title: 'Analytics',
           icon: BarChart3,
           description: 'View analytics',
@@ -479,6 +488,7 @@ export default function AdminDashboardScreen() {
                 {category.items.map((item, _itemIndex) => {
                   const Icon = item.icon;
                   const showPaymentBadge = item.route === '/admin/payment-verifications' && pendingPaymentsCount > 0;
+                  const showAdPaymentBadge = item.route === '/admin/payment-verifications?type=ads' && pendingAdPaymentsCount > 0;
                   const pendingSubscriptionCount = Math.max(pendingPaymentsCount - pendingAdPaymentsCount, 0);
                   return (
                     <TouchableOpacity
@@ -497,20 +507,22 @@ export default function AdminDashboardScreen() {
                             {item.description}
                           </Text>
                         </View>
-                        {showPaymentBadge && (
+                        {(showPaymentBadge || showAdPaymentBadge) && (
                           <View style={styles.paymentBadgeContainer}>
                             <View style={styles.paymentBadge}>
-                              <Text style={styles.paymentBadgeText}>{pendingPaymentsCount}</Text>
+                              <Text style={styles.paymentBadgeText}>{showAdPaymentBadge ? pendingAdPaymentsCount : pendingPaymentsCount}</Text>
                             </View>
                             <Text style={styles.paymentBadgeLabel}>Pending</Text>
-                            <View style={styles.paymentBadgeBreakdown}>
-                              {pendingAdPaymentsCount > 0 && (
-                                <Text style={styles.paymentBadgeBreakdownText}>Ads {pendingAdPaymentsCount}</Text>
-                              )}
-                              {pendingSubscriptionCount > 0 && (
-                                <Text style={styles.paymentBadgeBreakdownText}>Subs {pendingSubscriptionCount}</Text>
-                              )}
-                            </View>
+                            {showPaymentBadge && (
+                              <View style={styles.paymentBadgeBreakdown}>
+                                {pendingAdPaymentsCount > 0 && (
+                                  <Text style={styles.paymentBadgeBreakdownText}>Ads {pendingAdPaymentsCount}</Text>
+                                )}
+                                {pendingSubscriptionCount > 0 && (
+                                  <Text style={styles.paymentBadgeBreakdownText}>Subs {pendingSubscriptionCount}</Text>
+                                )}
+                              </View>
+                            )}
                           </View>
                         )}
                         <ChevronRight size={20} color={themeColors.text.tertiary} />

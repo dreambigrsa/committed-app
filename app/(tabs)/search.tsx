@@ -1,9 +1,10 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   SafeAreaView,
+  ScrollView,
   TextInput,
   FlatList,
   TouchableOpacity,
@@ -12,7 +13,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { Search as SearchIcon, CheckCircle2, X, Camera, Image as ImageIcon, AlertCircle, ChevronRight } from 'lucide-react-native';
+import { Search as SearchIcon, CheckCircle2, X, Camera, Image as ImageIcon, AlertCircle, ChevronRight, ShieldCheck, Clock, Users } from 'lucide-react-native';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import * as ImagePicker from 'expo-image-picker';
@@ -33,9 +34,17 @@ export default function SearchScreen() {
   const [searchMode, setSearchMode] = useState<'text' | 'face'>('text');
   const [searchPhoto, setSearchPhoto] = useState<string | null>(null);
   const [disclaimerDoc, setDisclaimerDoc] = useState<LegalDocument | null>(null);
+  const [resultFilter, setResultFilter] = useState<'all' | 'verified' | 'pending' | 'single' | 'registered'>('all');
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchRequestRef = useRef(0);
 
   useEffect(() => {
     loadDisclaimerDocument();
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
   }, []);
 
   const loadDisclaimerDocument = async () => {
@@ -77,7 +86,9 @@ export default function SearchScreen() {
     if (searchMode === 'face') return; // Face search is handled separately
     
     setQuery(text);
-    setIsSearching(true);
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
 
     if (!text.trim()) {
       setResults([]);
@@ -85,10 +96,20 @@ export default function SearchScreen() {
       return;
     }
 
-    setTimeout(async () => {
-      const searchResults = await searchUsers(text);
-      setResults(searchResults);
-      setIsSearching(false);
+    const requestId = ++searchRequestRef.current;
+    setIsSearching(true);
+
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const searchResults = await searchUsers(text);
+        if (requestId === searchRequestRef.current) {
+          setResults(searchResults);
+        }
+      } finally {
+        if (requestId === searchRequestRef.current) {
+          setIsSearching(false);
+        }
+      }
     }, 300);
   };
 
@@ -129,10 +150,15 @@ export default function SearchScreen() {
   };
 
   const clearSearch = () => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    searchRequestRef.current += 1;
     setQuery('');
     setResults([]);
     setSearchPhoto(null);
     setSearchMode('text');
+    setResultFilter('all');
   };
 
   const getRelationshipTypeLabel = (type: string) => {
@@ -145,6 +171,43 @@ export default function SearchScreen() {
     return labels[type as keyof typeof labels] || type;
   };
 
+  const getStatusLabel = (status?: string) => {
+    if (status === 'verified' || status === 'confirmed') return 'Verified';
+    if (status === 'pending') return 'Pending';
+    return 'No record';
+  };
+
+  const getPrivacyLabel = (privacy?: string) => {
+    if (privacy === 'public') return 'Public';
+    if (privacy === 'verified-only') return 'Verified members';
+    if (privacy === 'private') return 'Private';
+    return '';
+  };
+
+  const filteredResults = useMemo(() => {
+    if (resultFilter === 'all') return results;
+
+    return results.filter((item) => {
+      if (resultFilter === 'verified') return item.relationshipStatus === 'verified' || item.relationshipStatus === 'confirmed';
+      if (resultFilter === 'pending') return item.relationshipStatus === 'pending';
+      if (resultFilter === 'single') return item.isRegisteredUser && !item.relationshipType && !item.relationshipStatus;
+      if (resultFilter === 'registered') return item.isRegisteredUser && item.id;
+      return true;
+    });
+  }, [results, resultFilter]);
+
+  const renderFilterChip = (value: typeof resultFilter, label: string, icon?: React.ReactNode) => (
+    <TouchableOpacity
+      key={value}
+      style={[styles.resultFilterChip, resultFilter === value && styles.resultFilterChipActive]}
+      onPress={() => setResultFilter(value)}
+      activeOpacity={0.8}
+    >
+      {icon}
+      <Text style={[styles.resultFilterText, resultFilter === value && styles.resultFilterTextActive]}>{label}</Text>
+    </TouchableOpacity>
+  );
+
   const renderUserItem = ({ item }: { item: any }) => {
     // For face search results, item structure is different
     const isFaceSearchResult = item.relationshipId !== undefined;
@@ -155,9 +218,14 @@ export default function SearchScreen() {
     const faceSearchRelationship = isFaceSearchResult ? {
       type: item.relationshipType,
       status: item.relationshipStatus,
+      privacy: item.relationshipPrivacy,
       partnerName: item.partnerName,
       partnerPhone: item.partnerPhone,
     } : null;
+    const relationshipType = faceSearchRelationship?.type || item.relationshipType || relationship?.type;
+    const relationshipStatus = faceSearchRelationship?.status || item.relationshipStatus || relationship?.status;
+    const relationshipPrivacy = faceSearchRelationship?.privacy || item.relationshipPrivacy || relationship?.privacyLevel;
+    const partnerName = faceSearchRelationship?.partnerName || item.partnerName || relationship?.partnerName;
 
     return (
       <TouchableOpacity
@@ -213,11 +281,47 @@ export default function SearchScreen() {
               <Text style={styles.phoneNumber}>{item.phoneNumber}</Text>
             )}
 
+            <View style={styles.badgeRow}>
+              <View
+                style={[
+                  styles.statusBadge,
+                  relationshipStatus === 'verified' || relationshipStatus === 'confirmed'
+                    ? styles.verifiedStatusBadge
+                    : relationshipStatus === 'pending'
+                      ? styles.pendingStatusBadge
+                      : styles.neutralStatusBadge,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.statusBadgeText,
+                    relationshipStatus === 'verified' || relationshipStatus === 'confirmed'
+                      ? styles.verifiedStatusText
+                      : relationshipStatus === 'pending'
+                        ? styles.pendingStatusText
+                        : styles.neutralStatusText,
+                  ]}
+                >
+                  {getStatusLabel(relationshipStatus)}
+                </Text>
+              </View>
+              {relationshipType && (
+                <View style={styles.typeBadge}>
+                  <Text style={styles.typeBadgeText}>{getRelationshipTypeLabel(relationshipType)}</Text>
+                </View>
+              )}
+              {relationshipPrivacy && (
+                <View style={styles.privacyBadge}>
+                  <Text style={styles.privacyBadgeText}>{getPrivacyLabel(relationshipPrivacy)}</Text>
+                </View>
+              )}
+            </View>
+
             {/* Show relationship info for face search results */}
             {isFaceSearchResult && faceSearchRelationship && (
               <>
                 <Text style={styles.relationshipInfo}>
-                  {faceSearchRelationship.status === 'verified' ? '❤️ ' : '⏳ '}
+                  {faceSearchRelationship.status === 'verified' ? 'Verified: ' : 'Pending: '}
                   In a {getRelationshipTypeLabel(faceSearchRelationship.type).toLowerCase()} with{' '}
                   {item.userName || 'Unknown'}
                 </Text>
@@ -240,9 +344,9 @@ export default function SearchScreen() {
             {isNonRegistered && item.relationshipType && !isFaceSearchResult && (
               <View style={styles.relationshipInfoContainer}>
                 <Text style={styles.relationshipInfo}>
-                  {item.relationshipStatus === 'verified' ? '❤️ ' : '⏳ '}
-                  {item.partnerName 
-                    ? `In a ${getRelationshipTypeLabel(item.relationshipType).toLowerCase()} with ${item.partnerName}`
+                  {item.relationshipStatus === 'verified' ? 'Verified: ' : 'Pending: '}
+                  {partnerName 
+                    ? `In a ${getRelationshipTypeLabel(item.relationshipType).toLowerCase()} with ${partnerName}`
                     : `Listed as partner in a ${getRelationshipTypeLabel(item.relationshipType).toLowerCase()}`
                   }
                   {item.relationshipStatus === 'verified' ? ' (Verified)' : ''}
@@ -254,9 +358,9 @@ export default function SearchScreen() {
             {relationship && !isNonRegistered && !isFaceSearchResult ? (
               <>
                 <Text style={styles.relationshipInfo}>
-                  {relationship.status === 'verified' ? '❤️ ' : '⏳ '}
+                  {relationship.status === 'verified' ? 'Verified: ' : 'Pending: '}
                   In a {getRelationshipTypeLabel(relationship.type).toLowerCase()} with{' '}
-                  {relationship.partnerName}
+                  {partnerName}
                 </Text>
                 {relationship.status === 'verified' && (
                   <View style={styles.verifiedBadge}>
@@ -299,6 +403,18 @@ export default function SearchScreen() {
       )}
 
       <View style={styles.searchContainer}>
+        <View style={styles.searchHero}>
+          <View style={styles.searchHeroIcon}>
+            <ShieldCheck size={24} color={colors.primary} />
+          </View>
+          <View style={styles.searchHeroCopy}>
+            <Text style={styles.searchHeroTitle}>Relationship registry</Text>
+            <Text style={styles.searchHeroText}>
+              Search by name, phone, or face photo. Results show submitted and confirmed relationship records.
+            </Text>
+          </View>
+        </View>
+
         {/* Search Mode Toggle */}
         <View style={styles.searchModeContainer}>
           <TouchableOpacity
@@ -307,6 +423,7 @@ export default function SearchScreen() {
               setSearchMode('text');
               setSearchPhoto(null);
               setResults([]);
+              setResultFilter('all');
             }}
           >
             <SearchIcon size={18} color={searchMode === 'text' ? colors.text.white : colors.text.secondary} />
@@ -320,6 +437,7 @@ export default function SearchScreen() {
               setSearchMode('face');
               setQuery('');
               setResults([]);
+              setResultFilter('all');
             }}
           >
             <Camera size={18} color={searchMode === 'face' ? colors.text.white : colors.text.secondary} />
@@ -393,6 +511,21 @@ export default function SearchScreen() {
         )}
       </View>
 
+      {results.length > 0 && (
+        <View style={styles.resultsToolbar}>
+          <Text style={styles.resultsCount}>
+            {filteredResults.length} of {results.length} result{results.length === 1 ? '' : 's'}
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.resultFilters}>
+            {renderFilterChip('all', 'All', <Users size={14} color={resultFilter === 'all' ? colors.text.white : colors.text.secondary} />)}
+            {renderFilterChip('verified', 'Verified', <ShieldCheck size={14} color={resultFilter === 'verified' ? colors.text.white : colors.text.secondary} />)}
+            {renderFilterChip('pending', 'Pending', <Clock size={14} color={resultFilter === 'pending' ? colors.text.white : colors.text.secondary} />)}
+            {renderFilterChip('single', 'No record')}
+            {renderFilterChip('registered', 'Registered')}
+          </ScrollView>
+        </View>
+      )}
+
       {isSearching ? (
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
@@ -437,9 +570,17 @@ export default function SearchScreen() {
             </>
           )}
         </View>
+      ) : filteredResults.length === 0 ? (
+        <View style={styles.centerContainer}>
+          <SearchIcon size={64} color={colors.text.tertiary} strokeWidth={1.5} />
+          <Text style={styles.emptyTitle}>No Results in This Filter</Text>
+          <Text style={styles.emptyText}>
+            Try another result type or clear the search and look again.
+          </Text>
+        </View>
       ) : (
         <FlatList
-          data={results}
+          data={filteredResults}
           renderItem={renderUserItem}
           keyExtractor={(item, index) => item.id || item.relationshipId || `result-${index}`}
           contentContainerStyle={styles.listContent}
@@ -473,6 +614,39 @@ const createStyles = (colors: any) => StyleSheet.create({
   searchContainer: {
     paddingHorizontal: 20,
     marginBottom: 20,
+  },
+  searchHero: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    borderRadius: 18,
+    backgroundColor: colors.primary + '12',
+    borderWidth: 1,
+    borderColor: colors.primary + '25',
+    marginBottom: 14,
+  },
+  searchHeroIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background.primary,
+  },
+  searchHeroCopy: {
+    flex: 1,
+  },
+  searchHeroTitle: {
+    fontSize: 18,
+    fontWeight: '800' as const,
+    color: colors.text.primary,
+    marginBottom: 3,
+  },
+  searchHeroText: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.text.secondary,
   },
   searchInputContainer: {
     flexDirection: 'row',
@@ -513,6 +687,44 @@ const createStyles = (colors: any) => StyleSheet.create({
   listContent: {
     paddingHorizontal: 20,
     paddingBottom: 20,
+  },
+  resultsToolbar: {
+    paddingHorizontal: 20,
+    marginTop: -8,
+    marginBottom: 12,
+    gap: 10,
+  },
+  resultsCount: {
+    fontSize: 13,
+    fontWeight: '700' as const,
+    color: colors.text.secondary,
+  },
+  resultFilters: {
+    gap: 8,
+    paddingRight: 20,
+  },
+  resultFilterChip: {
+    minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    borderRadius: 17,
+    backgroundColor: colors.background.primary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+  },
+  resultFilterChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  resultFilterText: {
+    fontSize: 13,
+    fontWeight: '700' as const,
+    color: colors.text.secondary,
+  },
+  resultFilterTextActive: {
+    color: colors.text.white,
   },
   userCard: {
     flexDirection: 'row',
@@ -577,6 +789,64 @@ const createStyles = (colors: any) => StyleSheet.create({
     color: colors.text.secondary,
     marginTop: 2,
     marginBottom: 4,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  statusBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  verifiedStatusBadge: {
+    backgroundColor: colors.secondary + '20',
+  },
+  pendingStatusBadge: {
+    backgroundColor: colors.accent + '20',
+  },
+  neutralStatusBadge: {
+    backgroundColor: colors.background.secondary,
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: '800' as const,
+  },
+  verifiedStatusText: {
+    color: colors.secondary,
+  },
+  pendingStatusText: {
+    color: colors.accent,
+  },
+  neutralStatusText: {
+    color: colors.text.secondary,
+  },
+  typeBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 10,
+    backgroundColor: colors.primary + '15',
+  },
+  typeBadgeText: {
+    fontSize: 11,
+    fontWeight: '800' as const,
+    color: colors.primary,
+  },
+  privacyBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 10,
+    backgroundColor: colors.background.secondary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+  },
+  privacyBadgeText: {
+    fontSize: 11,
+    fontWeight: '700' as const,
+    color: colors.text.secondary,
   },
   relationshipInfoContainer: {
     marginTop: 4,

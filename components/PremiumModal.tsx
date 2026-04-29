@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   ScrollView,
 } from 'react-native';
-import { Crown, X, Sparkles, Heart, Star, RotateCcw, Zap, Shield } from 'lucide-react-native';
+import { Crown, X, Sparkles, Heart, Star, RotateCcw, Zap, Shield, MessageCircle } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useRouter } from 'expo-router';
@@ -37,10 +37,17 @@ export default function PremiumModal({
   const { colors } = useTheme();
   const router = useRouter();
   const styles = createStyles(colors);
+  const isMessagingLimit = featureName?.toLowerCase().includes('messaging');
+  const isLikesFeature = featureName?.toLowerCase().includes('liked');
 
   const handleGoPremium = () => {
     onClose();
-    router.push('/dating/premium');
+    router.push('/dating/premium' as any);
+  };
+
+  const handleKeepDating = () => {
+    onClose();
+    router.push('/(tabs)/dating' as any);
   };
 
   return (
@@ -52,23 +59,25 @@ export default function PremiumModal({
     >
       <View style={styles.overlay}>
         <View style={styles.modalContainer}>
-          {/* Close Button */}
           <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-            <X size={24} color={colors.text.secondary} />
+            <X size={22} color="#FFFFFF" />
           </TouchableOpacity>
 
-          {/* Hero Section with Gradient */}
           <LinearGradient
-            colors={[colors.primary, colors.primary + 'DD']}
+            colors={['#FF4D7D', '#8B5CF6', '#1A73E8']}
             style={styles.heroSection}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
           >
+            <View style={styles.softOrbTop} />
+            <View style={styles.softOrbBottom} />
             <View style={styles.heroContent}>
               <View style={styles.crownContainer}>
-                <Crown size={56} color="#FFFFFF" fill="#FFFFFF" />
+                <Crown size={42} color="#FFFFFF" fill="#FFFFFF" />
               </View>
-              <Text style={styles.heroTitle}>Premium Feature</Text>
+              <Text style={styles.heroTitle}>
+                {isMessagingLimit ? 'Keep the spark going' : 'Unlock more romance'}
+              </Text>
               {featureName && (
                 <Text style={styles.featureName}>{featureName}</Text>
               )}
@@ -84,9 +93,49 @@ export default function PremiumModal({
           </LinearGradient>
 
           <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-            {/* Premium Features List */}
+            <View style={styles.unlockSection}>
+              <Text style={styles.sectionTitle}>What you can do next</Text>
+              <View style={styles.unlockGrid}>
+                {isMessagingLimit ? (
+                  <>
+                    <View style={styles.unlockCard}>
+                      <View style={[styles.unlockIcon, styles.unlockIconHeart]}>
+                        <Heart size={20} color="#FFFFFF" fill="#FFFFFF" />
+                      </View>
+                      <Text style={styles.unlockTitle}>Match first</Text>
+                      <Text style={styles.unlockText}>If they like you back, the conversation can keep flowing.</Text>
+                    </View>
+                    <View style={styles.unlockCard}>
+                      <View style={[styles.unlockIcon, styles.unlockIconGold]}>
+                        <Crown size={20} color="#FFFFFF" fill="#FFFFFF" />
+                      </View>
+                      <Text style={styles.unlockTitle}>Go Premium</Text>
+                      <Text style={styles.unlockText}>Send without the starter limit and use stronger dating tools.</Text>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.unlockCard}>
+                      <View style={[styles.unlockIcon, styles.unlockIconHeart]}>
+                        <Sparkles size={20} color="#FFFFFF" />
+                      </View>
+                      <Text style={styles.unlockTitle}>Stand out</Text>
+                      <Text style={styles.unlockText}>Boost, rewind, and send stronger signals when it matters.</Text>
+                    </View>
+                    <View style={styles.unlockCard}>
+                      <View style={[styles.unlockIcon, styles.unlockIconGold]}>
+                        <Crown size={20} color="#FFFFFF" fill="#FFFFFF" />
+                      </View>
+                      <Text style={styles.unlockTitle}>Unlock it</Text>
+                      <Text style={styles.unlockText}>Premium opens this feature and the full dating toolkit.</Text>
+                    </View>
+                  </>
+                )}
+              </View>
+            </View>
+
             <View style={styles.featuresSection}>
-              <Text style={styles.sectionTitle}>All Premium Features</Text>
+              <Text style={styles.sectionTitle}>Premium dating perks</Text>
               {premiumFeatures.map((feature, index) => {
                 const Icon = feature.icon;
                 return (
@@ -103,7 +152,6 @@ export default function PremiumModal({
               })}
             </View>
 
-            {/* CTA Buttons */}
             <View style={styles.buttonContainer}>
               <TouchableOpacity
                 style={styles.premiumButton}
@@ -117,8 +165,25 @@ export default function PremiumModal({
                   end={{ x: 1, y: 0 }}
                 >
                   <Crown size={20} color="#FFFFFF" fill="#FFFFFF" />
-                  <Text style={styles.premiumButtonText}>Go Premium</Text>
+                  <Text style={styles.premiumButtonText}>
+                    {isMessagingLimit ? 'Unlock Unlimited Messaging' : 'Go Premium'}
+                  </Text>
                 </LinearGradient>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.matchButton}
+                onPress={handleKeepDating}
+                activeOpacity={0.8}
+              >
+                {isLikesFeature ? (
+                  <Heart size={18} color="#FF4D7D" />
+                ) : (
+                  <MessageCircle size={18} color="#FF4D7D" />
+                )}
+                <Text style={styles.matchButtonText}>
+                  {isMessagingLimit ? 'Find more matches' : 'Keep discovering'}
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -126,7 +191,7 @@ export default function PremiumModal({
                 onPress={onClose}
                 activeOpacity={0.7}
               >
-                <Text style={styles.cancelButtonText}>Maybe Later</Text>
+                <Text style={styles.cancelButtonText}>Not now</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
@@ -140,12 +205,13 @@ const createStyles = (colors: any) =>
   StyleSheet.create({
     overlay: {
       flex: 1,
-      backgroundColor: 'rgba(0, 0, 0, 0.6)',
+      backgroundColor: 'rgba(8, 10, 24, 0.72)',
       justifyContent: 'center',
       alignItems: 'center',
+      paddingHorizontal: 18,
     },
     modalContainer: {
-      width: '90%',
+      width: '100%',
       maxWidth: 400,
       maxHeight: '85%',
       backgroundColor: colors.background.primary,
@@ -165,21 +231,48 @@ const createStyles = (colors: any) =>
       width: 36,
       height: 36,
       borderRadius: 18,
-      backgroundColor: 'rgba(0, 0, 0, 0.2)',
+      backgroundColor: 'rgba(255, 255, 255, 0.18)',
       justifyContent: 'center',
       alignItems: 'center',
     },
     heroSection: {
-      paddingTop: 40,
-      paddingBottom: 32,
+      paddingTop: 42,
+      paddingBottom: 30,
       paddingHorizontal: 24,
       alignItems: 'center',
+      overflow: 'hidden',
+    },
+    softOrbTop: {
+      position: 'absolute',
+      top: -36,
+      left: -20,
+      width: 120,
+      height: 120,
+      borderRadius: 60,
+      backgroundColor: 'rgba(255,255,255,0.16)',
+    },
+    softOrbBottom: {
+      position: 'absolute',
+      right: -30,
+      bottom: -46,
+      width: 150,
+      height: 150,
+      borderRadius: 75,
+      backgroundColor: 'rgba(255,255,255,0.12)',
     },
     heroContent: {
       alignItems: 'center',
     },
     crownContainer: {
+      width: 76,
+      height: 76,
+      borderRadius: 38,
+      alignItems: 'center',
+      justifyContent: 'center',
       marginBottom: 16,
+      backgroundColor: 'rgba(255,255,255,0.18)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.34)',
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: 0.3,
@@ -187,8 +280,8 @@ const createStyles = (colors: any) =>
       elevation: 8,
     },
     heroTitle: {
-      fontSize: 28,
-      fontWeight: '700',
+      fontSize: 27,
+      fontWeight: '800',
       color: '#FFFFFF',
       marginBottom: 8,
       textAlign: 'center',
@@ -211,19 +304,63 @@ const createStyles = (colors: any) =>
     content: {
       flex: 1,
     },
+    unlockSection: {
+      padding: 20,
+      paddingBottom: 8,
+    },
+    unlockGrid: {
+      flexDirection: 'row',
+      gap: 10,
+    },
+    unlockCard: {
+      flex: 1,
+      minHeight: 132,
+      padding: 12,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border.light,
+      backgroundColor: colors.background.secondary,
+    },
+    unlockIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 10,
+    },
+    unlockIconHeart: {
+      backgroundColor: '#FF4D7D',
+    },
+    unlockIconGold: {
+      backgroundColor: '#F59E0B',
+    },
+    unlockTitle: {
+      fontSize: 14,
+      fontWeight: '800',
+      color: colors.text.primary,
+      marginBottom: 5,
+    },
+    unlockText: {
+      fontSize: 12,
+      lineHeight: 17,
+      color: colors.text.secondary,
+    },
     featuresSection: {
-      padding: 24,
+      paddingHorizontal: 20,
+      paddingTop: 10,
+      paddingBottom: 20,
     },
     sectionTitle: {
       fontSize: 18,
-      fontWeight: '700',
+      fontWeight: '800',
       color: colors.text.primary,
-      marginBottom: 16,
+      marginBottom: 12,
     },
     featureItem: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginBottom: 16,
+      marginBottom: 10,
       padding: 12,
       backgroundColor: colors.background.secondary,
       borderRadius: 12,
@@ -232,7 +369,7 @@ const createStyles = (colors: any) =>
       width: 40,
       height: 40,
       borderRadius: 20,
-      backgroundColor: colors.primary + '20',
+      backgroundColor: '#FF4D7D20',
       justifyContent: 'center',
       alignItems: 'center',
       marginRight: 12,
@@ -252,7 +389,7 @@ const createStyles = (colors: any) =>
       lineHeight: 18,
     },
     buttonContainer: {
-      padding: 24,
+      padding: 20,
       paddingTop: 0,
     },
     premiumButton: {
@@ -278,8 +415,25 @@ const createStyles = (colors: any) =>
       fontWeight: '700',
       color: '#FFFFFF',
     },
+    matchButton: {
+      minHeight: 50,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: '#FF4D7D55',
+      backgroundColor: '#FF4D7D12',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'row',
+      gap: 8,
+      marginBottom: 8,
+    },
+    matchButtonText: {
+      fontSize: 16,
+      fontWeight: '800',
+      color: '#FF4D7D',
+    },
     cancelButton: {
-      paddingVertical: 14,
+      paddingVertical: 12,
       alignItems: 'center',
     },
     cancelButtonText: {

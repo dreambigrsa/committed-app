@@ -8,11 +8,12 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { ArrowLeft, Eye } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
 import * as DatingService from '@/lib/dating-service';
+import { navigateToDatingHome } from '@/lib/dating-navigation';
 
 export default function ProfilePreviewScreen() {
   const router = useRouter();
@@ -56,6 +57,7 @@ export default function ProfilePreviewScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
+        <Stack.Screen options={{ headerShown: false }} />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading your profile...</Text>
@@ -67,8 +69,9 @@ export default function ProfilePreviewScreen() {
   if (!profile) {
     return (
       <SafeAreaView style={styles.container}>
+        <Stack.Screen options={{ headerShown: false }} />
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.headerButton}>
+          <TouchableOpacity onPress={() => navigateToDatingHome(router)} style={styles.headerButton}>
             <ArrowLeft size={24} color={colors.text.primary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Profile Preview</Text>
@@ -93,8 +96,9 @@ export default function ProfilePreviewScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.headerButton}>
+        <TouchableOpacity onPress={() => navigateToDatingHome(router)} style={styles.headerButton}>
           <ArrowLeft size={24} color={colors.text.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Profile Preview</Text>

@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
 
 /**
@@ -109,6 +110,11 @@ export async function createOrUpdateDatingProfile(profileData: {
   local_food?: string;
   local_slang?: string;
   local_spot?: string;
+  religion?: string;
+  education?: string;
+  height_cm?: number;
+  exercise?: 'often' | 'sometimes' | 'rarely' | 'prefer_not_to_say';
+  pets?: 'have_pets' | 'want_pets' | 'no_pets' | 'prefer_not_to_say';
 }) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('User not authenticated');
@@ -250,7 +256,9 @@ export async function deleteDatingPhoto(photoId: string) {
 // DISCOVERY & MATCHING
 // ============================================
 
-export async function getDatingDiscovery(filters?: {
+const DATING_DISCOVERY_FILTERS_KEY = 'committed:dating-discovery-filters:v1';
+
+export type DatingDiscoveryFilters = {
   minAge?: number;
   maxAge?: number;
   maxDistance?: number;
@@ -259,8 +267,42 @@ export async function getDatingDiscovery(filters?: {
   locationCountry?: string;
   latitude?: number;
   longitude?: number;
-  includePassed?: boolean; // Option to include previously passed profiles
-}) {
+  includePassed?: boolean;
+  intentionTags?: string[];
+  religions?: string[];
+  educationLevels?: string[];
+  kids?: string[];
+  smoke?: string[];
+  drink?: string[];
+  exercise?: string[];
+  pets?: string[];
+  interests?: string[];
+  minHeightCm?: number;
+  maxHeightCm?: number;
+  hasPhotos?: boolean;
+  verifiedOnly?: boolean;
+  activeRecently?: boolean;
+};
+
+export async function getSavedDatingDiscoveryFilters(): Promise<DatingDiscoveryFilters> {
+  try {
+    const rawFilters = await AsyncStorage.getItem(DATING_DISCOVERY_FILTERS_KEY);
+    return rawFilters ? JSON.parse(rawFilters) : {};
+  } catch (error) {
+    console.warn('Failed to load dating discovery filters:', error);
+    return {};
+  }
+}
+
+export async function saveDatingDiscoveryFilters(filters: DatingDiscoveryFilters) {
+  await AsyncStorage.setItem(DATING_DISCOVERY_FILTERS_KEY, JSON.stringify(filters));
+}
+
+export async function clearDatingDiscoveryFilters() {
+  await AsyncStorage.removeItem(DATING_DISCOVERY_FILTERS_KEY);
+}
+
+export async function getDatingDiscovery(filters?: DatingDiscoveryFilters) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('User not authenticated');
 
@@ -275,6 +317,8 @@ export async function getDatingDiscovery(filters?: {
     return { profiles: [], hasMore: false };
   }
 
+  const savedFilters = filters ?? await getSavedDatingDiscoveryFilters();
+
   // Build query - start simple without relationships to avoid 400 errors
   let query = supabase
     .from('dating_profiles')
@@ -283,17 +327,17 @@ export async function getDatingDiscovery(filters?: {
     .neq('user_id', user.id)
     .eq('admin_limited', false) // Exclude admin-limited profiles
     .eq('admin_suspended', false) // Exclude admin-suspended profiles
-    .limit(20);
+    .limit(50);
 
   // Apply filters - use provided filters or fall back to saved profile preferences
-  const minAge = filters?.minAge ?? userProfile.age_range_min ?? 18;
-  const maxAge = filters?.maxAge ?? userProfile.age_range_max ?? 99;
-  const maxDistance = filters?.maxDistance ?? userProfile.max_distance_km ?? 50;
-  const locationCity = filters?.locationCity ?? userProfile.location_city;
-  const locationCountry = filters?.locationCountry ?? userProfile.location_country;
-  const userLatitude = filters?.latitude ?? userProfile.location_latitude;
-  const userLongitude = filters?.longitude ?? userProfile.location_longitude;
-  const lookingFor = filters?.lookingFor ?? userProfile.looking_for ?? 'everyone';
+  const minAge = savedFilters.minAge ?? userProfile.age_range_min ?? 18;
+  const maxAge = savedFilters.maxAge ?? userProfile.age_range_max ?? 99;
+  const maxDistance = savedFilters.maxDistance ?? userProfile.max_distance_km ?? 50;
+  const locationCity = savedFilters.locationCity ?? userProfile.location_city;
+  const locationCountry = savedFilters.locationCountry ?? userProfile.location_country;
+  const userLatitude = savedFilters.latitude ?? userProfile.location_latitude;
+  const userLongitude = savedFilters.longitude ?? userProfile.location_longitude;
+  const lookingFor = savedFilters.lookingFor ?? userProfile.looking_for ?? 'everyone';
   
   // Apply age filters
   if (minAge) {
@@ -310,6 +354,43 @@ export async function getDatingDiscovery(filters?: {
   if (locationCountry) {
     query = query.ilike('location_country', `%${locationCountry}%`);
   }
+
+  if (savedFilters.intentionTags?.length) {
+    query = query.in('intention_tag', savedFilters.intentionTags);
+  }
+  if (savedFilters.religions?.length) {
+    query = query.in('religion', savedFilters.religions);
+  }
+  if (savedFilters.educationLevels?.length) {
+    query = query.in('education', savedFilters.educationLevels);
+  }
+  if (savedFilters.kids?.length) {
+    query = query.in('kids', savedFilters.kids);
+  }
+  if (savedFilters.smoke?.length) {
+    query = query.in('smoke', savedFilters.smoke);
+  }
+  if (savedFilters.drink?.length) {
+    query = query.in('drink', savedFilters.drink);
+  }
+  if (savedFilters.exercise?.length) {
+    query = query.in('exercise', savedFilters.exercise);
+  }
+  if (savedFilters.pets?.length) {
+    query = query.in('pets', savedFilters.pets);
+  }
+  if (savedFilters.minHeightCm) {
+    query = query.gte('height_cm', savedFilters.minHeightCm);
+  }
+  if (savedFilters.maxHeightCm) {
+    query = query.lte('height_cm', savedFilters.maxHeightCm);
+  }
+  if (savedFilters.activeRecently) {
+    query = query.gte('last_active_at', new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString());
+  }
+  if (savedFilters.interests?.length) {
+    query = query.overlaps('interests', savedFilters.interests);
+  }
   
   // Note: Distance filtering by coordinates will be done after fetching
   // since Supabase doesn't have built-in distance calculation without PostGIS
@@ -321,26 +402,23 @@ export async function getDatingDiscovery(filters?: {
   // Since we don't have a gender field yet, we'll filter after fetching
   // and match based on the looking_for preferences
 
-  // Exclude already liked users (always exclude liked)
-  const { data: liked } = await supabase
-    .from('dating_likes')
-    .select('liked_id')
-    .eq('liker_id', user.id);
+  const [likedResult, passedResult] = await Promise.all([
+    supabase
+      .from('dating_likes')
+      .select('liked_id')
+      .eq('liker_id', user.id),
+    savedFilters.includePassed
+      ? Promise.resolve({ data: [] as any[] })
+      : supabase
+          .from('dating_passes')
+          .select('passed_id')
+          .eq('passer_id', user.id),
+  ]);
 
-  // Only exclude passed users if includePassed is not true
-  let excludedIds = [...(liked?.map((l: any) => l.liked_id) || [])];
-  
-  if (!filters?.includePassed) {
-    const { data: passed } = await supabase
-      .from('dating_passes')
-      .select('passed_id')
-      .eq('passer_id', user.id);
-    
-    excludedIds = [
-      ...excludedIds,
-      ...(passed?.map((p: any) => p.passed_id) || []),
-    ];
-  }
+  const excludedIds = Array.from(new Set([
+    ...(likedResult.data?.map((l: any) => l.liked_id) || []),
+    ...(passedResult.data?.map((p: any) => p.passed_id) || []),
+  ]));
 
   if (excludedIds.length > 0) {
     query = query.not('user_id', 'in', `(${excludedIds.join(',')})`);
@@ -374,7 +452,7 @@ export async function getDatingDiscovery(filters?: {
   // Filter by distance if coordinates are available
   let filteredProfiles = profiles;
   if (userLatitude && userLongitude && maxDistance) {
-    filteredProfiles = profiles.filter((profile: any) => {
+    filteredProfiles = filteredProfiles.filter((profile: any) => {
       // If profile doesn't have coordinates, include it (can't filter by distance)
       if (!profile.location_latitude || !profile.location_longitude) {
         return true;
@@ -401,7 +479,7 @@ export async function getDatingDiscovery(filters?: {
     
     console.log(`[Dating Discovery] Filtering by gender: lookingFor=${lookingFor}, currentUserGender=${currentUserGender}`);
     
-    filteredProfiles = profiles.filter((profile: any) => {
+    filteredProfiles = filteredProfiles.filter((profile: any) => {
       const profileGender = profile.gender;
       const profileLookingFor = profile.looking_for || 'everyone';
       
@@ -467,37 +545,65 @@ export async function getDatingDiscovery(filters?: {
     });
   }
 
-  // Now fetch related data for each profile separately to avoid 400 errors
-  const profilesWithRelations = await Promise.all(
-    filteredProfiles.map(async (profile: any) => {
-      const [photosResult, videosResult, userResult] = await Promise.all([
-        supabase
+  const profileIds = filteredProfiles.map((profile: any) => profile.id);
+  const userIds = filteredProfiles.map((profile: any) => profile.user_id);
+  const [photosResult, videosResult, usersResult] = await Promise.all([
+    profileIds.length > 0
+      ? supabase
           .from('dating_photos')
           .select('*')
-          .eq('dating_profile_id', profile.id)
-          .order('display_order', { ascending: true }),
-        supabase
+          .in('dating_profile_id', profileIds)
+          .order('display_order', { ascending: true })
+      : Promise.resolve({ data: [] as any[] }),
+    profileIds.length > 0
+      ? supabase
           .from('dating_videos')
           .select('*')
-          .eq('dating_profile_id', profile.id)
-          .order('display_order', { ascending: true }),
-        supabase
+          .in('dating_profile_id', profileIds)
+          .order('display_order', { ascending: true })
+      : Promise.resolve({ data: [] as any[] }),
+    userIds.length > 0
+      ? supabase
           .from('users')
           .select('id, full_name, profile_picture, id_verified, email_verified, phone_verified')
-          .eq('id', profile.user_id)
-          .single(),
-      ]);
+          .in('id', userIds)
+      : Promise.resolve({ data: [] as any[] }),
+  ]);
 
-      return {
-        ...profile,
-        photos: photosResult.data || [],
-        videos: videosResult.data || [],
-        user: userResult.data || null,
-      };
-    })
-  );
+  const photosByProfile = new Map<string, any[]>();
+  (photosResult.data || []).forEach((photo: any) => {
+    const list = photosByProfile.get(photo.dating_profile_id) || [];
+    list.push(photo);
+    photosByProfile.set(photo.dating_profile_id, list);
+  });
 
-  return { profiles: profilesWithRelations, hasMore: profiles.length >= 20 };
+  const videosByProfile = new Map<string, any[]>();
+  (videosResult.data || []).forEach((video: any) => {
+    const list = videosByProfile.get(video.dating_profile_id) || [];
+    list.push(video);
+    videosByProfile.set(video.dating_profile_id, list);
+  });
+
+  const usersById = new Map((usersResult.data || []).map((u: any) => [u.id, u]));
+
+  let profilesWithRelations = filteredProfiles.map((profile: any) => ({
+    ...profile,
+    photos: photosByProfile.get(profile.id) || [],
+    videos: videosByProfile.get(profile.id) || [],
+    user: usersById.get(profile.user_id) || null,
+  }));
+
+  if (savedFilters.hasPhotos) {
+    profilesWithRelations = profilesWithRelations.filter((profile: any) => profile.photos.length > 0);
+  }
+  if (savedFilters.verifiedOnly) {
+    profilesWithRelations = profilesWithRelations.filter((profile: any) => {
+      const profileUser = profile.user;
+      return !!(profileUser?.id_verified || profileUser?.phone_verified || profileUser?.email_verified);
+    });
+  }
+
+  return { profiles: profilesWithRelations.slice(0, 20), hasMore: profiles.length >= 50 };
 }
 
 export async function likeUser(likedUserId: string, isSuperLike: boolean = false) {
@@ -510,7 +616,7 @@ export async function likeUser(likedUserId: string, isSuperLike: boolean = false
     .select('id, is_super_like')
     .eq('liker_id', user.id)
     .eq('liked_id', likedUserId)
-    .single();
+    .maybeSingle();
 
   if (existing) {
     // If already liked, update to super like if needed
@@ -523,9 +629,13 @@ export async function likeUser(likedUserId: string, isSuperLike: boolean = false
         .single();
       
       if (updateError) throw updateError;
-      return { isMatch: false, like: updated };
+      await removePass(user.id, likedUserId);
+      const isMatch = await ensureMatchIfMutual(user.id, likedUserId);
+      return { isMatch, like: updated };
     }
-    return { isMatch: false, like: existing };
+    await removePass(user.id, likedUserId);
+    const isMatch = await ensureMatchIfMutual(user.id, likedUserId);
+    return { isMatch, like: existing };
   }
 
   // Use upsert to handle race conditions gracefully
@@ -553,70 +663,98 @@ export async function likeUser(likedUserId: string, isSuperLike: boolean = false
         .single();
       
       if (existingLike) {
-        return { isMatch: false, like: existingLike };
+        await removePass(user.id, likedUserId);
+        const isMatch = await ensureMatchIfMutual(user.id, likedUserId);
+        return { isMatch, like: existingLike };
       }
     }
     throw error;
   }
 
-  // Check for mutual like (match)
+  await removePass(user.id, likedUserId);
+  const isMatch = await ensureMatchIfMutual(user.id, likedUserId);
+  if (!isMatch) {
+    void createDatingLikeNotification(user.id, likedUserId, isSuperLike);
+  }
+
+  return { isMatch, like };
+}
+
+export async function getDatingReactionState(targetUserId: string) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { liked: false, superLiked: false, matched: false };
+
+  const { data: like } = await supabase
+    .from('dating_likes')
+    .select('id, is_super_like')
+    .eq('liker_id', user.id)
+    .eq('liked_id', targetUserId)
+    .maybeSingle();
+
+  const user1Id = user.id < targetUserId ? user.id : targetUserId;
+  const user2Id = user.id > targetUserId ? user.id : targetUserId;
+  const { data: match } = await supabase
+    .from('dating_matches')
+    .select('id')
+    .eq('user1_id', user1Id)
+    .eq('user2_id', user2Id)
+    .maybeSingle();
+
+  return {
+    liked: !!like,
+    superLiked: !!like?.is_super_like,
+    matched: !!match,
+  };
+}
+
+async function removePass(userId: string, targetUserId: string) {
+  await supabase
+    .from('dating_passes')
+    .delete()
+    .eq('passer_id', userId)
+    .eq('passed_id', targetUserId);
+}
+
+async function ensureMatchIfMutual(userId: string, likedUserId: string): Promise<boolean> {
   const { data: mutualLike } = await supabase
     .from('dating_likes')
     .select('id')
     .eq('liker_id', likedUserId)
-    .eq('liked_id', user.id)
+    .eq('liked_id', userId)
+    .maybeSingle();
+
+  if (!mutualLike) return false;
+
+  const user1Id = userId < likedUserId ? userId : likedUserId;
+  const user2Id = userId > likedUserId ? userId : likedUserId;
+  const { data: existingMatch } = await supabase
+    .from('dating_matches')
+    .select('id')
+    .eq('user1_id', user1Id)
+    .eq('user2_id', user2Id)
+    .maybeSingle();
+
+  if (existingMatch) return true;
+
+  const { data: match, error: matchError } = await supabase
+    .from('dating_matches')
+    .insert({
+      user1_id: user1Id,
+      user2_id: user2Id,
+    })
+    .select('id')
     .single();
 
-  let isMatch = false;
-  if (mutualLike) {
-    // Create match
-    const { data: match, error: matchError } = await supabase
-      .from('dating_matches')
-      .insert({
-        user1_id: user.id < likedUserId ? user.id : likedUserId,
-        user2_id: user.id > likedUserId ? user.id : likedUserId,
-      })
-      .select()
-      .single();
-
-    if (!matchError) {
-      isMatch = true;
-      // Create notifications for both users
-      await supabase.from('notifications').insert([
-        {
-          user_id: user.id,
-          type: 'dating_match',
-          title: "It's a Match!",
-          message: `You and ${(await supabase.from('users').select('full_name').eq('id', likedUserId).single()).data?.full_name || 'someone'} liked each other!`,
-          data: { match_id: match.id, matched_user_id: likedUserId },
-        },
-        {
-          user_id: likedUserId,
-          type: 'dating_match',
-          title: "It's a Match!",
-          message: `You and ${(await supabase.from('users').select('full_name').eq('id', user.id).single()).data?.full_name || 'someone'} liked each other!`,
-          data: { match_id: match.id, matched_user_id: user.id },
-        },
-      ]);
-    }
-  } else {
-    // Create notification for liked user
-    const { data: liker } = await supabase
-      .from('users')
-      .select('full_name')
-      .eq('id', user.id)
-      .single();
-
-    await supabase.from('notifications').insert({
-      user_id: likedUserId,
-      type: isSuperLike ? 'dating_super_like' : 'dating_like',
-      title: isSuperLike ? 'Super Like!' : 'New Like',
-      message: `${liker?.full_name || 'Someone'} ${isSuperLike ? 'super liked' : 'liked'} you!`,
-      data: { liker_id: user.id },
-    });
+  if (!matchError) {
+    void createDatingMatchNotifications(userId, likedUserId, match.id);
+    return true;
   }
 
-  return { isMatch, like };
+  if (matchError.code === '23505' || matchError.message?.includes('duplicate')) {
+    return true;
+  }
+
+  throw matchError;
 }
 
 export async function passUser(passedUserId: string) {
@@ -629,7 +767,7 @@ export async function passUser(passedUserId: string) {
     .select('id')
     .eq('passer_id', user.id)
     .eq('passed_id', passedUserId)
-    .single();
+    .maybeSingle();
 
   if (existing) {
     return { success: true };
@@ -637,13 +775,63 @@ export async function passUser(passedUserId: string) {
 
   const { error } = await supabase
     .from('dating_passes')
-    .insert({
+    .upsert({
       passer_id: user.id,
       passed_id: passedUserId,
+    }, {
+      onConflict: 'passer_id,passed_id',
     });
 
   if (error) throw error;
   return { success: true };
+}
+
+async function createDatingMatchNotifications(userId: string, likedUserId: string, matchId: string) {
+  try {
+    const [likedUserResult, currentUserResult] = await Promise.all([
+      supabase.from('users').select('full_name').eq('id', likedUserId).single(),
+      supabase.from('users').select('full_name').eq('id', userId).single(),
+    ]);
+
+    await supabase.from('notifications').insert([
+      {
+        user_id: userId,
+        type: 'dating_match',
+        title: "It's a Match!",
+        message: `You and ${likedUserResult.data?.full_name || 'someone'} liked each other!`,
+        data: { match_id: matchId, matched_user_id: likedUserId },
+      },
+      {
+        user_id: likedUserId,
+        type: 'dating_match',
+        title: "It's a Match!",
+        message: `You and ${currentUserResult.data?.full_name || 'someone'} liked each other!`,
+        data: { match_id: matchId, matched_user_id: userId },
+      },
+    ]);
+  } catch (error) {
+    console.warn('[Dating] Failed to create match notifications:', error);
+  }
+}
+
+async function createDatingLikeNotification(userId: string, likedUserId: string, isSuperLike: boolean) {
+  try {
+    const { data: liker } = await supabase
+      .from('users')
+      .select('full_name')
+      .eq('id', userId)
+      .single();
+
+    await supabase.from('notifications').insert({
+      user_id: likedUserId,
+      type: isSuperLike ? 'dating_super_like' : 'dating_like',
+      title: isSuperLike ? 'Super Like!' : 'New Like',
+      message: `${liker?.full_name || 'Someone'} ${isSuperLike ? 'super liked' : 'liked'} you!`,
+      data: { liker_id: userId },
+    });
+  } catch (error) {
+    console.warn('[Dating] Failed to create like notification:', error);
+  }
 }
 
 /**
@@ -735,10 +923,45 @@ export async function getDatingMatches() {
   );
 
   // Format matches to show the other user
-  return data.map(match => ({
+  const formattedMatches = data.map(match => ({
     ...match,
     matchedUser: match.user1_id === user.id ? match.user2 : match.user1,
   }));
+
+  const matchedUserIds = formattedMatches
+    .map((match: any) => match.matchedUser?.id)
+    .filter(Boolean);
+  if (matchedUserIds.length === 0) return formattedMatches;
+
+  const { data: matchedProfiles } = await supabase
+    .from('dating_profiles')
+    .select('id,user_id')
+    .in('user_id', matchedUserIds);
+  const profileIds = (matchedProfiles || []).map((profile: any) => profile.id);
+  const { data: primaryPhotos } = profileIds.length > 0
+    ? await supabase
+        .from('dating_photos')
+        .select('dating_profile_id,photo_url,is_primary,display_order')
+        .in('dating_profile_id', profileIds)
+        .order('is_primary', { ascending: false })
+        .order('display_order', { ascending: true })
+    : { data: [] as any[] };
+
+  const profileIdByUser = new Map((matchedProfiles || []).map((profile: any) => [profile.user_id, profile.id]));
+  const photoByProfile = new Map<string, string>();
+  (primaryPhotos || []).forEach((photo: any) => {
+    if (!photoByProfile.has(photo.dating_profile_id)) {
+      photoByProfile.set(photo.dating_profile_id, photo.photo_url);
+    }
+  });
+
+  return formattedMatches.map((match: any) => {
+    const profileId = profileIdByUser.get(match.matchedUser?.id);
+    return {
+      ...match,
+      primaryPhoto: profileId ? photoByProfile.get(profileId) : undefined,
+    };
+  });
 }
 
 export async function unmatchUser(matchId: string) {
@@ -808,11 +1031,12 @@ export async function getLikesReceived() {
   
   // If premium, return full data
   if (isPremium) {
-    return data || [];
+    return hydrateLikesWithPrimaryPhotos(data || []);
   }
 
   // For non-premium users, return blurred/anonymized data
-  return (data || []).map((like) => ({
+  const hydratedLikes = await hydrateLikesWithPrimaryPhotos(data || []);
+  return hydratedLikes.map((like) => ({
     ...like,
     isBlurred: true,
     liker: {
@@ -824,6 +1048,41 @@ export async function getLikesReceived() {
       email_verified: false,
     },
   }));
+}
+
+async function hydrateLikesWithPrimaryPhotos(likes: any[]) {
+  const likerIds = likes.map((like) => like.liker?.id).filter(Boolean);
+  if (likerIds.length === 0) return likes;
+
+  const { data: profiles } = await supabase
+    .from('dating_profiles')
+    .select('id,user_id')
+    .in('user_id', likerIds);
+  const profileIds = (profiles || []).map((profile: any) => profile.id);
+  const { data: photos } = profileIds.length > 0
+    ? await supabase
+        .from('dating_photos')
+        .select('dating_profile_id,photo_url,is_primary,display_order')
+        .in('dating_profile_id', profileIds)
+        .order('is_primary', { ascending: false })
+        .order('display_order', { ascending: true })
+    : { data: [] as any[] };
+
+  const profileIdByUser = new Map((profiles || []).map((profile: any) => [profile.user_id, profile.id]));
+  const photoByProfile = new Map<string, string>();
+  (photos || []).forEach((photo: any) => {
+    if (!photoByProfile.has(photo.dating_profile_id)) {
+      photoByProfile.set(photo.dating_profile_id, photo.photo_url);
+    }
+  });
+
+  return likes.map((like) => {
+    const profileId = profileIdByUser.get(like.liker?.id);
+    return {
+      ...like,
+      primaryPhoto: profileId ? photoByProfile.get(profileId) : like.primaryPhoto,
+    };
+  });
 }
 
 // ============================================

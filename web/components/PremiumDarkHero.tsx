@@ -6,6 +6,7 @@ import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import { useReducedMotion } from 'framer-motion';
 import { GetStartedButton, DownloadButton } from '@/components/DownloadCTA';
 import ProfileScreenMockup from '@/components/ProfileScreenMockup';
+import WebAppButton from '@/components/WebAppButton';
 
 const TILT_Y_MAX = 16;
 const TILT_X_MAX = 10;
@@ -257,7 +258,7 @@ export default function PremiumDarkHero() {
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5, delay: 0.2 }}
           >
-            Verified singles. Verified relationships. Real connection — safely.
+            Verified dating, relationship protection, community, and support in one trust-first platform.
           </motion.p>
 
           <motion.div
@@ -267,6 +268,12 @@ export default function PremiumDarkHero() {
             transition={{ duration: 0.5, delay: 0.3 }}
           >
             <GetStartedButton label="Get Started" variant="primary" />
+            <WebAppButton
+              path="/auth"
+              label="Continue on Web"
+              variant="outline"
+              className="!min-w-0 !border-white/30 !bg-white/5 !text-white hover:!border-white/50 hover:!bg-white/10"
+            />
             <DownloadButton
               label="Download App"
               variant="secondary"

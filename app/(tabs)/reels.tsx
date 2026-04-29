@@ -9,22 +9,18 @@ import {
   Animated,
   Alert,
   TextInput,
-  Modal,
-  SafeAreaView,
-  Platform,
-  KeyboardAvoidingView,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
-import { Heart, MessageCircle, Share2, Volume2, VolumeX, Plus, Film, MoreVertical, Edit2, Trash2, X, Flag, Smile, Image as ImageIcon , ExternalLink } from 'lucide-react-native';
+import { Heart, MessageCircle, Share2, Volume2, VolumeX, Plus, Film, MoreVertical, Edit2, Trash2, X, Flag, Image as ImageIcon , ExternalLink } from 'lucide-react-native';
 import { useRouter, useFocusEffect, usePathname, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import ReportContentModal from '@/components/ReportContentModal';
+import CommentSheet from '@/components/CommentSheet';
 import LinkifiedText from '@/components/LinkifiedText';
-import { Reel, Advertisement, Sticker } from '@/types';
-import StickerPicker from '@/components/StickerPicker';
+import { Reel, Advertisement } from '@/types';
 import * as WebBrowser from 'expo-web-browser';
 import StatusIndicator from '@/components/StatusIndicator';
 import { AdaptiveMediaProfile, getAdaptiveImageUrl, getAdaptiveMediaProfile, getAdaptiveVideoUrl } from '@/lib/adaptive-media';
@@ -1397,13 +1393,11 @@ export default function ReelsScreen() {
         </View>
 
         {showComments === reel.id && (
-          <ReelCommentsModal
-            reelId={reel.id}
+          <CommentSheet
+            contentId={reel.id}
             visible={showComments === reel.id}
             onClose={() => setShowComments(null)}
             comments={getReelComments(reel.id)}
-            colors={colors}
-            styles={styles}
             addComment={addReelComment}
             editComment={editReelComment}
             deleteComment={deleteReelComment}
@@ -1848,7 +1842,7 @@ const createStyles = (colors: any, overlayBottomPadding: number) => StyleSheet.c
   },
   modalContainer: {
     flex: 1,
-    backgroundColor: colors.background.primary,
+    backgroundColor: colors.background.secondary,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1869,28 +1863,55 @@ const createStyles = (colors: any, overlayBottomPadding: number) => StyleSheet.c
   },
   commentsList: {
     flex: 1,
+    paddingHorizontal: 12,
+  },
+  commentsListContent: {
+    paddingTop: 8,
+  },
+  commentsListEmpty: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingVertical: 44,
   },
   emptyCommentsContainer: {
-    flex: 1,
+    alignItems: 'center',
+    marginHorizontal: 4,
+    paddingHorizontal: 22,
+    paddingVertical: 30,
+    borderRadius: 14,
+    backgroundColor: colors.background.primary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+  },
+  emptyCommentsIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 60,
+    backgroundColor: colors.primary + '14',
+    marginBottom: 14,
   },
   emptyCommentsText: {
     fontSize: 18,
-    fontWeight: '600' as const,
-    color: colors.text.secondary,
-    marginBottom: 8,
+    fontWeight: '800' as const,
+    color: colors.text.primary,
+    textAlign: 'center',
+    marginBottom: 6,
   },
   emptyCommentsSubtext: {
     fontSize: 14,
-    color: colors.text.tertiary,
+    lineHeight: 20,
+    color: colors.text.secondary,
+    textAlign: 'center',
   },
   comment: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.light,
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: colors.background.primary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
   },
   commentHeader: {
     flexDirection: 'row',
@@ -1916,6 +1937,7 @@ const createStyles = (colors: any, overlayBottomPadding: number) => StyleSheet.c
   },
   commentContent: {
     flex: 1,
+    minWidth: 0,
   },
   commentHeaderRow: {
     flexDirection: 'row',
@@ -1929,10 +1951,15 @@ const createStyles = (colors: any, overlayBottomPadding: number) => StyleSheet.c
     color: colors.text.primary,
   },
   commentText: {
-    fontSize: 14,
+    fontSize: 15,
     color: colors.text.primary,
-    lineHeight: 20,
-    marginBottom: 4,
+    lineHeight: 21,
+    marginTop: 5,
+    marginBottom: 2,
+    backgroundColor: colors.background.secondary,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   commentStickerContainer: {
     marginTop: 4,
@@ -1973,8 +2000,9 @@ const createStyles = (colors: any, overlayBottomPadding: number) => StyleSheet.c
   commentActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
-    marginTop: 6,
+    gap: 12,
+    marginTop: 8,
+    flexWrap: 'wrap',
   },
   commentActionButton: {
     flexDirection: 'row',
@@ -2101,7 +2129,7 @@ const createStyles = (colors: any, overlayBottomPadding: number) => StyleSheet.c
   commentInput: {
     flex: 1,
     backgroundColor: colors.background.secondary,
-    borderRadius: 20,
+    borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 10,
     maxHeight: 100,
@@ -2432,524 +2460,3 @@ const createStyles = (colors: any, overlayBottomPadding: number) => StyleSheet.c
   },
 });
 
-function ReelCommentsModal({
-  reelId,
-  visible,
-  onClose,
-  comments,
-  colors,
-  styles,
-  addComment,
-  editComment,
-  deleteComment,
-  toggleCommentLike,
-  adaptImage,
-}: {
-  reelId: string;
-  visible: boolean;
-  onClose: () => void;
-  comments: any[];
-  colors: any;
-  styles: any;
-  addComment: (reelId: string, content: string, parentCommentId?: string, stickerId?: string, messageType?: 'text' | 'sticker') => Promise<any>;
-  editComment: (commentId: string, content: string) => Promise<any>;
-  deleteComment: (commentId: string) => Promise<boolean>;
-  toggleCommentLike: (commentId: string, reelId: string) => Promise<boolean>;
-  adaptImage: (url: string | null | undefined, kind?: 'avatar' | 'feed' | 'full') => string;
-}) {
-  const { currentUser, reportContent } = useApp();
-  const [reportingComment, setReportingComment] = useState<{ id: string; userId: string } | null>(null);
-  const [commentText, setCommentText] = useState<string>('');
-  const [selectedSticker, setSelectedSticker] = useState<{ id: string; imageUrl: string } | null>(null);
-  const [showStickerPicker, setShowStickerPicker] = useState(false);
-  const [replyingTo, setReplyingTo] = useState<string | null>(null);
-  const [replyText, setReplyText] = useState<string>('');
-  const [editingComment, setEditingComment] = useState<string | null>(null);
-  const [editCommentText, setEditCommentText] = useState<string>('');
-  const [expandedReplies, setExpandedReplies] = useState<Set<string>>(new Set());
-
-  const handleSubmit = async () => {
-    if (replyingTo && (replyText.trim() || selectedSticker)) {
-      await addComment(
-        reelId, 
-        replyText.trim(), 
-        replyingTo,
-        selectedSticker?.id,
-        selectedSticker ? 'sticker' : 'text'
-      );
-      setReplyText('');
-      setSelectedSticker(null);
-      setReplyingTo(null);
-      setExpandedReplies((prev: Set<string>) => new Set([...prev, replyingTo]));
-    } else if (commentText.trim() || selectedSticker) {
-      await addComment(
-        reelId, 
-        commentText.trim(),
-        undefined,
-        selectedSticker?.id,
-        selectedSticker ? 'sticker' : 'text'
-      );
-      setCommentText('');
-      setSelectedSticker(null);
-    }
-  };
-
-  const handleEditComment = (comment: any) => {
-    // Prevent editing sticker comments
-    if (comment.messageType === 'sticker') {
-      Alert.alert('Cannot Edit', 'Sticker comments cannot be edited. You can delete them instead.');
-      return;
-    }
-    setEditingComment(comment.id);
-    setEditCommentText(comment.content);
-  };
-
-  const handleSaveEdit = async (commentId: string) => {
-    const success = await editComment(commentId, editCommentText);
-    if (success) {
-      setEditingComment(null);
-      setEditCommentText('');
-    } else {
-      Alert.alert('Error', 'Failed to update comment');
-    }
-  };
-
-  const handleDeleteComment = async (commentId: string) => {
-    Alert.alert(
-      'Delete Comment',
-      'Are you sure you want to delete this comment?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            const success = await deleteComment(commentId);
-            if (!success) {
-              Alert.alert('Error', 'Failed to delete comment');
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  const formatTimeAgo = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMins / 60);
-
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    return date.toLocaleDateString();
-  };
-
-  return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={styles.modalContainer}>
-        <View style={styles.modalHeader}>
-          <Text style={styles.modalTitle}>Comments</Text>
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <X size={24} color={colors.text.primary} />
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView style={styles.commentsList}>
-          {comments.length === 0 ? (
-            <View style={styles.emptyCommentsContainer}>
-              <Text style={styles.emptyCommentsText}>No comments yet</Text>
-              <Text style={styles.emptyCommentsSubtext}>Be the first to comment!</Text>
-            </View>
-          ) : (
-            comments.map((comment) => {
-              const isOwner = comment.userId === currentUser?.id;
-              const isLiked = comment.likes?.includes(currentUser?.id || '') || false;
-              const hasReplies = comment.replies && comment.replies.length > 0;
-              const showReplies = expandedReplies.has(comment.id);
-              
-              return (
-                <View key={comment.id} style={styles.comment}>
-                  <View style={styles.commentHeader}>
-                    {comment.userAvatar ? (
-                      <Image
-                        source={{ uri: adaptImage(comment.userAvatar, 'avatar') }}
-                        cachePolicy="disk"
-                        style={styles.commentAvatar}
-                      />
-                    ) : (
-                      <View style={styles.commentAvatarPlaceholder}>
-                        <Text style={styles.commentAvatarPlaceholderText}>
-                          {comment.userName.charAt(0)}
-                        </Text>
-                      </View>
-                    )}
-                    <View style={styles.commentContent}>
-                      <View style={styles.commentHeaderRow}>
-                        <Text style={styles.commentUserName}>{comment.userName}</Text>
-                        {isOwner && (
-                          <View style={styles.commentActions}>
-                            {editingComment === comment.id ? (
-                              <>
-                                <TouchableOpacity
-                                  onPress={() => {
-                                    setEditingComment(null);
-                                    setEditCommentText('');
-                                  }}
-                                >
-                                  <Text style={styles.commentActionText}>Cancel</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  onPress={() => handleSaveEdit(comment.id)}
-                                >
-                                  <Text style={[styles.commentActionText, styles.commentActionSave]}>Save</Text>
-                                </TouchableOpacity>
-                              </>
-                            ) : (
-                              <>
-                                <TouchableOpacity
-                                  onPress={() => handleEditComment(comment)}
-                                >
-                                  <Edit2 size={14} color={colors.text.secondary} />
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  onPress={() => handleDeleteComment(comment.id)}
-                                >
-                                  <Trash2 size={14} color={colors.danger} />
-                                </TouchableOpacity>
-                              </>
-                            )}
-                          </View>
-                        )}
-                      </View>
-                      {editingComment === comment.id ? (
-                        <TextInput
-                          style={styles.commentEditInput}
-                          value={editCommentText}
-                          onChangeText={setEditCommentText}
-                          multiline
-                          placeholderTextColor={colors.text.tertiary}
-                        />
-                    ) : (
-                      <>
-                        {comment.messageType === 'sticker' && comment.stickerImageUrl ? (
-                          <View style={styles.commentStickerContainer}>
-                            <Image
-                              source={{ uri: adaptImage(comment.stickerImageUrl, 'feed') }}
-                              cachePolicy="disk"
-                              style={styles.commentSticker}
-                              contentFit="contain"
-                            />
-                          </View>
-                        ) : (
-                          <Text style={styles.commentText}>{comment.content}</Text>
-                        )}
-                      </>
-                    )}
-                      <View style={styles.commentActionsRow}>
-                        <TouchableOpacity
-                          style={styles.commentActionButton}
-                          onPress={() => toggleCommentLike(comment.id, reelId)}
-                        >
-                          <Heart
-                            size={16}
-                            color={isLiked ? colors.danger : colors.text.secondary}
-                            fill={isLiked ? colors.danger : 'transparent'}
-                          />
-                          <Text style={[styles.commentActionCount, isLiked && styles.commentActionCountActive]}>
-                            {comment.likes?.length || 0}
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.commentActionButton}
-                          onPress={() => {
-                            setReplyingTo(replyingTo === comment.id ? null : comment.id);
-                            setReplyText('');
-                          }}
-                        >
-                          <MessageCircle size={16} color={colors.text.secondary} />
-                          <Text style={styles.commentActionText}>Reply</Text>
-                        </TouchableOpacity>
-                        {!isOwner && (
-                          <TouchableOpacity
-                            style={styles.commentActionButton}
-                            onPress={() => setReportingComment({ id: comment.id, userId: comment.userId })}
-                          >
-                            <Flag size={14} color={colors.danger} />
-                          </TouchableOpacity>
-                        )}
-                        <Text style={styles.commentTime}>{formatTimeAgo(comment.createdAt)}</Text>
-                      </View>
-                      
-                      {/* Replies */}
-                      {hasReplies && (
-                        <TouchableOpacity
-                          style={styles.viewRepliesButton}
-                          onPress={() => {
-                            const newExpanded = new Set(expandedReplies);
-                            if (showReplies) {
-                              newExpanded.delete(comment.id);
-                            } else {
-                              newExpanded.add(comment.id);
-                            }
-                            setExpandedReplies(newExpanded);
-                          }}
-                        >
-                          <Text style={styles.viewRepliesText}>
-                            {showReplies ? 'Hide' : 'View'} {comment.replies.length} {comment.replies.length === 1 ? 'reply' : 'replies'}
-                          </Text>
-                        </TouchableOpacity>
-                      )}
-                      
-                      {showReplies && comment.replies && comment.replies.map((reply: any) => {
-                        const isReplyOwner = reply.userId === currentUser?.id;
-                        const isReplyLiked = reply.likes?.includes(currentUser?.id || '') || false;
-                        return (
-                          <View key={reply.id} style={styles.reply}>
-                            <View style={styles.replyHeader}>
-                              {reply.userAvatar ? (
-                                <Image
-                                  source={{ uri: adaptImage(reply.userAvatar, 'avatar') }}
-                                  cachePolicy="disk"
-                                  style={styles.replyAvatar}
-                                />
-                              ) : (
-                                <View style={styles.replyAvatarPlaceholder}>
-                                  <Text style={styles.replyAvatarPlaceholderText}>
-                                    {reply.userName.charAt(0)}
-                                  </Text>
-                                </View>
-                              )}
-                              <View style={styles.replyContent}>
-                                <View style={styles.commentHeaderRow}>
-                                  <Text style={styles.commentUserName}>{reply.userName}</Text>
-                                  {isReplyOwner && (
-                                    <View style={styles.commentActions}>
-                                      {editingComment === reply.id ? (
-                                        <>
-                                          <TouchableOpacity
-                                            onPress={() => {
-                                              setEditingComment(null);
-                                              setEditCommentText('');
-                                            }}
-                                          >
-                                            <Text style={styles.commentActionText}>Cancel</Text>
-                                          </TouchableOpacity>
-                                          <TouchableOpacity
-                                            onPress={() => handleSaveEdit(reply.id)}
-                                          >
-                                            <Text style={[styles.commentActionText, styles.commentActionSave]}>Save</Text>
-                                          </TouchableOpacity>
-                                        </>
-                                      ) : (
-                                        <>
-                                          <TouchableOpacity
-                                            onPress={() => {
-                                            // Prevent editing sticker comments
-                                            if (reply.messageType === 'sticker') {
-                                              Alert.alert('Cannot Edit', 'Sticker comments cannot be edited. You can delete them instead.');
-                                              return;
-                                            }
-                                            setEditingComment(reply.id);
-                                            setEditCommentText(reply.content);
-                                            }}
-                                          >
-                                            <Edit2 size={12} color={colors.text.secondary} />
-                                          </TouchableOpacity>
-                                          <TouchableOpacity
-                                            onPress={() => handleDeleteComment(reply.id)}
-                                          >
-                                            <Trash2 size={12} color={colors.danger} />
-                                          </TouchableOpacity>
-                                        </>
-                                      )}
-                                    </View>
-                                  )}
-                                </View>
-                                {editingComment === reply.id ? (
-                                  <TextInput
-                                    style={styles.commentEditInput}
-                                    value={editCommentText}
-                                    onChangeText={setEditCommentText}
-                                    multiline
-                                    placeholderTextColor={colors.text.tertiary}
-                                  />
-                                ) : (
-                                  <>
-                                    {reply.messageType === 'sticker' && reply.stickerImageUrl ? (
-                                      <View style={styles.commentStickerContainer}>
-                                        <Image
-                                          source={{ uri: adaptImage(reply.stickerImageUrl, 'feed') }}
-                                          cachePolicy="disk"
-                                          style={styles.commentSticker}
-                                          contentFit="contain"
-                                        />
-                                      </View>
-                                    ) : (
-                                      <Text style={styles.commentText}>{reply.content}</Text>
-                                    )}
-                                  </>
-                                )}
-                                <View style={styles.commentActionsRow}>
-                                  <TouchableOpacity
-                                    style={styles.commentActionButton}
-                                    onPress={() => toggleCommentLike(reply.id, reelId)}
-                                  >
-                                    <Heart
-                                      size={14}
-                                      color={isReplyLiked ? colors.danger : colors.text.secondary}
-                                      fill={isReplyLiked ? colors.danger : 'transparent'}
-                                    />
-                                    <Text style={[styles.commentActionCount, isReplyLiked && styles.commentActionCountActive]}>
-                                      {reply.likes?.length || 0}
-                                    </Text>
-                                  </TouchableOpacity>
-                                  <Text style={styles.commentTime}>{formatTimeAgo(reply.createdAt)}</Text>
-                                </View>
-                              </View>
-                            </View>
-                          </View>
-                        );
-                      })}
-                      
-                      {/* Reply Input */}
-                      {replyingTo === comment.id && (
-                        <View style={styles.replyInputContainer}>
-                          {selectedSticker && (
-                            <View style={styles.stickerPreview}>
-                              <Image source={{ uri: adaptImage(selectedSticker.imageUrl, 'feed') }} style={styles.previewSticker} />
-                              <TouchableOpacity
-                                style={styles.removeStickerButton}
-                                onPress={() => setSelectedSticker(null)}
-                              >
-                                <X size={16} color={colors.text.white} />
-                              </TouchableOpacity>
-                            </View>
-                          )}
-                          <View style={styles.replyInputRow}>
-                            <TouchableOpacity
-                              style={styles.stickerButton}
-                              onPress={() => setShowStickerPicker(true)}
-                              activeOpacity={0.7}
-                            >
-                              <Smile size={20} color={colors.text.secondary} />
-                            </TouchableOpacity>
-                            <TextInput
-                              style={styles.replyInput}
-                              placeholder={`Reply to ${comment.userName}...`}
-                              placeholderTextColor={colors.text.tertiary}
-                              value={replyText}
-                              onChangeText={setReplyText}
-                              multiline
-                            />
-                          </View>
-                          <View style={styles.replyInputActions}>
-                            <TouchableOpacity
-                              onPress={() => {
-                                setReplyingTo(null);
-                                setReplyText('');
-                                setSelectedSticker(null);
-                              }}
-                            >
-                              <Text style={styles.commentActionText}>Cancel</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              onPress={handleSubmit}
-                              disabled={!replyText.trim() && !selectedSticker}
-                            >
-                              <Text style={[styles.commentActionText, (!replyText.trim() && !selectedSticker) && styles.commentActionTextDisabled]}>
-                                Reply
-                              </Text>
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                </View>
-              );
-            })
-          )}
-        </ScrollView>
-
-        {!replyingTo && (
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.commentInputContainer}
-          >
-            {selectedSticker && (
-              <View style={styles.stickerPreview}>
-                <Image source={{ uri: adaptImage(selectedSticker.imageUrl, 'feed') }} style={styles.previewSticker} />
-                <TouchableOpacity
-                  style={styles.removeStickerButton}
-                  onPress={() => setSelectedSticker(null)}
-                >
-                  <X size={16} color={colors.text.white} />
-                </TouchableOpacity>
-              </View>
-            )}
-            <View style={styles.commentInputRow}>
-              <TouchableOpacity
-                style={styles.stickerButton}
-                onPress={() => setShowStickerPicker(true)}
-                activeOpacity={0.7}
-              >
-                <Smile size={24} color={colors.text.secondary} />
-              </TouchableOpacity>
-              <TextInput
-                style={styles.commentInput}
-                placeholder="Write a comment..."
-                placeholderTextColor={colors.text.tertiary}
-                value={commentText}
-                onChangeText={setCommentText}
-                multiline
-              />
-              <TouchableOpacity
-                style={[
-                  styles.sendButton,
-                  (!commentText.trim() && !selectedSticker) && styles.sendButtonDisabled,
-                ]}
-                onPress={handleSubmit}
-                disabled={!commentText.trim() && !selectedSticker}
-              >
-                <Text
-                  style={[
-                    styles.sendButtonText,
-                    (!commentText.trim() && !selectedSticker) && styles.sendButtonTextDisabled,
-                  ]}
-                >
-                  Send
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </KeyboardAvoidingView>
-        )}
-      </SafeAreaView>
-
-      {/* Report Comment Modal */}
-      <ReportContentModal
-        visible={!!reportingComment}
-        onClose={() => setReportingComment(null)}
-        contentType="comment"
-        contentId={reportingComment?.id}
-        reportedUserId={reportingComment?.userId}
-        onReport={reportContent}
-        colors={colors}
-      />
-
-      {/* Sticker Picker */}
-      <StickerPicker
-        visible={showStickerPicker}
-        onClose={() => setShowStickerPicker(false)}
-        onSelectSticker={(sticker: Sticker) => {
-          setSelectedSticker({ id: sticker.id, imageUrl: sticker.imageUrl });
-          setCommentText(''); // Clear text when sticker is selected
-          setReplyText(''); // Clear reply text when sticker is selected
-          setShowStickerPicker(false);
-        }}
-      />
-    </Modal>
-  );
-}

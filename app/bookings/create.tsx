@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -60,6 +60,7 @@ export default function CreateBookingScreen() {
   const [locationNotes, setLocationNotes] = useState('');
   const [bookingNotes, setBookingNotes] = useState('');
   const [pricing, setPricing] = useState<{ rate?: number; currency?: string } | null>(null);
+  const loadingProfessionalsForRoleRef = useRef<Set<string>>(new Set());
 
   const locationTypes: { value: LocationType; label: string; icon: typeof Video }[] = [
     { value: 'online', label: 'Online', icon: Video },
@@ -75,7 +76,7 @@ export default function CreateBookingScreen() {
 
   useEffect(() => {
     if (professionalIdParam && selectedRole) {
-      loadProfessionalDetails();
+      loadProfessionalDetails(selectedRole);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load when params change
   }, [professionalIdParam, selectedRole]);
@@ -90,11 +91,20 @@ export default function CreateBookingScreen() {
   const loadRoles = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      const rolesQuery = supabase
         .from('professional_roles')
         .select('*')
         .eq('is_active', true)
         .order('display_order', { ascending: true });
+      const profileQuery = professionalIdParam
+        ? supabase
+            .from('professional_profiles')
+            .select('role_id, role:professional_roles(*)')
+            .eq('id', professionalIdParam)
+            .single()
+        : Promise.resolve({ data: null, error: null } as any);
+
+      const [{ data, error }, { data: profile }] = await Promise.all([rolesQuery, profileQuery]);
 
       if (error) throw error;
 
@@ -102,12 +112,6 @@ export default function CreateBookingScreen() {
 
       // If professional ID is provided, try to find their role
       if (professionalIdParam) {
-        const { data: profile } = await supabase
-          .from('professional_profiles')
-          .select('role_id, role:professional_roles(*)')
-          .eq('id', professionalIdParam)
-          .single();
-
         if (profile?.role_id) {
           const role = data?.find((r) => r.id === profile.role_id);
           if (role) {
@@ -123,13 +127,13 @@ export default function CreateBookingScreen() {
     }
   };
 
-  const loadProfessionalDetails = async () => {
-    if (!professionalIdParam || !selectedRole) return;
+  const loadProfessionalDetails = async (role: ProfessionalRole = selectedRole as ProfessionalRole) => {
+    if (!professionalIdParam || !role) return;
 
     try {
       const matches = await findMatchingProfessionals(
-        {
-          roleId: selectedRole.id,
+          {
+          roleId: role.id,
           requiresOnlineOnly: false, // Include offline professionals for bookings
         },
         10
@@ -153,11 +157,11 @@ export default function CreateBookingScreen() {
           .eq('id', professionalIdParam)
           .single();
 
-        if (data && selectedRole) {
+        if (data && role) {
           const statusData = Array.isArray(data.status) ? data.status[0] : data.status;
           const match: ProfessionalMatch = {
             profile: data as any,
-            role: selectedRole,
+            role,
             status: statusData || { status: 'offline', current_session_count: 0 } as any,
             matchScore: 100,
             matchReasons: ['Selected professional'],
@@ -197,9 +201,11 @@ export default function CreateBookingScreen() {
 
     if (professionalIdParam) {
       // Professional already selected, just load details
-      await loadProfessionalDetails();
+      await loadProfessionalDetails(role);
     } else {
       // Load available professionals for this role
+      if (loadingProfessionalsForRoleRef.current.has(role.id)) return;
+      loadingProfessionalsForRoleRef.current.add(role.id);
       try {
         const matches = await findMatchingProfessionals(
           {
@@ -212,6 +218,8 @@ export default function CreateBookingScreen() {
       } catch (error: any) {
         console.error('Error loading professionals:', error);
         Alert.alert('Error', 'Failed to load available professionals');
+      } finally {
+        loadingProfessionalsForRoleRef.current.delete(role.id);
       }
     }
   };
@@ -295,17 +303,13 @@ export default function CreateBookingScreen() {
       let conversationId = conversationIdParam;
       if (!conversationId) {
         // Create conversation with professional's user account
-        const { data: profile } = await supabase
-          .from('professional_profiles')
-          .select('user_id')
-          .eq('id', selectedProfessional.profile.id)
-          .single();
+        const professionalUserId = selectedProfessional.profile.userId;
 
-        if (!profile?.user_id) {
+        if (!professionalUserId) {
           throw new Error('Professional user not found');
         }
 
-        const conversation = await createOrGetConversation(profile.user_id);
+        const conversation = await createOrGetConversation(professionalUserId);
         if (!conversation) {
           throw new Error('Failed to create conversation');
         }
@@ -323,6 +327,8 @@ export default function CreateBookingScreen() {
         locationAddress: locationType === 'in_person' ? address : undefined,
         locationNotes: locationNotes.trim() || undefined,
         bookingNotes: bookingNotes.trim() || undefined,
+        bookingFeeAmount: pricing?.rate ?? null,
+        bookingFeeCurrency: pricing?.currency ?? null,
       });
 
       if (result.session) {

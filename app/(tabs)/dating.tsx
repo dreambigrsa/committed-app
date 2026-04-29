@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Dimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Heart, X, Star, Settings, Users, Sparkles, Zap, RotateCcw, Crown, Sliders, RefreshCw } from 'lucide-react-native';
@@ -20,6 +21,15 @@ import DatingSwipeCard from '@/components/DatingSwipeCard';
 import MatchCelebrationModal from '@/components/MatchCelebrationModal';
 import PremiumModal from '@/components/PremiumModal';
 const MAX_VISIBLE_CARDS = 3;
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const IS_COMPACT_DATING_SCREEN = SCREEN_WIDTH < 340 || SCREEN_HEIGHT < 620;
+const DATING_CARD_WIDTH = SCREEN_WIDTH - (SCREEN_WIDTH < 340 ? 24 : 32);
+const DATING_CARD_HEIGHT = Math.min(
+  SCREEN_HEIGHT * (SCREEN_HEIGHT < 620 ? 0.64 : 0.68),
+  DATING_CARD_WIDTH * (SCREEN_WIDTH < 340 ? 1.5 : 1.6)
+);
+const ACTION_ICON_SIZE = IS_COMPACT_DATING_SCREEN ? 22 : 32;
+const SECONDARY_ACTION_ICON_SIZE = IS_COMPACT_DATING_SCREEN ? 18 : 24;
 
 export default function DatingScreen() {
   const router = useRouter();
@@ -31,17 +41,24 @@ export default function DatingScreen() {
   const [swipedProfiles, setSwipedProfiles] = useState<Set<string>>(new Set());
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [matchedUser, setMatchedUser] = useState<any>(null);
+  const [advanceAfterMatchModal, setAdvanceAfterMatchModal] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [premiumFeature, setPremiumFeature] = useState<{ name?: string; description?: string }>({});
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const loadRequestIdRef = useRef(0);
+  const swipingProfilesRef = useRef<Set<string>>(new Set());
 
   const [userProfile, setUserProfile] = useState<any>(null);
   const [discovery, setDiscovery] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const loadDatingData = useCallback(async () => {
+    const requestId = ++loadRequestIdRef.current;
+
     if (!currentUser) {
-      setIsLoading(false);
+      if (requestId === loadRequestIdRef.current) {
+        setIsLoading(false);
+      }
       return;
     }
 
@@ -53,21 +70,16 @@ export default function DatingScreen() {
       });
       
       console.log('Profile loaded:', profile ? 'Found' : 'Not found');
+      if (requestId !== loadRequestIdRef.current) return;
       setUserProfile(profile);
 
       if (profile && profile.id) {
         // Only load discovery if profile exists
         try {
-          // First try without including passed profiles
-          let discoveryData = await DatingService.getDatingDiscovery();
-          
-          // If no profiles found, try including passed profiles
-          if (!discoveryData.profiles || discoveryData.profiles.length === 0) {
-            console.log('No new profiles found, loading passed profiles...');
-            discoveryData = await DatingService.getDatingDiscovery({ includePassed: true });
-          }
+          const discoveryData = await DatingService.getDatingDiscovery();
           
           console.log('Discovery loaded:', discoveryData.profiles?.length || 0, 'profiles');
+          if (requestId !== loadRequestIdRef.current) return;
           // Normalize data structure for components
           const normalizedProfiles = (discoveryData.profiles || []).map((p: any) => ({
             ...p,
@@ -81,28 +93,28 @@ export default function DatingScreen() {
           }));
           setDiscovery(normalizedProfiles);
         } catch (discoveryError: any) {
+          if (requestId !== loadRequestIdRef.current) return;
           console.error('Error loading discovery:', discoveryError);
           setDiscovery([]);
         }
       } else {
+        if (requestId !== loadRequestIdRef.current) return;
         console.log('No profile found, showing setup screen');
         setDiscovery([]);
       }
     } catch (error: any) {
+      if (requestId !== loadRequestIdRef.current) return;
       console.error('Error loading dating data:', error);
       setUserProfile(null);
       setDiscovery([]);
     } finally {
-      setIsLoading(false);
+      if (requestId === loadRequestIdRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [currentUser]);
 
-  // Load data on mount
-  useEffect(() => {
-    loadDatingData();
-  }, [loadDatingData]);
-
-  // Reload when screen comes into focus (e.g., after creating profile)
+  // Load/reload when screen comes into focus (e.g., after creating profile).
   useFocusEffect(
     useCallback(() => {
       loadDatingData();
@@ -166,6 +178,7 @@ export default function DatingScreen() {
                 name: matchedUserData?.full_name || 'Someone',
                 photo: photo,
               });
+              setAdvanceAfterMatchModal(false);
               setShowMatchModal(true);
             } catch (error) {
               console.error('Error loading matched user info:', error);
@@ -175,6 +188,7 @@ export default function DatingScreen() {
                 name: 'Someone',
                 photo: undefined,
               });
+              setAdvanceAfterMatchModal(false);
               setShowMatchModal(true);
             }
           }
@@ -212,12 +226,19 @@ export default function DatingScreen() {
             photo: undefined,
           });
         }
+        setAdvanceAfterMatchModal(true);
         setShowMatchModal(true);
         // Don't advance card yet - let user see the match
       } else {
         handleSwipeComplete();
       }
     } catch (error: any) {
+      swipingProfilesRef.current.delete(likedUserId);
+      setSwipedProfiles((prev) => {
+        const next = new Set(prev);
+        next.delete(likedUserId);
+        return next;
+      });
       console.error('Error liking user:', error);
       const errorMessage = error?.message || '';
       
@@ -250,6 +271,12 @@ export default function DatingScreen() {
       await DatingService.passUser(passedUserId);
       handleSwipeComplete();
     } catch (error: any) {
+      swipingProfilesRef.current.delete(passedUserId);
+      setSwipedProfiles((prev) => {
+        const next = new Set(prev);
+        next.delete(passedUserId);
+        return next;
+      });
       Alert.alert('Error', error.message || 'Failed to pass user');
     }
   };
@@ -264,26 +291,34 @@ export default function DatingScreen() {
   }, []);
 
   const handleSwipeComplete = () => {
+    const completedProfile = discovery[currentIndex];
+    const completedUserId = getProfileUserId(completedProfile);
+    if (completedUserId) {
+      swipingProfilesRef.current.delete(completedUserId);
+    }
     setCurrentIndex((prev) => prev + 1);
   };
 
   const handleSwipeLeft = (profile: any) => {
-    const userId = (profile as any).user_id || profile.user?.id || profile.userId;
-    if (swipedProfiles.has(userId)) return;
+    const userId = getProfileUserId(profile);
+    if (!userId || swipingProfilesRef.current.has(userId) || swipedProfiles.has(userId)) return;
+    swipingProfilesRef.current.add(userId);
     setSwipedProfiles((prev) => new Set(prev).add(userId));
     handlePass(userId);
   };
 
   const handleSwipeRight = (profile: any) => {
-    const userId = (profile as any).user_id || profile.user?.id || profile.userId;
-    if (swipedProfiles.has(userId)) return;
+    const userId = getProfileUserId(profile);
+    if (!userId || swipingProfilesRef.current.has(userId) || swipedProfiles.has(userId)) return;
+    swipingProfilesRef.current.add(userId);
     setSwipedProfiles((prev) => new Set(prev).add(userId));
     handleLike(userId, false);
   };
 
   const handleSuperLike = (profile: any) => {
-    const userId = (profile as any).user_id || profile.user?.id || profile.userId;
-    if (swipedProfiles.has(userId)) return;
+    const userId = getProfileUserId(profile);
+    if (!userId || swipingProfilesRef.current.has(userId) || swipedProfiles.has(userId)) return;
+    swipingProfilesRef.current.add(userId);
     setSwipedProfiles((prev) => new Set(prev).add(userId));
     handleLike(userId, true);
   };
@@ -292,6 +327,7 @@ export default function DatingScreen() {
     // Reset state and reload discovery profiles
     setCurrentIndex(0);
     setSwipedProfiles(new Set());
+    swipingProfilesRef.current.clear();
     await loadDatingData();
   };
 
@@ -323,7 +359,8 @@ export default function DatingScreen() {
         setSwipedProfiles((prev) => {
           const newSet = new Set(prev);
           if (userId) {
-          newSet.delete(userId);
+            newSet.delete(userId);
+            swipingProfilesRef.current.delete(userId);
           }
           return newSet;
         });
@@ -410,6 +447,45 @@ export default function DatingScreen() {
     }
   };
 
+  const renderDatingHeader = () => (
+    <View style={styles.header}>
+      <View style={styles.headerBrand}>
+        <View style={styles.headerBrandIcon}>
+          <Sparkles size={18} color={colors.primary} />
+        </View>
+        <View style={styles.headerCopy}>
+          <Text style={styles.headerTitle}>Discover</Text>
+          <Text style={styles.headerSubtitle}>Find something real</Text>
+        </View>
+      </View>
+      <View style={styles.headerRightActions}>
+        <TouchableOpacity onPress={() => router.push('/dating/matches')} style={styles.headerIconButton}>
+          <Users size={20} color={colors.text.primary} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => router.push('/dating/likes-received')} style={styles.headerIconButton}>
+          <Heart size={20} color={colors.danger} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => router.push('/dating/filters')} style={styles.headerIconButton}>
+          <Sliders size={20} color={colors.text.primary} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => router.push('/dating/profile-setup')} style={styles.headerIconButton}>
+          <Settings size={20} color={colors.text.primary} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Finding your matches...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   // Check if user needs to create profile
   if (!userProfile) {
     return (
@@ -435,17 +511,6 @@ export default function DatingScreen() {
     );
   }
 
-  if (isLoading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Finding your matches...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   const handleResetPassedProfiles = async () => {
     try {
       await DatingService.clearPassedProfiles();
@@ -459,33 +524,29 @@ export default function DatingScreen() {
   if (!discovery || discovery.length === 0 || currentIndex >= discovery.length) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Discover</Text>
-          <View style={styles.headerActions}>
-            <TouchableOpacity onPress={() => router.push('/dating/matches')} style={styles.headerButton}>
-              <Users size={24} color={colors.text.primary} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => router.push('/dating/filters')} style={styles.headerButton}>
-              <Sliders size={24} color={colors.text.primary} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => router.push('/dating/profile-setup')} style={styles.headerButton}>
-              <Settings size={24} color={colors.text.primary} />
-            </TouchableOpacity>
-          </View>
-        </View>
+        {renderDatingHeader()}
         <View style={styles.emptyContainer}>
-          <Sparkles size={64} color={colors.text.tertiary} />
+          <View style={styles.emptyIconBadge}>
+            <Sparkles size={42} color={colors.primary} />
+          </View>
           <Text style={styles.emptyTitle}>You're All Caught Up!</Text>
           <Text style={styles.emptyText}>
             You've seen everyone in your area. Check back later for new people, adjust your preferences, or see passed profiles again!
           </Text>
           <View style={styles.emptyActions}>
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={() => router.push('/dating/filters')}
-          >
-            <Text style={styles.secondaryButtonText}>Adjust Filters</Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={() => router.push('/dating/filters')}
+            >
+              <Text style={styles.secondaryButtonText}>Adjust Filters</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={handleRefresh}
+            >
+              <RefreshCw size={18} color={colors.text.primary} />
+              <Text style={styles.secondaryButtonText}>Refresh</Text>
+            </TouchableOpacity>
             <TouchableOpacity
               style={[styles.secondaryButton, styles.resetPassedButton]}
               onPress={handleResetPassedProfiles}
@@ -501,44 +562,16 @@ export default function DatingScreen() {
 
   // Get visible cards (stack)
   const visibleProfiles = discovery.slice(currentIndex, currentIndex + MAX_VISIBLE_CARDS);
+  const topProfile = visibleProfiles[0];
+  const topProfileUserId = getProfileUserId(topProfile);
+  const isTopProfileBusy = !!topProfileUserId && swipingProfilesRef.current.has(topProfileUserId);
+  const actionButtonsDisabled = isLoading || isTopProfileBusy || !topProfile;
 
   return (
     <SafeAreaView style={styles.container}>
       <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
         {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <TouchableOpacity onPress={() => router.push('/dating/matches')} style={styles.headerIconButton}>
-              <Users size={26} color={colors.text.primary} />
-            </TouchableOpacity>
-          </View>
-          <View style={styles.headerCenter}>
-            <Text style={styles.headerTitle}>Discover</Text>
-          </View>
-          <View style={styles.headerRight}>
-            <View style={styles.headerRightActions}>
-              <TouchableOpacity 
-                onPress={handleRefresh}
-                style={styles.headerIconButton}
-                disabled={isLoading}
-              >
-                <RefreshCw size={24} color={isLoading ? colors.text.tertiary : colors.text.primary} />
-              </TouchableOpacity>
-              <TouchableOpacity 
-                onPress={() => router.push('/dating/likes-received')} 
-                style={styles.headerIconButton}
-              >
-                <Heart size={24} color={colors.danger} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => router.push('/dating/filters')} style={styles.headerIconButton}>
-                <Sliders size={24} color={colors.text.primary} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => router.push('/dating/profile-setup')} style={styles.headerIconButton}>
-                <Settings size={26} color={colors.text.primary} />
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+        {renderDatingHeader()}
 
         {/* Card Stack */}
         <View style={styles.cardStackContainer}>
@@ -571,35 +604,35 @@ export default function DatingScreen() {
             disabled={currentIndex === 0 || isLoading}
           >
             <View style={styles.actionButtonInner}>
-              <RotateCcw size={24} color={currentIndex === 0 ? colors.text.tertiary : colors.text.primary} />
+              <RotateCcw size={SECONDARY_ACTION_ICON_SIZE} color={currentIndex === 0 ? colors.text.tertiary : colors.text.primary} />
             </View>
           </TouchableOpacity>
 
           {/* Pass */}
           <TouchableOpacity
-            style={[styles.actionButton, styles.passButton]}
-            onPress={() => visibleProfiles[0] && handleSwipeLeft(visibleProfiles[0])}
-            disabled={false}
+            style={[styles.actionButton, styles.passButton, actionButtonsDisabled && styles.actionButtonDisabled]}
+            onPress={() => topProfile && handleSwipeLeft(topProfile)}
+            disabled={actionButtonsDisabled}
           >
-            <X size={32} color="#FFFFFF" strokeWidth={3} />
+            <X size={ACTION_ICON_SIZE} color="#FFFFFF" strokeWidth={3} />
           </TouchableOpacity>
 
           {/* Super Like */}
           <TouchableOpacity
-            style={[styles.actionButton, styles.superLikeButton]}
-            onPress={() => visibleProfiles[0] && handleSuperLike(visibleProfiles[0])}
-            disabled={false}
+            style={[styles.actionButton, styles.superLikeButton, actionButtonsDisabled && styles.actionButtonDisabled]}
+            onPress={() => topProfile && handleSuperLike(topProfile)}
+            disabled={actionButtonsDisabled}
           >
-            <Star size={28} color="#FFFFFF" fill="#FFFFFF" />
+            <Star size={IS_COMPACT_DATING_SCREEN ? 22 : 28} color="#FFFFFF" fill="#FFFFFF" />
           </TouchableOpacity>
 
           {/* Like */}
           <TouchableOpacity
-            style={[styles.actionButton, styles.likeButton]}
-            onPress={() => visibleProfiles[0] && handleSwipeRight(visibleProfiles[0])}
-            disabled={false}
+            style={[styles.actionButton, styles.likeButton, actionButtonsDisabled && styles.actionButtonDisabled]}
+            onPress={() => topProfile && handleSwipeRight(topProfile)}
+            disabled={actionButtonsDisabled}
           >
-            <Heart size={32} color="#FFFFFF" fill="#FFFFFF" />
+            <Heart size={ACTION_ICON_SIZE} color="#FFFFFF" fill="#FFFFFF" />
           </TouchableOpacity>
 
           {/* Boost (Premium) */}
@@ -607,7 +640,7 @@ export default function DatingScreen() {
             style={[styles.actionButton, styles.boostButton]}
             onPress={handleBoost}
           >
-            <Zap size={24} color={colors.accent} fill={colors.accent} />
+            <Zap size={SECONDARY_ACTION_ICON_SIZE} color={colors.accent} fill={colors.accent} />
           </TouchableOpacity>
         </View>
 
@@ -630,7 +663,10 @@ export default function DatingScreen() {
         currentUserPhoto={currentUser?.profilePicture}
         onClose={() => {
           setShowMatchModal(false);
-          handleSwipeComplete();
+          if (advanceAfterMatchModal) {
+            handleSwipeComplete();
+            setAdvanceAfterMatchModal(false);
+          }
         }}
         onMessageSent={() => {
           // Optionally navigate to matches or conversation after sending message
@@ -649,6 +685,10 @@ export default function DatingScreen() {
   );
 }
 
+function getProfileUserId(profile: any): string | undefined {
+  return profile?.user_id || profile?.user?.id || profile?.userId;
+}
+
 const createStyles = (colors: any) =>
   StyleSheet.create({
     container: {
@@ -662,15 +702,36 @@ const createStyles = (colors: any) =>
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      paddingHorizontal: 16,
-      paddingVertical: 12,
+      paddingHorizontal: IS_COMPACT_DATING_SCREEN ? 10 : 14,
+      paddingVertical: IS_COMPACT_DATING_SCREEN ? 7 : 10,
       borderBottomWidth: 1,
       borderBottomColor: colors.border.light,
       backgroundColor: colors.background.primary,
-      minHeight: 56,
+      minHeight: IS_COMPACT_DATING_SCREEN ? 48 : 62,
+    },
+    headerBrand: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: IS_COMPACT_DATING_SCREEN ? 7 : 10,
+      minWidth: 0,
+    },
+    headerBrandIcon: {
+      width: IS_COMPACT_DATING_SCREEN ? 30 : 38,
+      height: IS_COMPACT_DATING_SCREEN ? 30 : 38,
+      borderRadius: IS_COMPACT_DATING_SCREEN ? 15 : 19,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primary + '12',
+      borderWidth: 1,
+      borderColor: colors.primary + '25',
+    },
+    headerCopy: {
+      flex: 1,
+      minWidth: 0,
     },
     headerLeft: {
-      width: 44,
+      width: IS_COMPACT_DATING_SCREEN ? 32 : 44,
       alignItems: 'flex-start',
     },
     headerCenter: {
@@ -679,26 +740,34 @@ const createStyles = (colors: any) =>
       paddingHorizontal: 8, // Add padding to prevent overlap
     },
     headerRight: {
-      minWidth: 180, // Increased to fit all buttons
+      minWidth: IS_COMPACT_DATING_SCREEN ? 132 : 180,
       alignItems: 'flex-end',
     },
     headerRightActions: {
       flexDirection: 'row',
-      gap: 6, // Reduced gap to fit more buttons
+      gap: IS_COMPACT_DATING_SCREEN ? 4 : 7,
     },
     headerTitle: {
-      fontSize: 28, // Slightly smaller to fit better
-      fontWeight: 'bold',
+      fontSize: IS_COMPACT_DATING_SCREEN ? 17 : 24,
+      fontWeight: '900',
       color: colors.text.primary,
-      letterSpacing: -0.5,
+      letterSpacing: 0,
+    },
+    headerSubtitle: {
+      fontSize: IS_COMPACT_DATING_SCREEN ? 10 : 12,
+      fontWeight: '600',
+      color: colors.text.secondary,
+      marginTop: 1,
     },
     headerIconButton: {
-      width: 40, // Slightly smaller buttons
-      height: 40,
-      borderRadius: 20,
+      width: IS_COMPACT_DATING_SCREEN ? 30 : 38,
+      height: IS_COMPACT_DATING_SCREEN ? 30 : 38,
+      borderRadius: IS_COMPACT_DATING_SCREEN ? 15 : 19,
       backgroundColor: colors.background.secondary,
       justifyContent: 'center',
       alignItems: 'center',
+      borderWidth: 1,
+      borderColor: colors.border.light,
     },
     headerActions: {
       flexDirection: 'row',
@@ -708,11 +777,12 @@ const createStyles = (colors: any) =>
       padding: 4,
     },
     cardStackContainer: {
-      flex: 1,
-      justifyContent: 'center',
+      height: DATING_CARD_HEIGHT + (IS_COMPACT_DATING_SCREEN ? 8 : 16),
+      justifyContent: 'flex-start',
       alignItems: 'center',
-      paddingHorizontal: 16,
-      paddingBottom: 160,
+      paddingHorizontal: IS_COMPACT_DATING_SCREEN ? 12 : 16,
+      paddingTop: IS_COMPACT_DATING_SCREEN ? 4 : 8,
+      paddingBottom: 0,
       overflow: 'hidden',
     },
     loadingContainer: {
@@ -730,21 +800,33 @@ const createStyles = (colors: any) =>
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
-      paddingHorizontal: 40,
-      gap: 20,
+      paddingHorizontal: 28,
+      paddingVertical: 24,
+      gap: 18,
+      backgroundColor: colors.background.primary,
+    },
+    emptyIconBadge: {
+      width: 92,
+      height: 92,
+      borderRadius: 46,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primary + '15',
+      borderWidth: 1,
+      borderColor: colors.primary + '35',
     },
     iconContainer: {
       marginBottom: 8,
     },
     emptyTitle: {
-      fontSize: 28,
+      fontSize: IS_COMPACT_DATING_SCREEN ? 22 : 28,
       fontWeight: 'bold',
       color: colors.text.primary,
       textAlign: 'center',
       marginBottom: 8,
     },
     emptyText: {
-      fontSize: 16,
+      fontSize: IS_COMPACT_DATING_SCREEN ? 14 : 16,
       color: colors.text.secondary,
       textAlign: 'center',
       lineHeight: 24,
@@ -797,18 +879,18 @@ const createStyles = (colors: any) =>
       flexDirection: 'row',
       justifyContent: 'center',
       alignItems: 'center',
-      gap: 12,
-      paddingVertical: 24,
-      paddingBottom: 32,
-      paddingHorizontal: 20,
+      gap: IS_COMPACT_DATING_SCREEN ? 8 : 12,
+      paddingTop: IS_COMPACT_DATING_SCREEN ? 4 : 6,
+      paddingBottom: IS_COMPACT_DATING_SCREEN ? 8 : 12,
+      paddingHorizontal: IS_COMPACT_DATING_SCREEN ? 10 : 20,
       backgroundColor: colors.background.primary,
       zIndex: 10,
       position: 'relative',
     },
     actionButton: {
-      width: 56,
-      height: 56,
-      borderRadius: 28,
+      width: IS_COMPACT_DATING_SCREEN ? 36 : 52,
+      height: IS_COMPACT_DATING_SCREEN ? 36 : 52,
+      borderRadius: IS_COMPACT_DATING_SCREEN ? 18 : 26,
       justifyContent: 'center',
       alignItems: 'center',
       shadowColor: '#000',
@@ -824,21 +906,21 @@ const createStyles = (colors: any) =>
     },
     passButton: {
       backgroundColor: colors.danger,
-      width: 64,
-      height: 64,
-      borderRadius: 32,
+      width: IS_COMPACT_DATING_SCREEN ? 42 : 62,
+      height: IS_COMPACT_DATING_SCREEN ? 42 : 62,
+      borderRadius: IS_COMPACT_DATING_SCREEN ? 21 : 31,
     },
     superLikeButton: {
       backgroundColor: colors.primary,
-      width: 72,
-      height: 72,
-      borderRadius: 36,
+      width: IS_COMPACT_DATING_SCREEN ? 48 : 68,
+      height: IS_COMPACT_DATING_SCREEN ? 48 : 68,
+      borderRadius: IS_COMPACT_DATING_SCREEN ? 24 : 34,
     },
     likeButton: {
       backgroundColor: colors.success,
-      width: 64,
-      height: 64,
-      borderRadius: 32,
+      width: IS_COMPACT_DATING_SCREEN ? 42 : 62,
+      height: IS_COMPACT_DATING_SCREEN ? 42 : 62,
+      borderRadius: IS_COMPACT_DATING_SCREEN ? 21 : 31,
     },
     actionButtonInner: {
       width: '100%',
@@ -867,14 +949,14 @@ const createStyles = (colors: any) =>
       alignItems: 'center',
       justifyContent: 'center',
       gap: 6,
-      paddingVertical: 8,
+      paddingVertical: IS_COMPACT_DATING_SCREEN ? 5 : 8,
       paddingHorizontal: 16,
       backgroundColor: colors.background.secondary,
       borderTopWidth: 1,
       borderTopColor: colors.border.light,
     },
     premiumText: {
-      fontSize: 14,
+      fontSize: IS_COMPACT_DATING_SCREEN ? 11 : 14,
       fontWeight: '600',
       color: colors.accent,
     },

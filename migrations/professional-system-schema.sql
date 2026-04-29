@@ -506,6 +506,22 @@ CREATE POLICY "Admins can view all applications" ON professional_applications
     )
   );
 
+CREATE POLICY "Admins can update all applications" ON professional_applications
+  FOR UPDATE USING (
+    EXISTS (
+      SELECT 1 FROM users
+      WHERE users.id = auth.uid()
+      AND users.role IN ('admin', 'super_admin', 'moderator')
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM users
+      WHERE users.id = auth.uid()
+      AND users.role IN ('admin', 'super_admin', 'moderator')
+    )
+  );
+
 -- System settings: Public settings visible to all, private settings only to admins
 CREATE POLICY "Anyone can view public system settings" ON professional_system_settings
   FOR SELECT USING (is_public = true);

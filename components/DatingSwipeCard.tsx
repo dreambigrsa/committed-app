@@ -10,11 +10,15 @@ import {
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { MapPin, Shield, CheckCircle2, Heart, X } from 'lucide-react-native';
+import { MapPin, Shield, CheckCircle2, Heart, X, Image as ImageIcon } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const CARD_WIDTH = SCREEN_WIDTH - 32;
-const CARD_HEIGHT = SCREEN_HEIGHT * 0.65; // Reduced from 0.75 to 0.65 to prevent content cutoff
+const IS_COMPACT_HEIGHT = SCREEN_HEIGHT < 620;
+const CARD_WIDTH = SCREEN_WIDTH - (SCREEN_WIDTH < 340 ? 24 : 32);
+const CARD_HEIGHT = Math.min(
+  SCREEN_HEIGHT * (IS_COMPACT_HEIGHT ? 0.64 : 0.68),
+  CARD_WIDTH * (SCREEN_WIDTH < 340 ? 1.5 : 1.6)
+);
 const SWIPE_THRESHOLD = 50; // Lower threshold for easier swiping
 const VELOCITY_THRESHOLD = 0.5; // Velocity threshold for quick swipes (pixels per ms)
 const ROTATION_MULTIPLIER = 0.1;
@@ -56,6 +60,13 @@ export default function DatingSwipeCard({
 
   const photos = profile.photos || [];
   const currentPhoto = photos[currentPhotoIndex]?.photo_url || photos[currentPhotoIndex]?.photoUrl || profile.profile_picture || profile.profilePicture;
+  const displayName = profile.full_name || profile.fullName || 'Profile';
+  const initials = displayName
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part: string) => part.charAt(0).toUpperCase())
+    .join('');
 
   useEffect(() => {
     if (isTop) {
@@ -475,12 +486,24 @@ export default function DatingSwipeCard({
         activeOpacity={0.9}
         onPress={onTap}
       >
-        <ExpoImage
-          source={{ uri: currentPhoto }}
-          style={styles.photo}
-          contentFit="cover"
-          transition={200}
-        />
+        {currentPhoto ? (
+          <ExpoImage
+            source={{ uri: currentPhoto }}
+            style={styles.photo}
+            contentFit="cover"
+            transition={200}
+          />
+        ) : (
+          <View style={[styles.photo, styles.photoPlaceholder]}>
+            {initials ? (
+              <Text style={styles.initialsText}>{initials}</Text>
+            ) : (
+              <View style={styles.initialsBadge}>
+                <ImageIcon size={36} color="#fff" />
+              </View>
+            )}
+          </View>
+        )}
         
         {/* Photo Indicators */}
         {photos.length > 1 && (
@@ -529,7 +552,9 @@ export default function DatingSwipeCard({
         {/* Bottom Info Overlay */}
         <View style={styles.bottomOverlay}>
           <View style={styles.nameRow}>
-            <Text style={styles.name}>{profile.full_name || profile.fullName}</Text>
+            <Text style={styles.name} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78}>
+              {displayName}
+            </Text>
             {profile.age && <Text style={styles.age}>{profile.age}</Text>}
           </View>
           
@@ -621,6 +646,33 @@ const createStyles = (colors: any) =>
       width: '100%',
       height: '100%',
     },
+    photoPlaceholder: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+      backgroundColor: colors.primary,
+    },
+    initialsBadge: {
+      width: SCREEN_WIDTH < 340 ? 84 : 108,
+      height: SCREEN_WIDTH < 340 ? 84 : 108,
+      borderRadius: SCREEN_WIDTH < 340 ? 42 : 54,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primary,
+      borderWidth: 4,
+      borderColor: 'rgba(255,255,255,0.9)',
+    },
+    initialsText: {
+      color: '#fff',
+      fontSize: SCREEN_WIDTH < 340 ? 176 : 230,
+      fontWeight: '900',
+      letterSpacing: 0,
+      opacity: 0.96,
+      textShadowColor: 'rgba(0, 0, 0, 0.25)',
+      textShadowOffset: { width: 0, height: 8 },
+      textShadowRadius: 14,
+      transform: [{ translateY: -CARD_HEIGHT * 0.08 }],
+    },
     photoIndicators: {
       position: 'absolute',
       top: 16,
@@ -661,8 +713,8 @@ const createStyles = (colors: any) =>
       bottom: 0,
       left: 0,
       right: 0,
-      padding: 20,
-      paddingBottom: 24,
+      padding: SCREEN_WIDTH < 340 ? 12 : 18,
+      paddingBottom: SCREEN_WIDTH < 340 ? 14 : 20,
       backgroundColor: 'rgba(0, 0, 0, 0.4)',
     },
     verificationBadges: {
@@ -684,10 +736,11 @@ const createStyles = (colors: any) =>
       flexDirection: 'row',
       alignItems: 'baseline',
       gap: 8,
-      marginBottom: 6,
+      marginBottom: 5,
     },
     name: {
-      fontSize: 32,
+      flexShrink: 1,
+      fontSize: SCREEN_WIDTH < 340 ? 18 : 28,
       fontWeight: 'bold',
       color: '#fff',
       textShadowColor: 'rgba(0, 0, 0, 0.5)',
@@ -695,7 +748,7 @@ const createStyles = (colors: any) =>
       textShadowRadius: 3,
     },
     age: {
-      fontSize: 28,
+      fontSize: SCREEN_WIDTH < 340 ? 18 : 26,
       fontWeight: '600',
       color: 'rgba(255, 255, 255, 0.9)',
     },
@@ -711,10 +764,10 @@ const createStyles = (colors: any) =>
       fontWeight: '500',
     },
     bio: {
-      fontSize: 16,
+      fontSize: SCREEN_WIDTH < 340 ? 11 : 15,
       color: '#fff',
-      lineHeight: 22,
-      marginBottom: 12,
+      lineHeight: SCREEN_WIDTH < 340 ? 15 : 21,
+      marginBottom: SCREEN_WIDTH < 340 ? 8 : 12,
       textShadowColor: 'rgba(0, 0, 0, 0.5)',
       textShadowOffset: { width: 0, height: 1 },
       textShadowRadius: 2,
@@ -722,18 +775,18 @@ const createStyles = (colors: any) =>
     interestsRow: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: 8,
+      gap: SCREEN_WIDTH < 340 ? 5 : 8,
     },
     interestChip: {
       backgroundColor: 'rgba(255, 255, 255, 0.25)',
-      paddingHorizontal: 12,
-      paddingVertical: 6,
+      paddingHorizontal: SCREEN_WIDTH < 340 ? 8 : 12,
+      paddingVertical: SCREEN_WIDTH < 340 ? 4 : 6,
       borderRadius: 20,
       borderWidth: 1,
       borderColor: 'rgba(255, 255, 255, 0.3)',
     },
     interestText: {
-      fontSize: 12,
+      fontSize: SCREEN_WIDTH < 340 ? 9 : 12,
       color: '#fff',
       fontWeight: '600',
     },

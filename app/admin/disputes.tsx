@@ -67,20 +67,78 @@ export default function AdminDisputesScreen() {
 
   const handleResolveDispute = async (disputeId: string, resolution: string) => {
     try {
-      await supabase
+      const dispute = disputes.find((item) => item.id === disputeId);
+      if (!dispute) throw new Error('Dispute not found');
+
+      if (dispute.disputeType === 'end_relationship' && resolution === 'confirmed_by_admin') {
+        const endDate = new Date().toISOString();
+        const { data: relationship, error: relationshipError } = await supabase
+          .from('relationships')
+          .select('id,user_id,partner_user_id')
+          .eq('id', dispute.relationshipId)
+          .maybeSingle();
+
+        if (relationshipError) throw relationshipError;
+        if (!relationship) throw new Error('Relationship not found');
+
+        const relationshipIds = [relationship.id];
+        if (relationship.user_id && relationship.partner_user_id) {
+          const { data: reciprocalRows, error: reciprocalError } = await supabase
+            .from('relationships')
+            .select('id')
+            .eq('user_id', relationship.partner_user_id)
+            .eq('partner_user_id', relationship.user_id)
+            .in('status', ['pending', 'verified']);
+
+          if (reciprocalError) throw reciprocalError;
+          reciprocalRows?.forEach((row: any) => {
+            if (row.id && !relationshipIds.includes(row.id)) relationshipIds.push(row.id);
+          });
+        }
+
+        const { data: endedRows, error: endError } = await supabase
+          .from('relationships')
+          .update({
+            status: 'ended',
+            end_date: endDate,
+          })
+          .in('id', relationshipIds)
+          .select('id,status,end_date');
+
+        if (endError) throw endError;
+        if (!endedRows || endedRows.length === 0) {
+          throw new Error('No relationship rows were ended. Relationship update permission may be missing.');
+        }
+      }
+
+      const finalResolution = resolution === 'confirmed_by_admin'
+        ? 'confirmed_by_admin'
+        : resolution === 'rejected_by_admin'
+          ? 'rejected_by_admin'
+          : resolution;
+
+      const { data, error } = await supabase
         .from('disputes')
         .update({
           status: 'resolved',
-          resolution,
+          resolution: finalResolution,
           resolved_by: currentUser?.id,
           resolved_at: new Date().toISOString(),
         })
-        .eq('id', disputeId);
+        .eq('id', disputeId)
+        .eq('status', 'pending')
+        .select('id,status,resolution')
+        .maybeSingle();
 
-      Alert.alert('Success', 'Dispute resolved');
+      if (error) throw error;
+      if (!data) throw new Error('Dispute was not updated. It may already be resolved.');
+
+      Alert.alert('Success', dispute.disputeType === 'end_relationship' && resolution === 'confirmed_by_admin'
+        ? 'Relationship ended and dispute resolved'
+        : 'Dispute resolved');
       loadDisputes();
-    } catch {
-      Alert.alert('Error', 'Failed to resolve dispute');
+    } catch (error: any) {
+      Alert.alert('Error', error?.message || 'Failed to resolve dispute');
     }
   };
 
@@ -183,17 +241,27 @@ export default function AdminDisputesScreen() {
                   <View style={styles.disputeActions}>
                     <TouchableOpacity
                       style={[styles.actionButton, styles.approveButton]}
-                      onPress={() => handleResolveDispute(dispute.id, 'Approved by admin')}
+                      onPress={() => handleResolveDispute(
+                        dispute.id,
+                        dispute.disputeType === 'end_relationship' ? 'confirmed_by_admin' : 'Approved by admin'
+                      )}
                     >
                       <CheckCircle size={16} color={colors.text.white} />
-                      <Text style={styles.actionButtonText}>Approve</Text>
+                      <Text style={styles.actionButtonText}>
+                        {dispute.disputeType === 'end_relationship' ? 'End' : 'Approve'}
+                      </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.actionButton, styles.rejectButton]}
-                      onPress={() => handleResolveDispute(dispute.id, 'Rejected by admin')}
+                      onPress={() => handleResolveDispute(
+                        dispute.id,
+                        dispute.disputeType === 'end_relationship' ? 'rejected_by_admin' : 'Rejected by admin'
+                      )}
                     >
                       <XCircle size={16} color={colors.text.white} />
-                      <Text style={styles.actionButtonText}>Reject</Text>
+                      <Text style={styles.actionButtonText}>
+                        {dispute.disputeType === 'end_relationship' ? 'Keep Active' : 'Reject'}
+                      </Text>
                     </TouchableOpacity>
                   </View>
                 )}

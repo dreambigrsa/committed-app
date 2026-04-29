@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/lib/supabase';
@@ -10,7 +10,7 @@ import * as ImagePicker from 'expo-image-picker';
 // @ts-ignore - legacy path works at runtime
 import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'expo-image';
-import { Upload, X } from 'lucide-react-native';
+import { ArrowLeft, Upload, X } from 'lucide-react-native';
 import * as PaymentAdminService from '@/lib/payment-admin-service';
 import { assertMediaWithinLimit, getAdaptiveImageQuality, optimizeImageForUpload } from '@/lib/media-optimizer';
 
@@ -393,6 +393,9 @@ export default function PromoteScreen() {
         await updateAdvertisement(adIdParam, payload);
       } else {
         const created = await createAdvertisement(payload as any);
+        if (!created?.id) {
+          throw new Error('Could not create the ad. Please check your details and try again.');
+        }
         adId = created?.id;
       }
 
@@ -449,10 +452,19 @@ export default function PromoteScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.form} contentContainerStyle={{ paddingBottom: 32 }}>
-        <Text style={styles.header}>
-          {adIdParam ? 'Edit Promotion' : isBoostingContent ? 'Boost' : 'Create Ad'}
-        </Text>
+      <Stack.Screen options={{ headerShown: false }} />
+      <View style={styles.topBar}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <ArrowLeft size={22} color={colors.text.primary} />
+        </TouchableOpacity>
+        <View style={styles.topBarCopy}>
+          <Text style={styles.header}>
+            {adIdParam ? 'Edit Promotion' : isBoostingContent ? 'Boost Content' : 'Create Ad'}
+          </Text>
+          <Text style={styles.headerSubtitle}>Build your creative, audience, budget, and payment in one guided flow.</Text>
+        </View>
+      </View>
+      <ScrollView style={styles.form} contentContainerStyle={styles.formContent}>
         <Stepper step={step} total={totalSteps} colors={colors} />
         {loading && <ActivityIndicator color={colors.primary} style={{ marginVertical: 12 }} />}
 
@@ -813,8 +825,8 @@ function Stepper({ step, total, colors }: { step: number; total: number; colors:
 
 function Section({ title, children, colors }: { title: string; children: React.ReactNode; colors: any }) {
   return (
-    <View style={{ marginBottom: 24, backgroundColor: colors.background.secondary, borderRadius: 16, padding: 16 }}>
-      <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 12, color: colors.text.primary }}>{title}</Text>
+    <View style={{ marginBottom: 18, backgroundColor: colors.background.primary, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: colors.border.light, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 1 }}>
+      <Text style={{ fontSize: 17, fontWeight: '800', marginBottom: 14, color: colors.text.primary }}>{title}</Text>
       {children}
     </View>
   );
@@ -875,20 +887,20 @@ function Segment({
   colors: any;
 }) {
   return (
-    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16, backgroundColor: colors.background.secondary, borderRadius: 12, padding: 4 }}>
+    <View style={{ flexDirection: 'row', gap: 6, marginBottom: 16, backgroundColor: colors.background.secondary, borderRadius: 12, padding: 4 }}>
       {options.map((opt) => (
         <TouchableOpacity
           key={opt.value}
           style={{
             flex: 1,
-            paddingVertical: 12,
+            paddingVertical: 11,
             borderRadius: 8,
             backgroundColor: value === opt.value ? colors.primary : 'transparent',
             alignItems: 'center',
           }}
           onPress={() => onChange(opt.value)}
         >
-          <Text style={{ color: value === opt.value ? colors.text.white : colors.text.primary, fontWeight: '700', fontSize: 14 }}>
+          <Text style={{ color: value === opt.value ? colors.text.white : colors.text.primary, fontWeight: '700', fontSize: 13, textAlign: 'center' }}>
             {opt.label}
           </Text>
         </TouchableOpacity>
@@ -910,18 +922,23 @@ function DateRow({ label, value, onPress, colors }: { label: string; value?: str
 
 const createStyles = (colors: any) =>
   StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.background.primary },
-    form: { padding: 20 },
-    header: { fontSize: 28, fontWeight: '800', marginBottom: 8, color: colors.text.primary, letterSpacing: -0.5 },
+    container: { flex: 1, backgroundColor: colors.background.secondary },
+    topBar: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingVertical: 14, backgroundColor: colors.background.primary, borderBottomWidth: 1, borderBottomColor: colors.border.light },
+    backButton: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background.secondary, borderWidth: 1, borderColor: colors.border.light },
+    topBarCopy: { flex: 1 },
+    form: { flex: 1 },
+    formContent: { padding: 18, paddingBottom: 32 },
+    header: { fontSize: 24, fontWeight: '800', color: colors.text.primary },
+    headerSubtitle: { marginTop: 3, fontSize: 12, lineHeight: 17, color: colors.text.secondary },
     navRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 24, gap: 12, paddingBottom: 20 },
     navButton: { flex: 1, paddingVertical: 16, borderRadius: 14, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },
     navPrimary: { backgroundColor: colors.primary },
     navPrimaryText: { color: colors.text.white, fontWeight: '700', fontSize: 16 },
-    navSecondary: { backgroundColor: colors.background.secondary, borderWidth: 1, borderColor: colors.border.light },
+    navSecondary: { backgroundColor: colors.background.primary, borderWidth: 1, borderColor: colors.border.light },
     navSecondaryText: { color: colors.text.primary, fontWeight: '700', fontSize: 16 },
     reviewContainer: { backgroundColor: colors.background.primary, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: colors.border.light },
     reviewLine: { fontSize: 14, marginBottom: 10, color: colors.text.primary, lineHeight: 20 },
-    methodCard: { backgroundColor: colors.background.secondary, padding: 16, borderRadius: 12, marginBottom: 12, borderWidth: 2, borderColor: 'transparent' },
+    methodCard: { backgroundColor: colors.background.primary, padding: 16, borderRadius: 12, marginBottom: 12, borderWidth: 1.5, borderColor: colors.border.light },
     methodCardSelected: { borderColor: colors.primary },
     methodHeader: { flexDirection: 'row', alignItems: 'center' },
     methodIcon: { fontSize: 28, marginRight: 12 },

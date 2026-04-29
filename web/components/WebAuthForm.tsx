@@ -127,7 +127,12 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
         }
       }
 
-      router.replace('/app');
+      const redirectParam =
+        typeof window !== 'undefined'
+          ? new URLSearchParams(window.location.search).get('redirect') || '/app'
+          : '/app';
+      const safeRedirect = redirectParam.startsWith('/app') ? redirectParam : '/app';
+      router.replace(safeRedirect);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Something went wrong. Please try again.';
       setError(message);

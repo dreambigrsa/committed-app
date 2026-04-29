@@ -140,14 +140,14 @@ export default function ReelPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-10">
-      <div className="mx-auto grid w-full max-w-5xl gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-        <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl shadow-slate-200/60">
+    <div className="min-h-screen bg-black px-3 py-4 text-white md:px-4 md:py-6">
+      <div className="mx-auto grid w-full max-w-5xl gap-4 lg:grid-cols-[1fr_0.9fr]">
+        <div className="overflow-hidden rounded-2xl border border-white/15 bg-neutral-950 shadow-2xl">
           {loadingReel ? (
-            <div className="aspect-video animate-pulse bg-slate-200" />
+            <div className="aspect-[9/16] animate-pulse bg-neutral-800 lg:aspect-video" />
           ) : reel?.video_url ? (
             <video
-              className="aspect-video w-full bg-black"
+              className="aspect-[9/16] w-full bg-black lg:aspect-video"
               src={reel.video_url}
               poster={reel.thumbnail_url || undefined}
               controls
@@ -156,60 +156,60 @@ export default function ReelPage() {
             />
           ) : reel?.thumbnail_url ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={reel.thumbnail_url} alt={reel.caption || 'Reel'} className="aspect-video w-full object-cover" />
+            <img src={reel.thumbnail_url} alt={reel.caption || 'Reel'} className="aspect-[9/16] w-full object-cover lg:aspect-video" />
           ) : (
-            <div className="flex aspect-video items-center justify-center bg-slate-100 text-slate-400">Reel preview unavailable</div>
+            <div className="flex aspect-[9/16] items-center justify-center bg-neutral-900 text-neutral-400 lg:aspect-video">Reel preview unavailable</div>
           )}
-          <div className="p-5">
-            <p className="text-sm font-semibold text-slate-500">{reel?.users?.full_name || 'Committed member'}</p>
-            <p className="mt-2 whitespace-pre-wrap text-slate-800">{reel?.caption || 'Open in app for full interactions and comments.'}</p>
+          <div className="p-4 md:p-5">
+            <p className="text-sm font-semibold text-neutral-300">{reel?.users?.full_name || 'Committed member'}</p>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-neutral-100">{reel?.caption || 'Open in app for full interactions and comments.'}</p>
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 disabled={!sessionUserId || likePending}
                 onClick={() => void toggleLike()}
-                className={`rounded-xl px-3 py-2 text-sm font-bold ${isLiked ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-700'}`}
+                className={`min-h-[40px] rounded-xl px-4 py-2 text-sm font-bold transition active:scale-[0.98] disabled:opacity-60 ${isLiked ? 'bg-violet-600 text-white hover:bg-violet-500' : 'bg-white/10 text-white hover:bg-white/15'}`}
               >
                 {isLiked ? 'Liked' : 'Like'} · {likesCount}
               </button>
-              <span className="rounded-xl bg-slate-100 px-3 py-2 text-sm font-bold text-slate-700">Comments · {commentsCount}</span>
-              {!sessionUserId ? <span className="text-xs text-slate-500">Sign in on web app to react</span> : null}
+              <span className="min-h-[40px] rounded-xl bg-white/10 px-4 py-2 text-sm font-bold text-white">Comments · {commentsCount}</span>
+              {!sessionUserId ? <span className="text-xs text-neutral-400">Sign in on web app to react</span> : null}
             </div>
           </div>
         </div>
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60">
-          <p className="font-display text-xl font-bold text-slate-900">Comments</p>
+        <div className="rounded-2xl border border-white/15 bg-neutral-950 p-4 md:p-5">
+          <p className="text-lg font-bold text-white">Comments</p>
           <div className="mt-3 flex gap-2">
             <input
               value={commentDraft}
               onChange={(event) => setCommentDraft(event.target.value)}
               placeholder={sessionUserId ? 'Write a comment...' : 'Sign in to comment'}
               disabled={!sessionUserId}
-              className="min-h-[42px] flex-1 rounded-xl border border-slate-200 px-3 text-sm outline-none"
+              className="min-h-[42px] flex-1 rounded-xl border border-white/15 bg-black px-3 text-sm text-white outline-none placeholder:text-neutral-500"
             />
             <button
               type="button"
               disabled={!sessionUserId || !commentDraft.trim() || commentPending}
               onClick={() => void submitComment()}
-              className="rounded-xl bg-violet-600 px-4 text-sm font-bold text-white disabled:opacity-60"
+              className="min-h-[42px] rounded-xl bg-violet-600 px-4 text-sm font-bold text-white transition hover:bg-violet-500 active:scale-[0.98] disabled:opacity-60"
             >
               Send
             </button>
           </div>
           <div className="mt-4 max-h-[360px] space-y-2 overflow-auto pr-1">
             {comments.map((comment) => (
-              <div key={comment.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-semibold text-slate-500">{comment.users?.full_name || 'Committed member'}</p>
-                <p className="mt-1 text-sm text-slate-800">{comment.content}</p>
+              <div key={comment.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                <p className="text-xs font-semibold text-neutral-300">{comment.users?.full_name || 'Committed member'}</p>
+                <p className="mt-1 text-sm text-white">{comment.content}</p>
               </div>
             ))}
-            {comments.length === 0 ? <p className="text-sm text-slate-500">No comments yet.</p> : null}
+            {comments.length === 0 ? <p className="text-sm text-neutral-400">No comments yet.</p> : null}
           </div>
         </div>
         {!showFallback ? (
-          <div className="rounded-3xl border border-slate-200 bg-white p-7 text-center shadow-xl shadow-slate-200/60">
-            <p className="text-lg text-slate-700">Opening reel in Committed…</p>
-            <p className="mt-2 text-sm text-slate-500">If the app doesn&apos;t open, use the options below.</p>
+          <div className="rounded-2xl border border-white/15 bg-neutral-950 p-5 text-center">
+            <p className="text-lg text-white">Opening reel in Committed...</p>
+            <p className="mt-2 text-sm text-neutral-400">If the app does not open, use the options below.</p>
           </div>
         ) : (
           <OpenAppFallback
@@ -218,7 +218,7 @@ export default function ReelPage() {
             description="Tap below to open this reel in Committed, or download the app if you don't have it yet."
           />
         )}
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600 lg:col-span-2">
+        <div className="rounded-2xl border border-white/15 bg-neutral-950 p-4 text-sm text-neutral-400 lg:col-span-2">
           Deep links remain active. This web preview exists as a fallback so shared reel links are still useful in browser sessions.
         </div>
       </div>

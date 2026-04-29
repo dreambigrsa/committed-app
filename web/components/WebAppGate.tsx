@@ -66,7 +66,11 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
       } = await supabase.auth.getSession();
 
       if (!session?.user) {
-        router.replace('/sign-in');
+        const requestedPath =
+          typeof window !== 'undefined'
+            ? `${window.location.pathname}${window.location.search}`
+            : '/app';
+        router.replace(`/sign-in?redirect=${encodeURIComponent(requestedPath)}`);
         return;
       }
 

@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, CheckCircle2, Film, Loader2, MessageCircle, ShieldCheck, ThumbsUp, UploadCloud, UserCircle2 } from 'lucide-react';
+import { AlertTriangle, Bell, CheckCircle2, Film, Loader2, MessageCircle, ShieldCheck, ThumbsUp, UploadCloud, UserCircle2 } from 'lucide-react';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 
 type PanelProps = {
@@ -88,6 +88,7 @@ export default function WebModulePanels({ module }: PanelProps) {
   if (module === 'relationship') return <RelationshipPanel />;
   if (module === 'dating') return <DatingProfilePanel />;
   if (module === 'profile') return <ProfilePanel />;
+  if (module === 'notifications') return <NotificationsPanel />;
   if (module === 'settings') return <SettingsPanel />;
   if (module === 'admin') return <AdminPanel />;
   if (module === 'professionals') return <ProfessionalsPanel />;
@@ -1588,20 +1589,20 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
   const visibleReels = reels.slice(0, reelVisibleCount);
 
   return (
-    <section className="mt-8 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60 md:p-8">
-      <h2 className="font-display text-2xl font-bold text-slate-950">Community feed on web</h2>
-      <p className="mt-2 leading-7 text-slate-600">Fast initial load with progressive feed expansion, comments, replies, and lightweight reel browsing.</p>
-      <div className="mt-5 inline-flex rounded-2xl border border-slate-200 bg-slate-50 p-1">
-        <button type="button" onClick={() => setActiveTab('feed')} className={`rounded-xl px-4 py-2 text-sm font-bold ${activeTab === 'feed' ? 'bg-white text-slate-900 shadow' : 'text-slate-600'}`}>
+    <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 md:p-5">
+      <h2 className="text-xl font-bold text-slate-950">Community</h2>
+      <p className="mt-1 text-sm leading-6 text-slate-600">Mobile-style feed and reels with lazy loading, comments, replies, likes, and quick actions.</p>
+      <div className="mt-4 inline-flex rounded-xl border border-slate-200 bg-slate-100 p-1">
+        <button type="button" onClick={() => setActiveTab('feed')} className={`rounded-lg px-4 py-2 text-xs font-bold ${activeTab === 'feed' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'}`}>
           Feed
         </button>
-        <button type="button" onClick={() => setActiveTab('reels')} className={`rounded-xl px-4 py-2 text-sm font-bold ${activeTab === 'reels' ? 'bg-white text-slate-900 shadow' : 'text-slate-600'}`}>
+        <button type="button" onClick={() => setActiveTab('reels')} className={`rounded-lg px-4 py-2 text-xs font-bold ${activeTab === 'reels' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'}`}>
           Reels
         </button>
       </div>
-      <form onSubmit={createPost} className="mt-6 grid gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+      <form onSubmit={createPost} className="mt-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
         <Textarea label="Create post" value={content} onChange={setContent} maxLength={800} />
-        <button type="submit" disabled={!content.trim() || status === 'loading'} className="min-h-[52px] rounded-2xl bg-rose-600 px-6 font-bold text-white disabled:opacity-60">
+        <button type="submit" disabled={!content.trim() || status === 'loading'} className="min-h-[44px] rounded-xl bg-rose-600 px-4 text-sm font-bold text-white transition hover:bg-rose-500 active:scale-[0.98] disabled:opacity-60">
           {status === 'loading' ? 'Publishing...' : 'Publish post'}
         </button>
       </form>
@@ -1613,7 +1614,7 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
           ))}
         </div>
       ) : activeTab === 'feed' ? (
-        <div className="mt-8">
+        <div className="mt-5">
           <div className="grid gap-4">
             {visiblePosts.map((post) => {
               const topLevelComments = (post.comments || []).filter((item: any) => !item.parent_comment_id);
@@ -1624,7 +1625,7 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
                 return acc;
               }, {});
               return (
-                <article key={post.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <article key={post.id} className="rounded-xl border border-slate-200 bg-white p-4">
                   <div className="flex items-center justify-between gap-3">
                     <Link href={`/dating/user-profile?userId=${encodeURIComponent(post.user_id)}`} className="font-bold text-slate-950 hover:text-violet-700">
                       {post.users?.full_name || 'Committed member'}
@@ -1635,10 +1636,10 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
                           type="button"
                           disabled={Boolean(followPendingByUser[post.user_id])}
                           onClick={() => void toggleFollow(post.user_id)}
-                          className={`rounded-xl px-3 py-1.5 text-xs font-bold ${
+                          className={`rounded-xl px-3 py-1.5 text-xs font-bold transition active:scale-[0.98] ${
                             isFollowingByUser[post.user_id]
-                              ? 'border border-slate-200 bg-white text-slate-700'
-                              : 'bg-violet-600 text-white'
+                              ? 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                              : 'bg-violet-600 text-white hover:bg-violet-500'
                           }`}
                         >
                           {isFollowingByUser[post.user_id] ? 'Following' : 'Follow'}
@@ -1648,7 +1649,7 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
                         <button
                           type="button"
                           onClick={() => void startConversation(post.user_id)}
-                          className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700"
+                          className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]"
                         >
                           Message
                         </button>
@@ -1656,12 +1657,12 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
                       <Link href={`/post/${post.id}`} className="text-sm font-bold text-violet-700">Open</Link>
                     </div>
                   </div>
-                  <p className="mt-3 whitespace-pre-wrap leading-7 text-slate-700">{post.content}</p>
+                  <p className="mt-3 whitespace-pre-wrap text-[15px] leading-6 text-slate-700">{post.content}</p>
                   <div className="mt-4 flex gap-2 text-sm font-semibold">
-                    <button type="button" onClick={() => void togglePostLike(post.id)} className={`inline-flex items-center gap-1 rounded-xl px-3 py-2 ${post.isLiked ? 'bg-violet-100 text-violet-700' : 'bg-white text-slate-700'}`}>
+                    <button type="button" onClick={() => void togglePostLike(post.id)} className={`inline-flex min-h-[40px] items-center gap-1 rounded-xl px-4 py-2 transition active:scale-[0.98] ${post.isLiked ? 'bg-violet-100 text-violet-700 hover:bg-violet-200' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>
                       <ThumbsUp className="h-4 w-4" /> {post.likesCount || 0}
                     </button>
-                    <span className="inline-flex items-center gap-1 rounded-xl bg-white px-3 py-2 text-slate-700">
+                    <span className="inline-flex min-h-[40px] items-center gap-1 rounded-xl bg-white px-4 py-2 text-slate-700">
                       <MessageCircle className="h-4 w-4" /> {post.commentsCount || 0}
                     </span>
                   </div>
@@ -1682,7 +1683,7 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
                           {replyingTo[post.id] === comment.id ? (
                             <div className="mt-2 flex gap-2">
                               <input value={replyDraft[key] || ''} onChange={(event) => setReplyDraft((value) => ({ ...value, [key]: event.target.value }))} placeholder="Write a reply..." className="min-h-[38px] flex-1 rounded-xl border border-slate-200 px-3 text-sm" />
-                              <button type="button" onClick={() => void addReply(post.id, comment.id)} className="rounded-xl bg-violet-600 px-3 text-sm font-bold text-white">Send</button>
+                              <button type="button" onClick={() => void addReply(post.id, comment.id)} className="min-h-[38px] rounded-xl bg-violet-600 px-4 text-sm font-bold text-white transition hover:bg-violet-500 active:scale-[0.98]">Send</button>
                             </div>
                           ) : null}
                         </div>
@@ -1690,7 +1691,7 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
                     })}
                     <div className="flex gap-2">
                       <input value={commentDraft[post.id] || ''} onChange={(event) => setCommentDraft((value) => ({ ...value, [post.id]: event.target.value }))} placeholder="Write a comment..." className="min-h-[40px] flex-1 rounded-xl border border-slate-200 px-3 text-sm" />
-                      <button type="button" onClick={() => void addPostComment(post.id)} className="rounded-xl bg-rose-600 px-3 text-sm font-bold text-white">Comment</button>
+                      <button type="button" onClick={() => void addPostComment(post.id)} className="min-h-[40px] rounded-xl bg-rose-600 px-4 text-sm font-bold text-white transition hover:bg-rose-500 active:scale-[0.98]">Comment</button>
                     </div>
                   </div>
                 </article>
@@ -1700,9 +1701,9 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
           </div>
         </div>
       ) : (
-        <div className="mt-8 grid gap-4 md:grid-cols-2">
+        <div className="mt-5 grid gap-3">
           {visibleReels.map((reel) => (
-            <article key={reel.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+            <article key={reel.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
               <div className="aspect-video bg-slate-200">
                 {reel.thumbnail_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -1721,7 +1722,7 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
                       <button
                         type="button"
                         onClick={() => void startConversation(reel.user_id)}
-                        className="rounded-xl border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-700"
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]"
                       >
                         Message
                       </button>
@@ -1811,26 +1812,26 @@ function ProfilePanel() {
   if (loading) return <LoadingPanel label="Loading profile..." />;
 
   return (
-    <section className="mt-8 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60 md:p-8">
+    <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 md:p-5">
       <div className="flex items-center gap-3">
-        <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-violet-100 text-violet-700">
+        <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
           <UserCircle2 className="h-6 w-6" />
         </span>
         <div>
-          <h2 className="font-display text-2xl font-bold text-slate-950">My profile on web</h2>
+          <h2 className="text-xl font-bold text-slate-950">Profile</h2>
           <p className="text-sm text-slate-600">Keep core identity and social signals in sync with mobile.</p>
         </div>
       </div>
-      <div className="mt-5 grid gap-3 sm:grid-cols-3">
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-sm text-slate-500">Posts</p><p className="font-display text-3xl font-bold text-slate-950">{stats.posts}</p></div>
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-sm text-slate-500">Reels</p><p className="font-display text-3xl font-bold text-slate-950">{stats.reels}</p></div>
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-sm text-slate-500">Verified relationships</p><p className="font-display text-3xl font-bold text-slate-950">{stats.verifiedRelationships}</p></div>
+      <div className="mt-4 grid gap-2 sm:grid-cols-3">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-xs font-semibold text-slate-500">Posts</p><p className="text-2xl font-bold text-slate-950">{stats.posts}</p></div>
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-xs font-semibold text-slate-500">Reels</p><p className="text-2xl font-bold text-slate-950">{stats.reels}</p></div>
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-xs font-semibold text-slate-500">Verified</p><p className="text-2xl font-bold text-slate-950">{stats.verifiedRelationships}</p></div>
       </div>
-      <form onSubmit={save} className="mt-6 grid gap-4">
+      <form onSubmit={save} className="mt-4 grid gap-3">
         <Field label="Full name" value={form.fullName} onChange={(value) => setForm({ ...form, fullName: value })} />
         <Field label="City" value={form.city} onChange={(value) => setForm({ ...form, city: value })} optional />
         <Textarea label="Bio" value={form.bio} onChange={(value) => setForm({ ...form, bio: value })} maxLength={500} />
-        <button type="submit" disabled={status === 'loading'} className="min-h-[52px] rounded-2xl bg-violet-600 px-5 font-bold text-white disabled:opacity-60">
+        <button type="submit" disabled={status === 'loading'} className="min-h-[44px] rounded-xl bg-violet-600 px-4 text-sm font-bold text-white disabled:opacity-60">
           {status === 'loading' ? 'Saving...' : 'Save profile'}
         </button>
       </form>
@@ -1844,8 +1845,84 @@ function ProfilePanel() {
   );
 }
 
+function NotificationsPanel() {
+  const [loading, setLoading] = useState(true);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<number>(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const supabase = getSupabaseBrowser() as any;
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.user) {
+        if (!cancelled) setLoading(false);
+        return;
+      }
+      const [notificationRows, relationshipRequests] = await Promise.all([
+        supabase
+          .from('notifications')
+          .select('id,title,message,type,read,created_at')
+          .eq('user_id', session.user.id)
+          .order('created_at', { ascending: false })
+          .limit(30),
+        supabase
+          .from('relationship_requests')
+          .select('id', { count: 'exact', head: true })
+          .eq('to_user_id', session.user.id)
+          .eq('status', 'pending'),
+      ]);
+      if (cancelled) return;
+      setNotifications(notificationRows.data ?? []);
+      setPendingRequests(relationshipRequests.count || 0);
+      setLoading(false);
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 md:p-5">
+      <div className="flex items-center gap-3">
+        <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
+          <Bell className="h-5 w-5" />
+        </span>
+        <div>
+          <h2 className="text-xl font-bold text-slate-950">Notifications</h2>
+          <p className="text-sm text-slate-600">Same notification flow, optimized for web reading.</p>
+        </div>
+      </div>
+      {loading ? (
+        <LoadingPanel label="Loading notifications..." />
+      ) : (
+        <>
+          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pending relationship requests</p>
+            <p className="mt-1 text-2xl font-bold text-slate-950">{pendingRequests}</p>
+          </div>
+          <div className="mt-4 grid gap-2">
+            {notifications.map((item) => (
+              <article key={item.id} className={`rounded-xl border p-3 ${item.read ? 'border-slate-200 bg-white' : 'border-violet-200 bg-violet-50'}`}>
+                <p className="text-sm font-bold text-slate-950">{item.title || item.type || 'Notification'}</p>
+                <p className="mt-1 text-sm text-slate-600">{item.message || 'No message content.'}</p>
+                <p className="mt-1 text-xs text-slate-400">{formatShortDate(item.created_at)}</p>
+              </article>
+            ))}
+            {notifications.length === 0 ? <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">No notifications yet.</p> : null}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 function MessagesPanel() {
   const [loading, setLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState('');
   const [conversations, setConversations] = useState<any[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [messages, setMessages] = useState<any[]>([]);
@@ -1871,6 +1948,7 @@ function MessagesPanel() {
       setLoading(false);
       return;
     }
+    setCurrentUserId(session.user.id);
     const { data, error } = await supabase
       .from('conversations')
       .select('id,participant_ids,last_message,last_message_at,created_at')
@@ -1947,9 +2025,9 @@ function MessagesPanel() {
   };
 
   return (
-    <section className="mt-8 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60 md:p-8">
-      <h2 className="font-display text-2xl font-bold text-slate-950">Messages on web</h2>
-      <p className="mt-2 leading-7 text-slate-600">Read recent conversations and send text replies from the browser.</p>
+    <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 md:p-5">
+      <h2 className="text-xl font-bold text-slate-950">Messages</h2>
+      <p className="mt-1 text-sm leading-6 text-slate-600">Mobile-like thread view for recent conversations and quick replies.</p>
       {loading ? (
         <LoadingPanel label="Loading conversations..." />
       ) : (
@@ -1971,9 +2049,9 @@ function MessagesPanel() {
           <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
             <div className="max-h-[420px] space-y-3 overflow-auto pr-1">
               {messages.map((item) => (
-                <div key={item.id} className="rounded-2xl bg-white p-3">
-                  <p className="whitespace-pre-wrap text-slate-800">{item.content}</p>
-                  <p className="mt-1 text-xs text-slate-400">{formatShortDate(item.created_at)}</p>
+                <div key={item.id} className={`max-w-[88%] rounded-2xl p-3 ${item.sender_id === currentUserId ? 'ml-auto bg-violet-600 text-white' : 'bg-white text-slate-800'}`}>
+                  <p className="whitespace-pre-wrap">{item.content}</p>
+                  <p className={`mt-1 text-xs ${item.sender_id === currentUserId ? 'text-violet-100' : 'text-slate-400'}`}>{formatShortDate(item.created_at)}</p>
                 </div>
               ))}
               {selectedId && messages.length === 0 ? <p className="text-slate-500">No messages in this conversation yet.</p> : null}
@@ -1986,7 +2064,7 @@ function MessagesPanel() {
                 placeholder="Type a message..."
                 className="min-h-[48px] flex-1 rounded-2xl border border-slate-200 bg-white px-4 outline-none"
               />
-              <button type="submit" disabled={!selectedId || !draft.trim() || status === 'loading'} className="rounded-2xl bg-violet-600 px-5 font-bold text-white disabled:opacity-60">
+              <button type="submit" disabled={!selectedId || !draft.trim() || status === 'loading'} className="rounded-2xl bg-violet-600 px-5 font-bold text-white transition hover:bg-violet-500 active:scale-[0.98] disabled:opacity-60">
                 Send
               </button>
             </form>

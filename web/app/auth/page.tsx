@@ -2,10 +2,12 @@ import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import OpenAppButton from '@/components/OpenAppButton';
+import AuthRouteGuard from '@/components/AuthRouteGuard';
 
 export default function AuthPage() {
   return (
     <div className="min-h-screen bg-slate-50">
+      <AuthRouteGuard />
       <Navbar />
       <main className="mx-auto flex min-h-[70vh] max-w-3xl flex-col justify-center px-4 py-16 sm:px-6">
         <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-xl shadow-slate-200/50 sm:p-10">

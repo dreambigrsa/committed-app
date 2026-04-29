@@ -3,9 +3,11 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { usePathname, useRouter } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { buildWebAppUrl } from '@/lib/appLinks';
+import { getSupabaseBrowser } from '@/lib/supabase-client';
 
 const navLinks = [
   { href: '#how-it-works', label: 'How It Works' },
@@ -16,8 +18,11 @@ const navLinks = [
 ];
 
 export default function Navbar() {
+  const pathname = usePathname();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -25,7 +30,42 @@ export default function Navbar() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+    const supabase = getSupabaseBrowser() as any;
+    const check = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!mounted) return;
+      setIsAuthenticated(Boolean(session?.user));
+    };
+    void check();
+    const { data: sub } = supabase.auth.onAuthStateChange((_event: string, session: any) => {
+      if (!mounted) return;
+      setIsAuthenticated(Boolean(session?.user));
+    });
+    return () => {
+      mounted = false;
+      sub?.subscription?.unsubscribe?.();
+    };
+  }, []);
+
   const isDark = !scrolled;
+  const inApp = pathname.startsWith('/app');
+  const appLinks = [
+    { href: '/app/feed', label: 'Feed' },
+    { href: '/app/reels', label: 'Reels' },
+    { href: '/app/dating', label: 'Dating' },
+    { href: '/app/messages', label: 'Messages' },
+    { href: '/app/profile', label: 'Profile' },
+  ];
+
+  const onSignOut = async () => {
+    const supabase = getSupabaseBrowser() as any;
+    await supabase.auth.signOut();
+    router.replace('/sign-in');
+  };
 
   return (
     <header
@@ -52,7 +92,7 @@ export default function Navbar() {
         </Link>
 
         <ul className="hidden lg:flex items-center gap-1">
-          {navLinks.map(({ href, label }) => (
+          {(inApp ? appLinks : navLinks).map(({ href, label }) => (
             <li key={href}>
               <Link
                 href={href}
@@ -73,14 +113,14 @@ export default function Navbar() {
 
         <div className="hidden lg:flex items-center gap-3">
           <Link
-            href={buildWebAppUrl('/auth')}
+            href={isAuthenticated ? buildWebAppUrl('/app') : buildWebAppUrl('/auth')}
             className={`rounded-xl border-2 px-5 py-2.5 text-sm font-semibold transition-colors ${
               isDark
                 ? 'border-white/40 text-white hover:bg-white/15'
                 : 'border-violet-600 text-violet-600 hover:bg-violet-50'
             }`}
           >
-            Open Web App
+            {isAuthenticated ? 'Open App' : 'Open Web App'}
           </Link>
           <Link
             href="/download"
@@ -92,12 +132,22 @@ export default function Navbar() {
           >
             Download
           </Link>
-          <Link
-            href="/sign-up"
-            className="btn-glow rounded-xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-rose-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/25 transition-all hover:shadow-violet-500/35"
-          >
-            Sign Up
-          </Link>
+          {isAuthenticated ? (
+            <button
+              type="button"
+              onClick={() => void onSignOut()}
+              className="rounded-xl border-2 border-rose-300 px-5 py-2.5 text-sm font-semibold text-rose-600 transition-colors hover:bg-rose-50"
+            >
+              Sign Out
+            </button>
+          ) : (
+            <Link
+              href="/sign-up"
+              className="btn-glow rounded-xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-rose-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/25 transition-all hover:shadow-violet-500/35"
+            >
+              Sign Up
+            </Link>
+          )}
         </div>
 
         <button
@@ -129,7 +179,7 @@ export default function Navbar() {
               }`}
             >
               <ul className="flex flex-col gap-1">
-                {navLinks.map(({ href, label }) => (
+                {(inApp ? appLinks : navLinks).map(({ href, label }) => (
                   <li key={href}>
                     <Link
                       href={href}
@@ -147,7 +197,7 @@ export default function Navbar() {
               </ul>
               <div className="mt-4 flex flex-col gap-3">
                 <Link
-                  href={buildWebAppUrl('/auth')}
+                  href={isAuthenticated ? buildWebAppUrl('/app') : buildWebAppUrl('/auth')}
                   className={`block rounded-xl border-2 py-3 text-center font-semibold ${
                     isDark
                       ? 'border-white/40 text-white hover:bg-white/15'
@@ -155,7 +205,7 @@ export default function Navbar() {
                   }`}
                   onClick={() => setOpen(false)}
                 >
-                  Open Web App
+                  {isAuthenticated ? 'Open App' : 'Open Web App'}
                 </Link>
                 <Link
                   href="/download"
@@ -168,13 +218,26 @@ export default function Navbar() {
                 >
                   Download
                 </Link>
-                <Link
-                  href="/sign-up"
-                  className="btn-glow block rounded-xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-rose-500 py-3 text-center font-semibold text-white shadow-lg"
-                  onClick={() => setOpen(false)}
-                >
-                  Sign Up
-                </Link>
+                {isAuthenticated ? (
+                  <button
+                    type="button"
+                    className="rounded-xl border-2 border-rose-300 py-3 text-center font-semibold text-rose-600"
+                    onClick={() => {
+                      setOpen(false);
+                      void onSignOut();
+                    }}
+                  >
+                    Sign Out
+                  </button>
+                ) : (
+                  <Link
+                    href="/sign-up"
+                    className="btn-glow block rounded-xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-rose-500 py-3 text-center font-semibold text-white shadow-lg"
+                    onClick={() => setOpen(false)}
+                  >
+                    Sign Up
+                  </Link>
+                )}
               </div>
             </div>
           </motion.div>

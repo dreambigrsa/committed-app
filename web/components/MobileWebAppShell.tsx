@@ -775,7 +775,54 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         religion: ownDating?.religion || '',
         intention: ownDating?.intention_tag || 'serious',
       });
-      let discoverProfiles = ((datingResult.data || []) as DatingProfile[]).filter(Boolean);
+      const ownMinAge = Number(ownDating?.age_range_min || 18);
+      const ownMaxAge = Number(ownDating?.age_range_max || 99);
+      const ownCity = String(ownDating?.location_city || '').trim();
+      const ownCountry = String(ownDating?.location_country || '').trim();
+      const ownLookingFor = String(ownDating?.looking_for || 'everyone').toLowerCase();
+
+      const applyProfileFilters = (rows: DatingProfile[]) => {
+        return rows.filter((item) => {
+          if (!item?.user_id || item.user_id === authUser.id) return false;
+          if (typeof item.age === 'number') {
+            if (item.age < ownMinAge || item.age > ownMaxAge) return false;
+          }
+          if (ownCity && item.location_city && !item.location_city.toLowerCase().includes(ownCity.toLowerCase())) return false;
+          if (ownCountry && item.location_country && !item.location_country.toLowerCase().includes(ownCountry.toLowerCase())) return false;
+          if (ownLookingFor !== 'everyone') {
+            const itemLookingFor = String((item as any).looking_for || 'everyone').toLowerCase();
+            if (itemLookingFor !== 'everyone' && itemLookingFor !== ownLookingFor) return false;
+          }
+          return true;
+        });
+      };
+
+      const queryDiscoveryRows = async (includePassed = false) => {
+        // Try strict discovery first, then progressively relax to avoid false "empty" states.
+        const strict = await supabase
+          .from('dating_profiles')
+          .select('id,user_id,bio,age,location_city,location_country,relationship_goals,interests,religion,intention_tag,looking_for,is_active')
+          .eq('is_active', true)
+          .neq('user_id', authUser.id)
+          .limit(80);
+        if (!strict.error && strict.data) {
+          return applyProfileFilters((strict.data as DatingProfile[]).filter(Boolean));
+        }
+
+        const relaxed = await supabase
+          .from('dating_profiles')
+          .select('id,user_id,bio,age,location_city,location_country,relationship_goals,interests,religion,intention_tag,looking_for')
+          .neq('user_id', authUser.id)
+          .limit(80);
+        if (!relaxed.error && relaxed.data) {
+          return applyProfileFilters((relaxed.data as DatingProfile[]).filter(Boolean));
+        }
+
+        if (!includePassed) return [];
+        return [];
+      };
+
+      let discoverProfiles = applyProfileFilters(((datingResult.data || []) as DatingProfile[]).filter(Boolean));
       const [sentLikesResult, sentPassesResult] = await Promise.all([
         supabase
           .from('dating_likes')
@@ -796,23 +843,11 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         rows.filter((item) => !!item.user_id && !likedUserIds.has(item.user_id) && (includePassed || !passedUserIds.has(item.user_id)));
       discoverProfiles = applyDatingDiscoveryExclusions(discoverProfiles);
       if (!discoverProfiles.length) {
-        const fallbackDating = await supabase
-          .from('dating_profiles')
-          .select('id,user_id,bio,age,location_city,location_country,relationship_goals,interests,religion,intention_tag,is_active')
-          .eq('is_active', true)
-          .neq('user_id', authUser.id)
-          .limit(50);
-        discoverProfiles = applyDatingDiscoveryExclusions(((fallbackDating.data || []) as DatingProfile[]).filter(Boolean));
+        discoverProfiles = applyDatingDiscoveryExclusions(await queryDiscoveryRows(false));
       }
       if (!discoverProfiles.length) {
         // Last-resort parity fallback: include previously passed profiles when discovery is exhausted.
-        const relaxedDating = await supabase
-          .from('dating_profiles')
-          .select('id,user_id,bio,age,location_city,location_country,relationship_goals,interests,religion,intention_tag,is_active')
-          .eq('is_active', true)
-          .neq('user_id', authUser.id)
-          .limit(50);
-        discoverProfiles = applyDatingDiscoveryExclusions(((relaxedDating.data || []) as DatingProfile[]).filter(Boolean), true);
+        discoverProfiles = applyDatingDiscoveryExclusions(await queryDiscoveryRows(true), true);
       }
       const discoverUserIds = Array.from(new Set(discoverProfiles.map((item) => item.user_id).filter(Boolean)));
       const discoverProfileIds = discoverProfiles.map((item) => item.id).filter(Boolean);
@@ -2344,16 +2379,19 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       if (error) throw error;
       if (datingPhotoUrl.trim() && savedProfile?.id) {
         await supabase.from('dating_photos').upsert({
-          profile_id: savedProfile.id,
+          dating_profile_id: savedProfile.id,
           photo_url: datingPhotoUrl.trim(),
           is_primary: true,
-        }, { onConflict: 'profile_id,photo_url' });
+        }, { onConflict: 'dating_profile_id,photo_url' });
       }
       setDatingPhotoUrl('');
       setDatingProfileStep(1);
       setReactionNotice('Dating saved');
       window.setTimeout(() => setReactionNotice(null), 1800);
       await loadAppData();
+    } catch (error: any) {
+      setReactionNotice(error?.message || 'Could not save dating preferences');
+      window.setTimeout(() => setReactionNotice(null), 2500);
     } finally {
       setSaving(false);
     }

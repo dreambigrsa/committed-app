@@ -22,6 +22,7 @@ export default function ReelPage() {
   const [commentDraft, setCommentDraft] = useState('');
   const [commentPending, setCommentPending] = useState(false);
   const [comments, setComments] = useState<any[]>([]);
+  const [shareNotice, setShareNotice] = useState('');
 
   const deepLinkUrl = `${APP_SCHEME}reel/${id}`;
 
@@ -125,6 +126,22 @@ export default function ReelPage() {
     }
   };
 
+  const shareReel = async () => {
+    const webUrl = typeof window !== 'undefined' ? window.location.href : '';
+    if (!webUrl) return;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'Committed Reel', url: webUrl });
+      } else {
+        await navigator.clipboard.writeText(webUrl);
+        setShareNotice('Reel link copied');
+        window.setTimeout(() => setShareNotice(''), 1800);
+      }
+    } catch {
+      // user cancelled share sheet or clipboard failed
+    }
+  };
+
   if (!id) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 px-4">
@@ -172,12 +189,25 @@ export default function ReelPage() {
               >
                 {isLiked ? 'Liked' : 'Like'} · {likesCount}
               </button>
-              <span className="min-h-[40px] rounded-xl bg-white/10 px-4 py-2 text-sm font-bold text-white">Comments · {commentsCount}</span>
+              <a
+                href="#comments"
+                className="min-h-[40px] rounded-xl bg-white/10 px-4 py-2 text-sm font-bold text-white"
+              >
+                Comments · {commentsCount}
+              </a>
+              <button
+                type="button"
+                onClick={() => void shareReel()}
+                className="min-h-[40px] rounded-xl bg-white/10 px-4 py-2 text-sm font-bold text-white hover:bg-white/15"
+              >
+                Share
+              </button>
               {!sessionUserId ? <span className="text-xs text-neutral-400">Sign in on web app to react</span> : null}
+              {shareNotice ? <span className="text-xs text-emerald-300">{shareNotice}</span> : null}
             </div>
           </div>
         </div>
-        <div className="rounded-2xl border border-white/15 bg-neutral-950 p-4 md:p-5">
+        <div id="comments" className="rounded-2xl border border-white/15 bg-neutral-950 p-4 md:p-5">
           <p className="text-lg font-bold text-white">Comments</p>
           <div className="mt-3 flex gap-2">
             <input

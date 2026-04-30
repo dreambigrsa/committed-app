@@ -326,24 +326,50 @@ function getUserDisplayName(user?: { full_name?: string | null; username?: strin
   return user.email || 'Committed member';
 }
 
-function getCommittedAIReply(input: string) {
-  const value = input.toLowerCase();
-  if (value.includes('register') && value.includes('relationship')) {
-    return 'I can help with that. Go to Home > Register relationship, add partner details, choose relationship type and privacy, then submit for verification.';
+function getCommittedAIReply(input: string, history: MessageRow[] = []) {
+  const trimmed = input.trim();
+  const value = trimmed.toLowerCase();
+  const recentUserInputs = history
+    .filter((item) => item.sender_id !== 'committed-ai' && item.sender_id !== 'ai@committed.app')
+    .map((item) => (item.content || '').trim().toLowerCase())
+    .filter(Boolean);
+  const previousPrompt = recentUserInputs.length > 1 ? recentUserInputs[recentUserInputs.length - 2] : '';
+  const isRepeatPrompt = !!previousPrompt && previousPrompt === value;
+
+  if ((value.includes('register') || value.includes('registration')) && value.includes('relationship')) {
+    return 'I can guide you now: open Home > Register relationship, add partner details and photo, choose relationship type/privacy, then submit. If you want, I will walk you field-by-field.';
   }
-  if (value.includes('dating')) {
-    return 'For dating, open Dating, complete your profile setup, then use Discover to like or pass profiles and check matches.';
+  if (value.includes('dating') || value.includes('match') || value.includes('swipe')) {
+    return 'For dating: open Dating, complete profile setup, then use Discover to like/pass. You can open Filters to widen age, distance, and location if cards look limited.';
   }
-  if (value.includes('verify')) {
-    return 'Open Verification to complete phone, email, ID, and couple selfie checks. I can guide you step by step if you tell me which one you want.';
+  if (value.includes('verify') || value.includes('verification') || value.includes('id card') || value.includes('selfie')) {
+    return 'Open Verification and complete this order: Phone -> Email -> ID -> Couple Selfie. Tell me which step you are on and I will guide that exact screen.';
   }
-  return 'Got you. I am here to help with relationships, dating, safety, settings, and verification. Tell me exactly what you want to do next.';
+  if (value.includes('message') || value.includes('chat') || value.includes('ai')) {
+    return 'I can help with messaging. Share what is failing (not sending, duplicate replies, delay, or blank thread) and I will give direct troubleshooting steps.';
+  }
+  if (value.includes('settings') || value.includes('privacy') || value.includes('security')) {
+    return 'Go to Settings for profile photo, privacy/security controls, blocked users, sessions, and 2FA. Tell me what you want to change and I will map the exact path.';
+  }
+  if (value.includes('admin') || value.includes('dashboard') || value.includes('moderation')) {
+    return 'If you are an admin/moderator, open Profile > Admin to manage users, relationship reviews, posts/reels moderation, and payment verifications.';
+  }
+
+  const preview = trimmed.length > 90 ? `${trimmed.slice(0, 90)}...` : trimmed;
+  if (isRepeatPrompt) {
+    return `I saw the same message again: "${preview}". I understand. Pick one and I will guide it now: Dating, Relationship Registration, Verification, Settings, or Admin.`;
+  }
+  return `Understood: "${preview}". I can help with Dating, Relationship Registration, Verification, Settings, or Admin. Tell me which flow you want step-by-step.`;
 }
 
 function Avatar({ src, name, size = 'md' }: { src?: string | null; name?: string | null; size?: 'sm' | 'md' | 'lg' }) {
   const sizeClass = size === 'lg' ? 'h-14 w-14 text-lg' : size === 'sm' ? 'h-9 w-9 text-xs' : 'h-11 w-11 text-sm';
-  if (src) {
-    return <img src={src} alt="" className={`${sizeClass} rounded-full object-cover`} />;
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+  if (src && !failed) {
+    return <img src={src} alt="" onError={() => setFailed(true)} className={`${sizeClass} rounded-full object-cover`} />;
   }
   return (
     <div className={`${sizeClass} grid place-items-center rounded-full bg-gradient-to-br from-pink-500 to-blue-600 font-black text-white`}>
@@ -377,27 +403,42 @@ function EmptyState({
   text,
   action,
   onAction,
+  secondaryAction,
+  onSecondaryAction,
 }: {
   icon: typeof Heart;
   title: string;
   text: string;
   action?: string;
   onAction?: () => void;
+  secondaryAction?: string;
+  onSecondaryAction?: () => void;
 }) {
   return (
     <div className="flex min-h-[54vh] flex-col items-center justify-center px-8 text-center">
       <Icon className="h-20 w-20 text-slate-300" strokeWidth={1.8} />
       <h2 className="mt-5 text-3xl font-bold text-slate-900">{title}</h2>
       <p className="mt-3 text-base leading-6 text-slate-500">{text}</p>
-      {action && onAction ? (
-        <button
-          type="button"
-          onClick={onAction}
-          className="mt-7 rounded-[18px] bg-blue-600 px-9 py-4 text-base font-black text-white shadow-xl shadow-blue-600/20 active:scale-[0.98]"
-        >
-          {action}
-        </button>
-      ) : null}
+      <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
+        {action && onAction ? (
+          <button
+            type="button"
+            onClick={onAction}
+            className="rounded-[18px] bg-blue-600 px-9 py-4 text-base font-black text-white shadow-xl shadow-blue-600/20 active:scale-[0.98]"
+          >
+            {action}
+          </button>
+        ) : null}
+        {secondaryAction && onSecondaryAction ? (
+          <button
+            type="button"
+            onClick={onSecondaryAction}
+            className="rounded-[18px] border border-slate-300 bg-white px-7 py-4 text-base font-black text-slate-700 shadow-sm active:scale-[0.98]"
+          >
+            {secondaryAction}
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -615,7 +656,12 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         full_name: profile?.full_name || profile?.username || authUser.user_metadata?.full_name || authUser.user_metadata?.username || authUser.email?.split('@')[0] || authUser.email || 'Committed member',
         email: profile?.email || authUser.email,
         phone_number: profile?.phone_number,
-        profile_picture: profile?.profile_picture,
+        profile_picture:
+          profile?.profile_picture ||
+          authUser.user_metadata?.profile_picture ||
+          authUser.user_metadata?.avatar_url ||
+          authUser.user_metadata?.picture ||
+          null,
         username: profile?.username,
         role: profile?.role || 'user',
         verified: profile?.verified,
@@ -663,10 +709,12 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           .maybeSingle(),
         supabase
           .from('dating_profiles')
-          .select('id,user_id,bio,age,location_city,location_country,relationship_goals,interests,religion,intention_tag,users!dating_profiles_user_id_fkey(full_name,profile_picture),dating_photos(photo_url,is_primary)')
+          .select('id,user_id,bio,age,location_city,location_country,relationship_goals,interests,religion,intention_tag,is_active,admin_limited,admin_suspended')
           .eq('is_active', true)
+          .eq('admin_limited', false)
+          .eq('admin_suspended', false)
           .neq('user_id', authUser.id)
-          .limit(20),
+          .limit(50),
         supabase
           .from('notifications')
           .select('id,title,message,created_at,read,type,data')
@@ -730,14 +778,65 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         intention: ownDating?.intention_tag || 'serious',
       });
       let discoverProfiles = ((datingResult.data || []) as DatingProfile[]).filter(Boolean);
+      const [sentLikesResult, sentPassesResult] = await Promise.all([
+        supabase
+          .from('dating_likes')
+          .select('liked_id')
+          .eq('liker_id', authUser.id),
+        supabase
+          .from('dating_passes')
+          .select('passed_id')
+          .eq('passer_id', authUser.id),
+      ]);
+      const excludedUserIds = new Set<string>([
+        ...((sentLikesResult.data || []) as Array<{ liked_id?: string | null }>).map((row) => row.liked_id || '').filter(Boolean),
+        ...((sentPassesResult.data || []) as Array<{ passed_id?: string | null }>).map((row) => row.passed_id || '').filter(Boolean),
+      ]);
+      discoverProfiles = discoverProfiles.filter((item) => !!item.user_id && !excludedUserIds.has(item.user_id));
       if (!discoverProfiles.length) {
         const fallbackDating = await supabase
           .from('dating_profiles')
-          .select('id,user_id,bio,age,location_city,location_country,relationship_goals,interests,religion,intention_tag,users!dating_profiles_user_id_fkey(full_name,profile_picture),dating_photos(photo_url,is_primary)')
+          .select('id,user_id,bio,age,location_city,location_country,relationship_goals,interests,religion,intention_tag,admin_limited,admin_suspended')
+          .eq('admin_limited', false)
+          .eq('admin_suspended', false)
           .neq('user_id', authUser.id)
-          .limit(20);
-        discoverProfiles = ((fallbackDating.data || []) as DatingProfile[]).filter(Boolean);
+          .limit(50);
+        discoverProfiles = ((fallbackDating.data || []) as DatingProfile[])
+          .filter(Boolean)
+          .filter((item) => !!item.user_id && !excludedUserIds.has(item.user_id));
       }
+      const discoverUserIds = Array.from(new Set(discoverProfiles.map((item) => item.user_id).filter(Boolean)));
+      const discoverProfileIds = discoverProfiles.map((item) => item.id).filter(Boolean);
+      const [discoverUsersResult, discoverPhotosResult] = await Promise.all([
+        discoverUserIds.length
+          ? supabase
+              .from('users')
+              .select('id,full_name,profile_picture')
+              .in('id', discoverUserIds)
+          : Promise.resolve({ data: [] as Array<{ id: string; full_name?: string | null; profile_picture?: string | null }> }),
+        discoverProfileIds.length
+          ? supabase
+              .from('dating_photos')
+              .select('dating_profile_id,photo_url,is_primary,display_order')
+              .in('dating_profile_id', discoverProfileIds)
+              .order('is_primary', { ascending: false })
+              .order('display_order', { ascending: true })
+          : Promise.resolve({ data: [] as Array<{ dating_profile_id: string; photo_url: string; is_primary?: boolean | null }> }),
+      ]);
+      const discoverUsersById = new Map<string, { full_name?: string | null; profile_picture?: string | null }>(
+        ((discoverUsersResult.data || []) as Array<{ id: string; full_name?: string | null; profile_picture?: string | null }>)
+          .map((row) => [row.id, { full_name: row.full_name, profile_picture: row.profile_picture }])
+      );
+      const discoverPhotosByProfile = new Map<string, Array<{ photo_url: string; is_primary?: boolean | null }>>();
+      ((discoverPhotosResult.data || []) as Array<{ dating_profile_id: string; photo_url: string; is_primary?: boolean | null }>).forEach((photo) => {
+        const existing = discoverPhotosByProfile.get(photo.dating_profile_id) || [];
+        discoverPhotosByProfile.set(photo.dating_profile_id, [...existing, { photo_url: photo.photo_url, is_primary: photo.is_primary }]);
+      });
+      discoverProfiles = discoverProfiles.map((item) => ({
+        ...item,
+        users: discoverUsersById.get(item.user_id) || null,
+        dating_photos: discoverPhotosByProfile.get(item.id) || [],
+      }));
       setDatingProfiles(discoverProfiles);
       setDatingIndex(0);
       setNotifications(((notificationsResult.data || []) as NotificationRow[]).filter(Boolean));
@@ -1076,6 +1175,14 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     window.setTimeout(() => setReactionNotice(null), 1800);
   };
 
+  const resetDatingPasses = async () => {
+    if (!supabase || !user) return;
+    await supabase.from('dating_passes').delete().eq('passer_id', user.id);
+    setReactionNotice('Showing passed profiles again');
+    window.setTimeout(() => setReactionNotice(null), 1800);
+    await loadAppData();
+  };
+
   const shareText = async (title: string, url: string) => {
     if (navigator.share) {
       await navigator.share({ title, url });
@@ -1289,7 +1396,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         const localConversationId = 'committed-ai-local';
         const now = new Date().toISOString();
         const prompt = aiPrompt.trim();
-        const reply = getCommittedAIReply(prompt);
+        const localHistory = messagesByConversation[localConversationId] || [];
+        const reply = getCommittedAIReply(prompt, localHistory);
         setConversations((prev) => {
           const exists = prev.find((item) => item.id === localConversationId);
           if (exists) return prev;
@@ -1384,7 +1492,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         conversation.id === 'committed-ai-local' ||
         (conversation.participantNames || []).some((name) => name.toLowerCase().includes('committed ai'));
       if (isAiConversation) {
-        const aiReplyText = getCommittedAIReply(messageText);
+        const aiReplyText = getCommittedAIReply(messageText, messagesByConversation[conversation.id] || []);
         const aiId = receiverId || 'committed-ai';
         const aiReply: MessageRow = {
           id: `ai-${Date.now()}`,
@@ -1415,6 +1523,72 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       }
       await loadAppData();
     }
+  };
+
+  const sendQuickAiPrompt = async (conversation: ConversationRow, prompt: string) => {
+    if (!prompt.trim()) return;
+    setChatDraft(prompt);
+    await Promise.resolve();
+    // Use the same message pipeline used by the composer for parity.
+    if (!supabase || !user) return;
+    const receiverId = (conversation.participant_ids || []).find((id) => id !== user.id);
+    const messageText = prompt.trim();
+    const optimistic: MessageRow = {
+      id: `pending-${Date.now()}`,
+      conversation_id: conversation.id,
+      sender_id: user.id,
+      receiver_id: receiverId || null,
+      content: messageText,
+      message_type: 'text',
+      created_at: new Date().toISOString(),
+    };
+    setMessagesByConversation((prev) => ({
+      ...prev,
+      [conversation.id]: [...(prev[conversation.id] || []), optimistic],
+    }));
+    const { error } = await supabase.from('messages').insert({
+      conversation_id: conversation.id,
+      sender_id: user.id,
+      receiver_id: receiverId || null,
+      content: messageText,
+      message_type: 'text',
+    });
+    if (!error) {
+      await supabase
+        .from('conversations')
+        .update({ last_message: messageText, last_message_at: new Date().toISOString() })
+        .eq('id', conversation.id);
+      const aiReplyText = getCommittedAIReply(messageText, messagesByConversation[conversation.id] || []);
+      const aiId = receiverId || 'committed-ai';
+      const aiReply: MessageRow = {
+        id: `ai-${Date.now()}`,
+        conversation_id: conversation.id,
+        sender_id: aiId,
+        receiver_id: user.id,
+        content: aiReplyText,
+        message_type: 'text',
+        created_at: new Date(Date.now() + 800).toISOString(),
+      };
+      setMessagesByConversation((prev) => ({
+        ...prev,
+        [conversation.id]: [...(prev[conversation.id] || []), aiReply],
+      }));
+      if (conversation.id !== 'committed-ai-local' && receiverId) {
+        await supabase.from('messages').insert({
+          conversation_id: conversation.id,
+          sender_id: receiverId,
+          receiver_id: user.id,
+          content: aiReplyText,
+          message_type: 'text',
+        });
+        await supabase
+          .from('conversations')
+          .update({ last_message: aiReplyText, last_message_at: new Date().toISOString() })
+          .eq('id', conversation.id);
+      }
+      await loadAppData();
+    }
+    setChatDraft('');
   };
 
   const submitRelationship = async () => {
@@ -2431,10 +2605,24 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                   <button type="button" onClick={() => void toggleReelLike(reel)} className="grid h-12 w-12 place-items-center rounded-full bg-white/18 backdrop-blur">
                     <Heart className={`h-6 w-6 ${user && reel.likes?.includes(user.id) ? 'fill-pink-500 text-pink-500' : 'text-white'}`} />
                   </button>
+                  <Link href={`/reel/${reel.id}?web=1#comments`} className="grid h-12 w-12 place-items-center rounded-full bg-white/18 backdrop-blur">
+                    <MessageCircle className="h-6 w-6 text-white" />
+                  </Link>
                   <button type="button" onClick={() => void shareText('Committed Reel', buildReelWebUrl(reel.id))} className="grid h-12 w-12 place-items-center rounded-full bg-white/18 backdrop-blur">
                     <Share2 className="h-6 w-6" />
                   </button>
                 </div>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" onClick={() => void toggleReelLike(reel)} className="rounded-full bg-white/18 px-4 py-2 text-sm font-black backdrop-blur">
+                  {user && reel.likes?.includes(user.id) ? 'Liked' : 'Like'}
+                </button>
+                <Link href={`/reel/${reel.id}?web=1#comments`} className="rounded-full bg-white/18 px-4 py-2 text-sm font-black backdrop-blur">
+                  Comments
+                </Link>
+                <button type="button" onClick={() => void shareText('Committed Reel', buildReelWebUrl(reel.id))} className="rounded-full bg-white/18 px-4 py-2 text-sm font-black backdrop-blur">
+                  Share
+                </button>
               </div>
             </div>
           </article>
@@ -2596,7 +2784,17 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const renderDating = () => {
     const profile = datingProfiles[datingIndex];
     if (!profile) {
-      return <EmptyState icon={Sparkles} title="No More Profiles" text="You have seen everyone for now. Check back soon for new people." action="Refresh" onAction={() => void loadAppData()} />;
+      return (
+        <EmptyState
+          icon={Sparkles}
+          title="No More Profiles"
+          text="You have seen everyone for now. Refresh, adjust filters, or load passed profiles again."
+          action="See Passed Profiles"
+          onAction={() => void resetDatingPasses()}
+          secondaryAction="Adjust Filters"
+          onSecondaryAction={() => router.push('/app/dating/filters')}
+        />
+      );
     }
     const photo = profile.dating_photos?.find((item) => item.is_primary)?.photo_url || profile.dating_photos?.[0]?.photo_url || profile.users?.profile_picture;
     const name = profile.users?.full_name || 'Committed dater';
@@ -3516,6 +3714,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     if (selectedConversation) {
       const messages = messagesByConversation[selectedConversation.id] || [];
       const title = selectedConversation.participantNames?.join(', ') || 'Conversation';
+      const isAiConversation =
+        selectedConversation.id === 'committed-ai-local' ||
+        (selectedConversation.participantNames || []).some((name) => name.toLowerCase().includes('committed ai'));
       const firstParticipantId = (selectedConversation.participant_ids || []).find((id) => id !== user?.id);
       const avatar = firstParticipantId ? selectedConversation.participantAvatars?.[firstParticipantId] : null;
       return (
@@ -3541,6 +3742,15 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               );
             })}
           </div>
+          {isAiConversation ? (
+            <div className="flex flex-wrap gap-2 border-t border-slate-200 bg-slate-50 px-3 py-2">
+              <button type="button" onClick={() => void sendQuickAiPrompt(selectedConversation, 'Help me fix dating discovery and no profiles issue')} className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-slate-700 ring-1 ring-slate-200">Dating Help</button>
+              <button type="button" onClick={() => router.push('/app/dating/filters')} className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-slate-700 ring-1 ring-slate-200">Open Dating Filters</button>
+              <button type="button" onClick={() => router.push('/app/verification')} className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-slate-700 ring-1 ring-slate-200">Open Verification</button>
+              <button type="button" onClick={() => router.push('/app/settings')} className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-slate-700 ring-1 ring-slate-200">Open Settings</button>
+              <button type="button" onClick={() => router.push('/app/admin')} className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-slate-700 ring-1 ring-slate-200">Open Admin</button>
+            </div>
+          ) : null}
           <div className="sticky bottom-[64px] flex gap-2 border-t border-slate-200 bg-white p-3">
             <input value={chatDraft} onChange={(event) => setChatDraft(event.target.value)} placeholder="Type a message..." className="h-12 min-w-0 flex-1 rounded-full bg-slate-100 px-4 text-sm font-semibold outline-none focus:ring-4 focus:ring-blue-100" />
             <button type="button" onClick={() => void sendChatMessage(selectedConversation)} disabled={!chatDraft.trim()} className="grid h-12 w-12 place-items-center rounded-full bg-blue-600 text-white disabled:opacity-50">

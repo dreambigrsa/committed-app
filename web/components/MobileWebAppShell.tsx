@@ -709,10 +709,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           .maybeSingle(),
         supabase
           .from('dating_profiles')
-          .select('id,user_id,bio,age,location_city,location_country,relationship_goals,interests,religion,intention_tag,is_active,admin_limited,admin_suspended')
+          .select('id,user_id,bio,age,location_city,location_country,relationship_goals,interests,religion,intention_tag,is_active')
           .eq('is_active', true)
-          .eq('admin_limited', false)
-          .eq('admin_suspended', false)
           .neq('user_id', authUser.id)
           .limit(50),
         supabase
@@ -788,22 +786,33 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           .select('passed_id')
           .eq('passer_id', authUser.id),
       ]);
-      const excludedUserIds = new Set<string>([
-        ...((sentLikesResult.data || []) as Array<{ liked_id?: string | null }>).map((row) => row.liked_id || '').filter(Boolean),
-        ...((sentPassesResult.data || []) as Array<{ passed_id?: string | null }>).map((row) => row.passed_id || '').filter(Boolean),
-      ]);
-      discoverProfiles = discoverProfiles.filter((item) => !!item.user_id && !excludedUserIds.has(item.user_id));
+      const likedUserIds = new Set<string>(
+        ((sentLikesResult.data || []) as Array<{ liked_id?: string | null }>).map((row) => row.liked_id || '').filter(Boolean)
+      );
+      const passedUserIds = new Set<string>(
+        ((sentPassesResult.data || []) as Array<{ passed_id?: string | null }>).map((row) => row.passed_id || '').filter(Boolean)
+      );
+      const applyDatingDiscoveryExclusions = (rows: DatingProfile[], includePassed = false) =>
+        rows.filter((item) => !!item.user_id && !likedUserIds.has(item.user_id) && (includePassed || !passedUserIds.has(item.user_id)));
+      discoverProfiles = applyDatingDiscoveryExclusions(discoverProfiles);
       if (!discoverProfiles.length) {
         const fallbackDating = await supabase
           .from('dating_profiles')
-          .select('id,user_id,bio,age,location_city,location_country,relationship_goals,interests,religion,intention_tag,admin_limited,admin_suspended')
-          .eq('admin_limited', false)
-          .eq('admin_suspended', false)
+          .select('id,user_id,bio,age,location_city,location_country,relationship_goals,interests,religion,intention_tag,is_active')
+          .eq('is_active', true)
           .neq('user_id', authUser.id)
           .limit(50);
-        discoverProfiles = ((fallbackDating.data || []) as DatingProfile[])
-          .filter(Boolean)
-          .filter((item) => !!item.user_id && !excludedUserIds.has(item.user_id));
+        discoverProfiles = applyDatingDiscoveryExclusions(((fallbackDating.data || []) as DatingProfile[]).filter(Boolean));
+      }
+      if (!discoverProfiles.length) {
+        // Last-resort parity fallback: include previously passed profiles when discovery is exhausted.
+        const relaxedDating = await supabase
+          .from('dating_profiles')
+          .select('id,user_id,bio,age,location_city,location_country,relationship_goals,interests,religion,intention_tag,is_active')
+          .eq('is_active', true)
+          .neq('user_id', authUser.id)
+          .limit(50);
+        discoverProfiles = applyDatingDiscoveryExclusions(((relaxedDating.data || []) as DatingProfile[]).filter(Boolean), true);
       }
       const discoverUserIds = Array.from(new Set(discoverProfiles.map((item) => item.user_id).filter(Boolean)));
       const discoverProfileIds = discoverProfiles.map((item) => item.id).filter(Boolean);

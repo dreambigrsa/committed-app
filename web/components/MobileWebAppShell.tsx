@@ -2866,7 +2866,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       return (
         <div>
           <div className="mx-4 mt-4 rounded-[16px] border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-900">
-            <p>Dating debug -> initial: {datingDebug.initial}, filtered: {datingDebug.afterInitialFilters}, likes excluded: {datingDebug.likedExcluded}, passes excluded: {datingDebug.passedExcluded}, fallbacks: {datingDebug.fallbackRuns}, final: {datingDebug.final}</p>
+            <p>Dating debug: initial {datingDebug.initial}, filtered {datingDebug.afterInitialFilters}, likes excluded {datingDebug.likedExcluded}, passes excluded {datingDebug.passedExcluded}, fallbacks {datingDebug.fallbackRuns}, final {datingDebug.final}</p>
             {datingDebug.lastError ? <p className="mt-1">Query error: {datingDebug.lastError}</p> : null}
           </div>
           <EmptyState

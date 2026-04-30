@@ -736,6 +736,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
       if (!profile) {
         // Ensure a user profile row exists for the authenticated account so web and mobile stay aligned.
+        const metadataRole = typeof authUser.user_metadata?.role === 'string' ? authUser.user_metadata.role : null;
         await supabase.from('users').upsert(
           {
             id: authUser.id,
@@ -743,6 +744,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             username: authUser.user_metadata?.username || null,
             email: authUser.email || null,
             phone_number: authUser.phone || null,
+            role: metadataRole || 'user',
             profile_picture:
               authUser.user_metadata?.profile_picture ||
               authUser.user_metadata?.avatar_url ||
@@ -766,7 +768,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           authUser.user_metadata?.avatar_url ||
           authUser.user_metadata?.picture ||
           null,
-        role: 'user',
+        role: (typeof authUser.user_metadata?.role === 'string' ? authUser.user_metadata.role : 'user'),
         verified: null,
         email_verified: !!authUser.email_confirmed_at,
         phone_verified: !!authUser.phone_confirmed_at,
@@ -785,7 +787,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           authUser.user_metadata?.picture ||
           null,
         username: resolvedProfile.username,
-        role: resolvedProfile.role || 'user',
+        role: resolvedProfile.role || (typeof authUser.user_metadata?.role === 'string' ? authUser.user_metadata.role : 'user'),
         verified: resolvedProfile.verified,
         email_verified: resolvedProfile.email_verified ?? !!authUser.email_confirmed_at,
         phone_verified: resolvedProfile.phone_verified ?? !!authUser.phone_confirmed_at,
@@ -2542,6 +2544,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           phone_number: settingsForm.phoneNumber.trim(),
           profile_picture: settingsProfilePictureUrl.trim() || null,
           email: user.email || null,
+          role: user.role || null,
         }, { onConflict: 'id' });
       if (error) throw error;
       setUser((prev) => prev ? {

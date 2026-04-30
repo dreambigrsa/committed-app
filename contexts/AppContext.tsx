@@ -14,6 +14,7 @@ import { requestPasswordReset } from '@/lib/auth-functions';
 import { queueRelationshipChange, syncOfflineQueue, getOfflineQueue, RelationshipConflict } from '@/lib/relationship-sync';
 import { buildPostLink, buildReelLink } from '@/lib/deep-link-service';
 import { getStoredReferralCode, clearStoredReferralCode } from '@/lib/referral-storage';
+import { getDisplayName } from '@/lib/identity';
 
 /** Reject if Supabase (or any) promise hangs — common on slow mobile networks. */
 function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string): Promise<T> {
@@ -79,6 +80,9 @@ const STATUS_HEARTBEAT_MS = 2 * 60 * 1000;
 const NOTIFICATION_POLL_MS = 45 * 1000;
 const CACHE_PREFIX = 'app-cache:v1:';
 const COMMITTED_AI_EMAIL = 'ai@committed.app';
+
+const userIdentitySelect = 'id, full_name, username, email, profile_picture';
+const postUserSelect = 'full_name, username, email, profile_picture';
 
 export const [AppContext, useApp] = createContextHook(() => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -338,7 +342,11 @@ export const [AppContext, useApp] = createContextHook(() => {
       if (prev?.id === authUser.id) return prev;
       return {
         id: authUser.id,
-        fullName: authUser.fullName || prev?.fullName || '',
+        fullName: getDisplayName({
+          fullName: authUser.fullName || prev?.fullName,
+          username: prev?.username,
+          email: authUser.email || prev?.email,
+        }),
         username: prev?.username || '',
         email: authUser.email || prev?.email || '',
         phoneNumber: authUser.phoneNumber || prev?.phoneNumber || '',
@@ -514,7 +522,7 @@ export const [AppContext, useApp] = createContextHook(() => {
       if (userData) {
         const user: User = {
           id: userData.id,
-          fullName: userData.full_name,
+          fullName: getDisplayName(userData),
           username: userData.username,
           email: userData.email,
           phoneNumber: userData.phone_number,
@@ -640,7 +648,11 @@ export const [AppContext, useApp] = createContextHook(() => {
           if (prev?.id === userId) return prev;
           return {
             id: userId,
-            fullName: authUser?.fullName || prev?.fullName || '',
+            fullName: getDisplayName({
+              fullName: authUser?.fullName || prev?.fullName,
+              username: prev?.username,
+              email: authUser?.email || prev?.email,
+            }),
             username: prev?.username || '',
             email: authUser?.email || prev?.email || '',
             phoneNumber: authUser?.phoneNumber || prev?.phoneNumber || '',
@@ -656,7 +668,7 @@ export const [AppContext, useApp] = createContextHook(() => {
         .from('posts')
         .select(`
           *,
-          users!posts_user_id_fkey(full_name, profile_picture)
+          users!posts_user_id_fkey(${postUserSelect})
         `)
         .or(`moderation_status.eq.approved,user_id.eq.${userId}`)
         .order('created_at', { ascending: false })
@@ -686,8 +698,8 @@ export const [AppContext, useApp] = createContextHook(() => {
           return {
             id: p.id,
             userId: p.user_id,
-            userName: p.users.full_name,
-            userAvatar: p.users.profile_picture,
+            userName: getDisplayName(p.users),
+            userAvatar: p.users?.profile_picture,
             content: p.content,
             mediaUrls: p.media_urls || [],
             mediaType: p.media_type,
@@ -713,7 +725,7 @@ export const [AppContext, useApp] = createContextHook(() => {
         .from('reels')
         .select(`
           *,
-          users!reels_user_id_fkey(full_name, profile_picture)
+          users!reels_user_id_fkey(${postUserSelect})
         `)
         .or(`status.eq.approved,user_id.eq.${userId}`)
         .order('created_at', { ascending: false })
@@ -725,7 +737,7 @@ export const [AppContext, useApp] = createContextHook(() => {
           .from('reels')
           .select(`
             *,
-            users!reels_user_id_fkey(full_name, profile_picture)
+            users!reels_user_id_fkey(${postUserSelect})
           `)
           .or(`moderation_status.eq.approved,user_id.eq.${userId}`)
           .order('created_at', { ascending: false })
@@ -739,7 +751,7 @@ export const [AppContext, useApp] = createContextHook(() => {
             .from('reels')
             .select(`
               *,
-              users!reels_user_id_fkey(full_name, profile_picture)
+              users!reels_user_id_fkey(${postUserSelect})
             `)
             .order('created_at', { ascending: false })
             .limit(50);
@@ -766,8 +778,8 @@ export const [AppContext, useApp] = createContextHook(() => {
           return {
             id: r.id,
             userId: r.user_id,
-            userName: r.users.full_name,
-            userAvatar: r.users.profile_picture,
+            userName: getDisplayName(r.users),
+            userAvatar: r.users?.profile_picture,
             videoUrl: r.video_url,
             thumbnailUrl: r.thumbnail_url,
             caption: r.caption,
@@ -1005,11 +1017,11 @@ export const [AppContext, useApp] = createContextHook(() => {
         const { data: allParticipantsData } = allParticipantIds.length > 0
           ? await supabase
               .from('users')
-              .select('id, full_name, profile_picture')
+              .select(userIdentitySelect)
               .in('id', allParticipantIds)
           : { data: [] as any[] };
         const globalParticipantsMap = new Map(
-          (allParticipantsData || []).map((p: any) => [p.id, { name: p.full_name, avatar: p.profile_picture }])
+          (allParticipantsData || []).map((p: any) => [p.id, { name: getDisplayName(p), avatar: p.profile_picture }])
         );
 
         // Now format conversations with accurate last message from non-deleted messages
@@ -1070,7 +1082,7 @@ export const [AppContext, useApp] = createContextHook(() => {
                 .from('comments')
                 .select(`
                   *,
-                  users!comments_user_id_fkey(full_name, profile_picture),
+                  users!comments_user_id_fkey(${postUserSelect}),
                   stickers!comments_sticker_id_fkey(image_url, is_animated)
                 `)
                 .in('post_id', currentPostIds)
@@ -1118,8 +1130,8 @@ export const [AppContext, useApp] = createContextHook(() => {
             id: c.id,
             postId: c.post_id,
             userId: c.user_id,
-            userName: c.users.full_name,
-            userAvatar: c.users.profile_picture,
+            userName: getDisplayName(c.users),
+            userAvatar: c.users?.profile_picture,
             content: c.content,
             stickerId: c.sticker_id || undefined,
             stickerImageUrl: c.stickers?.image_url || undefined, // Include sticker image URL
@@ -1230,7 +1242,7 @@ export const [AppContext, useApp] = createContextHook(() => {
                 .from('reel_comments')
                 .select(`
                   *,
-                  users!reel_comments_user_id_fkey(full_name, profile_picture),
+                  users!reel_comments_user_id_fkey(${postUserSelect}),
                   stickers!reel_comments_sticker_id_fkey(image_url, is_animated)
                 `)
                 .in('reel_id', currentReelIds)
@@ -1278,8 +1290,8 @@ export const [AppContext, useApp] = createContextHook(() => {
             id: c.id,
             reelId: c.reel_id,
             userId: c.user_id,
-            userName: c.users.full_name,
-            userAvatar: c.users.profile_picture,
+            userName: getDisplayName(c.users),
+            userAvatar: c.users?.profile_picture,
             content: c.content,
             stickerId: c.sticker_id || undefined,
             stickerImageUrl: c.stickers?.image_url || undefined, // Include sticker image URL
@@ -3237,7 +3249,7 @@ export const [AppContext, useApp] = createContextHook(() => {
         })
         .select(`
           *,
-          users!posts_user_id_fkey(full_name, profile_picture)
+          users!posts_user_id_fkey(${postUserSelect})
         `)
         .single();
 
@@ -3246,7 +3258,7 @@ export const [AppContext, useApp] = createContextHook(() => {
       const newPost: Post = {
         id: data.id,
         userId: currentUser.id,
-        userName: currentUser.fullName,
+        userName: getDisplayName(currentUser),
         userAvatar: currentUser.profilePicture,
         content,
         mediaUrls,
@@ -3284,7 +3296,7 @@ export const [AppContext, useApp] = createContextHook(() => {
         })
         .select(`
           *,
-          users!reels_user_id_fkey(full_name, profile_picture)
+          users!reels_user_id_fkey(${postUserSelect})
         `)
         .single();
 
@@ -3293,7 +3305,7 @@ export const [AppContext, useApp] = createContextHook(() => {
       const newReel: Reel = {
         id: data.id,
         userId: currentUser.id,
-        userName: currentUser.fullName,
+        userName: getDisplayName(currentUser),
         userAvatar: currentUser.profilePicture,
         videoUrl,
         thumbnailUrl,
@@ -3470,7 +3482,7 @@ export const [AppContext, useApp] = createContextHook(() => {
         id: data.id,
         postId,
         userId: currentUser.id,
-        userName: currentUser.fullName,
+        userName: getDisplayName(currentUser),
         userAvatar: currentUser.profilePicture,
         content: messageType === 'sticker' ? '' : content,
         stickerId: data.sticker_id || undefined,
@@ -4116,12 +4128,12 @@ export const [AppContext, useApp] = createContextHook(() => {
         // Conversation exists, return it
         const { data: participantsData } = await supabase
           .from('users')
-          .select('id, full_name, profile_picture')
+          .select(userIdentitySelect)
           .in('id', existingConv.participant_ids);
 
         // Create a map for quick lookup
         const participantsMap = new Map(
-          participantsData?.map((p: any) => [p.id, { name: p.full_name, avatar: p.profile_picture }]) || []
+          participantsData?.map((p: any) => [p.id, { name: getDisplayName(p), avatar: p.profile_picture }]) || []
         );
 
         // Ensure arrays are in the same order as participant_ids
@@ -4169,12 +4181,12 @@ export const [AppContext, useApp] = createContextHook(() => {
       // Get participant data
       const { data: participantsData } = await supabase
         .from('users')
-        .select('id, full_name, profile_picture')
+        .select(userIdentitySelect)
         .in('id', [currentUser.id, otherUserId]);
 
       // Create a map for quick lookup
       const participantsMap = new Map(
-        participantsData?.map((p: any) => [p.id, { name: p.full_name, avatar: p.profile_picture }]) || []
+        participantsData?.map((p: any) => [p.id, { name: getDisplayName(p), avatar: p.profile_picture }]) || []
       );
 
       // Ensure arrays are in the same order as participant_ids
@@ -5217,7 +5229,7 @@ export const [AppContext, useApp] = createContextHook(() => {
           if (payload.eventType === 'INSERT' && payload.new.moderation_status === 'approved') {
             const { data: userData } = await supabase
               .from('users')
-              .select('full_name, profile_picture')
+              .select(postUserSelect)
               .eq('id', payload.new.user_id)
               .single();
             
@@ -5225,7 +5237,7 @@ export const [AppContext, useApp] = createContextHook(() => {
               const newPost: Post = {
                 id: payload.new.id,
                 userId: payload.new.user_id,
-                userName: userData.full_name,
+                userName: getDisplayName(userData),
                 userAvatar: userData.profile_picture,
                 content: payload.new.content,
                 mediaUrls: payload.new.media_urls || [],
@@ -5249,7 +5261,7 @@ export const [AppContext, useApp] = createContextHook(() => {
                 .from('posts')
                 .select(`
                   *,
-                  users!posts_user_id_fkey(full_name, profile_picture)
+                  users!posts_user_id_fkey(${postUserSelect})
                 `)
                 .eq('id', payload.new.id)
                 .single();
@@ -5264,8 +5276,8 @@ export const [AppContext, useApp] = createContextHook(() => {
                 const updatedPost: Post = {
                   id: postsData.id,
                   userId: postsData.user_id,
-                  userName: postsData.users.full_name,
-                  userAvatar: postsData.users.profile_picture,
+                  userName: getDisplayName(postsData.users),
+                  userAvatar: postsData.users?.profile_picture,
                   content: postsData.content,
                   mediaUrls: postsData.media_urls || [],
                   mediaType: postsData.media_type,
@@ -5310,7 +5322,7 @@ export const [AppContext, useApp] = createContextHook(() => {
           if (payload.eventType === 'INSERT' && payload.new.moderation_status === 'approved') {
             const { data: userData } = await supabase
               .from('users')
-              .select('full_name, profile_picture')
+              .select(postUserSelect)
               .eq('id', payload.new.user_id)
               .single();
             
@@ -5318,7 +5330,7 @@ export const [AppContext, useApp] = createContextHook(() => {
               const newReel: Reel = {
                 id: payload.new.id,
                 userId: payload.new.user_id,
-                userName: userData.full_name,
+                userName: getDisplayName(userData),
                 userAvatar: userData.profile_picture,
                 videoUrl: payload.new.video_url,
                 thumbnailUrl: payload.new.thumbnail_url,
@@ -5336,7 +5348,7 @@ export const [AppContext, useApp] = createContextHook(() => {
                 .from('reels')
                 .select(`
                   *,
-                  users!reels_user_id_fkey(full_name, profile_picture)
+                  users!reels_user_id_fkey(${postUserSelect})
                 `)
                 .eq('id', payload.new.id)
                 .single();
@@ -5351,8 +5363,8 @@ export const [AppContext, useApp] = createContextHook(() => {
                 const updatedReel: Reel = {
                   id: reelsData.id,
                   userId: reelsData.user_id,
-                  userName: reelsData.users.full_name,
-                  userAvatar: reelsData.users.profile_picture,
+                  userName: getDisplayName(reelsData.users),
+                  userAvatar: reelsData.users?.profile_picture,
                   videoUrl: reelsData.video_url,
                   thumbnailUrl: reelsData.thumbnail_url,
                   caption: reelsData.caption,
@@ -5639,7 +5651,7 @@ export const [AppContext, useApp] = createContextHook(() => {
         id: data.id,
         reelId,
         userId: currentUser.id,
-        userName: currentUser.fullName,
+        userName: getDisplayName(currentUser),
         userAvatar: currentUser.profilePicture,
         content: messageType === 'sticker' ? '' : content,
         stickerId: data.sticker_id || undefined,
@@ -6727,11 +6739,11 @@ export const [AppContext, useApp] = createContextHook(() => {
     if (!post) {
       const { data: postData, error: postError } = await supabase
         .from('posts')
-        .select(`
-          id,
-          content,
-          users!posts_user_id_fkey(full_name)
-        `)
+          .select(`
+            id,
+            content,
+            users!posts_user_id_fkey(${postUserSelect})
+          `)
         .eq('id', id)
         .maybeSingle();
 
@@ -6743,7 +6755,7 @@ export const [AppContext, useApp] = createContextHook(() => {
         post = {
           id: postData.id,
           content: postData.content || '',
-          userName: (postData.users as any)?.full_name || 'Committed user',
+          userName: getDisplayName(postData.users as any),
         } as Post;
       }
     }
@@ -6806,7 +6818,7 @@ export const [AppContext, useApp] = createContextHook(() => {
           .select(`
             id,
             caption,
-            users!reels_user_id_fkey(full_name)
+            users!reels_user_id_fkey(${postUserSelect})
           `)
           .eq('id', id)
           .maybeSingle();
@@ -6819,7 +6831,7 @@ export const [AppContext, useApp] = createContextHook(() => {
           reel = {
             id: reelData.id,
             caption: reelData.caption || '',
-            userName: (reelData.users as any)?.full_name || 'Committed user',
+            userName: getDisplayName(reelData.users as any),
           } as Reel;
         }
       }

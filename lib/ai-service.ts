@@ -1089,7 +1089,7 @@ export async function getAIResponse(
 ): Promise<AIResponse> {
   try {
     // 1) System-routed trivial queries (fast, deterministic, no API call).
-    const systemAnswer = getSystemRoutedAnswer(userMessage);
+    const systemAnswer = getSystemRoutedAnswer(userMessage, userName, userUsername);
     if (systemAnswer) {
       return {
         success: true,
@@ -2050,9 +2050,10 @@ function getFallbackResponse(
   };
 }
 
-function getSystemRoutedAnswer(userMessage: string): string | null {
+function getSystemRoutedAnswer(userMessage: string, userName?: string, userUsername?: string): string | null {
   const msg = userMessage.trim().toLowerCase();
   if (!msg) return null;
+  const userDisplayName = userName || userUsername || null;
 
   const asksTime =
     /\bwhat('?s| is)? the time\b/.test(msg) ||
@@ -2068,6 +2069,13 @@ function getSystemRoutedAnswer(userMessage: string): string | null {
     /^date\??$/.test(msg);
   if (asksDate) {
     return `Today's date is ${new Date().toLocaleDateString()}.`;
+  }
+
+  const asksName =
+    /\b(my name|know my name|what('?s| is) my name|who am i)\b/.test(msg) ||
+    (msg.includes('name') && msg.includes('account'));
+  if (asksName && userDisplayName) {
+    return `Yes, your name is ${userDisplayName}.`;
   }
 
   return null;

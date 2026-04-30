@@ -37,10 +37,20 @@ function isAuthTimeoutError(err: unknown) {
   return msg.includes('auth_refresh_session timed out') || msg.includes('auth_profile_hydrate timed out');
 }
 
+function isAuthSessionMissingError(err: unknown) {
+  const msg = (err instanceof Error ? err.message : String(err ?? '')).toLowerCase();
+  return msg.includes('auth session missing') || msg.includes('authsessionmissingerror');
+}
+
 function logAuthRecoverableError(label: string, err: unknown) {
   if (isAuthTimeoutError(err)) {
     const msg = err instanceof Error ? err.message : String(err ?? 'unknown auth timeout');
     console.warn(`${label} ${msg}`);
+    return;
+  }
+
+  if (isAuthSessionMissingError(err)) {
+    if (__DEV__) console.log(`${label} no active auth session`);
     return;
   }
 
@@ -512,7 +522,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               12000,
               'auth_refresh_session'
             );
-            if (refreshErr) throw refreshErr;
+            if (refreshErr && !isAuthSessionMissingError(refreshErr)) throw refreshErr;
             if (refreshed.session) {
               transientNullSinceRef.current = null;
               setSession(refreshed.session);

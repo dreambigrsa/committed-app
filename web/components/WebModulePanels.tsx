@@ -424,7 +424,7 @@ function DatingProfilePanel() {
         .from('dating_profiles')
         .select(
           `
-          id,user_id,bio,age,location_city,relationship_goals,interests,religion,education,
+          id,user_id,bio,age,location_city,relationship_goals,interests,education,
           users!dating_profiles_user_id_fkey(full_name,profile_picture),
           dating_photos(photo_url,is_primary)
         `
@@ -545,7 +545,6 @@ function DatingProfilePanel() {
         location_city: form.locationCity.trim() || null,
         gender: form.gender || null,
         looking_for: form.lookingFor,
-        religion: form.religion || null,
         education: form.education || null,
         relationship_goals: form.goals,
         is_active: form.isActive,
@@ -669,7 +668,7 @@ function DatingProfilePanel() {
                     <p className="mt-1 text-sm font-medium text-slate-600">{candidate.location_city || 'Location not shown'}</p>
                     {candidate.bio ? <p className="mt-3 line-clamp-3 leading-7 text-slate-700">{candidate.bio}</p> : null}
                     <div className="mt-4 flex flex-wrap gap-2">
-                      {[...(candidate.relationship_goals || []), ...(candidate.interests || []), candidate.religion, candidate.education]
+                      {[...(candidate.relationship_goals || []), ...(candidate.interests || []), candidate.education]
                         .filter(Boolean)
                         .slice(0, 5)
                         .map((tag) => (

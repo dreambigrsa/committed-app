@@ -29,6 +29,7 @@ import {
   Settings,
   Share2,
   Shield,
+  UploadCloud,
   Sparkles,
   Star,
   Trash2,
@@ -298,6 +299,47 @@ function mediaImage(url?: string | null) {
   return url;
 }
 
+function getDateStringFromParts(day?: string, month?: string, year?: string) {
+  if (!day || !month || !year) return undefined;
+  const d = Number(day);
+  const m = Number(month);
+  const y = Number(year);
+  if (!d || !m || !y) return undefined;
+  const date = new Date(y, m - 1, d);
+  if (date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) return undefined;
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+function normalizeRole(role?: string | null) {
+  return (role || '').trim().toLowerCase();
+}
+
+function isAdminRole(role?: string | null) {
+  return ['admin', 'super_admin', 'moderator'].includes(normalizeRole(role));
+}
+
+function getUserDisplayName(user?: { full_name?: string | null; username?: string | null; email?: string | null } | null) {
+  if (!user) return 'Committed member';
+  if (user.full_name?.trim()) return user.full_name.trim();
+  if (user.username?.trim()) return user.username.trim();
+  if (user.email?.includes('@')) return user.email.split('@')[0] || 'Committed member';
+  return user.email || 'Committed member';
+}
+
+function getCommittedAIReply(input: string) {
+  const value = input.toLowerCase();
+  if (value.includes('register') && value.includes('relationship')) {
+    return 'I can help with that. Go to Home > Register relationship, add partner details, choose relationship type and privacy, then submit for verification.';
+  }
+  if (value.includes('dating')) {
+    return 'For dating, open Dating, complete your profile setup, then use Discover to like or pass profiles and check matches.';
+  }
+  if (value.includes('verify')) {
+    return 'Open Verification to complete phone, email, ID, and couple selfie checks. I can guide you step by step if you tell me which one you want.';
+  }
+  return 'Got you. I am here to help with relationships, dating, safety, settings, and verification. Tell me exactly what you want to do next.';
+}
+
 function Avatar({ src, name, size = 'md' }: { src?: string | null; name?: string | null; size?: 'sm' | 'md' | 'lg' }) {
   const sizeClass = size === 'lg' ? 'h-14 w-14 text-lg' : size === 'sm' ? 'h-9 w-9 text-xs' : 'h-11 w-11 text-sm';
   if (src) {
@@ -395,6 +437,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const [professionalRoles, setProfessionalRoles] = useState<any[]>([]);
   const [subscriptionPlans, setSubscriptionPlans] = useState<any[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
+  const [routeProfileUser, setRouteProfileUser] = useState<WebUser | null>(null);
   const [routeRows, setRouteRows] = useState<any[]>([]);
   const [routeRowsLoading, setRouteRowsLoading] = useState(false);
   const [routeRowsError, setRouteRowsError] = useState<string | null>(null);
@@ -408,6 +451,14 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const [postDraft, setPostDraft] = useState('');
   const [statusDraft, setStatusDraft] = useState('');
   const [reelDraft, setReelDraft] = useState({ caption: '', videoUrl: '', thumbnailUrl: '' });
+  const [postImageUrl, setPostImageUrl] = useState('');
+  const [reelVideoUrl, setReelVideoUrl] = useState('');
+  const [reelThumbnailUploadUrl, setReelThumbnailUploadUrl] = useState('');
+  const [datingPhotoUrl, setDatingPhotoUrl] = useState('');
+  const [relationshipPhotoUrl, setRelationshipPhotoUrl] = useState('');
+  const [statusMediaUrl, setStatusMediaUrl] = useState('');
+  const [settingsProfilePictureUrl, setSettingsProfilePictureUrl] = useState('');
+  const [uploadingLabel, setUploadingLabel] = useState<string | null>(null);
   const [adForm, setAdForm] = useState({
     title: '',
     description: '',
@@ -434,10 +485,22 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     partnerPhone: '',
     type: 'serious',
     startDate: '',
+    startDay: '',
+    startMonth: '',
+    startYear: '',
+    partnerBirthDay: '',
+    partnerBirthMonth: '',
+    partnerBirthYear: '',
     privacy: 'verified_people',
     city: '',
     consent: false,
   });
+  const [relationshipStep, setRelationshipStep] = useState(1);
+  const [datingProfileStep, setDatingProfileStep] = useState(1);
+  const [showDatingReviewModal, setShowDatingReviewModal] = useState(false);
+  const [showRelationshipReviewModal, setShowRelationshipReviewModal] = useState(false);
+  const [relationshipStepAnim, setRelationshipStepAnim] = useState({ opacity: 1, y: 0 });
+  const [datingStepAnim, setDatingStepAnim] = useState({ opacity: 1, y: 0 });
   const [verificationForm, setVerificationForm] = useState({ email: '', phone: '', code: '', generatedCode: '', documentUrl: '' });
   const [dateForm, setDateForm] = useState({
     recipientId: '',
@@ -510,6 +573,22 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     }
   }, []);
 
+  useEffect(() => {
+    setRelationshipStepAnim({ opacity: 0, y: 12 });
+    const frame = window.requestAnimationFrame(() => {
+      setRelationshipStepAnim({ opacity: 1, y: 0 });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [relationshipStep]);
+
+  useEffect(() => {
+    setDatingStepAnim({ opacity: 0, y: 12 });
+    const frame = window.requestAnimationFrame(() => {
+      setDatingStepAnim({ opacity: 1, y: 0 });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [datingProfileStep]);
+
   const loadAppData = useCallback(async () => {
     if (!supabase) {
       setLoading(false);
@@ -533,7 +612,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
       const currentUser: WebUser = {
         id: authUser.id,
-        full_name: profile?.full_name || authUser.user_metadata?.full_name || authUser.email || 'Committed member',
+        full_name: profile?.full_name || profile?.username || authUser.user_metadata?.full_name || authUser.user_metadata?.username || authUser.email?.split('@')[0] || authUser.email || 'Committed member',
         email: profile?.email || authUser.email,
         phone_number: profile?.phone_number,
         profile_picture: profile?.profile_picture,
@@ -550,6 +629,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         username: currentUser.username || '',
         phoneNumber: currentUser.phone_number || '',
       });
+      setSettingsProfilePictureUrl(currentUser.profile_picture || '');
       setVerificationForm((prev) => ({
         ...prev,
         email: profile?.email || authUser.email || '',
@@ -649,8 +729,17 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         religion: ownDating?.religion || '',
         intention: ownDating?.intention_tag || 'serious',
       });
-      const discoverProfiles = ((datingResult.data || []) as DatingProfile[]).filter(Boolean);
+      let discoverProfiles = ((datingResult.data || []) as DatingProfile[]).filter(Boolean);
+      if (!discoverProfiles.length) {
+        const fallbackDating = await supabase
+          .from('dating_profiles')
+          .select('id,user_id,bio,age,location_city,location_country,relationship_goals,interests,religion,intention_tag,users!dating_profiles_user_id_fkey(full_name,profile_picture),dating_photos(photo_url,is_primary)')
+          .neq('user_id', authUser.id)
+          .limit(20);
+        discoverProfiles = ((fallbackDating.data || []) as DatingProfile[]).filter(Boolean);
+      }
       setDatingProfiles(discoverProfiles);
+      setDatingIndex(0);
       setNotifications(((notificationsResult.data || []) as NotificationRow[]).filter(Boolean));
       const conversationRows = ((conversationsResult.data || []) as ConversationRow[]).filter(Boolean);
       const conversationIds = conversationRows.map((conversation) => conversation.id).filter(Boolean);
@@ -717,8 +806,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       });
       setStatusFeed(Array.from(latestStatusByUser.values()));
 
-      const adminRoles = ['admin', 'super_admin', 'moderator'];
-      if (currentUser.role && adminRoles.includes(currentUser.role)) {
+      if (isAdminRole(currentUser.role)) {
         const [adminRelationshipsResult, adminUsersResult, adsResult, adminPostsResult, adminReelsResult, professionalApplicationsResult, falseReportsResult, paymentSubmissionsResult] = await Promise.all([
           supabase
             .from('relationships')
@@ -856,7 +944,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       } else {
         setProfessionalReviews([]);
       }
-      if (!(currentUser.role && ['admin', 'super_admin', 'moderator'].includes(currentUser.role))) {
+      if (!isAdminRole(currentUser.role)) {
         setAds(ownAdsResult.data || []);
       }
 
@@ -892,7 +980,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
   useEffect(() => {
     if (!supabase || !user || appPath[0] !== 'admin' || !subPath || !adminGenericRoutes[subPath]) return;
-    if (!['admin', 'super_admin', 'moderator'].includes(user.role || '')) return;
+    if (!isAdminRole(user.role)) return;
     let cancelled = false;
     const route = adminGenericRoutes[subPath];
     const loadRouteRows = async () => {
@@ -918,6 +1006,26 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       cancelled = true;
     };
   }, [appPath, subPath, supabase, user]);
+
+  useEffect(() => {
+    if (!supabase || appPath[0] !== 'profile' || !appPath[1]) {
+      setRouteProfileUser(null);
+      return;
+    }
+    let cancelled = false;
+    const loadProfileUser = async () => {
+      const { data } = await supabase
+        .from('users')
+        .select('id,full_name,username,email,phone_number,profile_picture,role,verified,email_verified,phone_verified,id_verified')
+        .eq('id', appPath[1])
+        .maybeSingle();
+      if (!cancelled) setRouteProfileUser((data || null) as WebUser | null);
+    };
+    void loadProfileUser();
+    return () => {
+      cancelled = true;
+    };
+  }, [appPath, supabase]);
 
   const togglePostLike = async (post: FeedPost) => {
     if (!supabase || !user) return;
@@ -1028,17 +1136,24 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   };
 
   const createPost = async () => {
-    if (!supabase || !user || !postDraft.trim()) return;
+    if (!supabase || !user || (!postDraft.trim() && !postImageUrl.trim())) return;
     setIsCreatingContent(true);
     try {
+      const mediaUrls = postImageUrl.trim() ? [postImageUrl.trim()] : [];
       const { data, error } = await supabase
         .from('posts')
-        .insert({ user_id: user.id, content: postDraft.trim(), media_urls: [], media_type: 'text' })
+        .insert({
+          user_id: user.id,
+          content: postDraft.trim() || null,
+          media_urls: mediaUrls,
+          media_type: mediaUrls.length ? 'image' : 'text',
+        })
         .select('id,user_id,content,media_urls,media_type,comment_count,created_at')
         .single();
       if (error) throw error;
       setPosts((prev) => [{ ...data, users: { full_name: user.full_name, profile_picture: user.profile_picture }, likes: [] }, ...prev]);
       setPostDraft('');
+      setPostImageUrl('');
       setReactionNotice('Post created');
       window.setTimeout(() => setReactionNotice(null), 1800);
       router.push('/app/feed');
@@ -1048,14 +1163,15 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   };
 
   const createStatus = async () => {
-    if (!supabase || !user || !statusDraft.trim()) return;
+    if (!supabase || !user || (!statusDraft.trim() && !statusMediaUrl.trim())) return;
     setIsCreatingContent(true);
     try {
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
       const { error } = await supabase.from('statuses').insert({
         user_id: user.id,
-        content_type: 'text',
-        text_content: statusDraft.trim(),
+        content_type: statusMediaUrl.trim() ? 'image' : 'text',
+        text_content: statusDraft.trim() || null,
+        media_path: statusMediaUrl.trim() || null,
         privacy_level: 'followers',
         background_color: '#2563eb',
         expires_at: expiresAt,
@@ -1063,6 +1179,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       });
       if (error) throw error;
       setStatusDraft('');
+      setStatusMediaUrl('');
       setReactionNotice('Status shared');
       window.setTimeout(() => setReactionNotice(null), 1800);
       await loadAppData();
@@ -1073,15 +1190,17 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   };
 
   const createReel = async () => {
-    if (!supabase || !user || !reelDraft.videoUrl.trim()) return;
+    const finalVideoUrl = reelVideoUrl.trim() || reelDraft.videoUrl.trim();
+    const finalThumbnailUrl = reelThumbnailUploadUrl.trim() || reelDraft.thumbnailUrl.trim();
+    if (!supabase || !user || !finalVideoUrl) return;
     setIsCreatingContent(true);
     try {
       const { data, error } = await supabase
         .from('reels')
         .insert({
           user_id: user.id,
-          video_url: reelDraft.videoUrl.trim(),
-          thumbnail_url: reelDraft.thumbnailUrl.trim() || null,
+          video_url: finalVideoUrl,
+          thumbnail_url: finalThumbnailUrl || null,
           caption: reelDraft.caption.trim(),
         })
         .select('id,user_id,caption,video_url,thumbnail_url,created_at')
@@ -1089,6 +1208,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       if (error) throw error;
       setReels((prev) => [{ ...data, users: { full_name: user.full_name, profile_picture: user.profile_picture }, likes: [] }, ...prev]);
       setReelDraft({ caption: '', videoUrl: '', thumbnailUrl: '' });
+      setReelVideoUrl('');
+      setReelThumbnailUploadUrl('');
       setReactionNotice('Reel created');
       window.setTimeout(() => setReactionNotice(null), 1800);
       router.push('/app/reels');
@@ -1165,8 +1286,35 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         .eq('email', 'ai@committed.app')
         .maybeSingle();
       if (!aiUser?.id) {
-        setReactionNotice('Committed AI is not configured yet');
-        window.setTimeout(() => setReactionNotice(null), 2200);
+        const localConversationId = 'committed-ai-local';
+        const now = new Date().toISOString();
+        const prompt = aiPrompt.trim();
+        const reply = getCommittedAIReply(prompt);
+        setConversations((prev) => {
+          const exists = prev.find((item) => item.id === localConversationId);
+          if (exists) return prev;
+          return [{
+            id: localConversationId,
+            participant_ids: [user.id, 'committed-ai'],
+            participantNames: ['Committed AI'],
+            participantAvatars: { 'committed-ai': null },
+            created_at: now,
+            last_message_at: now,
+            last_message: reply,
+          }, ...prev];
+        });
+        setMessagesByConversation((prev) => ({
+          ...prev,
+          [localConversationId]: [
+            ...(prev[localConversationId] || []),
+            { id: `local-user-${Date.now()}`, conversation_id: localConversationId, sender_id: user.id, receiver_id: 'committed-ai', content: prompt, message_type: 'text', created_at: now },
+            { id: `local-ai-${Date.now() + 1}`, conversation_id: localConversationId, sender_id: 'committed-ai', receiver_id: user.id, content: reply, message_type: 'text', created_at: new Date(Date.now() + 1000).toISOString() },
+          ],
+        }));
+        setAiPrompt('');
+        setReactionNotice('Committed AI replied');
+        window.setTimeout(() => setReactionNotice(null), 2000);
+        router.push(`/app/messages/${localConversationId}`);
         return;
       }
       let { data: existing } = await supabase
@@ -1232,6 +1380,39 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         .from('conversations')
         .update({ last_message: messageText, last_message_at: new Date().toISOString() })
         .eq('id', conversation.id);
+      const isAiConversation =
+        conversation.id === 'committed-ai-local' ||
+        (conversation.participantNames || []).some((name) => name.toLowerCase().includes('committed ai'));
+      if (isAiConversation) {
+        const aiReplyText = getCommittedAIReply(messageText);
+        const aiId = receiverId || 'committed-ai';
+        const aiReply: MessageRow = {
+          id: `ai-${Date.now()}`,
+          conversation_id: conversation.id,
+          sender_id: aiId,
+          receiver_id: user.id,
+          content: aiReplyText,
+          message_type: 'text',
+          created_at: new Date(Date.now() + 800).toISOString(),
+        };
+        setMessagesByConversation((prev) => ({
+          ...prev,
+          [conversation.id]: [...(prev[conversation.id] || []), aiReply],
+        }));
+        if (conversation.id !== 'committed-ai-local' && receiverId) {
+          await supabase.from('messages').insert({
+            conversation_id: conversation.id,
+            sender_id: receiverId,
+            receiver_id: user.id,
+            content: aiReplyText,
+            message_type: 'text',
+          });
+          await supabase
+            .from('conversations')
+            .update({ last_message: aiReplyText, last_message_at: new Date().toISOString() })
+            .eq('id', conversation.id);
+        }
+      }
       await loadAppData();
     }
   };
@@ -1241,6 +1422,10 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     setSaving(true);
     try {
       const normalizedPhone = relationshipForm.partnerPhone.replace(/[^\d+]/g, '').trim();
+      const startDateFromParts = getDateStringFromParts(relationshipForm.startDay, relationshipForm.startMonth, relationshipForm.startYear);
+      const startDateValue = relationshipForm.startDate || startDateFromParts || new Date().toISOString();
+      const partnerBirthMonth = relationshipForm.partnerBirthMonth ? Number(relationshipForm.partnerBirthMonth) : null;
+      const partnerBirthYear = relationshipForm.partnerBirthYear ? Number(relationshipForm.partnerBirthYear) : null;
       const partnerLookup = normalizedPhone
         ? await supabase
             .from('users')
@@ -1256,9 +1441,12 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           partner_user_id: partnerLookup.data?.id || null,
           partner_name: relationshipForm.partnerName.trim(),
           partner_phone: normalizedPhone || null,
+          partner_face_photo: relationshipPhotoUrl.trim() || null,
+          partner_date_of_birth_month: partnerBirthMonth,
+          partner_date_of_birth_year: partnerBirthYear,
           type: relationshipForm.type,
           status: 'pending',
-          start_date: relationshipForm.startDate || new Date().toISOString(),
+          start_date: startDateValue,
           privacy_level: relationshipForm.privacy,
           partner_city: relationshipForm.city.trim() || null,
         })
@@ -1286,7 +1474,23 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       }
 
       setRelationship(createdRelationship as RelationshipRow);
-      setRelationshipForm({ partnerName: '', partnerPhone: '', type: 'serious', startDate: '', privacy: 'verified_people', city: '', consent: false });
+      setRelationshipForm({
+        partnerName: '',
+        partnerPhone: '',
+        type: 'serious',
+        startDate: '',
+        startDay: '',
+        startMonth: '',
+        startYear: '',
+        partnerBirthDay: '',
+        partnerBirthMonth: '',
+        partnerBirthYear: '',
+        privacy: 'verified_people',
+        city: '',
+        consent: false,
+      });
+      setRelationshipStep(1);
+      setRelationshipPhotoUrl('');
       setReactionNotice('Relationship registration submitted');
       window.setTimeout(() => setReactionNotice(null), 2200);
       router.push('/app');
@@ -1304,6 +1508,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         experience: professionalApplicationForm.experience.trim(),
         bio: professionalApplicationForm.bio.trim(),
         credentialsUrl: professionalApplicationForm.credentialsUrl.trim(),
+        credential_documents: professionalApplicationForm.credentialsUrl.trim() ? [professionalApplicationForm.credentialsUrl.trim()] : [],
         rate: professionalApplicationForm.rate ? Number(professionalApplicationForm.rate) : null,
       };
       const { error } = await supabase
@@ -1326,7 +1531,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   };
 
   const updateAdminRelationship = async (relationshipId: string, action: 'verify' | 'end' | 'reject' | 'delete') => {
-    if (!supabase || !user || !['admin', 'super_admin', 'moderator'].includes(user.role || '')) return;
+    if (!supabase || !user || !isAdminRole(user.role)) return;
     setSaving(true);
     try {
       if (action === 'delete') {
@@ -1693,7 +1898,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   };
 
   const updateAdminDocumentStatus = async (id: string, status: 'approved' | 'rejected') => {
-    if (!supabase || !user || !['admin', 'super_admin', 'moderator'].includes(user.role || '')) return;
+    if (!supabase || !user || !isAdminRole(user.role)) return;
     const patch = {
       status,
       reviewed_by: user.id,
@@ -1709,7 +1914,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   };
 
   const updateModeration = async (table: 'posts' | 'reels', id: string, status: 'approved' | 'rejected') => {
-    if (!supabase || !user || !['admin', 'super_admin', 'moderator'].includes(user.role || '')) return;
+    if (!supabase || !user || !isAdminRole(user.role)) return;
     const patch = {
       moderation_status: status,
       reviewed_by: user.id,
@@ -1726,7 +1931,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   };
 
   const updateProfessionalApplication = async (id: string, status: 'approved' | 'rejected') => {
-    if (!supabase || !user || !['admin', 'super_admin', 'moderator'].includes(user.role || '')) return;
+    if (!supabase || !user || !isAdminRole(user.role)) return;
     setSaving(true);
     try {
       const application = professionalApplications.find((item) => item.id === id);
@@ -1805,7 +2010,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   };
 
   const updatePaymentSubmission = async (payment: any, status: 'approved' | 'rejected') => {
-    if (!supabase || !user || !['admin', 'super_admin', 'moderator'].includes(user.role || '')) return;
+    if (!supabase || !user || !isAdminRole(user.role)) return;
     setSaving(true);
     try {
       const patch: any = {
@@ -1833,7 +2038,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   };
 
   const updateAdminUserVerification = async (memberId: string, verificationType: 'phone' | 'email' | 'id') => {
-    if (!supabase || !user || !['admin', 'super_admin', 'moderator'].includes(user.role || '')) return;
+    if (!supabase || !user || !isAdminRole(user.role)) return;
     const field = verificationType === 'phone' ? 'phone_verified' : verificationType === 'email' ? 'email_verified' : 'id_verified';
     const { error } = await supabase.from('users').update({ [field]: true }).eq('id', memberId);
     if (!error) {
@@ -1844,7 +2049,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   };
 
   const toggleAdminUserBan = async (member: WebUser) => {
-    if (!supabase || !user || !['admin', 'super_admin', 'moderator'].includes(user.role || '')) return;
+    if (!supabase || !user || !isAdminRole(user.role)) return;
     const isBanned = !!member.banned_at;
     const patch = isBanned
       ? { banned_at: null, banned_by: null, ban_reason: null }
@@ -1873,7 +2078,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   };
 
   const updateAdminUserRole = async (memberId: string, role: string) => {
-    if (!supabase || !user || user.role !== 'super_admin') return;
+    if (!supabase || !user || normalizeRole(user.role) !== 'super_admin') return;
     const { error } = await supabase.from('users').update({ role }).eq('id', memberId);
     if (!error) {
       setAdminUsers((prev) => prev.map((member) => member.id === memberId ? { ...member, role } : member));
@@ -1883,7 +2088,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   };
 
   const updateFalseReport = async (id: string, status: 'reviewing' | 'dismissed' | 'resolved') => {
-    if (!supabase || !user || !['admin', 'super_admin', 'moderator'].includes(user.role || '')) return;
+    if (!supabase || !user || !isAdminRole(user.role)) return;
     const patch: any = {
       status,
       resolution: status === 'reviewing'
@@ -1913,6 +2118,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           full_name: settingsForm.fullName.trim(),
           username: settingsForm.username.trim() || null,
           phone_number: settingsForm.phoneNumber.trim(),
+          profile_picture: settingsProfilePictureUrl.trim() || null,
         })
         .eq('id', user.id);
       if (error) throw error;
@@ -1921,6 +2127,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         full_name: settingsForm.fullName.trim(),
         username: settingsForm.username.trim() || null,
         phone_number: settingsForm.phoneNumber.trim(),
+        profile_picture: settingsProfilePictureUrl.trim() || null,
       } : prev);
       setReactionNotice('Settings saved');
       window.setTimeout(() => setReactionNotice(null), 1800);
@@ -1933,7 +2140,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     if (!supabase || !user) return;
     setSaving(true);
     try {
-      const { error } = await supabase
+      const { data: savedProfile, error } = await supabase
         .from('dating_profiles')
         .upsert({
           user_id: user.id,
@@ -1948,8 +2155,19 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           religion: datingForm.religion.trim() || null,
           intention_tag: datingForm.intention,
           is_active: true,
-        }, { onConflict: 'user_id' });
+        }, { onConflict: 'user_id' })
+        .select('id')
+        .single();
       if (error) throw error;
+      if (datingPhotoUrl.trim() && savedProfile?.id) {
+        await supabase.from('dating_photos').upsert({
+          profile_id: savedProfile.id,
+          photo_url: datingPhotoUrl.trim(),
+          is_primary: true,
+        }, { onConflict: 'profile_id,photo_url' });
+      }
+      setDatingPhotoUrl('');
+      setDatingProfileStep(1);
       setReactionNotice('Dating saved');
       window.setTimeout(() => setReactionNotice(null), 1800);
       await loadAppData();
@@ -1975,6 +2193,43 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       }
     );
   };
+
+  const uploadMediaFile = useCallback(async (file: File, folder: string) => {
+    if (!supabase || !user) throw new Error('Please sign in again before uploading.');
+    const extension = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`;
+    const filePath = `${folder}/${user.id}/${fileName}`;
+    const { data, error } = await supabase.storage.from('media').upload(filePath, file, {
+      contentType: file.type || undefined,
+      upsert: false,
+    });
+    if (error) throw error;
+    const { data: publicData } = supabase.storage.from('media').getPublicUrl(data.path);
+    return publicData.publicUrl;
+  }, [supabase, user]);
+
+  const handleFileUpload = useCallback(async (
+    event: any,
+    folder: string,
+    label: string,
+    onUploaded: (url: string) => void
+  ) => {
+    const file = event?.target?.files?.[0] as File | undefined;
+    if (!file) return;
+    setUploadingLabel(label);
+    try {
+      const url = await uploadMediaFile(file, folder);
+      onUploaded(url);
+      setReactionNotice(`${label} uploaded`);
+      window.setTimeout(() => setReactionNotice(null), 1800);
+    } catch {
+      setReactionNotice(`Failed to upload ${label.toLowerCase()}`);
+      window.setTimeout(() => setReactionNotice(null), 2200);
+    } finally {
+      setUploadingLabel(null);
+      if (event?.target) event.target.value = '';
+    }
+  }, [uploadMediaFile]);
 
   const renderHeader = () => {
     const current = tabs.find((tab) => tab.key === activeTab) || tabs[0];
@@ -2014,7 +2269,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             <Link href="/app/create-post" className="block rounded-xl px-3 py-3 hover:bg-slate-50" onClick={() => setShowHeaderMenu(false)}>Create post</Link>
             <Link href="/app/create-reel" className="block rounded-xl px-3 py-3 hover:bg-slate-50" onClick={() => setShowHeaderMenu(false)}>Create reel</Link>
             <Link href="/app/settings" className="block rounded-xl px-3 py-3 hover:bg-slate-50" onClick={() => setShowHeaderMenu(false)}>Settings</Link>
-            {(user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'moderator') ? (
+            {isAdminRole(user?.role) ? (
               <Link href="/app/admin" className="block rounded-xl px-3 py-3 hover:bg-slate-50" onClick={() => setShowHeaderMenu(false)}>Admin</Link>
             ) : null}
           </div>
@@ -2065,7 +2320,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           <Avatar src={user?.profile_picture} name={user?.full_name} size="lg" />
           <div>
             <p className="text-sm font-semibold text-blue-100">Welcome back</p>
-            <h2 className="text-2xl font-black">{user?.full_name || 'Committed member'}</h2>
+            <h2 className="text-2xl font-black">{getUserDisplayName(user)}</h2>
           </div>
         </div>
         <p className="mt-5 text-sm leading-6 text-blue-50">Verify love, stay accountable, meet meaningful people, and keep every connection in one familiar app experience.</p>
@@ -2110,7 +2365,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           </div>
         )}
       </section>
-      {user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'moderator' ? (
+      {isAdminRole(user?.role) ? (
         <Link href="/app/admin" className="mt-5 flex items-center gap-3 rounded-[24px] bg-slate-950 p-5 text-white shadow-sm">
           <Settings className="h-7 w-7" />
           <div>
@@ -2265,7 +2520,13 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         rows={8}
         className="w-full resize-none rounded-[22px] border border-slate-200 bg-white p-4 text-lg font-semibold outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
       />
-      <button type="button" onClick={() => void createPost()} disabled={!postDraft.trim() || isCreatingContent} className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-blue-600 py-4 text-base font-black text-white disabled:opacity-50">
+      <label className="flex cursor-pointer items-center justify-center gap-2 rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm">
+        <UploadCloud className="h-5 w-5 text-blue-600" />
+        {uploadingLabel === 'Post image' ? 'Uploading image...' : (postImageUrl ? 'Change post image' : 'Add post image')}
+        <input type="file" accept="image/*" className="hidden" onChange={(event) => void handleFileUpload(event, 'posts', 'Post image', setPostImageUrl)} />
+      </label>
+      {postImageUrl ? <img src={postImageUrl} alt="Post preview" className="max-h-[260px] w-full rounded-[18px] object-cover" /> : null}
+      <button type="button" onClick={() => void createPost()} disabled={(!postDraft.trim() && !postImageUrl.trim()) || isCreatingContent} className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-blue-600 py-4 text-base font-black text-white disabled:opacity-50">
         {isCreatingContent ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
         Post
       </button>
@@ -2286,7 +2547,17 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         rows={7}
         className="w-full resize-none rounded-[24px] border border-slate-200 bg-white p-4 text-lg font-semibold outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
       />
-      <button type="button" onClick={() => void createStatus()} disabled={!statusDraft.trim() || isCreatingContent} className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-blue-600 py-4 text-base font-black text-white disabled:opacity-50">
+      <label className="flex cursor-pointer items-center justify-center gap-2 rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm">
+        <UploadCloud className="h-5 w-5 text-blue-600" />
+        {uploadingLabel === 'Status media' ? 'Uploading media...' : (statusMediaUrl ? 'Change status media' : 'Add status media')}
+        <input type="file" accept="image/*,video/*" className="hidden" onChange={(event) => void handleFileUpload(event, 'status', 'Status media', setStatusMediaUrl)} />
+      </label>
+      {statusMediaUrl ? (
+        statusMediaUrl.match(/\.(mp4|webm|mov)(\?|$)/i)
+          ? <video src={statusMediaUrl} controls className="max-h-[260px] w-full rounded-[18px] bg-black object-contain" />
+          : <img src={statusMediaUrl} alt="Status preview" className="max-h-[260px] w-full rounded-[18px] object-cover" />
+      ) : null}
+      <button type="button" onClick={() => void createStatus()} disabled={(!statusDraft.trim() && !statusMediaUrl.trim()) || isCreatingContent} className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-blue-600 py-4 text-base font-black text-white disabled:opacity-50">
         {isCreatingContent ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
         Share status
       </button>
@@ -2298,12 +2569,24 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       <section className="rounded-[26px] bg-slate-950 p-5 text-white">
         <Film className="h-9 w-9 text-blue-300" />
         <h2 className="mt-3 text-2xl font-black">Create Reel</h2>
-        <p className="mt-2 text-sm leading-6 text-slate-300">Paste a hosted video URL to publish a reel on web.</p>
+        <p className="mt-2 text-sm leading-6 text-slate-300">Upload a video or paste a hosted URL to publish a reel on web.</p>
       </section>
+      <label className="flex cursor-pointer items-center justify-center gap-2 rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm">
+        <UploadCloud className="h-5 w-5 text-blue-600" />
+        {uploadingLabel === 'Reel video' ? 'Uploading video...' : (reelVideoUrl ? 'Change reel video' : 'Upload reel video')}
+        <input type="file" accept="video/*" className="hidden" onChange={(event) => void handleFileUpload(event, 'reels', 'Reel video', setReelVideoUrl)} />
+      </label>
+      {reelVideoUrl ? <video src={reelVideoUrl} controls className="max-h-[260px] w-full rounded-[18px] bg-black object-contain" /> : null}
       <FormField label="Video URL" value={reelDraft.videoUrl} onChange={(videoUrl) => setReelDraft((prev) => ({ ...prev, videoUrl }))} placeholder="https://..." />
       <FormField label="Caption" value={reelDraft.caption} onChange={(caption) => setReelDraft((prev) => ({ ...prev, caption }))} multiline placeholder="Write a caption..." />
+      <label className="flex cursor-pointer items-center justify-center gap-2 rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm">
+        <UploadCloud className="h-5 w-5 text-blue-600" />
+        {uploadingLabel === 'Reel thumbnail' ? 'Uploading thumbnail...' : (reelThumbnailUploadUrl ? 'Change thumbnail' : 'Upload thumbnail')}
+        <input type="file" accept="image/*" className="hidden" onChange={(event) => void handleFileUpload(event, 'reels', 'Reel thumbnail', setReelThumbnailUploadUrl)} />
+      </label>
+      {reelThumbnailUploadUrl ? <img src={reelThumbnailUploadUrl} alt="Reel thumbnail preview" className="max-h-[220px] w-full rounded-[18px] object-cover" /> : null}
       <FormField label="Thumbnail URL" value={reelDraft.thumbnailUrl} onChange={(thumbnailUrl) => setReelDraft((prev) => ({ ...prev, thumbnailUrl }))} placeholder="Optional" />
-      <button type="button" onClick={() => void createReel()} disabled={!reelDraft.videoUrl.trim() || isCreatingContent} className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-blue-600 py-4 text-base font-black text-white disabled:opacity-50">
+      <button type="button" onClick={() => void createReel()} disabled={(!reelDraft.videoUrl.trim() && !reelVideoUrl.trim()) || isCreatingContent} className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-blue-600 py-4 text-base font-black text-white disabled:opacity-50">
         {isCreatingContent ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
         Publish reel
       </button>
@@ -2600,6 +2883,11 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             <p className="mt-1">{selectedMethod.instructions || selectedMethod.description || 'Use this method, then paste your proof URL below.'}</p>
           </div>
         ) : null}
+        <label className="flex cursor-pointer items-center justify-center gap-2 rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm">
+          <UploadCloud className="h-5 w-5 text-blue-600" />
+          {uploadingLabel === 'Payment proof' ? 'Uploading proof...' : 'Upload payment proof'}
+          <input type="file" accept="image/*,application/pdf" className="hidden" onChange={(event) => void handleFileUpload(event, 'payments', 'Payment proof', (url) => setPaymentForm((prev) => ({ ...prev, proofUrl: url, planId })))} />
+        </label>
         <FormField label="Payment proof URL" value={paymentForm.proofUrl} onChange={(proofUrl) => setPaymentForm((prev) => ({ ...prev, proofUrl, planId }))} placeholder="https://..." />
         <FormField label="Transaction reference" value={paymentForm.reference} onChange={(reference) => setPaymentForm((prev) => ({ ...prev, reference, planId }))} placeholder="Optional" />
         <FormField label="Notes" value={paymentForm.notes} onChange={(notes) => setPaymentForm((prev) => ({ ...prev, notes, planId }))} multiline placeholder="Optional" />
@@ -2611,26 +2899,178 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     );
   };
 
-  const renderDatingProfileForm = () => (
-    <div className="space-y-4 px-4 py-4">
-      <section className="rounded-[26px] bg-blue-50 p-5 text-blue-950 ring-1 ring-blue-100">
-        <Sparkles className="h-9 w-9 text-blue-600" />
-        <h2 className="mt-3 text-2xl font-black">{myDatingProfile ? 'Edit Dating Profile' : 'Create Dating Profile'}</h2>
-        <p className="mt-2 text-sm leading-6 text-blue-800">Add the same profile basics used by mobile Discover.</p>
-      </section>
-      <FormField label="Bio" value={datingForm.bio} onChange={(bio) => setDatingForm((prev) => ({ ...prev, bio }))} multiline placeholder="Tell people about yourself..." />
-      <div className="grid grid-cols-2 gap-3">
-        <FormField label="Age" value={datingForm.age} onChange={(age) => setDatingForm((prev) => ({ ...prev, age }))} placeholder="31" inputMode="numeric" />
-        <FormField label="Religion" value={datingForm.religion} onChange={(religion) => setDatingForm((prev) => ({ ...prev, religion }))} placeholder="Optional" />
+  const renderDatingProfileForm = () => {
+    const stepTitles = [
+      'Tell people about you',
+      'Set profile basics',
+      'Choose discovery preferences',
+      'Upload your primary photo',
+      'Review and save',
+    ];
+    const nextStep = () => {
+      if (datingProfileStep === 1 && !datingForm.bio.trim()) {
+        setReactionNotice('Add your bio to continue');
+        window.setTimeout(() => setReactionNotice(null), 1600);
+        return;
+      }
+      if (datingProfileStep === 2 && (!datingForm.age.trim() || !datingForm.city.trim())) {
+        setReactionNotice('Add age and city to continue');
+        window.setTimeout(() => setReactionNotice(null), 1600);
+        return;
+      }
+      if (datingProfileStep < 5) setDatingProfileStep((prev) => prev + 1);
+    };
+    const prevStep = () => {
+      if (datingProfileStep > 1) setDatingProfileStep((prev) => prev - 1);
+      else router.back();
+    };
+    return (
+      <div className="space-y-4 px-4 py-4">
+        <section className="rounded-[26px] bg-blue-50 p-5 text-blue-950 ring-1 ring-blue-100">
+          <div className="h-2 rounded-full bg-blue-100">
+            <div className="h-2 rounded-full bg-blue-600" style={{ width: `${(datingProfileStep / 5) * 100}%` }} />
+          </div>
+          <p className="mt-2 text-xs font-black uppercase tracking-wide text-blue-600">Step {datingProfileStep} of 5</p>
+          <Sparkles className="mt-2 h-9 w-9 text-blue-600" />
+          <h2 className="mt-3 text-2xl font-black">{myDatingProfile ? 'Edit Dating Profile' : 'Create Dating Profile'}</h2>
+          <p className="mt-2 text-sm leading-6 text-blue-800">{stepTitles[datingProfileStep - 1]}</p>
+        </section>
+
+        <div
+          style={{
+            opacity: datingStepAnim.opacity,
+            transform: `translateY(${datingStepAnim.y}px)`,
+            transition: 'opacity 220ms ease, transform 220ms ease',
+          }}
+        >
+          {datingProfileStep === 1 ? (
+            <section className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="mb-3 rounded-[16px] bg-blue-50 p-3 text-sm text-blue-900 ring-1 ring-blue-100">
+                Tip: Keep your bio authentic and specific. Mention what kind of connection you want.
+              </div>
+              <FormField label="Bio" value={datingForm.bio} onChange={(bio) => setDatingForm((prev) => ({ ...prev, bio }))} multiline placeholder="Tell people about yourself..." />
+            </section>
+          ) : null}
+
+          {datingProfileStep === 2 ? (
+            <section className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+              <div className="rounded-[16px] bg-blue-50 p-3 text-sm text-blue-900 ring-1 ring-blue-100">
+                Tip: Accurate basics improve match quality and trust.
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <FormField label="Age" value={datingForm.age} onChange={(age) => setDatingForm((prev) => ({ ...prev, age }))} placeholder="31" inputMode="numeric" />
+                <FormField label="Religion" value={datingForm.religion} onChange={(religion) => setDatingForm((prev) => ({ ...prev, religion }))} placeholder="Optional" />
+              </div>
+              <FormField label="City" value={datingForm.city} onChange={(city) => setDatingForm((prev) => ({ ...prev, city }))} placeholder="Kwekwe" />
+              <FormField label="Country" value={datingForm.country} onChange={(country) => setDatingForm((prev) => ({ ...prev, country }))} placeholder="Zimbabwe" />
+            </section>
+          ) : null}
+
+          {datingProfileStep === 3 ? (
+            <section className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+              <div className="rounded-[16px] bg-blue-50 p-3 text-sm text-blue-900 ring-1 ring-blue-100">
+                Tip: Broader ranges increase visibility; tighter ranges improve precision.
+              </div>
+              <div className="grid grid-cols-3 gap-2 rounded-[20px] bg-slate-50 p-2 ring-1 ring-slate-200">
+                {['men', 'women', 'everyone'].map((option) => (
+                  <button key={option} type="button" onClick={() => setDatingForm((prev) => ({ ...prev, lookingFor: option }))} className={`rounded-[16px] py-3 text-sm font-black capitalize ${datingForm.lookingFor === option ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>
+                    {option}
+                  </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <FormField label="Min age" value={datingForm.minAge} onChange={(minAge) => setDatingForm((prev) => ({ ...prev, minAge }))} inputMode="numeric" />
+                <FormField label="Max age" value={datingForm.maxAge} onChange={(maxAge) => setDatingForm((prev) => ({ ...prev, maxAge }))} inputMode="numeric" />
+              </div>
+              <FormField label="Maximum distance (km)" value={datingForm.distance} onChange={(distance) => setDatingForm((prev) => ({ ...prev, distance }))} inputMode="numeric" />
+            </section>
+          ) : null}
+
+          {datingProfileStep === 4 ? (
+            <section className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="mb-3 rounded-[16px] bg-blue-50 p-3 text-sm text-blue-900 ring-1 ring-blue-100">
+                Tip: Use a clear primary photo with good lighting for better responses.
+              </div>
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm">
+                <UploadCloud className="h-5 w-5 text-blue-600" />
+                {uploadingLabel === 'Dating photo' ? 'Uploading photo...' : (datingPhotoUrl ? 'Change primary photo' : 'Upload primary photo')}
+                <input type="file" accept="image/*" className="hidden" onChange={(event) => void handleFileUpload(event, 'dating', 'Dating photo', setDatingPhotoUrl)} />
+              </label>
+              {datingPhotoUrl ? <img src={datingPhotoUrl} alt="Dating profile preview" className="mt-3 max-h-[260px] w-full rounded-[18px] object-cover" /> : null}
+            </section>
+          ) : null}
+
+          {datingProfileStep === 5 ? (
+            <section className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="text-lg font-black text-slate-950">Review profile</p>
+              <div className="mt-3 space-y-2 text-sm text-slate-700">
+                <p><span className="font-black">Bio:</span> {datingForm.bio || 'Not set'}</p>
+                <p><span className="font-black">Age:</span> {datingForm.age || 'Not set'}</p>
+                <p><span className="font-black">Location:</span> {[datingForm.city, datingForm.country].filter(Boolean).join(', ') || 'Not set'}</p>
+                <p><span className="font-black">Looking for:</span> {datingForm.lookingFor}</p>
+                <p><span className="font-black">Distance:</span> {datingForm.distance} km</p>
+              </div>
+              {datingPhotoUrl ? <img src={datingPhotoUrl} alt="Dating review" className="mt-3 max-h-[220px] w-full rounded-[18px] object-cover" /> : null}
+              <button type="button" onClick={() => setShowDatingReviewModal(true)} className="mt-4 w-full rounded-[16px] bg-slate-900 py-3 text-sm font-black text-white">
+                Open full review
+              </button>
+            </section>
+          ) : null}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <button type="button" onClick={prevStep} className="rounded-[18px] bg-slate-100 py-3 text-sm font-black text-slate-700">
+            {datingProfileStep === 1 ? 'Back' : 'Previous'}
+          </button>
+          {datingProfileStep < 5 ? (
+            <button type="button" onClick={nextStep} className="rounded-[18px] bg-blue-600 py-3 text-sm font-black text-white">
+              Continue
+            </button>
+          ) : (
+            <button type="button" onClick={() => setShowDatingReviewModal(true)} disabled={saving} className="rounded-[18px] bg-blue-600 py-3 text-sm font-black text-white disabled:opacity-60">
+              {saving ? 'Saving...' : 'Review & save'}
+            </button>
+          )}
+        </div>
+
+        {showDatingReviewModal ? (
+          <div className="fixed inset-0 z-50 grid place-items-end bg-black/50 p-0 sm:place-items-center sm:p-6">
+            <section className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-t-[28px] bg-white p-5 shadow-2xl sm:rounded-[28px]">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-black text-slate-950">Review Dating Profile</h3>
+                <button type="button" onClick={() => setShowDatingReviewModal(false)} className="grid h-9 w-9 place-items-center rounded-full bg-slate-100 text-slate-600">✕</button>
+              </div>
+              <div className="mt-4 space-y-2 text-sm text-slate-700">
+                <p><span className="font-black">Bio:</span> {datingForm.bio || 'Not set'}</p>
+                <p><span className="font-black">Age:</span> {datingForm.age || 'Not set'}</p>
+                <p><span className="font-black">Religion:</span> {datingForm.religion || 'Not set'}</p>
+                <p><span className="font-black">Location:</span> {[datingForm.city, datingForm.country].filter(Boolean).join(', ') || 'Not set'}</p>
+                <p><span className="font-black">Looking for:</span> {datingForm.lookingFor}</p>
+                <p><span className="font-black">Age range:</span> {datingForm.minAge} - {datingForm.maxAge}</p>
+                <p><span className="font-black">Distance:</span> {datingForm.distance} km</p>
+                <p><span className="font-black">Intention:</span> {datingForm.intention}</p>
+              </div>
+              {datingPhotoUrl ? <img src={datingPhotoUrl} alt="Dating modal review" className="mt-4 max-h-[260px] w-full rounded-[18px] object-cover" /> : null}
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <button type="button" onClick={() => setShowDatingReviewModal(false)} className="rounded-[16px] bg-slate-100 py-3 text-sm font-black text-slate-700">Edit</button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setShowDatingReviewModal(false);
+                    await saveDatingProfile();
+                  }}
+                  disabled={saving}
+                  className="rounded-[16px] bg-blue-600 py-3 text-sm font-black text-white disabled:opacity-60"
+                >
+                  {saving ? 'Saving...' : 'Confirm save'}
+                </button>
+              </div>
+            </section>
+          </div>
+        ) : null}
       </div>
-      <FormField label="City" value={datingForm.city} onChange={(city) => setDatingForm((prev) => ({ ...prev, city }))} placeholder="Kwekwe" />
-      <FormField label="Country" value={datingForm.country} onChange={(country) => setDatingForm((prev) => ({ ...prev, country }))} placeholder="Zimbabwe" />
-      <button type="button" onClick={() => void saveDatingProfile()} disabled={saving} className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-blue-600 py-4 text-base font-black text-white disabled:opacity-60">
-        {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
-        Save profile
-      </button>
-    </div>
-  );
+    );
+  };
 
   const renderDatingFilters = () => (
     <div className="space-y-4 px-4 py-4">
@@ -2672,7 +3112,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   );
 
   const renderDatingUserProfile = () => {
-    const targetUserId = searchParams?.get('userId') || searchParams?.get('id') || '';
+    const targetUserId = appPath[2] || searchParams?.get('userId') || searchParams?.get('id') || '';
     const profile = datingProfiles.find((item) => item.user_id === targetUserId) || datingProfiles[datingIndex] || myDatingProfile;
     if (!profile) return <EmptyState icon={User} title="Profile Not Found" text="This dating profile is not available." action="Back to Dating" onAction={() => router.push('/app/dating')} />;
     const photo = profile.dating_photos?.find((item) => item.is_primary)?.photo_url || profile.dating_photos?.[0]?.photo_url || profile.users?.profile_picture;
@@ -2787,68 +3227,234 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     );
   };
 
-  const renderRelationshipRegister = () => (
-    <div className="space-y-4 px-4 py-4">
-      <section className="rounded-[28px] bg-gradient-to-br from-pink-500 to-blue-700 p-5 text-white shadow-xl shadow-pink-500/20">
-        <Shield className="h-10 w-10" />
-        <h2 className="mt-4 text-3xl font-black">Register relationship</h2>
-        <p className="mt-2 text-sm leading-6 text-white/85">
-          Add your partner manually, invite them when possible, and let partner or admin verification confirm the record.
-        </p>
-      </section>
-      <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
-        <h3 className="text-lg font-black text-slate-950">Partner details</h3>
-        <div className="mt-4 space-y-4">
-          <FormField label="Partner name" value={relationshipForm.partnerName} onChange={(partnerName) => setRelationshipForm((prev) => ({ ...prev, partnerName }))} placeholder="Enter their full name" />
-          <FormField label="Partner phone" value={relationshipForm.partnerPhone} onChange={(partnerPhone) => setRelationshipForm((prev) => ({ ...prev, partnerPhone }))} placeholder="+263..." />
-          <FormField label="City or location" value={relationshipForm.city} onChange={(city) => setRelationshipForm((prev) => ({ ...prev, city }))} placeholder="Optional" />
+  const renderRelationshipRegister = () => {
+    const stepTitles = [
+      "Let's start with your partner's information",
+      'How can we reach your partner?',
+      'Upload a clear face photo of your partner',
+      'Add relationship details and privacy',
+      'Review and confirm your relationship registration',
+    ];
+
+    const nextRelationshipStep = () => {
+      if (relationshipStep === 1 && !relationshipForm.partnerName.trim()) {
+        setReactionNotice('Add partner name to continue');
+        window.setTimeout(() => setReactionNotice(null), 1800);
+        return;
+      }
+      if (relationshipStep === 2 && !relationshipForm.partnerPhone.trim()) {
+        setReactionNotice('Add partner phone to continue');
+        window.setTimeout(() => setReactionNotice(null), 1800);
+        return;
+      }
+      if (relationshipStep === 3 && !relationshipPhotoUrl.trim()) {
+        setReactionNotice('Upload partner photo to continue');
+        window.setTimeout(() => setReactionNotice(null), 1800);
+        return;
+      }
+      if (relationshipStep < 5) setRelationshipStep((prev) => prev + 1);
+    };
+
+    const previousRelationshipStep = () => {
+      if (relationshipStep > 1) setRelationshipStep((prev) => prev - 1);
+      else router.back();
+    };
+
+    return (
+      <div className="space-y-4 px-4 py-4">
+        <section className="rounded-[28px] bg-gradient-to-br from-pink-500 to-blue-700 p-5 text-white shadow-xl shadow-pink-500/20">
+          <div className="mb-4">
+            <div className="h-2 rounded-full bg-white/25">
+              <div className="h-2 rounded-full bg-white" style={{ width: `${(relationshipStep / 5) * 100}%` }} />
+            </div>
+            <p className="mt-2 text-xs font-black uppercase tracking-wide text-white/80">Step {relationshipStep} of 5</p>
+          </div>
+          <Shield className="h-10 w-10" />
+          <h2 className="mt-4 text-3xl font-black">Register relationship</h2>
+          <p className="mt-2 text-sm leading-6 text-white/85">{stepTitles[relationshipStep - 1]}</p>
+        </section>
+
+        <div
+          style={{
+            opacity: relationshipStepAnim.opacity,
+            transform: `translateY(${relationshipStepAnim.y}px)`,
+            transition: 'opacity 220ms ease, transform 220ms ease',
+          }}
+        >
+        {relationshipStep === 1 ? (
+          <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+            <h3 className="text-lg font-black text-slate-950">Partner details</h3>
+            <p className="mt-1 text-sm text-slate-500">Add your partner name and optional identity details.</p>
+            <div className="mt-4 space-y-4">
+              <FormField label="Partner name" value={relationshipForm.partnerName} onChange={(partnerName) => setRelationshipForm((prev) => ({ ...prev, partnerName }))} placeholder="Enter their full name" />
+              <FormField label="City or location" value={relationshipForm.city} onChange={(city) => setRelationshipForm((prev) => ({ ...prev, city }))} placeholder="Optional" />
+              <div className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-200">
+                <p className="text-xs font-black uppercase tracking-wide text-slate-500">Date of birth (optional)</p>
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  <FormField label="Day" value={relationshipForm.partnerBirthDay} onChange={(partnerBirthDay) => setRelationshipForm((prev) => ({ ...prev, partnerBirthDay: partnerBirthDay.replace(/[^\d]/g, '').slice(0, 2) }))} placeholder="DD" inputMode="numeric" />
+                  <FormField label="Month" value={relationshipForm.partnerBirthMonth} onChange={(partnerBirthMonth) => setRelationshipForm((prev) => ({ ...prev, partnerBirthMonth: partnerBirthMonth.replace(/[^\d]/g, '').slice(0, 2) }))} placeholder="MM" inputMode="numeric" />
+                  <FormField label="Year" value={relationshipForm.partnerBirthYear} onChange={(partnerBirthYear) => setRelationshipForm((prev) => ({ ...prev, partnerBirthYear: partnerBirthYear.replace(/[^\d]/g, '').slice(0, 4) }))} placeholder="YYYY" inputMode="numeric" />
+                </div>
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        {relationshipStep === 2 ? (
+          <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+            <h3 className="text-lg font-black text-slate-950">Partner contact</h3>
+            <p className="mt-1 text-sm text-slate-500">We use this phone to notify your partner for confirmation.</p>
+            <div className="mt-4 space-y-4">
+              <FormField label="Partner phone" value={relationshipForm.partnerPhone} onChange={(partnerPhone) => setRelationshipForm((prev) => ({ ...prev, partnerPhone }))} placeholder="+263..." />
+            </div>
+          </section>
+        ) : null}
+
+        {relationshipStep === 3 ? (
+          <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+            <h3 className="text-lg font-black text-slate-950">Partner photo</h3>
+            <p className="mt-1 text-sm text-slate-500">Upload a clear face photo for verification review.</p>
+            <div className="mt-4 space-y-4">
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm">
+                <UploadCloud className="h-5 w-5 text-blue-600" />
+                {uploadingLabel === 'Partner photo' ? 'Uploading partner photo...' : (relationshipPhotoUrl ? 'Change partner photo' : 'Upload partner photo')}
+                <input type="file" accept="image/*" className="hidden" onChange={(event) => void handleFileUpload(event, 'relationships', 'Partner photo', setRelationshipPhotoUrl)} />
+              </label>
+              {relationshipPhotoUrl ? <img src={relationshipPhotoUrl} alt="Partner photo preview" className="max-h-[260px] w-full rounded-[18px] object-cover" /> : null}
+            </div>
+          </section>
+        ) : null}
+
+        {relationshipStep === 4 ? (
+          <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+            <h3 className="text-lg font-black text-slate-950">Relationship details</h3>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {['married', 'engaged', 'serious', 'dating'].map((type) => (
+                <button key={type} type="button" onClick={() => setRelationshipForm((prev) => ({ ...prev, type }))} className={`rounded-[18px] px-3 py-3 text-sm font-black capitalize ${relationshipForm.type === type ? 'bg-blue-600 text-white' : 'bg-slate-50 text-slate-600 ring-1 ring-slate-200'}`}>
+                  {type}
+                </button>
+              ))}
+            </div>
+            <div className="mt-4">
+              <FormField label="Start date" value={relationshipForm.startDate} onChange={(startDate) => setRelationshipForm((prev) => ({ ...prev, startDate }))} placeholder="YYYY-MM-DD" />
+            </div>
+            <div className="mt-4 rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-200">
+              <p className="text-xs font-black uppercase tracking-wide text-slate-500">Or enter start date by parts</p>
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                <FormField label="Day" value={relationshipForm.startDay} onChange={(startDay) => setRelationshipForm((prev) => ({ ...prev, startDay: startDay.replace(/[^\d]/g, '').slice(0, 2) }))} placeholder="DD" inputMode="numeric" />
+                <FormField label="Month" value={relationshipForm.startMonth} onChange={(startMonth) => setRelationshipForm((prev) => ({ ...prev, startMonth: startMonth.replace(/[^\d]/g, '').slice(0, 2) }))} placeholder="MM" inputMode="numeric" />
+                <FormField label="Year" value={relationshipForm.startYear} onChange={(startYear) => setRelationshipForm((prev) => ({ ...prev, startYear: startYear.replace(/[^\d]/g, '').slice(0, 4) }))} placeholder="YYYY" inputMode="numeric" />
+              </div>
+            </div>
+            <div className="mt-4 grid gap-2">
+              {[
+                { key: 'private', label: 'Private', text: 'Only you, partner, and reviewers can see it.' },
+                { key: 'verified_people', label: 'Verified people', text: 'Visible to verified Committed members.' },
+                { key: 'public', label: 'Public', text: 'Can appear in public relationship search.' },
+              ].map((option) => (
+                <button key={option.key} type="button" onClick={() => setRelationshipForm((prev) => ({ ...prev, privacy: option.key }))} className={`rounded-[18px] p-4 text-left ring-1 ${relationshipForm.privacy === option.key ? 'bg-blue-50 text-blue-900 ring-blue-300' : 'bg-white text-slate-700 ring-slate-200'}`}>
+                  <span className="block font-black">{option.label}</span>
+                  <span className="mt-1 block text-xs font-semibold opacity-70">{option.text}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {relationshipStep === 5 ? (
+          <>
+            <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+              <h3 className="text-lg font-black text-slate-950">Review</h3>
+              <div className="mt-3 space-y-2 text-sm text-slate-700">
+                <p><span className="font-black">Partner:</span> {relationshipForm.partnerName || 'Not set'}</p>
+                <p><span className="font-black">Phone:</span> {relationshipForm.partnerPhone || 'Not set'}</p>
+                <p><span className="font-black">Type:</span> {relationshipForm.type}</p>
+                <p><span className="font-black">Visibility:</span> {relationshipForm.privacy}</p>
+                <p><span className="font-black">City:</span> {relationshipForm.city || 'Not set'}</p>
+              </div>
+              {relationshipPhotoUrl ? <img src={relationshipPhotoUrl} alt="Partner review" className="mt-4 max-h-[220px] w-full rounded-[18px] object-cover" /> : null}
+              <button type="button" onClick={() => setShowRelationshipReviewModal(true)} className="mt-4 w-full rounded-[16px] bg-slate-900 py-3 text-sm font-black text-white">
+                Open full review
+              </button>
+            </section>
+            <label className="flex gap-3 rounded-[22px] border border-slate-200 bg-white p-4 text-sm font-semibold leading-5 text-slate-600 shadow-sm">
+              <input
+                type="checkbox"
+                checked={relationshipForm.consent}
+                onChange={(event) => setRelationshipForm((prev) => ({ ...prev, consent: event.target.checked }))}
+                className="mt-1 h-5 w-5 rounded border-slate-300 text-blue-600"
+              />
+              <span>I confirm my partner consent, verification terms, and privacy implications.</span>
+            </label>
+            <section className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="text-sm font-black text-slate-900">Consent checklist</p>
+              <div className="mt-3 space-y-2 text-sm text-slate-600">
+                <p>- I have my partner's consent to register this relationship.</p>
+                <p>- My partner receives a request to confirm.</p>
+                <p>- False registrations can lead to restrictions.</p>
+                <p>- Privacy follows the visibility level chosen above.</p>
+              </div>
+            </section>
+          </>
+        ) : null}
         </div>
-      </section>
-      <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
-        <h3 className="text-lg font-black text-slate-950">Relationship details</h3>
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          {['married', 'engaged', 'serious', 'dating'].map((type) => (
-            <button key={type} type="button" onClick={() => setRelationshipForm((prev) => ({ ...prev, type }))} className={`rounded-[18px] px-3 py-3 text-sm font-black capitalize ${relationshipForm.type === type ? 'bg-blue-600 text-white' : 'bg-slate-50 text-slate-600 ring-1 ring-slate-200'}`}>
-              {type}
+
+        <div className="grid grid-cols-2 gap-3">
+          <button type="button" onClick={previousRelationshipStep} className="rounded-[18px] bg-slate-100 py-3 text-sm font-black text-slate-700">
+            {relationshipStep === 1 ? 'Back' : 'Previous'}
+          </button>
+          {relationshipStep < 5 ? (
+            <button type="button" onClick={nextRelationshipStep} className="rounded-[18px] bg-blue-600 py-3 text-sm font-black text-white">
+              Continue
             </button>
-          ))}
-        </div>
-        <div className="mt-4">
-          <FormField label="Start date" value={relationshipForm.startDate} onChange={(startDate) => setRelationshipForm((prev) => ({ ...prev, startDate }))} placeholder="YYYY-MM-DD" />
-        </div>
-        <div className="mt-4 grid gap-2">
-          {[
-            { key: 'private', label: 'Private', text: 'Only you, partner, and reviewers can see it.' },
-            { key: 'verified_people', label: 'Verified people', text: 'Visible to verified Committed members.' },
-            { key: 'public', label: 'Public', text: 'Can appear in public relationship search.' },
-          ].map((option) => (
-            <button key={option.key} type="button" onClick={() => setRelationshipForm((prev) => ({ ...prev, privacy: option.key }))} className={`rounded-[18px] p-4 text-left ring-1 ${relationshipForm.privacy === option.key ? 'bg-blue-50 text-blue-900 ring-blue-300' : 'bg-white text-slate-700 ring-slate-200'}`}>
-              <span className="block font-black">{option.label}</span>
-              <span className="mt-1 block text-xs font-semibold opacity-70">{option.text}</span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowRelationshipReviewModal(true)}
+              disabled={saving || !relationshipForm.partnerName.trim() || !relationshipForm.partnerPhone.trim() || !relationshipPhotoUrl.trim() || !relationshipForm.consent}
+              className="rounded-[18px] bg-blue-600 py-3 text-sm font-black text-white disabled:opacity-50"
+            >
+              {saving ? 'Submitting...' : 'Review & register'}
             </button>
-          ))}
+          )}
         </div>
-      </section>
-      <label className="flex gap-3 rounded-[22px] border border-slate-200 bg-white p-4 text-sm font-semibold leading-5 text-slate-600 shadow-sm">
-        <input
-          type="checkbox"
-          checked={relationshipForm.consent}
-          onChange={(event) => setRelationshipForm((prev) => ({ ...prev, consent: event.target.checked }))}
-          className="mt-1 h-5 w-5 rounded border-slate-300 text-blue-600"
-        />
-        <span>I understand verification means the relationship is pending until my partner, an admin, or a moderator confirms it.</span>
-      </label>
-      <button
-        type="button"
-        onClick={() => void submitRelationship()}
-        disabled={saving || !relationshipForm.partnerName.trim() || !relationshipForm.consent}
-        className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-blue-600 py-4 text-base font-black text-white shadow-xl shadow-blue-600/20 disabled:opacity-50"
-      >
-        {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Shield className="h-5 w-5" />}
-        Submit for verification
-      </button>
-    </div>
-  );
+
+        {showRelationshipReviewModal ? (
+          <div className="fixed inset-0 z-50 grid place-items-end bg-black/50 p-0 sm:place-items-center sm:p-6">
+            <section className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-t-[28px] bg-white p-5 shadow-2xl sm:rounded-[28px]">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-black text-slate-950">Review Relationship</h3>
+                <button type="button" onClick={() => setShowRelationshipReviewModal(false)} className="grid h-9 w-9 place-items-center rounded-full bg-slate-100 text-slate-600">✕</button>
+              </div>
+              <div className="mt-4 space-y-2 text-sm text-slate-700">
+                <p><span className="font-black">Partner:</span> {relationshipForm.partnerName || 'Not set'}</p>
+                <p><span className="font-black">Phone:</span> {relationshipForm.partnerPhone || 'Not set'}</p>
+                <p><span className="font-black">City:</span> {relationshipForm.city || 'Not set'}</p>
+                <p><span className="font-black">Type:</span> {relationshipForm.type}</p>
+                <p><span className="font-black">Visibility:</span> {relationshipForm.privacy}</p>
+                <p><span className="font-black">Start:</span> {relationshipForm.startDate || getDateStringFromParts(relationshipForm.startDay, relationshipForm.startMonth, relationshipForm.startYear) || 'Not set'}</p>
+              </div>
+              {relationshipPhotoUrl ? <img src={relationshipPhotoUrl} alt="Relationship modal review" className="mt-4 max-h-[260px] w-full rounded-[18px] object-cover" /> : null}
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <button type="button" onClick={() => setShowRelationshipReviewModal(false)} className="rounded-[16px] bg-slate-100 py-3 text-sm font-black text-slate-700">Edit</button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setShowRelationshipReviewModal(false);
+                    await submitRelationship();
+                  }}
+                  disabled={saving || !relationshipForm.consent}
+                  className="rounded-[16px] bg-blue-600 py-3 text-sm font-black text-white disabled:opacity-60"
+                >
+                  {saving ? 'Submitting...' : 'Confirm register'}
+                </button>
+              </div>
+            </section>
+          </div>
+        ) : null}
+      </div>
+    );
+  };
 
   const renderSearch = () => (
     <div className="space-y-4 px-4 py-4">
@@ -2986,7 +3592,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           <Avatar src={user?.profile_picture} name={user?.full_name} size="lg" />
         </div>
         <h2 className="mt-4 text-2xl font-black text-slate-950">{user?.full_name || 'Committed member'}</h2>
-        <p className="text-sm text-slate-500">{user?.email}</p>
+        <p className="text-sm text-slate-500">{user?.username ? `@${user.username}` : user?.email}</p>
         <div className="mt-4 flex justify-center gap-2">
           <span className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-black text-blue-700">{user?.role || 'user'}</span>
           {user?.verified ? <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700">Verified</span> : null}
@@ -3000,7 +3606,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           { href: '/app/ads', title: 'Ads and boosts', text: 'Campaigns, invoices, and promoted content' },
           { href: '/app/bookings', title: 'Bookings', text: 'Professional sessions and reschedules' },
           { href: '/app/professionals', title: 'Professionals', text: 'Bookings, profile, and approvals' },
-          ...(user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'moderator'
+          ...(isAdminRole(user?.role)
             ? [{ href: '/app/admin', title: 'Admin', text: 'Manage approvals and verification queues' }]
             : []),
         ].map((item) => (
@@ -3017,7 +3623,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     <div className="space-y-4 px-4 py-4">
       <section className="rounded-[26px] bg-white p-5 shadow-sm ring-1 ring-slate-200">
         <div className="flex items-center gap-3">
-          <Avatar src={user?.profile_picture} name={user?.full_name} size="lg" />
+          <Avatar src={settingsProfilePictureUrl || user?.profile_picture} name={user?.full_name} size="lg" />
           <div>
             <h2 className="text-2xl font-black text-slate-950">Settings</h2>
             <p className="text-sm text-slate-500">{user?.username ? `@${user.username}` : 'Account and profile details'}</p>
@@ -3029,9 +3635,33 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           <span className={`rounded-full px-2 py-2 ${user?.id_verified ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>ID</span>
         </div>
       </section>
+      <label className="flex cursor-pointer items-center justify-center gap-2 rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm">
+        <UploadCloud className="h-5 w-5 text-blue-600" />
+        {uploadingLabel === 'Profile photo' ? 'Uploading profile photo...' : 'Upload profile photo'}
+        <input type="file" accept="image/*" className="hidden" onChange={(event) => void handleFileUpload(event, 'avatars', 'Profile photo', setSettingsProfilePictureUrl)} />
+      </label>
+      {settingsProfilePictureUrl ? <img src={settingsProfilePictureUrl} alt="Profile photo preview" className="max-h-[220px] w-full rounded-[18px] object-cover" /> : null}
       <FormField label="Full name" value={settingsForm.fullName} onChange={(fullName) => setSettingsForm((prev) => ({ ...prev, fullName }))} />
       <FormField label="Username" value={settingsForm.username} onChange={(username) => setSettingsForm((prev) => ({ ...prev, username }))} placeholder="Optional" />
       <FormField label="Phone number" value={settingsForm.phoneNumber} onChange={(phoneNumber) => setSettingsForm((prev) => ({ ...prev, phoneNumber }))} />
+      <section className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
+        <p className="text-sm font-black text-slate-900">Verification Status</p>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <Link href="/app/verification/phone" className="rounded-[14px] bg-slate-50 px-3 py-3 text-sm font-black text-slate-700 ring-1 ring-slate-200">Phone: {user?.phone_verified ? 'Verified' : 'Not verified'}</Link>
+          <Link href="/app/verification/email" className="rounded-[14px] bg-slate-50 px-3 py-3 text-sm font-black text-slate-700 ring-1 ring-slate-200">Email: {user?.email_verified ? 'Verified' : 'Not verified'}</Link>
+          <Link href="/app/verification/id" className="rounded-[14px] bg-slate-50 px-3 py-3 text-sm font-black text-slate-700 ring-1 ring-slate-200">ID: {user?.id_verified ? 'Verified' : 'Not verified'}</Link>
+          <Link href="/app/verification/couple-selfie" className="rounded-[14px] bg-slate-50 px-3 py-3 text-sm font-black text-slate-700 ring-1 ring-slate-200">Couple selfie</Link>
+        </div>
+      </section>
+      <section className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
+        <p className="text-sm font-black text-slate-900">Privacy & Security</p>
+        <div className="mt-3 grid gap-2">
+          <Link href="/app/settings/2fa" className="rounded-[14px] bg-slate-50 px-3 py-3 text-sm font-black text-slate-700 ring-1 ring-slate-200">Two-factor authentication</Link>
+          <Link href="/app/settings/sessions" className="rounded-[14px] bg-slate-50 px-3 py-3 text-sm font-black text-slate-700 ring-1 ring-slate-200">Sessions</Link>
+          <Link href="/app/settings/blocked-users" className="rounded-[14px] bg-slate-50 px-3 py-3 text-sm font-black text-slate-700 ring-1 ring-slate-200">Blocked users</Link>
+          <Link href="/app/verification" className="rounded-[14px] bg-slate-50 px-3 py-3 text-sm font-black text-slate-700 ring-1 ring-slate-200">Status & privacy controls</Link>
+        </div>
+      </section>
       <button type="button" onClick={() => void saveSettings()} disabled={saving} className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-blue-600 py-4 text-base font-black text-white disabled:opacity-60">
         {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
         Save changes
@@ -3142,6 +3772,11 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           <FormField label="Specialty" value={professionalApplicationForm.specialty} onChange={(specialty) => setProfessionalApplicationForm((prev) => ({ ...prev, specialty }))} placeholder="Relationship therapy, mentoring..." />
           <FormField label="Experience" value={professionalApplicationForm.experience} onChange={(experience) => setProfessionalApplicationForm((prev) => ({ ...prev, experience }))} placeholder="Years and background" />
           <FormField label="Bio" value={professionalApplicationForm.bio} onChange={(bio) => setProfessionalApplicationForm((prev) => ({ ...prev, bio }))} multiline placeholder="Tell users how you help." />
+          <label className="flex cursor-pointer items-center justify-center gap-2 rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm">
+            <UploadCloud className="h-5 w-5 text-blue-600" />
+            {uploadingLabel === 'Credentials document' ? 'Uploading credentials...' : 'Upload credentials document'}
+            <input type="file" accept="image/*,application/pdf" className="hidden" onChange={(event) => void handleFileUpload(event, 'professional', 'Credentials document', (url) => setProfessionalApplicationForm((prev) => ({ ...prev, credentialsUrl: url })))} />
+          </label>
           <FormField label="Credentials URL" value={professionalApplicationForm.credentialsUrl} onChange={(credentialsUrl) => setProfessionalApplicationForm((prev) => ({ ...prev, credentialsUrl }))} placeholder="https://..." />
           <FormField label="Hourly rate" value={professionalApplicationForm.rate} onChange={(rate) => setProfessionalApplicationForm((prev) => ({ ...prev, rate }))} inputMode="decimal" placeholder="Optional" />
           <button type="button" onClick={() => void submitProfessionalApplication()} disabled={saving || !professionalApplicationForm.roleId} className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-blue-600 py-4 font-black text-white disabled:opacity-50">
@@ -3233,8 +3868,13 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           <section className="rounded-[28px] bg-blue-600 p-5 text-white shadow-xl shadow-blue-600/20">
             <Shield className="h-10 w-10" />
             <h2 className="mt-4 text-3xl font-black">ID Verification</h2>
-            <p className="mt-2 text-sm leading-6 text-blue-50">Submit a hosted document URL for admin review.</p>
+            <p className="mt-2 text-sm leading-6 text-blue-50">Upload your document or paste a hosted URL for admin review.</p>
           </section>
+          <label className="flex cursor-pointer items-center justify-center gap-2 rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm">
+            <UploadCloud className="h-5 w-5 text-blue-600" />
+            {uploadingLabel === 'ID document' ? 'Uploading document...' : 'Upload ID document'}
+            <input type="file" accept="image/*,application/pdf" className="hidden" onChange={(event) => void handleFileUpload(event, 'verification', 'ID document', (documentUrl) => setVerificationForm((prev) => ({ ...prev, documentUrl })))} />
+          </label>
           <FormField label="Document URL" value={verificationForm.documentUrl} onChange={(documentUrl) => setVerificationForm((prev) => ({ ...prev, documentUrl }))} placeholder="https://..." />
           <button type="button" onClick={() => void submitIdVerification()} disabled={saving || !verificationForm.documentUrl.trim()} className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-blue-600 py-4 font-black text-white disabled:opacity-50">
             {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Shield className="h-5 w-5" />}
@@ -3249,7 +3889,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           <section className="rounded-[28px] bg-gradient-to-br from-pink-500 to-blue-600 p-5 text-white shadow-xl shadow-pink-500/20">
             <Camera className="h-10 w-10" />
             <h2 className="mt-4 text-3xl font-black">Couple Selfie</h2>
-            <p className="mt-2 text-sm leading-6 text-white/85">Submit a hosted couple selfie URL for the same certificate verification flow used on mobile.</p>
+            <p className="mt-2 text-sm leading-6 text-white/85">Upload a couple selfie or paste a hosted URL for the same certificate verification flow used on mobile.</p>
           </section>
           {relationship?.id ? (
             <>
@@ -3257,6 +3897,11 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                 <p className="font-black text-slate-950">{relationship.partner_name || 'Your relationship'}</p>
                 <p className="mt-1 text-sm text-slate-500">Status: {relationship.status || 'pending'}</p>
               </div>
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm">
+                <UploadCloud className="h-5 w-5 text-blue-600" />
+                {uploadingLabel === 'Couple selfie' ? 'Uploading selfie...' : 'Upload couple selfie'}
+                <input type="file" accept="image/*" className="hidden" onChange={(event) => void handleFileUpload(event, 'verification', 'Couple selfie', (documentUrl) => setVerificationForm((prev) => ({ ...prev, documentUrl })))} />
+              </label>
               <FormField label="Couple selfie URL" value={verificationForm.documentUrl} onChange={(documentUrl) => setVerificationForm((prev) => ({ ...prev, documentUrl }))} placeholder="https://..." />
               <button type="button" onClick={() => void submitCoupleSelfieVerification()} disabled={saving || !verificationForm.documentUrl.trim()} className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-blue-600 py-4 font-black text-white disabled:opacity-50">
                 {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Camera className="h-5 w-5" />}
@@ -3275,6 +3920,15 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           <Shield className="h-10 w-10" />
           <h2 className="mt-4 text-3xl font-black">{found?.[1] || 'Verification'}</h2>
           <p className="mt-2 text-sm leading-6 text-blue-50">{found?.[2] || 'Complete this verification method.'}</p>
+        </section>
+        <section className="rounded-[24px] bg-white p-5 shadow-sm ring-1 ring-slate-200">
+          <p className="text-sm font-black uppercase tracking-wide text-slate-500">Suggested order</p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <Link href="/app/verification/phone" className="rounded-[14px] bg-slate-50 px-3 py-3 text-sm font-black text-slate-700 ring-1 ring-slate-200">Step 1: Phone</Link>
+            <Link href="/app/verification/email" className="rounded-[14px] bg-slate-50 px-3 py-3 text-sm font-black text-slate-700 ring-1 ring-slate-200">Step 2: Email</Link>
+            <Link href="/app/verification/id" className="rounded-[14px] bg-slate-50 px-3 py-3 text-sm font-black text-slate-700 ring-1 ring-slate-200">Step 3: ID</Link>
+            <Link href="/app/verification/couple-selfie" className="rounded-[14px] bg-slate-50 px-3 py-3 text-sm font-black text-slate-700 ring-1 ring-slate-200">Step 4: Couple Selfie</Link>
+          </div>
         </section>
         <div className="rounded-[24px] bg-white p-5 shadow-sm ring-1 ring-slate-200">
           <p className="text-sm font-semibold leading-6 text-slate-600">
@@ -3377,6 +4031,11 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           </section>
           <FormField label="Title" value={adForm.title} onChange={(title) => setAdForm((prev) => ({ ...prev, title }))} placeholder="Campaign title" />
           <FormField label="Description" value={adForm.description} onChange={(description) => setAdForm((prev) => ({ ...prev, description }))} multiline placeholder="What should people know?" />
+          <label className="flex cursor-pointer items-center justify-center gap-2 rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm">
+            <UploadCloud className="h-5 w-5 text-blue-600" />
+            {uploadingLabel === 'Ad media' ? 'Uploading media...' : 'Upload ad image/video'}
+            <input type="file" accept="image/*,video/*" className="hidden" onChange={(event) => void handleFileUpload(event, 'ads', 'Ad media', (imageUrl) => setAdForm((prev) => ({ ...prev, imageUrl })))} />
+          </label>
           <FormField label="Image / video URL" value={adForm.imageUrl} onChange={(imageUrl) => setAdForm((prev) => ({ ...prev, imageUrl }))} placeholder="https://..." />
           <div className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
             <p className="mb-3 text-sm font-black text-slate-700">Call to action</p>
@@ -3580,14 +4239,14 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     const userId = appPath[1];
     const related = userId === user?.id
       ? user
-      : datingLikes.find((item) => item.user?.id === userId)?.user || datingMatches.find((item) => item.user?.id === userId)?.user || null;
+      : routeProfileUser || datingLikes.find((item) => item.user?.id === userId)?.user || datingMatches.find((item) => item.user?.id === userId)?.user || null;
     if (!related) return <EmptyState icon={User} title="Profile Not Found" text="This profile is not loaded yet." action="Back" onAction={() => router.back()} />;
     return (
       <div className="space-y-4 px-4 py-4">
         <section className="rounded-[28px] bg-white p-6 text-center shadow-sm ring-1 ring-slate-200">
-          <Avatar src={related.profile_picture} name={related.full_name || related.email} size="lg" />
-          <h2 className="mt-4 text-3xl font-black text-slate-950">{related.full_name || 'Committed member'}</h2>
-          <p className="text-sm text-slate-500">{related.email}</p>
+          <Avatar src={related.profile_picture} name={getUserDisplayName(related)} size="lg" />
+          <h2 className="mt-4 text-3xl font-black text-slate-950">{getUserDisplayName(related)}</h2>
+          <p className="text-sm text-slate-500">{related.username ? `@${related.username}` : related.email}</p>
           <div className="mt-4 flex justify-center gap-2">
             {related.verified ? <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700">Verified</span> : null}
             <span className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-black text-blue-700">{related.role || 'user'}</span>
@@ -3599,7 +4258,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   };
 
   const renderAdminRoute = () => {
-    if (!user || !['admin', 'super_admin', 'moderator'].includes(user.role || '')) {
+    if (!user || !isAdminRole(user.role)) {
       return <EmptyState icon={Shield} title="Admin Only" text="This area is only visible to admins and moderators." />;
     }
     if (subPath === 'relationships') {
@@ -3667,7 +4326,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                 <button type="button" onClick={() => void toggleAdminUserBan(member)} disabled={saving || member.id === user.id} className={`rounded-[16px] py-3 text-sm font-black text-white disabled:opacity-40 ${member.banned_at ? 'bg-emerald-600' : 'bg-red-500'}`}>
                   {member.banned_at ? 'Unban' : 'Ban'}
                 </button>
-                {user.role === 'super_admin' ? (
+                {normalizeRole(user.role) === 'super_admin' ? (
                   <select value={member.role || 'user'} onChange={(event) => void updateAdminUserRole(member.id, event.target.value)} className="rounded-[16px] border border-slate-200 bg-white px-3 text-sm font-black text-slate-700">
                     <option value="user">User</option>
                     <option value="moderator">Moderator</option>

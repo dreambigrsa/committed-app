@@ -42,10 +42,12 @@ export default function HomePage() {
     <div className="min-h-screen bg-[#0b1020] text-white">
       <Navbar />
       <main>
-        <section className="relative mx-auto grid min-h-[calc(100vh-72px)] max-w-6xl items-center gap-10 overflow-hidden px-5 pb-14 pt-24 md:grid-cols-[1fr_420px] md:px-8">
+        <section className="relative overflow-hidden">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(37,99,235,0.25),transparent_40%),radial-gradient(circle_at_80%_75%,rgba(139,92,246,0.22),transparent_40%)]" />
+          <div className="mx-auto grid min-h-[calc(100vh-72px)] max-w-7xl items-center gap-10 px-5 pb-14 pt-24 md:grid-cols-[1fr_420px] md:px-8">
           <div className="pointer-events-none absolute -left-24 top-16 h-64 w-64 rounded-full bg-blue-500/20 blur-3xl motion-safe:animate-pulse" />
           <div className="pointer-events-none absolute -right-16 bottom-20 h-64 w-64 rounded-full bg-violet-500/20 blur-3xl motion-safe:animate-pulse" />
-          <div>
+          <div className="relative z-10">
             <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-black text-blue-100 transition duration-200 hover:bg-white/15">
               <Heart className="h-4 w-4 fill-pink-500 text-pink-500" />
               Verified love, dating, and trust tools
@@ -71,7 +73,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="mx-auto w-full max-w-[360px] rounded-[34px] border border-white/15 bg-white/10 p-3 shadow-2xl shadow-blue-950/50 backdrop-blur transition duration-300 hover:-translate-y-1">
+          <div className="relative z-10 mx-auto w-full max-w-[360px] rounded-[34px] border border-white/15 bg-white/10 p-3 shadow-2xl shadow-blue-950/50 backdrop-blur transition duration-300 hover:-translate-y-1">
             <div className="overflow-hidden rounded-[28px] bg-slate-50 text-slate-950">
               <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
                 <div>
@@ -111,16 +113,17 @@ export default function HomePage() {
               </div>
             </div>
           </div>
+          </div>
         </section>
 
-        <section id="trust-safety" className="bg-slate-50 py-14 text-slate-950">
-          <div className="mx-auto max-w-6xl px-5 md:px-8">
+        <section id="trust-safety" className="bg-gradient-to-b from-[#0b1020] to-slate-100 py-16 text-slate-950">
+          <div className="mx-auto max-w-7xl px-5 md:px-8">
             <PublicRelationshipSearch />
           </div>
         </section>
 
-        <section id="how-it-works" className="bg-white py-16 text-slate-950">
-          <div className="mx-auto max-w-6xl px-5 md:px-8">
+        <section id="how-it-works" className="bg-slate-100 py-16 text-slate-950">
+          <div className="mx-auto max-w-7xl px-5 md:px-8">
             <div className="mb-8">
               <p className="text-sm font-black uppercase tracking-wide text-blue-600">How it works</p>
               <h2 className="mt-2 text-3xl font-black tracking-tight">Built like the mobile journey</h2>

@@ -6,6 +6,7 @@ import { Heart, Loader2, MessageCircle, Send } from 'lucide-react';
 import { APP_SCHEME } from '@/lib/appLinks';
 import OpenAppFallback from '@/components/OpenAppFallback';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
+import { getDisplayName } from '@/lib/identity';
 
 const FALLBACK_DELAY_MS = 1200;
 
@@ -47,15 +48,20 @@ export default function PostPage() {
       }
       try {
         const supabase = getSupabaseBrowser() as any;
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        const currentUserId = session?.user?.id || '';
+        const [
+          {
+            data: { user: authUser },
+          },
+          {
+            data: { session },
+          },
+        ] = await Promise.all([supabase.auth.getUser(), supabase.auth.getSession()]);
+        const currentUserId = authUser?.id || session?.user?.id || '';
         if (!cancelled) setSessionUserId(currentUserId);
 
         const { data } = await supabase
           .from('posts')
-          .select('id,user_id,content,media_urls,media_type,created_at,users!posts_user_id_fkey(full_name,profile_picture)')
+          .select('id,user_id,content,media_urls,media_type,created_at,users!posts_user_id_fkey(full_name,username,email,profile_picture)')
           .eq('id', id)
           .maybeSingle();
         if (!cancelled) setPost(data || null);
@@ -65,7 +71,7 @@ export default function PostPage() {
           supabase.from('post_likes').select('id', { count: 'exact', head: true }).eq('post_id', data.id),
           supabase
             .from('comments')
-            .select('id,post_id,user_id,content,created_at,users!comments_user_id_fkey(full_name,profile_picture)')
+            .select('id,post_id,user_id,content,created_at,users!comments_user_id_fkey(full_name,username,email,profile_picture)')
             .eq('post_id', data.id)
             .is('parent_comment_id', null)
             .order('created_at', { ascending: false })
@@ -119,7 +125,7 @@ export default function PostPage() {
       const { data, error } = await supabase
         .from('comments')
         .insert({ post_id: post.id, user_id: sessionUserId, content: text, message_type: 'text' })
-        .select('id,post_id,user_id,content,created_at,users!comments_user_id_fkey(full_name,profile_picture)')
+        .select('id,post_id,user_id,content,created_at,users!comments_user_id_fkey(full_name,username,email,profile_picture)')
         .single();
       if (error || !data) throw error || new Error('Unable to add comment');
       setComments((list) => [data, ...list]);
@@ -156,11 +162,11 @@ export default function PostPage() {
                   <img src={post.users.profile_picture} alt="" className="h-11 w-11 rounded-full object-cover" />
                 ) : (
                   <div className="grid h-11 w-11 place-items-center rounded-full bg-blue-600 font-black text-white">
-                    {(post?.users?.full_name || 'C').charAt(0)}
+                    {getDisplayName(post?.users).charAt(0)}
                   </div>
                 )}
                 <div>
-                  <p className="font-black">{post?.users?.full_name || 'Committed member'}</p>
+                  <p className="font-black">{getDisplayName(post?.users)}</p>
                   <p className="text-xs font-semibold text-slate-400">Shared post</p>
                 </div>
               </div>
@@ -210,7 +216,7 @@ export default function PostPage() {
           <div className="mt-4 max-h-[420px] space-y-2 overflow-auto pr-1">
             {comments.map((comment) => (
               <div key={comment.id} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-                <p className="text-xs font-black text-slate-500">{comment.users?.full_name || 'Committed member'}</p>
+                <p className="text-xs font-black text-slate-500">{getDisplayName(comment.users)}</p>
                 <p className="mt-1 text-sm text-slate-900">{comment.content}</p>
               </div>
             ))}

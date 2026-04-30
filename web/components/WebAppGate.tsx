@@ -56,18 +56,37 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
 
   const allMissingChecked = missingDocs.length > 0 && missingDocs.every((doc) => checkedDocIds.includes(doc.id));
 
+  const resolveAuthSnapshot = useCallback(async () => {
+    const supabase = getSupabaseBrowser() as any;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const [
+        {
+          data: { user: authUser },
+          error: userError,
+        },
+        {
+          data: { session },
+        },
+      ] = await Promise.all([supabase.auth.getUser(), supabase.auth.getSession()]);
+      const resolvedUser = authUser || session?.user || null;
+      if (resolvedUser) {
+        return { authUser: resolvedUser, session, userError: null };
+      }
+      if (attempt < 2) {
+        await new Promise((resolve) => window.setTimeout(resolve, 150));
+      } else {
+        return { authUser: null, session: null, userError };
+      }
+    }
+    return { authUser: null, session: null, userError: null };
+  }, []);
+
   const loadState = useCallback(async () => {
     setError('');
     setStep('loading');
     try {
       const supabase = getSupabaseBrowser() as any;
-      const {
-        data: { user: authUser },
-        error: userError,
-      } = await supabase.auth.getUser();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const { authUser, session, userError } = await resolveAuthSnapshot();
 
       console.debug('[WebAppGate] Authenticated user object', {
         id: authUser?.id ?? null,
@@ -139,10 +158,34 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
       setError(err instanceof Error ? err.message : 'Unable to load onboarding state.');
       setStep('error');
     }
-  }, [router]);
+  }, [resolveAuthSnapshot, router]);
 
   useEffect(() => {
     void loadState();
+  }, [loadState]);
+
+  useEffect(() => {
+    const supabase = getSupabaseBrowser() as any;
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event: string) => {
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+        void loadState();
+      }
+    });
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [loadState]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        void loadState();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, [loadState]);
 
   const resendVerification = async () => {

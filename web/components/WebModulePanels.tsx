@@ -4,6 +4,8 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, Bell, CheckCircle2, Film, Loader2, MessageCircle, ShieldCheck, ThumbsUp, UploadCloud, UserCircle2 } from 'lucide-react';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
+import { getPostVisibilityOrFilter, getReelVisibilityOrFilter } from '@/lib/content-visibility';
+import { excludeDatingProfilesForUser, filterVisibleMessagesForUser } from '@/lib/parity-helpers';
 
 type PanelProps = {
   module: string;
@@ -36,7 +38,7 @@ type DatingCandidate = {
   interests?: string[] | null;
   religion?: string | null;
   education?: string | null;
-  users?: { full_name?: string | null; profile_picture?: string | null } | null;
+  users?: { full_name?: string | null; username?: string | null; email?: string | null; profile_picture?: string | null } | null;
   dating_photos?: { photo_url: string; is_primary?: boolean | null }[] | null;
 };
 
@@ -67,6 +69,15 @@ function normalizePhone(value: string) {
 function formatShortDate(value?: string | null) {
   if (!value) return 'Not set';
   return new Intl.DateTimeFormat('en', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date(value));
+}
+
+function getDisplayName(user?: { full_name?: string | null; username?: string | null; email?: string | null } | null) {
+  if (!user) return 'Committed member';
+  if (user.username?.trim()) return user.username.trim();
+  if (user.full_name?.trim() && !user.full_name.includes('@')) return user.full_name.trim();
+  if (user.full_name?.trim()) return user.full_name.trim();
+  if (user.email?.includes('@')) return user.email.split('@')[0] || 'Committed member';
+  return user.email || 'Committed member';
 }
 
 function StatusMessage({ status, message }: { status: Status; message: string }) {
@@ -425,15 +436,14 @@ function DatingProfilePanel() {
         .select(
           `
           id,user_id,bio,age,location_city,relationship_goals,interests,education,
-          users!dating_profiles_user_id_fkey(full_name,profile_picture),
+          users!dating_profiles_user_id_fkey(full_name,username,email,profile_picture),
           dating_photos(photo_url,is_primary)
         `
         )
         .eq('is_active', true)
-        .eq('show_me', true)
         .limit(18);
       if (error) throw error;
-      setCandidates(((data ?? []) as DatingCandidate[]).filter((item) => !hiddenIds.has(item.user_id)).slice(0, 8));
+      setCandidates(excludeDatingProfilesForUser((data ?? []) as DatingCandidate[], hiddenIds).slice(0, 8));
     } finally {
       setCandidateLoading(false);
     }
@@ -650,7 +660,7 @@ function DatingProfilePanel() {
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             {candidates.map((candidate) => {
               const photo = candidate.dating_photos?.find((item) => item.is_primary)?.photo_url || candidate.dating_photos?.[0]?.photo_url || candidate.users?.profile_picture;
-              const name = candidate.users?.full_name || 'Committed member';
+              const name = getDisplayName(candidate.users);
               return (
                 <article key={candidate.id} className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-50">
                   <div className="flex min-h-[170px] items-center justify-center bg-gradient-to-br from-rose-500 to-violet-700 text-white">
@@ -807,7 +817,8 @@ function AdminPanel() {
         } = await supabase.auth.getSession();
         if (!session?.user) return;
         const { data: userRow } = await supabase.from('users').select('role').eq('id', session.user.id).maybeSingle();
-        const currentRole = userRow?.role || '';
+      const metadataRole = typeof session.user.user_metadata?.role === 'string' ? session.user.user_metadata.role : '';
+      const currentRole = (userRow?.role || metadataRole || '').toLowerCase();
         if (!['admin', 'super_admin', 'moderator'].includes(currentRole)) {
           setRole(currentRole);
           setError('Admin access is required for this panel.');
@@ -1298,12 +1309,14 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
       const [postResult, reelResult] = await Promise.all([
         supabase
           .from('posts')
-          .select('id,user_id,content,media_urls,media_type,created_at,users!posts_user_id_fkey(full_name,profile_picture)')
+          .select('id,user_id,content,media_urls,media_type,created_at,users!posts_user_id_fkey(full_name,username,email,profile_picture)')
+          .or(getPostVisibilityOrFilter(currentUserId))
           .order('created_at', { ascending: false })
           .limit(40),
         supabase
           .from('reels')
-          .select('id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(full_name,profile_picture)')
+          .select('id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(full_name,username,email,profile_picture)')
+          .or(getReelVisibilityOrFilter(currentUserId))
           .order('created_at', { ascending: false })
           .limit(32),
       ]);
@@ -1323,7 +1336,7 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
       );
       const [postLikesRes, postCommentsRes, reelLikesRes, reelCommentsRes, myPostLikesRes] = await Promise.all([
         postIds.length ? supabase.from('post_likes').select('post_id') .in('post_id', postIds) : Promise.resolve({ data: [] }),
-        postIds.length ? supabase.from('comments').select('id,post_id,parent_comment_id,content,created_at,users!comments_user_id_fkey(full_name)').in('post_id', postIds) : Promise.resolve({ data: [] }),
+        postIds.length ? supabase.from('comments').select('id,post_id,parent_comment_id,content,created_at,users!comments_user_id_fkey(full_name,username,email)').in('post_id', postIds) : Promise.resolve({ data: [] }),
         reelIds.length ? supabase.from('reel_likes').select('reel_id').in('reel_id', reelIds) : Promise.resolve({ data: [] }),
         reelIds.length ? supabase.from('reel_comments').select('id,reel_id').in('reel_id', reelIds) : Promise.resolve({ data: [] }),
         currentUserId && postIds.length ? supabase.from('post_likes').select('post_id').eq('user_id', currentUserId).in('post_id', postIds) : Promise.resolve({ data: [] }),
@@ -1627,7 +1640,7 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
                 <article key={post.id} className="rounded-xl border border-slate-200 bg-white p-4">
                   <div className="flex items-center justify-between gap-3">
                     <Link href={`/dating/user-profile?userId=${encodeURIComponent(post.user_id)}`} className="font-bold text-slate-950 hover:text-violet-700">
-                      {post.users?.full_name || 'Committed member'}
+                      {getDisplayName(post.users)}
                     </Link>
                     <div className="flex items-center gap-2">
                       {post.user_id && currentUserId && post.user_id !== currentUserId ? (
@@ -1670,10 +1683,10 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
                       const key = `${post.id}:${comment.id}`;
                       return (
                         <div key={comment.id} className="rounded-xl border border-slate-200 bg-white p-3">
-                          <p className="text-sm"><span className="font-bold">{comment.users?.full_name || 'Member'}:</span> {comment.content}</p>
+                          <p className="text-sm"><span className="font-bold">{getDisplayName(comment.users)}:</span> {comment.content}</p>
                           <div className="mt-2 pl-3">
                             {(repliesByParent[comment.id] || []).slice(0, 2).map((reply: any) => (
-                              <p key={reply.id} className="mt-1 text-sm text-slate-600"><span className="font-semibold">{reply.users?.full_name || 'Member'}:</span> {reply.content}</p>
+                              <p key={reply.id} className="mt-1 text-sm text-slate-600"><span className="font-semibold">{getDisplayName(reply.users)}:</span> {reply.content}</p>
                             ))}
                           </div>
                           <button type="button" onClick={() => setReplyingTo((value) => ({ ...value, [post.id]: comment.id }))} className="mt-2 text-xs font-semibold text-violet-700">
@@ -1712,7 +1725,7 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
                 )}
               </div>
               <div className="p-4">
-                <p className="font-bold text-slate-950">{reel.users?.full_name || 'Committed member'}</p>
+                <p className="font-bold text-slate-950">{getDisplayName(reel.users)}</p>
                 <p className="mt-1 line-clamp-2 text-sm text-slate-600">{reel.caption || 'Reel'}</p>
                 <div className="mt-3 flex items-center justify-between text-sm font-semibold">
                   <span className="text-slate-600">{reel.likesCount || 0} likes • {reel.commentsCount || 0} comments</span>
@@ -1970,13 +1983,18 @@ function MessagesPanel() {
   const loadMessages = async (conversationId: string) => {
     setSelectedId(conversationId);
     const supabase = getSupabaseBrowser() as any;
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const uid = session?.user?.id || '';
     const { data } = await supabase
       .from('messages')
-      .select('id,sender_id,receiver_id,content,message_type,created_at')
+      .select('id,sender_id,receiver_id,content,message_type,created_at,deleted_for_sender,deleted_for_receiver')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: true })
       .limit(80);
-    setMessages(data ?? []);
+    const visible = filterVisibleMessagesForUser((data ?? []) as any[], uid);
+    setMessages(visible);
   };
 
   useEffect(() => {

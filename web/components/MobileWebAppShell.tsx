@@ -38,6 +38,8 @@ import {
 } from 'lucide-react';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { buildPostWebUrl, buildReelWebUrl } from '@/lib/appLinks';
+import { getPostVisibilityOrFilter, getReelVisibilityOrFilter } from '@/lib/content-visibility';
+import { filterVisibleMessagesForUser } from '@/lib/parity-helpers';
 
 type TabKey = 'home' | 'feed' | 'reels' | 'dating' | 'search' | 'notifications' | 'messages' | 'profile';
 
@@ -364,15 +366,21 @@ function isAdminRole(role?: string | null) {
 
 function getUserDisplayName(user?: { full_name?: string | null; username?: string | null; email?: string | null } | null) {
   if (!user) return 'Committed member';
-  if (user.full_name?.trim()) return user.full_name.trim();
   if (user.username?.trim()) return user.username.trim();
+  if (user.full_name?.trim() && !user.full_name.includes('@')) return user.full_name.trim();
+  if (user.full_name?.trim()) return user.full_name.trim();
   if (user.email?.includes('@')) return user.email.split('@')[0] || 'Committed member';
   return user.email || 'Committed member';
 }
 
-function getCommittedAIReply(input: string, history: MessageRow[] = []) {
+function getCommittedAIReply(
+  input: string,
+  history: MessageRow[] = [],
+  currentUser?: { full_name?: string | null; username?: string | null; email?: string | null } | null
+) {
   const trimmed = input.trim();
   const value = trimmed.toLowerCase();
+  const userDisplayName = getUserDisplayName(currentUser);
   const recentUserInputs = history
     .filter((item) => item.sender_id !== 'committed-ai' && item.sender_id !== 'ai@committed.app')
     .map((item) => (item.content || '').trim().toLowerCase())
@@ -397,6 +405,12 @@ function getCommittedAIReply(input: string, history: MessageRow[] = []) {
   }
   if (value.includes('admin') || value.includes('dashboard') || value.includes('moderation')) {
     return 'If you are an admin/moderator, open Profile > Admin to manage users, relationship reviews, posts/reels moderation, and payment verifications.';
+  }
+  const asksName =
+    /\b(my name|know my name|what('?s| is) my name|who am i)\b/.test(value) ||
+    (value.includes('name') && value.includes('account'));
+  if (asksName) {
+    return `Yes. Your account name is ${userDisplayName}. If this is not correct, update it in Settings and I will use the new name.`;
   }
 
   const preview = trimmed.length > 90 ? `${trimmed.slice(0, 90)}...` : trimmed;
@@ -748,6 +762,28 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     return () => window.cancelAnimationFrame(frame);
   }, [datingProfileStep]);
 
+  const resolveAuthUser = useCallback(async () => {
+    if (!supabase) return null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const [
+        { data: auth, error: authError },
+        {
+          data: { session },
+        },
+      ] = await Promise.all([supabase.auth.getUser(), supabase.auth.getSession()]);
+      const authUser = auth.user || session?.user || null;
+      if (authUser) {
+        return { authUser, authError: null };
+      }
+      if (attempt < 2) {
+        await new Promise((resolve) => window.setTimeout(resolve, 150));
+      } else {
+        return { authUser: null, authError };
+      }
+    }
+    return { authUser: null, authError: null };
+  }, [supabase]);
+
   const loadAppData = useCallback(async () => {
     if (!supabase) {
       setLoading(false);
@@ -756,8 +792,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
     setLoading(true);
     try {
-      const { data: auth, error: authError } = await supabase.auth.getUser();
-      const authUser = auth.user;
+      const authState = await resolveAuthUser();
+      const authUser = authState?.authUser || null;
+      const authError = authState?.authError || null;
       console.debug('[WebAppShell] Authenticated user object', {
         id: authUser?.id ?? null,
         email: authUser?.email ?? null,
@@ -879,12 +916,13 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         supabase
           .from('posts')
           .select('id,user_id,content,media_urls,media_type,comment_count,created_at,users!posts_user_id_fkey(full_name,profile_picture)')
-          .or(`moderation_status.eq.approved,user_id.eq.${authUser.id}`)
+          .or(getPostVisibilityOrFilter(authUser.id))
           .order('created_at', { ascending: false })
           .limit(30),
         supabase
           .from('reels')
           .select('id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(full_name,profile_picture)')
+          .or(getReelVisibilityOrFilter(authUser.id))
           .order('created_at', { ascending: false })
           .limit(20),
         supabase
@@ -1170,7 +1208,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         conversationIds.length
           ? supabase
               .from('messages')
-              .select('id,conversation_id,sender_id,receiver_id,content,message_type,media_url,document_url,created_at')
+              .select('id,conversation_id,sender_id,receiver_id,content,message_type,media_url,document_url,created_at,deleted_for_sender,deleted_for_receiver')
               .in('conversation_id', conversationIds)
               .order('created_at', { ascending: true })
           : Promise.resolve({ data: [] }),
@@ -1205,7 +1243,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       }));
 
       const messagesById: Record<string, MessageRow[]> = {};
-      ((conversationMessagesResult.data || []) as MessageRow[]).forEach((message) => {
+      const visibleMessages = filterVisibleMessagesForUser(((conversationMessagesResult.data || []) as MessageRow[]), authUser.id);
+      visibleMessages.forEach((message) => {
         messagesById[message.conversation_id] = [...(messagesById[message.conversation_id] || []), message];
       });
       setMessagesByConversation(messagesById);
@@ -1389,10 +1428,34 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     } finally {
       setLoading(false);
     }
-  }, [resetUserScopedState, router, supabase]);
+  }, [resetUserScopedState, resolveAuthUser, router, supabase]);
 
   useEffect(() => {
     void loadAppData();
+  }, [loadAppData]);
+
+  useEffect(() => {
+    if (!supabase) return;
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event: string) => {
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+        void loadAppData();
+      }
+    });
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [loadAppData, supabase]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        void loadAppData();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, [loadAppData]);
 
   useEffect(() => {
@@ -1715,7 +1778,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         const now = new Date().toISOString();
         const prompt = aiPrompt.trim();
         const localHistory = messagesByConversation[localConversationId] || [];
-        const reply = getCommittedAIReply(prompt, localHistory);
+        const reply = getCommittedAIReply(prompt, localHistory, user);
         setConversations((prev) => {
           const exists = prev.find((item) => item.id === localConversationId);
           if (exists) return prev;
@@ -1810,7 +1873,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         conversation.id === 'committed-ai-local' ||
         (conversation.participantNames || []).some((name) => name.toLowerCase().includes('committed ai'));
       if (isAiConversation) {
-        const aiReplyText = getCommittedAIReply(messageText, messagesByConversation[conversation.id] || []);
+        const aiReplyText = getCommittedAIReply(messageText, messagesByConversation[conversation.id] || [], user);
         const aiId = receiverId || 'committed-ai';
         const aiReply: MessageRow = {
           id: `ai-${Date.now()}`,
@@ -1876,7 +1939,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         .from('conversations')
         .update({ last_message: messageText, last_message_at: new Date().toISOString() })
         .eq('id', conversation.id);
-      const aiReplyText = getCommittedAIReply(messageText, messagesByConversation[conversation.id] || []);
+      const aiReplyText = getCommittedAIReply(messageText, messagesByConversation[conversation.id] || [], user);
       const aiId = receiverId || 'committed-ai';
       const aiReply: MessageRow = {
         id: `ai-${Date.now()}`,
@@ -2815,7 +2878,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               <span className="text-3xl leading-none">‹</span>
             </button>
           ) : (
-            <Avatar src={user?.profile_picture} name={user?.full_name} size="sm" />
+            <Avatar src={user?.profile_picture} name={getUserDisplayName(user)} size="sm" />
           )}
           <h1 className="flex-1 text-xl font-black text-slate-950">{current.label === 'Notify' ? 'Notifications' : current.label}</h1>
           {activeTab === 'dating' ? (
@@ -2890,7 +2953,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     <div className="px-4 py-4">
       <section className="rounded-[28px] bg-gradient-to-br from-blue-600 to-blue-800 px-5 py-6 text-white shadow-xl shadow-blue-700/20">
         <div className="flex items-center gap-3">
-          <Avatar src={user?.profile_picture} name={user?.full_name} size="lg" />
+          <Avatar src={user?.profile_picture} name={getUserDisplayName(user)} size="lg" />
           <div>
             <p className="text-sm font-semibold text-blue-100">Welcome back</p>
             <h2 className="text-2xl font-black">{getUserDisplayName(user)}</h2>
@@ -2962,7 +3025,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       <div className="space-y-3 px-3 py-3">
         {renderStatusStrip()}
         <div className="flex items-center gap-3 rounded-[22px] border border-slate-200 bg-white p-3 shadow-sm">
-          <Avatar src={user?.profile_picture} name={user?.full_name} />
+          <Avatar src={user?.profile_picture} name={getUserDisplayName(user)} />
           <Link href="/app/create-post" className="flex-1 rounded-full bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-500">
             What is on your heart?
           </Link>
@@ -2997,7 +3060,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-4 text-white">
               <div className="flex items-end justify-between gap-4">
                 <div>
-                  <p className="font-black">{reel.users?.full_name || 'Committed member'}</p>
+                  <p className="font-black">{getUserDisplayName(reel.users)}</p>
                   <p className="mt-2 text-sm leading-5 text-white/85">{reel.caption || 'Shared a reel'}</p>
                 </div>
                 <div className="flex flex-col gap-3">
@@ -3055,7 +3118,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         <article className="relative min-h-[calc(100vh-122px)] overflow-hidden bg-slate-900">
           {reel.video_url ? <video src={reel.video_url} poster={reel.thumbnail_url || undefined} controls className="h-full min-h-[calc(100vh-122px)] w-full object-cover" /> : null}
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-4 text-white">
-            <p className="font-black">{reel.users?.full_name || 'Committed member'}</p>
+            <p className="font-black">{getUserDisplayName(reel.users)}</p>
             <p className="mt-2 text-sm leading-5 text-white/85">{reel.caption || 'Shared a reel'}</p>
             <div className="mt-4 flex gap-3">
               <button type="button" onClick={() => void toggleReelLike(reel)} className="rounded-full bg-white/18 px-4 py-2 text-sm font-black backdrop-blur">Like</button>
@@ -3094,9 +3157,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const renderCreatePost = () => (
     <div className="space-y-4 px-4 py-4">
       <div className="flex items-center gap-3 rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-        <Avatar src={user?.profile_picture} name={user?.full_name} />
+        <Avatar src={user?.profile_picture} name={getUserDisplayName(user)} />
         <div>
-          <p className="font-black text-slate-950">{user?.full_name || 'Committed member'}</p>
+          <p className="font-black text-slate-950">{getUserDisplayName(user)}</p>
           <p className="text-sm text-slate-500">Create post</p>
         </div>
       </div>
@@ -3266,9 +3329,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       <div className="space-y-3 px-4 py-4">
         {datingLikes.map((like) => (
           <article key={like.id} className="flex items-center gap-3 rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
-            <Avatar src={like.user?.profile_picture} name={like.user?.full_name} size="lg" />
+            <Avatar src={like.user?.profile_picture} name={getUserDisplayName(like.user)} size="lg" />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-lg font-black text-slate-950">{like.user?.full_name || 'Someone liked you'}</p>
+              <p className="truncate text-lg font-black text-slate-950">{getUserDisplayName(like.user) || 'Someone liked you'}</p>
               <p className="text-sm font-semibold text-slate-500">{like.is_super_like ? 'Sent a super like' : 'Liked your profile'} · {timeAgo(like.created_at)}</p>
             </div>
             <Heart className="h-6 w-6 fill-pink-500 text-pink-500" />
@@ -3286,9 +3349,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       <div className="space-y-3 px-4 py-4">
         {datingMatches.map((match) => (
           <article key={match.id} className="flex items-center gap-3 rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
-            <Avatar src={match.user?.profile_picture} name={match.user?.full_name} size="lg" />
+            <Avatar src={match.user?.profile_picture} name={getUserDisplayName(match.user)} size="lg" />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-lg font-black text-slate-950">{match.user?.full_name || 'Matched member'}</p>
+              <p className="truncate text-lg font-black text-slate-950">{getUserDisplayName(match.user) || 'Matched member'}</p>
               <p className="text-sm font-semibold text-slate-500">Matched {timeAgo(match.matched_at || match.created_at)}</p>
             </div>
             <Link href="/app/messages" className="grid h-11 w-11 place-items-center rounded-full bg-blue-600 text-white">
@@ -3344,7 +3407,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     if (subPath === 'create-date-request' || subPath === 'edit-date-request') {
       const matchedOptions = datingMatches.map((match) => ({
         id: match.user?.id || (match.user1_id === user?.id ? match.user2_id : match.user1_id),
-        name: match.user?.full_name || 'Matched member',
+        name: getUserDisplayName(match.user),
       })).filter((item) => item.id);
       return (
         <div className="space-y-4 px-4 py-4">
@@ -3390,10 +3453,10 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           return (
             <article key={request.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <div className="flex items-start gap-3">
-                <Avatar src={other?.profile_picture} name={other?.full_name} />
+                <Avatar src={other?.profile_picture} name={getUserDisplayName(other)} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-lg font-black text-slate-950">{request.date_title || 'Date request'}</p>
-                  <p className="truncate text-sm text-slate-500">{incoming ? 'From' : 'To'} {other?.full_name || 'Matched member'}</p>
+                  <p className="truncate text-sm text-slate-500">{incoming ? 'From' : 'To'} {getUserDisplayName(other)}</p>
                   <p className="mt-2 text-sm font-semibold text-slate-600">{request.location_name || 'Location not set'}</p>
                   <p className="text-xs font-semibold text-slate-400">{[request.proposed_date, request.proposed_time].filter(Boolean).join(' ')}</p>
                 </div>
@@ -4269,9 +4332,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     <div className="px-4 py-4">
       <section className="rounded-[28px] bg-white p-5 text-center shadow-sm ring-1 ring-slate-200">
         <div className="mx-auto w-fit">
-          <Avatar src={user?.profile_picture} name={user?.full_name} size="lg" />
+          <Avatar src={user?.profile_picture} name={getUserDisplayName(user)} size="lg" />
         </div>
-        <h2 className="mt-4 text-2xl font-black text-slate-950">{user?.full_name || 'Committed member'}</h2>
+        <h2 className="mt-4 text-2xl font-black text-slate-950">{getUserDisplayName(user)}</h2>
         <p className="text-sm text-slate-500">{user?.username ? `@${user.username}` : user?.email}</p>
         <div className="mt-4 flex justify-center gap-2">
           <span className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-black text-blue-700">{user?.role || 'user'}</span>
@@ -4303,7 +4366,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     <div className="space-y-4 px-4 py-4">
       <section className="rounded-[26px] bg-white p-5 shadow-sm ring-1 ring-slate-200">
         <div className="flex items-center gap-3">
-          <Avatar src={settingsProfilePictureUrl || user?.profile_picture} name={user?.full_name} size="lg" />
+          <Avatar src={settingsProfilePictureUrl || user?.profile_picture} name={getUserDisplayName(user)} size="lg" />
           <div>
             <h2 className="text-2xl font-black text-slate-950">Settings</h2>
             <p className="text-sm text-slate-500">{user?.username ? `@${user.username}` : 'Account and profile details'}</p>
@@ -5394,9 +5457,9 @@ function PostCard({
   return (
     <article className="rounded-[22px] border border-slate-200 bg-white shadow-sm">
       <div className="flex items-center gap-3 p-4">
-        <Avatar src={post.users?.profile_picture} name={post.users?.full_name} />
+        <Avatar src={post.users?.profile_picture} name={getUserDisplayName(post.users)} />
         <div className="min-w-0 flex-1">
-          <p className="truncate font-black text-slate-950">{post.users?.full_name || 'Committed member'}</p>
+          <p className="truncate font-black text-slate-950">{getUserDisplayName(post.users)}</p>
           <p className="text-xs font-semibold text-slate-400">{timeAgo(post.created_at)}</p>
         </div>
         <MoreHorizontal className="h-5 w-5 text-slate-400" />

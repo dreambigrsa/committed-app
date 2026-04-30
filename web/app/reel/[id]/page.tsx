@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { APP_SCHEME } from '@/lib/appLinks';
 import OpenAppFallback from '@/components/OpenAppFallback';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
+import { getDisplayName } from '@/lib/identity';
 
 const FALLBACK_DELAY_MS = 1200;
 
@@ -45,14 +46,19 @@ export default function ReelPage() {
       }
       try {
         const supabase = getSupabaseBrowser() as any;
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        const currentUserId = session?.user?.id || '';
+        const [
+          {
+            data: { user: authUser },
+          },
+          {
+            data: { session },
+          },
+        ] = await Promise.all([supabase.auth.getUser(), supabase.auth.getSession()]);
+        const currentUserId = authUser?.id || session?.user?.id || '';
         if (!cancelled) setSessionUserId(currentUserId);
         const { data } = await supabase
           .from('reels')
-          .select('id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(full_name)')
+          .select('id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(full_name,username,email,profile_picture)')
           .eq('id', id)
           .maybeSingle();
         if (!cancelled) setReel(data || null);
@@ -62,7 +68,7 @@ export default function ReelPage() {
           supabase.from('reel_likes').select('id', { count: 'exact', head: true }).eq('reel_id', data.id),
           supabase
             .from('reel_comments')
-            .select('id,reel_id,user_id,content,created_at,users!reel_comments_user_id_fkey(full_name)')
+            .select('id,reel_id,user_id,content,created_at,users!reel_comments_user_id_fkey(full_name,username,email,profile_picture)')
             .eq('reel_id', data.id)
             .order('created_at', { ascending: false })
             .limit(20),
@@ -115,7 +121,7 @@ export default function ReelPage() {
       const { data, error } = await supabase
         .from('reel_comments')
         .insert({ reel_id: reel.id, user_id: sessionUserId, content: text })
-        .select('id,reel_id,user_id,content,created_at,users!reel_comments_user_id_fkey(full_name)')
+        .select('id,reel_id,user_id,content,created_at,users!reel_comments_user_id_fkey(full_name,username,email,profile_picture)')
         .single();
       if (error || !data) throw error || new Error('Unable to add comment');
       setComments((list) => [data, ...list]);
@@ -178,7 +184,7 @@ export default function ReelPage() {
             <div className="flex aspect-[9/16] items-center justify-center bg-neutral-900 text-neutral-400 lg:aspect-video">Reel preview unavailable</div>
           )}
           <div className="p-4 md:p-5">
-            <p className="text-sm font-semibold text-neutral-300">{reel?.users?.full_name || 'Committed member'}</p>
+            <p className="text-sm font-semibold text-neutral-300">{getDisplayName(reel?.users)}</p>
             <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-neutral-100">{reel?.caption || 'Open in app for full interactions and comments.'}</p>
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <button
@@ -229,7 +235,7 @@ export default function ReelPage() {
           <div className="mt-4 max-h-[360px] space-y-2 overflow-auto pr-1">
             {comments.map((comment) => (
               <div key={comment.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
-                <p className="text-xs font-semibold text-neutral-300">{comment.users?.full_name || 'Committed member'}</p>
+                <p className="text-xs font-semibold text-neutral-300">{getDisplayName(comment.users)}</p>
                 <p className="mt-1 text-sm text-white">{comment.content}</p>
               </div>
             ))}

@@ -106,6 +106,7 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
         return;
       }
 
+      await supabaseBrowser.auth.signOut({ scope: 'local' });
       const { data, error: signInError } = await supabaseBrowser.auth.signInWithPassword({
         email: normalizedEmail,
         password,

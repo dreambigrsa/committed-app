@@ -484,6 +484,23 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const [routeRowsError, setRouteRowsError] = useState<string | null>(null);
   const [feedLimit, setFeedLimit] = useState(5);
   const [datingIndex, setDatingIndex] = useState(0);
+  const [datingDebug, setDatingDebug] = useState<{
+    initial: number;
+    afterInitialFilters: number;
+    likedExcluded: number;
+    passedExcluded: number;
+    fallbackRuns: number;
+    final: number;
+    lastError?: string | null;
+  }>({
+    initial: 0,
+    afterInitialFilters: 0,
+    likedExcluded: 0,
+    passedExcluded: 0,
+    fallbackRuns: 0,
+    final: 0,
+    lastError: null,
+  });
   const [reactionNotice, setReactionNotice] = useState<string | null>(null);
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -704,12 +721,12 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           .maybeSingle(),
         supabase
           .from('dating_profiles')
-          .select('id,user_id,bio,age,location_city,location_country,relationship_goals,interests,religion,intention_tag,looking_for,age_range_min,age_range_max,max_distance_km')
+          .select('id,user_id,bio,age,location_city,location_country,relationship_goals,interests,intention_tag,looking_for,age_range_min,age_range_max,max_distance_km')
           .eq('user_id', authUser.id)
           .maybeSingle(),
         supabase
           .from('dating_profiles')
-          .select('id,user_id,bio,age,location_city,location_country,relationship_goals,interests,religion,intention_tag,is_active')
+          .select('id,user_id,bio,age,location_city,location_country,relationship_goals,interests,intention_tag,is_active')
           .eq('is_active', true)
           .neq('user_id', authUser.id)
           .limit(50),
@@ -797,32 +814,35 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         });
       };
 
-      const queryDiscoveryRows = async (includePassed = false) => {
+      let discoveryError: string | null = null;
+      const queryDiscoveryRows = async () => {
         // Try strict discovery first, then progressively relax to avoid false "empty" states.
         const strict = await supabase
           .from('dating_profiles')
-          .select('id,user_id,bio,age,location_city,location_country,relationship_goals,interests,religion,intention_tag,looking_for,is_active')
+          .select('id,user_id,bio,age,location_city,location_country,relationship_goals,interests,intention_tag,looking_for,is_active')
           .eq('is_active', true)
           .neq('user_id', authUser.id)
           .limit(80);
         if (!strict.error && strict.data) {
           return applyProfileFilters((strict.data as DatingProfile[]).filter(Boolean));
         }
+        if (strict.error) discoveryError = strict.error.message || 'Strict discovery query failed';
 
         const relaxed = await supabase
           .from('dating_profiles')
-          .select('id,user_id,bio,age,location_city,location_country,relationship_goals,interests,religion,intention_tag,looking_for')
+          .select('id,user_id,bio,age,location_city,location_country,relationship_goals,interests,intention_tag,looking_for')
           .neq('user_id', authUser.id)
           .limit(80);
         if (!relaxed.error && relaxed.data) {
           return applyProfileFilters((relaxed.data as DatingProfile[]).filter(Boolean));
         }
+        if (relaxed.error) discoveryError = relaxed.error.message || discoveryError;
 
-        if (!includePassed) return [];
         return [];
       };
 
-      let discoverProfiles = applyProfileFilters(((datingResult.data || []) as DatingProfile[]).filter(Boolean));
+      const initialDiscoveryRows = ((datingResult.data || []) as DatingProfile[]).filter(Boolean);
+      let discoverProfiles = applyProfileFilters(initialDiscoveryRows);
       const [sentLikesResult, sentPassesResult] = await Promise.all([
         supabase
           .from('dating_likes')
@@ -841,13 +861,17 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       );
       const applyDatingDiscoveryExclusions = (rows: DatingProfile[], includePassed = false) =>
         rows.filter((item) => !!item.user_id && !likedUserIds.has(item.user_id) && (includePassed || !passedUserIds.has(item.user_id)));
+      const beforeExclusions = discoverProfiles.length;
       discoverProfiles = applyDatingDiscoveryExclusions(discoverProfiles);
+      let fallbackRuns = 0;
       if (!discoverProfiles.length) {
-        discoverProfiles = applyDatingDiscoveryExclusions(await queryDiscoveryRows(false));
+        fallbackRuns += 1;
+        discoverProfiles = applyDatingDiscoveryExclusions(await queryDiscoveryRows());
       }
       if (!discoverProfiles.length) {
         // Last-resort parity fallback: include previously passed profiles when discovery is exhausted.
-        discoverProfiles = applyDatingDiscoveryExclusions(await queryDiscoveryRows(true), true);
+        fallbackRuns += 1;
+        discoverProfiles = applyDatingDiscoveryExclusions(await queryDiscoveryRows(), true);
       }
       const discoverUserIds = Array.from(new Set(discoverProfiles.map((item) => item.user_id).filter(Boolean)));
       const discoverProfileIds = discoverProfiles.map((item) => item.id).filter(Boolean);
@@ -881,6 +905,15 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         users: discoverUsersById.get(item.user_id) || null,
         dating_photos: discoverPhotosByProfile.get(item.id) || [],
       }));
+      setDatingDebug({
+        initial: initialDiscoveryRows.length,
+        afterInitialFilters: beforeExclusions,
+        likedExcluded: likedUserIds.size,
+        passedExcluded: passedUserIds.size,
+        fallbackRuns,
+        final: discoverProfiles.length,
+        lastError: discoveryError,
+      });
       setDatingProfiles(discoverProfiles);
       setDatingIndex(0);
       setNotifications(((notificationsResult.data || []) as NotificationRow[]).filter(Boolean));
@@ -2370,7 +2403,6 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           age_range_min: Number(datingForm.minAge || 18),
           age_range_max: Number(datingForm.maxAge || 99),
           max_distance_km: Number(datingForm.distance || 50),
-          religion: datingForm.religion.trim() || null,
           intention_tag: datingForm.intention,
           is_active: true,
         }, { onConflict: 'user_id' })
@@ -2832,15 +2864,21 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     const profile = datingProfiles[datingIndex];
     if (!profile) {
       return (
-        <EmptyState
-          icon={Sparkles}
-          title="No More Profiles"
-          text="You have seen everyone for now. Refresh, adjust filters, or load passed profiles again."
-          action="See Passed Profiles"
-          onAction={() => void resetDatingPasses()}
-          secondaryAction="Adjust Filters"
-          onSecondaryAction={() => router.push('/app/dating/filters')}
-        />
+        <div>
+          <div className="mx-4 mt-4 rounded-[16px] border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-900">
+            <p>Dating debug -> initial: {datingDebug.initial}, filtered: {datingDebug.afterInitialFilters}, likes excluded: {datingDebug.likedExcluded}, passes excluded: {datingDebug.passedExcluded}, fallbacks: {datingDebug.fallbackRuns}, final: {datingDebug.final}</p>
+            {datingDebug.lastError ? <p className="mt-1">Query error: {datingDebug.lastError}</p> : null}
+          </div>
+          <EmptyState
+            icon={Sparkles}
+            title="No More Profiles"
+            text="You have seen everyone for now. Refresh, adjust filters, or load passed profiles again."
+            action="See Passed Profiles"
+            onAction={() => void resetDatingPasses()}
+            secondaryAction="Adjust Filters"
+            onSecondaryAction={() => router.push('/app/dating/filters')}
+          />
+        </div>
       );
     }
     const photo = profile.dating_photos?.find((item) => item.is_primary)?.photo_url || profile.dating_photos?.[0]?.photo_url || profile.users?.profile_picture;

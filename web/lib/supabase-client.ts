@@ -10,6 +10,8 @@ const PROD_SUPABASE_ANON_KEY =
 const allowAlternateProject = process.env.NEXT_PUBLIC_ALLOW_ALT_SUPABASE === 'true';
 const envSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
 const envSupabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const WEB_AUTH_STORAGE_KEY = `committed-web-auth-${PROD_PROJECT_REF}`;
+const LEGACY_WEB_AUTH_STORAGE_KEYS = [`sb-${PROD_PROJECT_REF}-auth-token`];
 
 function jwtProjectRef(token?: string) {
   if (!token || !token.startsWith('eyJ')) return '';
@@ -38,16 +40,27 @@ if (!allowAlternateProject) {
 
 let browserClient: ReturnType<typeof createClient> | null = null;
 
+function clearLegacyWebAuthStorage() {
+  if (typeof window === 'undefined') return;
+  for (const key of LEGACY_WEB_AUTH_STORAGE_KEYS) {
+    if (key !== WEB_AUTH_STORAGE_KEY) {
+      window.localStorage.removeItem(key);
+    }
+  }
+}
+
 export function getSupabaseBrowser() {
   if (browserClient) return browserClient;
   if (!supabaseAnonKey) {
     throw new Error('Missing NEXT_PUBLIC_SUPABASE_ANON_KEY for web auth.');
   }
+  clearLegacyWebAuthStorage();
   browserClient = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
       autoRefreshToken: true,
       persistSession: true,
       detectSessionInUrl: true,
+      storageKey: WEB_AUTH_STORAGE_KEY,
     },
   });
   return browserClient;

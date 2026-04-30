@@ -35,15 +35,23 @@ export default function Navbar() {
     const supabase = getSupabaseBrowser() as any;
     const check = async () => {
       const {
-        data: { session },
-      } = await supabase.auth.getSession();
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!mounted) return;
-      setIsAuthenticated(Boolean(session?.user));
+      setIsAuthenticated(Boolean(user));
     };
     void check();
-    const { data: sub } = supabase.auth.onAuthStateChange((_event: string, session: any) => {
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_event: string, session: any) => {
       if (!mounted) return;
-      setIsAuthenticated(Boolean(session?.user));
+      if (!session?.user) {
+        setIsAuthenticated(false);
+        return;
+      }
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!mounted) return;
+      setIsAuthenticated(Boolean(user));
     });
     return () => {
       mounted = false;

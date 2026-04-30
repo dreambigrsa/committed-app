@@ -62,10 +62,21 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
     try {
       const supabase = getSupabaseBrowser() as any;
       const {
+        data: { user: authUser },
+        error: userError,
+      } = await supabase.auth.getUser();
+      const {
         data: { session },
       } = await supabase.auth.getSession();
 
-      if (!session?.user) {
+      console.debug('[WebAppGate] Authenticated user object', {
+        id: authUser?.id ?? null,
+        email: authUser?.email ?? null,
+        sessionUserId: session?.user?.id ?? null,
+        error: userError?.message ?? null,
+      });
+
+      if (!authUser) {
         const requestedPath =
           typeof window !== 'undefined'
             ? `${window.location.pathname}${window.location.search}`
@@ -74,8 +85,8 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
         return;
       }
 
-      const currentUserId = session.user.id;
-      const currentEmail = session.user.email ?? '';
+      const currentUserId = authUser.id;
+      const currentEmail = authUser.email ?? '';
       setUserId(currentUserId);
       setEmail(currentEmail);
 

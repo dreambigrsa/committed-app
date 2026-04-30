@@ -112,13 +112,28 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
       });
       if (signInError) throw signInError;
 
-      const userId = data.user?.id;
+      const {
+        data: { user: authenticatedUser },
+        error: authenticatedUserError,
+      } = await supabaseBrowser.auth.getUser();
+      console.debug('[WebAuthForm] Authenticated user object', {
+        id: authenticatedUser?.id ?? data.user?.id ?? null,
+        email: authenticatedUser?.email ?? data.user?.email ?? null,
+        signInUserId: data.user?.id ?? null,
+        error: authenticatedUserError?.message ?? null,
+      });
+
+      const userId = authenticatedUser?.id || data.user?.id;
       if (userId) {
         const { data: profile } = await supabaseBrowser
           .from('profiles')
           .select('is_verified')
           .eq('id', userId)
           .maybeSingle();
+        console.debug('[WebAuthForm] Profile fetch response', {
+          requestedUserId: userId,
+          profile,
+        });
 
         if (profile && (profile as { is_verified?: boolean }).is_verified === false) {
           await sendVerification(normalizedEmail, data.session?.access_token);

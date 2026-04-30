@@ -13,16 +13,28 @@ export default function AuthRouteGuard() {
 
     const check = async () => {
       const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!mounted || !session?.user) return;
+        data: { user },
+      } = await supabase.auth.getUser();
+      console.debug('[WebAuthGuard] Authenticated user object', {
+        id: user?.id ?? null,
+        email: user?.email ?? null,
+      });
+      if (!mounted || !user) return;
       router.replace('/app');
     };
 
     void check();
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event: string, session: any) => {
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_event: string, session: any) => {
       if (!mounted || !session?.user) return;
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      console.debug('[WebAuthGuard] Auth state user object', {
+        id: user?.id ?? null,
+        email: user?.email ?? null,
+      });
+      if (!mounted || !user) return;
       router.replace('/app');
     });
 

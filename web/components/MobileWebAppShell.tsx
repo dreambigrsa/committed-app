@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { HTMLAttributes } from 'react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bell,
   Ban,
@@ -582,6 +582,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const [chatDraft, setChatDraft] = useState('');
   const [isCreatingContent, setIsCreatingContent] = useState(false);
   const [settingsForm, setSettingsForm] = useState({ fullName: '', username: '', phoneNumber: '' });
+  const lastAuthUserIdRef = useRef<string | null>(null);
   const [relationshipForm, setRelationshipForm] = useState({
     partnerName: '',
     partnerPhone: '',
@@ -697,6 +698,40 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     }
   }, []);
 
+  const resetUserScopedState = useCallback(() => {
+    setUser(null);
+    setPosts([]);
+    setReels([]);
+    setRelationship(null);
+    setDatingProfiles([]);
+    setMyDatingProfile(null);
+    setDatingLikes([]);
+    setDatingMatches([]);
+    setNotifications([]);
+    setConversations([]);
+    setMessagesByConversation({});
+    setStatusFeed([]);
+    setAdminRelationships([]);
+    setAdminUsers([]);
+    setBlockedUsers([]);
+    setBookings([]);
+    setAds([]);
+    setDateRequests([]);
+    setAdminPosts([]);
+    setAdminReels([]);
+    setProfessionalApplications([]);
+    setFalseRelationshipReports([]);
+    setPaymentSubmissions([]);
+    setAdReceipts([]);
+    setProfessionalProfile(null);
+    setProfessionalReviews([]);
+    setRouteProfileUser(null);
+    setRouteRows([]);
+    setSearchResults([]);
+    setSettingsForm({ fullName: '', username: '', phoneNumber: '' });
+    setSettingsProfilePictureUrl('');
+  }, []);
+
   useEffect(() => {
     setRelationshipStepAnim({ opacity: 0, y: 12 });
     const frame = window.requestAnimationFrame(() => {
@@ -721,18 +756,42 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
     setLoading(true);
     try {
-      const { data: auth } = await supabase.auth.getUser();
+      const { data: auth, error: authError } = await supabase.auth.getUser();
       const authUser = auth.user;
+      console.debug('[WebAppShell] Authenticated user object', {
+        id: authUser?.id ?? null,
+        email: authUser?.email ?? null,
+        error: authError?.message ?? null,
+      });
       if (!authUser) {
+        lastAuthUserIdRef.current = null;
+        resetUserScopedState();
         router.replace('/auth');
         return;
       }
 
+      if (lastAuthUserIdRef.current && lastAuthUserIdRef.current !== authUser.id) {
+        console.debug('[WebAppShell] Auth user changed; clearing previous user-scoped web state', {
+          previousUserId: lastAuthUserIdRef.current,
+          nextUserId: authUser.id,
+        });
+        resetUserScopedState();
+      }
+      lastAuthUserIdRef.current = authUser.id;
+
       const { data: profile } = await supabase
         .from('users')
-        .select('id, full_name, username, email, phone_number, profile_picture, role, verified, email_verified, phone_verified, id_verified')
+        .select('id, full_name, username, email, phone_number, profile_picture, role, verified, email_verified, phone_verified, id_verified, banned_at, banned_by, ban_reason')
         .eq('id', authUser.id)
         .maybeSingle();
+      console.debug('[WebAppShell] Profile fetch response', {
+        requestedUserId: authUser.id,
+        profileUserId: profile?.id ?? null,
+        email: profile?.email ?? null,
+        fullName: profile?.full_name ?? null,
+        username: profile?.username ?? null,
+        hasProfilePicture: !!profile?.profile_picture,
+      });
 
       if (!profile) {
         // Ensure a user profile row exists for the authenticated account so web and mobile stay aligned.
@@ -740,8 +799,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         await supabase.from('users').upsert(
           {
             id: authUser.id,
-            full_name: authUser.user_metadata?.full_name || authUser.user_metadata?.username || authUser.email?.split('@')[0] || 'Committed member',
-            username: authUser.user_metadata?.username || null,
+            full_name: authUser.email || 'Committed member',
+            username: null,
             email: authUser.email || null,
             phone_number: authUser.phone || null,
             role: metadataRole || 'user',
@@ -759,8 +818,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
       const resolvedProfile = profile || {
         id: authUser.id,
-        full_name: authUser.user_metadata?.full_name || authUser.user_metadata?.username || authUser.email?.split('@')[0] || authUser.email || 'Committed member',
-        username: authUser.user_metadata?.username || null,
+        full_name: authUser.email || 'Committed member',
+        username: null,
         email: authUser.email || null,
         phone_number: authUser.phone || null,
         profile_picture:
@@ -773,11 +832,14 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         email_verified: !!authUser.email_confirmed_at,
         phone_verified: !!authUser.phone_confirmed_at,
         id_verified: null,
+        banned_at: null,
+        banned_by: null,
+        ban_reason: null,
       };
 
       const currentUser: WebUser = {
         id: authUser.id,
-        full_name: resolvedProfile.full_name || resolvedProfile.username || authUser.user_metadata?.full_name || authUser.user_metadata?.username || authUser.email?.split('@')[0] || authUser.email || 'Committed member',
+        full_name: resolvedProfile.full_name || resolvedProfile.username || authUser.email || 'Committed member',
         email: resolvedProfile.email || authUser.email,
         phone_number: resolvedProfile.phone_number,
         profile_picture:
@@ -792,6 +854,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         email_verified: resolvedProfile.email_verified ?? !!authUser.email_confirmed_at,
         phone_verified: resolvedProfile.phone_verified ?? !!authUser.phone_confirmed_at,
         id_verified: resolvedProfile.id_verified,
+        banned_at: resolvedProfile.banned_at,
+        banned_by: resolvedProfile.banned_by,
+        ban_reason: resolvedProfile.ban_reason,
       };
       setUser(currentUser);
       setSettingsForm({
@@ -805,6 +870,10 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         email: resolvedProfile.email || authUser.email || '',
         phone: resolvedProfile.phone_number || authUser.phone || '',
       }));
+      console.debug('[WebAppShell] User ID used in queries', {
+        userId: authUser.id,
+        email: authUser.email ?? null,
+      });
 
       const [postsResult, reelsResult, relationshipResult, myDatingResult, datingResult, notificationsResult, conversationsResult, likesResult, matchesResult] = await Promise.all([
         supabase
@@ -1320,7 +1389,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     } finally {
       setLoading(false);
     }
-  }, [router, supabase]);
+  }, [resetUserScopedState, router, supabase]);
 
   useEffect(() => {
     void loadAppData();
@@ -3135,9 +3204,17 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     const photo = profile.dating_photos?.find((item) => item.is_primary)?.photo_url || profile.dating_photos?.[0]?.photo_url || profile.users?.profile_picture;
     const name = profile.users?.full_name || 'Committed dater';
     const tags = [...(profile.relationship_goals || []), ...(profile.interests || [])].slice(0, 4);
+    const openDatingProfile = () => {
+      if (!profile.user_id) return;
+      router.push(`/app/dating/user-profile?userId=${encodeURIComponent(profile.user_id)}`);
+    };
     return (
       <div className="flex min-h-[calc(100vh-122px)] flex-col px-4 pb-4 pt-3">
-        <div className="relative flex-1 overflow-hidden rounded-[26px] bg-slate-900 shadow-2xl shadow-slate-950/20">
+        <button
+          type="button"
+          onClick={openDatingProfile}
+          className="relative flex-1 overflow-hidden rounded-[26px] bg-slate-900 text-left shadow-2xl shadow-slate-950/20"
+        >
           {photo ? (
             <img src={photo} alt="" className="h-full min-h-[470px] w-full object-cover" />
           ) : (
@@ -3162,7 +3239,10 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               ))}
             </div>
           </div>
-        </div>
+        </button>
+        <button type="button" onClick={openDatingProfile} className="mt-3 w-full rounded-[16px] bg-white py-3 text-sm font-black text-slate-800 ring-1 ring-slate-200">
+          Open full profile
+        </button>
         <div className="mt-4 flex items-center justify-center gap-4">
           <button type="button" onClick={() => void reactToDatingProfile(profile, 'pass')} className="grid h-16 w-16 place-items-center rounded-full bg-red-500 text-white shadow-xl shadow-red-500/25 active:scale-95">
             <X className="h-8 w-8" />

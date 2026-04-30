@@ -4237,6 +4237,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
   const renderUserProfileRoute = () => {
     const userId = appPath[1];
+    if (!userId) return renderProfile();
     const related = userId === user?.id
       ? user
       : routeProfileUser || datingLikes.find((item) => item.user?.id === userId)?.user || datingMatches.find((item) => item.user?.id === userId)?.user || null;
@@ -4590,7 +4591,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     if (appPath[0] === 'post') return renderPostDetail();
     if (appPath[0] === 'reel') return renderReelDetail();
     if (appPath[0] === 'status' || appPath[0] === 'status-item') return renderStatusViewer();
-    if (appPath[0] === 'profile') return renderUserProfileRoute();
+    if (appPath[0] === 'profile' && appPath[1]) return renderUserProfileRoute();
     if (appPath[0] === 'certificates' || appPath[0] === 'anniversary') return renderRelationshipMemoryRoute();
     if (appPath[0] === 'relationship') return renderRelationshipRegister();
     if (appPath[0] === 'settings') return renderSettingsRoute();

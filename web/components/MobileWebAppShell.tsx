@@ -91,10 +91,54 @@ type DatingProfile = {
   relationship_goals?: string[] | null;
   interests?: string[] | null;
   religion?: string | null;
+  education?: string | null;
+  kids?: string | null;
+  smoke?: string | null;
+  drink?: string | null;
+  exercise?: string | null;
+  pets?: string | null;
+  height_cm?: number | null;
+  last_active_at?: string | null;
+  looking_for?: string | null;
   intention_tag?: string | null;
   users?: { full_name?: string | null; profile_picture?: string | null } | null;
   dating_photos?: { photo_url: string; is_primary?: boolean | null }[] | null;
 };
+
+type DatingDiscoveryFilters = {
+  minAge?: number;
+  maxAge?: number;
+  maxDistance?: number;
+  lookingFor?: 'men' | 'women' | 'everyone';
+  locationCity?: string;
+  locationCountry?: string;
+  intentionTags?: string[];
+  religions?: string[];
+  educationLevels?: string[];
+  kids?: string[];
+  smoke?: string[];
+  drink?: string[];
+  exercise?: string[];
+  pets?: string[];
+  interests?: string[];
+  minHeightCm?: number;
+  maxHeightCm?: number;
+  hasPhotos?: boolean;
+  verifiedOnly?: boolean;
+  activeRecently?: boolean;
+};
+
+const DATING_DISCOVERY_FILTERS_KEY = 'committed:dating-discovery-filters:v1';
+const RELIGION_OPTIONS = ['Christian', 'Muslim', 'Jewish', 'Hindu', 'Buddhist', 'Traditional', 'Spiritual', 'Agnostic', 'Atheist', 'Other'];
+const EDUCATION_OPTIONS = ['High school', 'Diploma', "Bachelor's", "Master's", 'Doctorate', 'Trade/Technical', 'Self-taught'];
+const KIDS_OPTIONS = ['have_kids', 'want_kids', 'dont_want_kids', 'have_and_want_more', 'not_sure'];
+const LIFESTYLE_OPTIONS = {
+  drink: ['no', 'sometimes'],
+  smoke: ['no'],
+  exercise: ['often', 'sometimes'],
+  pets: ['have_pets', 'want_pets'],
+} as const;
+const INTEREST_OPTIONS = ['Music', 'Travel', 'Food', 'Family', 'Faith', 'Fitness', 'Movies', 'Books', 'Business', 'Adventure', 'Art', 'Dancing'];
 
 type RelationshipRow = {
   id: string;
@@ -613,6 +657,28 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     religion: '',
     intention: 'serious',
   });
+  const [datingFilters, setDatingFilters] = useState<DatingDiscoveryFilters>({
+    minAge: 18,
+    maxAge: 99,
+    maxDistance: 50,
+    lookingFor: 'everyone',
+    locationCity: '',
+    locationCountry: '',
+    intentionTags: [],
+    religions: [],
+    educationLevels: [],
+    kids: [],
+    drink: [],
+    smoke: [],
+    exercise: [],
+    pets: [],
+    interests: [],
+    minHeightCm: undefined,
+    maxHeightCm: undefined,
+    hasPhotos: false,
+    verifiedOnly: false,
+    activeRecently: false,
+  });
   const [saving, setSaving] = useState(false);
 
   const activeTab = useMemo<TabKey>(() => {
@@ -668,23 +734,62 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         .eq('id', authUser.id)
         .maybeSingle();
 
-      const currentUser: WebUser = {
+      if (!profile) {
+        // Ensure a user profile row exists for the authenticated account so web and mobile stay aligned.
+        await supabase.from('users').upsert(
+          {
+            id: authUser.id,
+            full_name: authUser.user_metadata?.full_name || authUser.user_metadata?.username || authUser.email?.split('@')[0] || 'Committed member',
+            username: authUser.user_metadata?.username || null,
+            email: authUser.email || null,
+            phone_number: authUser.phone || null,
+            profile_picture:
+              authUser.user_metadata?.profile_picture ||
+              authUser.user_metadata?.avatar_url ||
+              authUser.user_metadata?.picture ||
+              null,
+            email_verified: !!authUser.email_confirmed_at,
+            phone_verified: !!authUser.phone_confirmed_at,
+          },
+          { onConflict: 'id' }
+        );
+      }
+
+      const resolvedProfile = profile || {
         id: authUser.id,
-        full_name: profile?.full_name || profile?.username || authUser.user_metadata?.full_name || authUser.user_metadata?.username || authUser.email?.split('@')[0] || authUser.email || 'Committed member',
-        email: profile?.email || authUser.email,
-        phone_number: profile?.phone_number,
+        full_name: authUser.user_metadata?.full_name || authUser.user_metadata?.username || authUser.email?.split('@')[0] || authUser.email || 'Committed member',
+        username: authUser.user_metadata?.username || null,
+        email: authUser.email || null,
+        phone_number: authUser.phone || null,
         profile_picture:
-          profile?.profile_picture ||
           authUser.user_metadata?.profile_picture ||
           authUser.user_metadata?.avatar_url ||
           authUser.user_metadata?.picture ||
           null,
-        username: profile?.username,
-        role: profile?.role || 'user',
-        verified: profile?.verified,
-        email_verified: profile?.email_verified,
-        phone_verified: profile?.phone_verified,
-        id_verified: profile?.id_verified,
+        role: 'user',
+        verified: null,
+        email_verified: !!authUser.email_confirmed_at,
+        phone_verified: !!authUser.phone_confirmed_at,
+        id_verified: null,
+      };
+
+      const currentUser: WebUser = {
+        id: authUser.id,
+        full_name: resolvedProfile.full_name || resolvedProfile.username || authUser.user_metadata?.full_name || authUser.user_metadata?.username || authUser.email?.split('@')[0] || authUser.email || 'Committed member',
+        email: resolvedProfile.email || authUser.email,
+        phone_number: resolvedProfile.phone_number,
+        profile_picture:
+          resolvedProfile.profile_picture ||
+          authUser.user_metadata?.profile_picture ||
+          authUser.user_metadata?.avatar_url ||
+          authUser.user_metadata?.picture ||
+          null,
+        username: resolvedProfile.username,
+        role: resolvedProfile.role || 'user',
+        verified: resolvedProfile.verified,
+        email_verified: resolvedProfile.email_verified ?? !!authUser.email_confirmed_at,
+        phone_verified: resolvedProfile.phone_verified ?? !!authUser.phone_confirmed_at,
+        id_verified: resolvedProfile.id_verified,
       };
       setUser(currentUser);
       setSettingsForm({
@@ -695,8 +800,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       setSettingsProfilePictureUrl(currentUser.profile_picture || '');
       setVerificationForm((prev) => ({
         ...prev,
-        email: profile?.email || authUser.email || '',
-        phone: profile?.phone_number || '',
+        email: resolvedProfile.email || authUser.email || '',
+        phone: resolvedProfile.phone_number || authUser.phone || '',
       }));
 
       const [postsResult, reelsResult, relationshipResult, myDatingResult, datingResult, notificationsResult, conversationsResult, likesResult, matchesResult] = await Promise.all([
@@ -792,11 +897,55 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         religion: ownDating?.religion || '',
         intention: ownDating?.intention_tag || 'serious',
       });
-      const ownMinAge = Number(ownDating?.age_range_min || 18);
-      const ownMaxAge = Number(ownDating?.age_range_max || 99);
-      const ownCity = String(ownDating?.location_city || '').trim();
-      const ownCountry = String(ownDating?.location_country || '').trim();
-      const ownLookingFor = String(ownDating?.looking_for || 'everyone').toLowerCase();
+      let savedDiscoveryFilters: DatingDiscoveryFilters = {};
+      try {
+        const raw = window.localStorage.getItem(DATING_DISCOVERY_FILTERS_KEY);
+        savedDiscoveryFilters = raw ? JSON.parse(raw) : {};
+      } catch {
+        savedDiscoveryFilters = {};
+      }
+      const ownMinAge = Number(savedDiscoveryFilters.minAge ?? ownDating?.age_range_min ?? 18);
+      const ownMaxAge = Number(savedDiscoveryFilters.maxAge ?? ownDating?.age_range_max ?? 99);
+      const ownCity = String(savedDiscoveryFilters.locationCity ?? ownDating?.location_city ?? '').trim();
+      const ownCountry = String(savedDiscoveryFilters.locationCountry ?? ownDating?.location_country ?? '').trim();
+      const ownLookingFor = String(savedDiscoveryFilters.lookingFor ?? ownDating?.looking_for ?? 'everyone').toLowerCase();
+      const intentionTags = savedDiscoveryFilters.intentionTags || [];
+      const religions = savedDiscoveryFilters.religions || [];
+      const educationLevels = savedDiscoveryFilters.educationLevels || [];
+      const kidsFilter = savedDiscoveryFilters.kids || [];
+      const smokeFilter = savedDiscoveryFilters.smoke || [];
+      const drinkFilter = savedDiscoveryFilters.drink || [];
+      const exerciseFilter = savedDiscoveryFilters.exercise || [];
+      const petsFilter = savedDiscoveryFilters.pets || [];
+      const interestsFilter = savedDiscoveryFilters.interests || [];
+      const minHeightCm = savedDiscoveryFilters.minHeightCm;
+      const maxHeightCm = savedDiscoveryFilters.maxHeightCm;
+      const hasPhotos = !!savedDiscoveryFilters.hasPhotos;
+      const verifiedOnly = !!savedDiscoveryFilters.verifiedOnly;
+      const activeRecently = !!savedDiscoveryFilters.activeRecently;
+
+      setDatingFilters({
+        minAge: ownMinAge,
+        maxAge: ownMaxAge,
+        maxDistance: Number(savedDiscoveryFilters.maxDistance ?? ownDating?.max_distance_km ?? 50),
+        lookingFor: (ownLookingFor as 'men' | 'women' | 'everyone'),
+        locationCity: ownCity,
+        locationCountry: ownCountry,
+        intentionTags,
+        religions,
+        educationLevels,
+        kids: kidsFilter,
+        smoke: smokeFilter,
+        drink: drinkFilter,
+        exercise: exerciseFilter,
+        pets: petsFilter,
+        interests: interestsFilter,
+        minHeightCm,
+        maxHeightCm,
+        hasPhotos,
+        verifiedOnly,
+        activeRecently,
+      });
 
       const applyProfileFilters = (rows: DatingProfile[]) => {
         return rows.filter((item) => {
@@ -810,6 +959,21 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             const itemLookingFor = String((item as any).looking_for || 'everyone').toLowerCase();
             if (itemLookingFor !== 'everyone' && itemLookingFor !== ownLookingFor) return false;
           }
+          if (intentionTags.length && (!item.intention_tag || !intentionTags.includes(item.intention_tag))) return false;
+          if (religions.length && (!item.religion || !religions.includes(item.religion))) return false;
+          if (educationLevels.length && (!item.education || !educationLevels.includes(item.education))) return false;
+          if (kidsFilter.length && (!item.kids || !kidsFilter.includes(item.kids))) return false;
+          if (smokeFilter.length && (!item.smoke || !smokeFilter.includes(item.smoke))) return false;
+          if (drinkFilter.length && (!item.drink || !drinkFilter.includes(item.drink))) return false;
+          if (exerciseFilter.length && (!item.exercise || !exerciseFilter.includes(item.exercise))) return false;
+          if (petsFilter.length && (!item.pets || !petsFilter.includes(item.pets))) return false;
+          if (interestsFilter.length) {
+            const itemInterests = item.interests || [];
+            if (!interestsFilter.some((interest) => itemInterests.includes(interest))) return false;
+          }
+          if (typeof minHeightCm === 'number' && typeof item.height_cm === 'number' && item.height_cm < minHeightCm) return false;
+          if (typeof maxHeightCm === 'number' && typeof item.height_cm === 'number' && item.height_cm > maxHeightCm) return false;
+          if (activeRecently && (!item.last_active_at || new Date(item.last_active_at).getTime() < Date.now() - 14 * 24 * 60 * 60 * 1000)) return false;
           return true;
         });
       };
@@ -879,7 +1043,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         discoverUserIds.length
           ? supabase
               .from('users')
-              .select('id,full_name,profile_picture')
+              .select('id,full_name,profile_picture,id_verified,email_verified,phone_verified')
               .in('id', discoverUserIds)
           : Promise.resolve({ data: [] as Array<{ id: string; full_name?: string | null; profile_picture?: string | null }> }),
         discoverProfileIds.length
@@ -905,6 +1069,12 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         users: discoverUsersById.get(item.user_id) || null,
         dating_photos: discoverPhotosByProfile.get(item.id) || [],
       }));
+      if (hasPhotos) {
+        discoverProfiles = discoverProfiles.filter((item) => (item.dating_photos || []).length > 0);
+      }
+      if (verifiedOnly) {
+        discoverProfiles = discoverProfiles.filter((item) => !!(item.users as any)?.id_verified || !!(item.users as any)?.email_verified || !!(item.users as any)?.phone_verified);
+      }
       setDatingDebug({
         initial: initialDiscoveryRows.length,
         afterInitialFilters: beforeExclusions,
@@ -2365,13 +2535,14 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     try {
       const { error } = await supabase
         .from('users')
-        .update({
+        .upsert({
+          id: user.id,
           full_name: settingsForm.fullName.trim(),
           username: settingsForm.username.trim() || null,
           phone_number: settingsForm.phoneNumber.trim(),
           profile_picture: settingsProfilePictureUrl.trim() || null,
-        })
-        .eq('id', user.id);
+          email: user.email || null,
+        }, { onConflict: 'id' });
       if (error) throw error;
       setUser((prev) => prev ? {
         ...prev,
@@ -2429,6 +2600,83 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     }
   };
 
+  const toggleFilterValue = (key: keyof DatingDiscoveryFilters, value: string) => {
+    setDatingFilters((prev) => {
+      const current = ((prev[key] as string[] | undefined) || []);
+      const next = current.includes(value) ? current.filter((item) => item !== value) : [...current, value];
+      return { ...prev, [key]: next };
+    });
+  };
+
+  const applyDatingFilters = async () => {
+    const minAge = Number(datingFilters.minAge || 18);
+    const maxAge = Number(datingFilters.maxAge || 99);
+    const maxDistance = Number(datingFilters.maxDistance || 50);
+    if (!Number.isFinite(minAge) || !Number.isFinite(maxAge) || minAge < 18 || maxAge > 99 || minAge > maxAge) {
+      setReactionNotice('Check your age range');
+      window.setTimeout(() => setReactionNotice(null), 2200);
+      return;
+    }
+    if (!Number.isFinite(maxDistance) || maxDistance < 1 || maxDistance > 500) {
+      setReactionNotice('Distance should be between 1 and 500 km');
+      window.setTimeout(() => setReactionNotice(null), 2200);
+      return;
+    }
+    try {
+      window.localStorage.setItem(DATING_DISCOVERY_FILTERS_KEY, JSON.stringify({
+        ...datingFilters,
+        minAge,
+        maxAge,
+        maxDistance,
+      }));
+    } catch {
+      // ignore storage failures and still apply profile-level preferences
+    }
+    setDatingForm((prev) => ({
+      ...prev,
+      lookingFor: datingFilters.lookingFor || 'everyone',
+      minAge: String(minAge),
+      maxAge: String(maxAge),
+      distance: String(maxDistance),
+      city: datingFilters.locationCity || '',
+      country: datingFilters.locationCountry || '',
+      intention: datingFilters.intentionTags?.[0] || prev.intention,
+    }));
+    await saveDatingProfile();
+  };
+
+  const resetDatingFilters = () => {
+    try {
+      window.localStorage.removeItem(DATING_DISCOVERY_FILTERS_KEY);
+    } catch {
+      // ignore storage failures
+    }
+    setDatingFilters({
+      minAge: 18,
+      maxAge: 99,
+      maxDistance: 50,
+      lookingFor: 'everyone',
+      locationCity: '',
+      locationCountry: '',
+      intentionTags: [],
+      religions: [],
+      educationLevels: [],
+      kids: [],
+      drink: [],
+      smoke: [],
+      exercise: [],
+      pets: [],
+      interests: [],
+      minHeightCm: undefined,
+      maxHeightCm: undefined,
+      hasPhotos: false,
+      verifiedOnly: false,
+      activeRecently: false,
+    });
+    setReactionNotice('Filters reset');
+    window.setTimeout(() => setReactionNotice(null), 1800);
+  };
+
   const useBrowserLocation = () => {
     if (!navigator.geolocation) {
       setReactionNotice('Location is not available');
@@ -2437,7 +2685,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     }
     navigator.geolocation.getCurrentPosition(
       () => {
-        setReactionNotice('Location detected. Add your city to improve matches.');
+        setReactionNotice('Location detected. You can still edit city/country.');
         window.setTimeout(() => setReactionNotice(null), 2200);
       },
       () => {
@@ -3364,33 +3612,87 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       </section>
       <div className="grid grid-cols-3 gap-2 rounded-[20px] bg-white p-2 ring-1 ring-slate-200">
         {['men', 'women', 'everyone'].map((option) => (
-          <button key={option} type="button" onClick={() => setDatingForm((prev) => ({ ...prev, lookingFor: option }))} className={`rounded-[16px] py-3 text-sm font-black capitalize ${datingForm.lookingFor === option ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>
+          <button key={option} type="button" onClick={() => setDatingFilters((prev) => ({ ...prev, lookingFor: option as 'men' | 'women' | 'everyone' }))} className={`rounded-[16px] py-3 text-sm font-black capitalize ${datingFilters.lookingFor === option ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>
             {option}
           </button>
         ))}
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <FormField label="Min age" value={datingForm.minAge} onChange={(minAge) => setDatingForm((prev) => ({ ...prev, minAge }))} inputMode="numeric" />
-        <FormField label="Max age" value={datingForm.maxAge} onChange={(maxAge) => setDatingForm((prev) => ({ ...prev, maxAge }))} inputMode="numeric" />
+        <FormField label="Min age" value={String(datingFilters.minAge || 18)} onChange={(minAge) => setDatingFilters((prev) => ({ ...prev, minAge: Number(minAge || 18) }))} inputMode="numeric" />
+        <FormField label="Max age" value={String(datingFilters.maxAge || 99)} onChange={(maxAge) => setDatingFilters((prev) => ({ ...prev, maxAge: Number(maxAge || 99) }))} inputMode="numeric" />
       </div>
       <button type="button" onClick={useBrowserLocation} className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-blue-50 py-4 text-base font-black text-blue-700 ring-1 ring-blue-200">
         <MapPin className="h-5 w-5" />
         Use current location
       </button>
-      <FormField label="City" value={datingForm.city} onChange={(city) => setDatingForm((prev) => ({ ...prev, city }))} />
-      <FormField label="Country" value={datingForm.country} onChange={(country) => setDatingForm((prev) => ({ ...prev, country }))} />
-      <FormField label="Maximum distance (km)" value={datingForm.distance} onChange={(distance) => setDatingForm((prev) => ({ ...prev, distance }))} inputMode="numeric" />
+      <FormField label="City" value={datingFilters.locationCity || ''} onChange={(city) => setDatingFilters((prev) => ({ ...prev, locationCity: city }))} />
+      <FormField label="Country" value={datingFilters.locationCountry || ''} onChange={(country) => setDatingFilters((prev) => ({ ...prev, locationCountry: country }))} />
+      <FormField label="Maximum distance (km)" value={String(datingFilters.maxDistance || 50)} onChange={(distance) => setDatingFilters((prev) => ({ ...prev, maxDistance: Number(distance || 50) }))} inputMode="numeric" />
+      <div className="grid grid-cols-2 gap-3">
+        <FormField label="Min height (cm)" value={datingFilters.minHeightCm ? String(datingFilters.minHeightCm) : ''} onChange={(value) => setDatingFilters((prev) => ({ ...prev, minHeightCm: value ? Number(value) : undefined }))} inputMode="numeric" />
+        <FormField label="Max height (cm)" value={datingFilters.maxHeightCm ? String(datingFilters.maxHeightCm) : ''} onChange={(value) => setDatingFilters((prev) => ({ ...prev, maxHeightCm: value ? Number(value) : undefined }))} inputMode="numeric" />
+      </div>
       <div className="grid grid-cols-2 gap-2">
         {['friendship', 'dating', 'serious', 'marriage'].map((option) => (
-          <button key={option} type="button" onClick={() => setDatingForm((prev) => ({ ...prev, intention: option }))} className={`rounded-[18px] px-4 py-3 text-sm font-black capitalize ${datingForm.intention === option ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200'}`}>
+          <button key={option} type="button" onClick={() => toggleFilterValue('intentionTags', option)} className={`rounded-[18px] px-4 py-3 text-sm font-black capitalize ${(datingFilters.intentionTags || []).includes(option) ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200'}`}>
             {option}
           </button>
         ))}
       </div>
-      <button type="button" onClick={() => void saveDatingProfile()} disabled={saving} className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-blue-600 py-4 text-base font-black text-white disabled:opacity-60">
+      <div>
+        <p className="mb-2 text-sm font-black text-slate-700">Faith</p>
+        <div className="flex flex-wrap gap-2">
+          {RELIGION_OPTIONS.map((item) => (
+            <button key={item} type="button" onClick={() => toggleFilterValue('religions', item)} className={`rounded-full px-3 py-2 text-xs font-black ${(datingFilters.religions || []).includes(item) ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200'}`}>{item}</button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <p className="mb-2 text-sm font-black text-slate-700">Education</p>
+        <div className="flex flex-wrap gap-2">
+          {EDUCATION_OPTIONS.map((item) => (
+            <button key={item} type="button" onClick={() => toggleFilterValue('educationLevels', item)} className={`rounded-full px-3 py-2 text-xs font-black ${(datingFilters.educationLevels || []).includes(item) ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200'}`}>{item}</button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <p className="mb-2 text-sm font-black text-slate-700">Kids</p>
+        <div className="flex flex-wrap gap-2">
+          {KIDS_OPTIONS.map((item) => (
+            <button key={item} type="button" onClick={() => toggleFilterValue('kids', item)} className={`rounded-full px-3 py-2 text-xs font-black ${(datingFilters.kids || []).includes(item) ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200'}`}>{item.replaceAll('_', ' ')}</button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <p className="mb-2 text-sm font-black text-slate-700">Lifestyle</p>
+        <div className="flex flex-wrap gap-2">
+          {Object.entries(LIFESTYLE_OPTIONS).map(([key, values]) => values.map((value) => (
+            <button key={`${key}-${value}`} type="button" onClick={() => toggleFilterValue(key as keyof DatingDiscoveryFilters, value)} className={`rounded-full px-3 py-2 text-xs font-black ${((datingFilters[key as keyof DatingDiscoveryFilters] as string[] | undefined) || []).includes(value) ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200'}`}>{`${key} ${value}`}</button>
+          )))}
+        </div>
+      </div>
+      <div>
+        <p className="mb-2 text-sm font-black text-slate-700">Interests</p>
+        <div className="flex flex-wrap gap-2">
+          {INTEREST_OPTIONS.map((item) => (
+            <button key={item} type="button" onClick={() => toggleFilterValue('interests', item)} className={`rounded-full px-3 py-2 text-xs font-black ${(datingFilters.interests || []).includes(item) ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200'}`}>{item}</button>
+          ))}
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-2 rounded-[16px] bg-white p-3 ring-1 ring-slate-200">
+        <button type="button" onClick={() => setDatingFilters((prev) => ({ ...prev, verifiedOnly: !prev.verifiedOnly }))} className={`rounded-[12px] px-3 py-2 text-sm font-black ${datingFilters.verifiedOnly ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}>Verified profiles only</button>
+        <button type="button" onClick={() => setDatingFilters((prev) => ({ ...prev, hasPhotos: !prev.hasPhotos }))} className={`rounded-[12px] px-3 py-2 text-sm font-black ${datingFilters.hasPhotos ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}>Has photos</button>
+        <button type="button" onClick={() => setDatingFilters((prev) => ({ ...prev, activeRecently: !prev.activeRecently }))} className={`rounded-[12px] px-3 py-2 text-sm font-black ${datingFilters.activeRecently ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}>Recently active</button>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <button type="button" onClick={resetDatingFilters} className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-slate-100 py-4 text-base font-black text-slate-700">
+          Reset
+        </button>
+        <button type="button" onClick={() => void applyDatingFilters()} disabled={saving} className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-blue-600 py-4 text-base font-black text-white disabled:opacity-60">
         {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
         Apply preferences
-      </button>
+        </button>
+      </div>
     </div>
   );
 

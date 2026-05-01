@@ -38,11 +38,14 @@ import {
 } from 'lucide-react';
 import {
   APP_NOTIFICATIONS_BOOTSTRAP_LIMIT,
+  APP_POST_USER_SELECT,
   fetchConversationsBootstrap,
   fetchFeedPostsWithLikes,
   fetchFeedReelsWithLikes,
   getDisplayName,
   subscribeMirrorCoreRealtime,
+  subscribeMirrorFeedRelationshipRealtime,
+  type PostgresChangePayload,
 } from '@committed/shared';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { buildPostWebUrl, buildReelWebUrl } from '@/lib/appLinks';
@@ -1762,7 +1765,164 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   useEffect(() => {
     if (!supabase || !user?.id) return;
     const uid = user.id;
-    return subscribeMirrorCoreRealtime(supabase, uid, {
+    const unsubs: Array<() => void> = [];
+
+    const handlePostsChange = async (payload: PostgresChangePayload) => {
+      const { eventType, new: rowNew, old: rowOld } = payload;
+      try {
+        if (eventType === 'INSERT' && rowNew && rowNew.moderation_status === 'approved') {
+          const { data: userData } = await supabase
+            .from('users')
+            .select(APP_POST_USER_SELECT)
+            .eq('id', rowNew.user_id)
+            .single();
+          if (userData) {
+            const newPost: FeedPost = {
+              id: String(rowNew.id),
+              user_id: String(rowNew.user_id),
+              content: (rowNew.content as string) ?? null,
+              media_urls: (rowNew.media_urls as string[] | null) ?? null,
+              media_type: (rowNew.media_type as string) ?? null,
+              comment_count: (rowNew.comment_count as number) ?? 0,
+              created_at: (rowNew.created_at as string) ?? null,
+              users: {
+                full_name: (userData as { full_name?: string | null }).full_name ?? null,
+                profile_picture: (userData as { profile_picture?: string | null }).profile_picture ?? null,
+              },
+              likes: [],
+            };
+            setPosts((prev) => {
+              const filtered = prev.filter((p) => p.id !== newPost.id);
+              return [...filtered, newPost].sort(
+                (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+              );
+            });
+          }
+        } else if (eventType === 'UPDATE' && rowNew) {
+          if (rowNew.moderation_status === 'approved') {
+            const { data: postsData } = await supabase
+              .from('posts')
+              .select(`*, users!posts_user_id_fkey(${APP_POST_USER_SELECT})`)
+              .eq('id', rowNew.id)
+              .single();
+            if (postsData) {
+              const { data: postLikesData } = await supabase.from('post_likes').select('user_id').eq('post_id', postsData.id);
+              const likes = (postLikesData || []).map((l: { user_id: string }) => l.user_id);
+              const u = (postsData as { users?: { full_name?: string | null; profile_picture?: string | null } }).users;
+              const updatedPost: FeedPost = {
+                id: postsData.id,
+                user_id: postsData.user_id,
+                content: postsData.content,
+                media_urls: postsData.media_urls ?? null,
+                media_type: postsData.media_type ?? null,
+                comment_count: postsData.comment_count ?? null,
+                created_at: postsData.created_at ?? null,
+                users: u ? { full_name: u.full_name, profile_picture: u.profile_picture } : null,
+                likes,
+              };
+              setPosts((prev) => {
+                const filtered = prev.filter((p) => p.id !== updatedPost.id);
+                return [...filtered, updatedPost].sort(
+                  (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+                );
+              });
+            }
+          } else {
+            setPosts((prev) => prev.filter((p) => p.id !== String(rowNew.id)));
+          }
+        } else if (eventType === 'DELETE' && rowOld?.id) {
+          setPosts((prev) => prev.filter((p) => p.id !== String(rowOld.id)));
+        }
+      } catch {
+        /* RLS / network */
+      }
+    };
+
+    const handleReelsChange = async (payload: PostgresChangePayload) => {
+      const { eventType, new: rowNew, old: rowOld } = payload;
+      try {
+        if (eventType === 'INSERT' && rowNew && rowNew.moderation_status === 'approved') {
+          const { data: userData } = await supabase
+            .from('users')
+            .select(APP_POST_USER_SELECT)
+            .eq('id', rowNew.user_id)
+            .single();
+          if (userData) {
+            const newReel: Reel = {
+              id: String(rowNew.id),
+              user_id: String(rowNew.user_id),
+              caption: (rowNew.caption as string) ?? null,
+              video_url: (rowNew.video_url as string) ?? null,
+              thumbnail_url: (rowNew.thumbnail_url as string) ?? null,
+              created_at: (rowNew.created_at as string) ?? null,
+              users: {
+                full_name: (userData as { full_name?: string | null }).full_name ?? null,
+                profile_picture: (userData as { profile_picture?: string | null }).profile_picture ?? null,
+              },
+              likes: [],
+            };
+            setReels((prev) => [newReel, ...prev.filter((r) => r.id !== newReel.id)]);
+          }
+        } else if (eventType === 'UPDATE' && rowNew) {
+          if (rowNew.moderation_status === 'approved') {
+            const { data: reelsData } = await supabase
+              .from('reels')
+              .select(`*, users!reels_user_id_fkey(${APP_POST_USER_SELECT})`)
+              .eq('id', rowNew.id)
+              .single();
+            if (reelsData) {
+              const { data: reelLikesData } = await supabase.from('reel_likes').select('user_id').eq('reel_id', reelsData.id);
+              const likes = (reelLikesData || []).map((l: { user_id: string }) => l.user_id);
+              const u = (reelsData as { users?: { full_name?: string | null; profile_picture?: string | null } }).users;
+              const updatedReel: Reel = {
+                id: reelsData.id,
+                user_id: reelsData.user_id,
+                caption: reelsData.caption ?? null,
+                video_url: reelsData.video_url ?? null,
+                thumbnail_url: reelsData.thumbnail_url ?? null,
+                created_at: reelsData.created_at ?? null,
+                users: u ? { full_name: u.full_name, profile_picture: u.profile_picture } : null,
+                likes,
+              };
+              setReels((prev) => [updatedReel, ...prev.filter((r) => r.id !== updatedReel.id)]);
+            }
+          } else {
+            setReels((prev) => prev.filter((r) => r.id !== String(rowNew.id)));
+          }
+        } else if (eventType === 'DELETE' && rowOld?.id) {
+          setReels((prev) => prev.filter((r) => r.id !== String(rowOld.id)));
+        }
+      } catch {
+        /* RLS / network */
+      }
+    };
+
+    const refreshRelationship = async () => {
+      try {
+        const { data } = await supabase
+          .from('relationships')
+          .select('id,user_id,partner_user_id,partner_name,partner_phone,type,status,start_date,privacy_level')
+          .or(`user_id.eq.${uid},partner_user_id.eq.${uid}`)
+          .in('status', ['pending', 'verified'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        setRelationship((data || null) as RelationshipRow | null);
+      } catch {
+        /* ignore */
+      }
+    };
+
+    unsubs.push(
+      subscribeMirrorFeedRelationshipRealtime(supabase, uid, {
+        onPostsChange: handlePostsChange,
+        onReelsChange: handleReelsChange,
+        onRelationshipsChange: refreshRelationship,
+      })
+    );
+
+    unsubs.push(
+      subscribeMirrorCoreRealtime(supabase, uid, {
       onIncomingMessage: (row) => {
         const msg = rawMessageToShellRow(row);
         const cid = msg.conversation_id;
@@ -1846,7 +2006,10 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           return [item, ...prev];
         });
       },
-    });
+    })
+    );
+
+    return () => unsubs.forEach((fn) => fn());
   }, [supabase, user?.id]);
 
   useEffect(() => {

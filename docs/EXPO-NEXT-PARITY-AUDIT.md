@@ -109,7 +109,7 @@ Legend: **Aligned** = same shared loaders / same tables / same intent. **Partial
 | Push notifications | **Missing** on web (browser not native push) |
 | Camera / native pickers | **Different by platform** (expected) |
 | Offline / AsyncStorage caches | **Expo-heavy**; web relies more on in-memory + RQ |
-| Realtime subscriptions | **Expo:** full `AppContext` channels. **Web:** `subscribeMirrorCoreRealtime` in `MobileWebAppShell` for **messages, conversations, notifications**; posts/reels/relationships/etc. still not subscribed on web. |
+| Realtime subscriptions | **Expo:** full `AppContext` channels. **Web:** `subscribeMirrorCoreRealtime` + `subscribeMirrorFeedRelationshipRealtime` (messages, conversations, notifications, **posts**, **reels**, **relationship** refresh). Remaining: e.g. `relationship_requests` realtime, notification polling fallback parity. |
 
 ## 8. Performance & data
 
@@ -122,7 +122,7 @@ Legend: **Aligned** = same shared loaders / same tables / same intent. **Partial
 ## 9. Remaining work (prioritized)
 
 1. **Auth unification** — shared session + gate ordering; align legal strictness with product.
-2. **Realtime on web** — extend beyond messages/conversations/notifications (e.g. posts, reels, `relationships`) to match `AppContext`.
+2. **Realtime on web** — add remaining `AppContext` channels (e.g. `relationship_requests`) and optional notification polling fallback if channels fail.
 3. **Screen matrix** — each `app/*.tsx` → explicit Next owner; eliminate “approximate” flows.
 4. **tRPC-first** — move remaining web-only Supabase business writes to the same procedures as Expo where applicable.
 5. **Testing** — automated smoke: same user, same IDs, same row counts for feed + one conversation thread.

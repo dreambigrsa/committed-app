@@ -20,6 +20,7 @@ This document is the **internal map** requested for system alignment: same backe
 | `packages/shared/src/comment-tree.ts` | `buildPostCommentsByPostId` / `buildReelCommentsByReelId` (threaded trees + likes). |
 | `packages/shared/src/onboarding-constants.ts` | `COMMITTED_AI_ONBOARDING_VERSION` — same DB value for Expo onboarding, `CommittedAIConsentEnforcer`, and `WebAppGate`. |
 | `packages/shared/src/mirror-core-realtime.ts` | `subscribeMirrorCoreRealtime` — messages / conversations / notifications channels (same filters as `AppContext` core handlers); used by `MobileWebAppShell`. |
+| `packages/shared/src/mirror-feed-realtime.ts` | `subscribeMirrorFeedRelationshipRealtime` — `posts` / `reels` (`*`) and `relationships` (user or partner); shell applies same fetch/merge rules as `AppContext`. |
 
 **Consumers:** `lib/supabase.ts`, `lib/trpc.ts`, `contexts/AppContext.tsx`, `web/lib/supabase-client.ts`, `web/lib/trpc-react.tsx` (+ `AuthSessionTrpcSync` for session-driven query invalidation), `web/lib/content-visibility.ts`, `web/components/MobileWebAppShell.tsx`, `web/components/WebAppGate.tsx`, `app/onboarding.tsx`, `components/CommittedAIConsentEnforcer.tsx`.
 
@@ -100,7 +101,7 @@ See **[`docs/EXPO-NEXT-PARITY-AUDIT.md`](./EXPO-NEXT-PARITY-AUDIT.md)** for the 
 - **Push / native**: Expo-only; web uses browser notifications only if explicitly implemented.
 - **Media capture**: Expo modules (camera, image picker); web uses file input / different constraints — **flow parity**, not pixel parity.
 - **Admin**: Many Expo `admin/*` screens; Next must match capabilities procedure-by-procedure via tRPC `admin.*`.
-- **Realtime**: Web shell now mirrors **messages / conversations / notifications** via `subscribeMirrorCoreRealtime`; `AppContext` still has more channels (posts, reels, relationships, …).
+- **Realtime**: Web shell uses `subscribeMirrorCoreRealtime` + `subscribeMirrorFeedRelationshipRealtime` (posts, reels, relationships + messages/conversations/notifications). `AppContext` still has extra channels (e.g. `relationship_requests`, post/reel like fanout edge cases) not wired on web.
 - **Bundle**: `MobileWebAppShell` is a large client bundle; mirror growth should track code-splitting by route.
 
 Update the audit doc as screens and shared modules are ported.

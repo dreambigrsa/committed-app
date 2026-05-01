@@ -13,6 +13,11 @@ This document is the **internal map** requested for system alignment: same backe
 | `packages/shared/src/feed-loaders.ts` | `fetchFeedPostsWithLikes` / `fetchFeedReelsWithLikes` — **same** Supabase chains as `loadUserData` (used by Expo + `MobileWebAppShell`). |
 | `packages/shared/src/bootstrap-parallel-loaders.ts` | `fetchLoadUserDataParallelBundle` — ads, relationships, requests, notifications, alerts, blocks, follows, disputes (used by `AppContext`). |
 | `packages/shared/src/bootstrap-constants.ts` | Shared bootstrap limits (notifications 50, conversations list 50) — `MobileWebAppShell` aligned with `AppContext`. |
+| `packages/shared/src/display-name.ts` | `getDisplayName` — **only** implementation; `lib/identity.ts` (Expo) and `web/lib/identity.ts` re-export it. |
+| `packages/shared/src/user-identity-select.ts` | `APP_USER_IDENTITY_SELECT` for batch user lookups. |
+| `packages/shared/src/conversation-loaders.ts` | `fetchConversationsBootstrap` — same conversation + message load as `AppContext` (dedupe, limits, deleted-for-me filter). |
+| `packages/shared/src/comment-loaders.ts` | `fetchPostCommentsAndLikes` / `fetchReelCommentsAndLikes`. |
+| `packages/shared/src/comment-tree.ts` | `buildPostCommentsByPostId` / `buildReelCommentsByReelId` (threaded trees + likes). |
 
 **Consumers:** `lib/supabase.ts`, `lib/trpc.ts`, `contexts/AppContext.tsx`, `web/lib/supabase-client.ts`, `web/lib/trpc-react.tsx` (+ `AuthSessionTrpcSync` for session-driven query invalidation), `web/lib/content-visibility.ts`, `web/components/MobileWebAppShell.tsx`.
 

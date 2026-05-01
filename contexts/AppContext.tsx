@@ -16,9 +16,15 @@ import { buildPostLink, buildReelLink } from '@/lib/deep-link-service';
 import { getStoredReferralCode, clearStoredReferralCode } from '@/lib/referral-storage';
 import { getDisplayName } from '@/lib/identity';
 import {
+  APP_USER_IDENTITY_SELECT,
+  buildPostCommentsByPostId,
+  buildReelCommentsByReelId,
+  fetchConversationsBootstrap,
   fetchFeedPostsWithLikes,
   fetchFeedReelsWithLikes,
   fetchLoadUserDataParallelBundle,
+  fetchPostCommentsAndLikes,
+  fetchReelCommentsAndLikes,
   getFeedPostVisibilityOrFilter,
   getFeedReelVisibilityOrFilter,
 } from '@committed/shared';
@@ -88,7 +94,6 @@ const NOTIFICATION_POLL_MS = 45 * 1000;
 const CACHE_PREFIX = 'app-cache:v1:';
 const COMMITTED_AI_EMAIL = 'ai@committed.app';
 
-const userIdentitySelect = 'id, full_name, username, email, profile_picture';
 const postUserSelect = 'full_name, username, email, profile_picture';
 
 export const [AppContext, useApp] = createContextHook(() => {
@@ -822,133 +827,76 @@ export const [AppContext, useApp] = createContextHook(() => {
         markStage('relationship_requests_loaded');
       }
 
-      const { data: conversationsData } = await supabase
-        .from('conversations')
-        .select(`
-          *,
-          participant_users:participant_ids
-        `)
-        .contains('participant_ids', [userId])
-        .order('last_message_at', { ascending: false })
-        .limit(50);
+      const convBoot = await fetchConversationsBootstrap(supabase, userId);
 
-      if (conversationsData && conversationsData.length > 0) {
-        // Load messages to calculate accurate last messages
-        // Limit to recent messages for performance (last 100 messages per conversation max)
-        const conversationIds = conversationsData.map((c: any) => c.id);
-        const { data: messagesData } = await supabase
-          .from('messages')
-          .select('*')
-          .in('conversation_id', conversationIds)
-          .order('created_at', { ascending: false })
-          .limit(Math.min(conversationIds.length * 50, 500)); // Keep startup bounded for performance
-        
-        // Reverse to get chronological order after limiting
-        const sortedMessages = messagesData ? [...messagesData].reverse() : [];
-
+      if (convBoot.deduplicatedConversations.length > 0) {
         const messagesByConversation: Record<string, Message[]> = {};
-        if (sortedMessages && sortedMessages.length > 0) {
-          sortedMessages.forEach((m: any) => {
-            // Filter out messages deleted for current user
-            const isSender = m.sender_id === userId;
-            const isReceiver = m.receiver_id === userId;
-            const deletedForMe = (isSender && m.deleted_for_sender) || (isReceiver && m.deleted_for_receiver);
-            
-            if (deletedForMe) return; // Skip messages deleted for this user
-
-            const message: Message = {
-              id: m.id,
-              conversationId: m.conversation_id,
-              senderId: m.sender_id,
-              receiverId: m.receiver_id,
-              content: m.content,
-              mediaUrl: m.media_url,
-              documentUrl: m.document_url,
-              documentName: m.document_name,
-              messageType: (m.message_type || 'text') as 'text' | 'image' | 'document',
-              deletedForSender: m.deleted_for_sender || false,
-              deletedForReceiver: m.deleted_for_receiver || false,
-              read: m.read,
-              createdAt: m.created_at,
-              statusId: m.status_id,
-              statusPreviewUrl: m.status_preview_url,
-            };
-            if (!messagesByConversation[m.conversation_id]) {
-              messagesByConversation[m.conversation_id] = [];
-            }
-            messagesByConversation[m.conversation_id].push(message);
-          });
+        for (const [cid, rows] of Object.entries(convBoot.messagesByConversation)) {
+          messagesByConversation[cid] = rows.map((m) => ({
+            id: m.id,
+            conversationId: m.conversation_id,
+            senderId: m.sender_id,
+            receiverId: m.receiver_id,
+            content: (m.content as string) ?? '',
+            mediaUrl: m.media_url ?? undefined,
+            documentUrl: m.document_url ?? undefined,
+            documentName: m.document_name ?? undefined,
+            messageType: (m.message_type || 'text') as 'text' | 'image' | 'document',
+            deletedForSender: !!m.deleted_for_sender,
+            deletedForReceiver: !!m.deleted_for_receiver,
+            read: !!m.read,
+            createdAt: m.created_at,
+            statusId: m.status_id ?? undefined,
+            statusPreviewUrl: m.status_preview_url ?? undefined,
+          }));
+        }
+        if (Object.keys(messagesByConversation).length > 0) {
           setMessages(messagesByConversation);
           writeCache(userId, 'messages', messagesByConversation).catch(() => {});
         }
 
-        // Deduplicate conversations: keep only the most recent one for each set of participants
-        const conversationMap = new Map<string, any>();
-        conversationsData.forEach((conv: any) => {
-          const participants = conv.participant_ids || [];
-          const key = [...participants].sort().join(',');
-          
-          const existing = conversationMap.get(key);
-          if (!existing || new Date(conv.last_message_at || conv.created_at).getTime() > 
-                          new Date(existing.last_message_at || existing.created_at).getTime()) {
-            conversationMap.set(key, conv);
-          }
-        });
-        const deduplicatedConversations = Array.from(conversationMap.values());
-
-        // Batch participant user lookup for all conversations (avoid N queries in map loop).
-        const allParticipantIds = Array.from(
-          new Set(
-            deduplicatedConversations.flatMap((conv: any) => conv.participant_ids || [])
-          )
-        );
-        const { data: allParticipantsData } = allParticipantIds.length > 0
-          ? await supabase
-              .from('users')
-              .select(userIdentitySelect)
-              .in('id', allParticipantIds)
-          : { data: [] as any[] };
         const globalParticipantsMap = new Map(
-          (allParticipantsData || []).map((p: any) => [p.id, { name: getDisplayName(p), avatar: p.profile_picture }])
+          (convBoot.participantUsers as any[]).map((p: any) => [
+            p.id,
+            { name: getDisplayName(p), avatar: p.profile_picture },
+          ])
         );
 
-        // Now format conversations with accurate last message from non-deleted messages
-        // Filter out conversations with no messages
-        const formattedConversations: Conversation[] = (await Promise.all(
-          deduplicatedConversations.map(async (conv: any) => {
-            const participantIds = conv.participant_ids;
-            // Ensure arrays are in the same order as participantIds
-            const participantNames = participantIds.map((id: string) => globalParticipantsMap.get(id)?.name || 'Unknown');
-            const participantAvatars = participantIds.map((id: string) => globalParticipantsMap.get(id)?.avatar);
-
-            // Calculate last message from non-deleted messages
-            const convMessages = messagesByConversation[conv.id] || [];
-            let lastMessage = '';
-            let lastMessageAt = conv.last_message_at;
-            
-            if (convMessages.length > 0) {
-              // Get the most recent message
-              const lastMsg = convMessages[convMessages.length - 1];
-              lastMessageAt = lastMsg.createdAt;
-              lastMessage = lastMsg.messageType === 'image' 
-                ? '📷 Image' 
-                : lastMsg.messageType === 'document' 
-                ? `📄 ${lastMsg.documentName || 'Document'}`
-                : lastMsg.content;
-            }
-
-            return {
-              id: conv.id,
-              participants: participantIds,
-              participantNames,
-              participantAvatars,
-              lastMessage: lastMessage || conv.last_message || '',
-              lastMessageAt: lastMessageAt || conv.last_message_at,
-              unreadCount: 0,
-            };
-          })
-        )).filter(conv => {
-          // Filter out conversations with no messages
+        const formattedConversations: Conversation[] = (
+          await Promise.all(
+            convBoot.deduplicatedConversations.map(async (conv: any) => {
+              const participantIds = conv.participant_ids;
+              const participantNames = participantIds.map(
+                (id: string) => globalParticipantsMap.get(id)?.name || 'Unknown'
+              );
+              const participantAvatars = participantIds.map(
+                (id: string) => globalParticipantsMap.get(id)?.avatar
+              );
+              const convMessages = messagesByConversation[conv.id] || [];
+              let lastMessage = '';
+              let lastMessageAt = conv.last_message_at;
+              if (convMessages.length > 0) {
+                const lastMsg = convMessages[convMessages.length - 1];
+                lastMessageAt = lastMsg.createdAt;
+                lastMessage =
+                  lastMsg.messageType === 'image'
+                    ? '📷 Image'
+                    : lastMsg.messageType === 'document'
+                      ? `📄 ${lastMsg.documentName || 'Document'}`
+                      : lastMsg.content || '';
+              }
+              return {
+                id: conv.id,
+                participants: participantIds,
+                participantNames,
+                participantAvatars,
+                lastMessage: lastMessage || conv.last_message || '',
+                lastMessageAt: lastMessageAt || conv.last_message_at,
+                unreadCount: 0,
+              };
+            })
+          )
+        ).filter((conv) => {
           const convMessages = messagesByConversation[conv.id] || [];
           return convMessages.length > 0;
         });
@@ -961,99 +909,18 @@ export const [AppContext, useApp] = createContextHook(() => {
       markStage('realtime_subscriptions_ready');
 
       const currentPostIds = (uniquePostsData || []).map((p: any) => p.id);
-      let commentsData: any[] = [];
-      let commentLikesData: any[] = [];
       try {
-        const commentsResult = currentPostIds.length > 0
-          ? await withTimeout(
-              supabase
-                .from('comments')
-                .select(`
-                  *,
-                  users!comments_user_id_fkey(${postUserSelect}),
-                  stickers!comments_sticker_id_fkey(image_url, is_animated)
-                `)
-                .in('post_id', currentPostIds)
-                .order('created_at', { ascending: true }),
-              8000,
-              'initial_post_comments_fetch'
-            )
-          : { data: [] as any[] };
-        commentsData = commentsResult.data || [];
-
-        const commentIds = commentsData.map((c: any) => c.id);
-        const likesResult = commentIds.length > 0
-          ? await withTimeout(
-              supabase
-                .from('comment_likes')
-                .select('comment_id, user_id')
-                .in('comment_id', commentIds),
-              5000,
-              'initial_post_comment_likes_fetch'
-            )
-          : { data: [] as any[] };
-        commentLikesData = likesResult.data || [];
+        const { commentsData, commentLikesData } = await withTimeout(
+          fetchPostCommentsAndLikes(supabase, currentPostIds),
+          8000,
+          'initial_post_comments_fetch'
+        );
+        setComments(
+          buildPostCommentsByPostId(commentsData, commentLikesData) as Record<string, Comment[]>
+        );
+        markStage('post_comments_loaded');
       } catch (commentLoadError) {
         if (__DEV__) console.warn('[AppContext] initial post comments skipped:', commentLoadError);
-      }
-
-      if (commentsData) {
-        // Create a map of comment likes
-        const likesByComment: Record<string, string[]> = {};
-        if (commentLikesData) {
-          commentLikesData.forEach((like: any) => {
-            if (!likesByComment[like.comment_id]) {
-              likesByComment[like.comment_id] = [];
-            }
-            likesByComment[like.comment_id].push(like.user_id);
-          });
-        }
-
-        const commentsByPost: Record<string, Comment[]> = {};
-        const allComments: Comment[] = [];
-        
-        // First, create all comments
-        commentsData.forEach((c: any) => {
-          const comment: Comment = {
-            id: c.id,
-            postId: c.post_id,
-            userId: c.user_id,
-            userName: getDisplayName(c.users),
-            userAvatar: c.users?.profile_picture,
-            content: c.content,
-            stickerId: c.sticker_id || undefined,
-            stickerImageUrl: c.stickers?.image_url || undefined, // Include sticker image URL
-            messageType: (c.message_type || 'text') as 'text' | 'sticker',
-            likes: likesByComment[c.id] || [],
-            createdAt: c.created_at,
-            parentCommentId: c.parent_comment_id || undefined,
-            replies: [],
-          };
-          allComments.push(comment);
-        });
-
-        // Organize comments into top-level and replies
-        allComments.forEach((comment) => {
-          if (!comment.parentCommentId) {
-            // Top-level comment
-            if (!commentsByPost[comment.postId]) {
-              commentsByPost[comment.postId] = [];
-            }
-            commentsByPost[comment.postId].push(comment);
-          } else {
-            // Reply - find parent and add to replies
-            const parent = allComments.find(c => c.id === comment.parentCommentId);
-            if (parent) {
-              if (!parent.replies) {
-                parent.replies = [];
-              }
-              parent.replies.push(comment);
-            }
-          }
-        });
-        
-        setComments(commentsByPost);
-        markStage('post_comments_loaded');
       }
 
       if (notificationsData) {
@@ -1121,99 +988,22 @@ export const [AppContext, useApp] = createContextHook(() => {
       }
 
       const currentReelIds = (reelsData || []).map((r: any) => r.id);
-      let reelCommentsData: any[] = [];
-      let reelCommentLikesData: any[] = [];
       try {
-        const reelCommentsResult = currentReelIds.length > 0
-          ? await withTimeout(
-              supabase
-                .from('reel_comments')
-                .select(`
-                  *,
-                  users!reel_comments_user_id_fkey(${postUserSelect}),
-                  stickers!reel_comments_sticker_id_fkey(image_url, is_animated)
-                `)
-                .in('reel_id', currentReelIds)
-                .order('created_at', { ascending: true }),
-              8000,
-              'initial_reel_comments_fetch'
-            )
-          : { data: [] as any[] };
-        reelCommentsData = reelCommentsResult.data || [];
-
-        const reelCommentIds = reelCommentsData.map((c: any) => c.id);
-        const reelLikesResult = reelCommentIds.length > 0
-          ? await withTimeout(
-              supabase
-                .from('reel_comment_likes')
-                .select('comment_id, user_id')
-                .in('comment_id', reelCommentIds),
-              5000,
-              'initial_reel_comment_likes_fetch'
-            )
-          : { data: [] as any[] };
-        reelCommentLikesData = reelLikesResult.data || [];
+        const { commentsData: reelCommentsData, commentLikesData: reelCommentLikesData } =
+          await withTimeout(
+            fetchReelCommentsAndLikes(supabase, currentReelIds),
+            8000,
+            'initial_reel_comments_fetch'
+          );
+        setReelComments(
+          buildReelCommentsByReelId(reelCommentsData, reelCommentLikesData) as Record<
+            string,
+            ReelComment[]
+          >
+        );
+        markStage('reel_comments_loaded');
       } catch (reelCommentLoadError) {
         if (__DEV__) console.warn('[AppContext] initial reel comments skipped:', reelCommentLoadError);
-      }
-
-      if (reelCommentsData) {
-        // Create a map of comment likes
-        const likesByComment: Record<string, string[]> = {};
-        if (reelCommentLikesData) {
-          reelCommentLikesData.forEach((like: any) => {
-            if (!likesByComment[like.comment_id]) {
-              likesByComment[like.comment_id] = [];
-            }
-            likesByComment[like.comment_id].push(like.user_id);
-          });
-        }
-
-        const commentsByReel: Record<string, ReelComment[]> = {};
-        const allComments: ReelComment[] = [];
-        
-        // First, create all comments
-        reelCommentsData.forEach((c: any) => {
-          const comment: ReelComment = {
-            id: c.id,
-            reelId: c.reel_id,
-            userId: c.user_id,
-            userName: getDisplayName(c.users),
-            userAvatar: c.users?.profile_picture,
-            content: c.content,
-            stickerId: c.sticker_id || undefined,
-            stickerImageUrl: c.stickers?.image_url || undefined, // Include sticker image URL
-            messageType: (c.message_type || 'text') as 'text' | 'sticker',
-            likes: likesByComment[c.id] || [],
-            createdAt: c.created_at,
-            parentCommentId: c.parent_comment_id || undefined,
-            replies: [],
-          };
-          allComments.push(comment);
-        });
-
-        // Organize comments into top-level and replies
-        allComments.forEach((comment) => {
-          if (!comment.parentCommentId) {
-            // Top-level comment
-            if (!commentsByReel[comment.reelId]) {
-              commentsByReel[comment.reelId] = [];
-            }
-            commentsByReel[comment.reelId].push(comment);
-          } else {
-            // Reply - find parent and add to replies
-            const parent = allComments.find(c => c.id === comment.parentCommentId);
-            if (parent) {
-              if (!parent.replies) {
-                parent.replies = [];
-              }
-              parent.replies.push(comment);
-            }
-          }
-        });
-        
-        setReelComments(commentsByReel);
-        markStage('reel_comments_loaded');
       }
 
       if (__DEV__) {
@@ -4016,7 +3806,7 @@ export const [AppContext, useApp] = createContextHook(() => {
         // Conversation exists, return it
         const { data: participantsData } = await supabase
           .from('users')
-          .select(userIdentitySelect)
+          .select(APP_USER_IDENTITY_SELECT)
           .in('id', existingConv.participant_ids);
 
         // Create a map for quick lookup
@@ -4069,7 +3859,7 @@ export const [AppContext, useApp] = createContextHook(() => {
       // Get participant data
       const { data: participantsData } = await supabase
         .from('users')
-        .select(userIdentitySelect)
+        .select(APP_USER_IDENTITY_SELECT)
         .in('id', [currentUser.id, otherUserId]);
 
       // Create a map for quick lookup

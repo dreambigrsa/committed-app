@@ -4,14 +4,7 @@
  * its inline channels until refactored).
  */
 import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
-
-function messageDeletedForUser(row: Record<string, unknown>, userId: string): boolean {
-  const isSender = row.sender_id === userId;
-  const isReceiver = row.receiver_id === userId;
-  return Boolean(
-    (isSender && row.deleted_for_sender) || (isReceiver && row.deleted_for_receiver)
-  );
-}
+import { isMessageDeletedForUser } from './message-visibility';
 
 export type MirrorCoreRealtimeCallbacks = {
   shouldIgnore?: () => boolean;
@@ -48,7 +41,7 @@ export function subscribeMirrorCoreRealtime(
       (payload) => {
         if (shouldIgnore()) return;
         const row = payload.new as Record<string, unknown>;
-        if (messageDeletedForUser(row, userId)) return;
+        if (isMessageDeletedForUser(row, userId)) return;
         cb.onIncomingMessage(row);
       }
     )
@@ -62,7 +55,7 @@ export function subscribeMirrorCoreRealtime(
       (payload) => {
         if (shouldIgnore()) return;
         const row = payload.new as Record<string, unknown>;
-        if (messageDeletedForUser(row, userId)) {
+        if (isMessageDeletedForUser(row, userId)) {
           cb.onMessageRemovedFromThread(String(row.conversation_id), String(row.id));
           return;
         }

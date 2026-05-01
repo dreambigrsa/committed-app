@@ -21,6 +21,7 @@ export { fetchLoadUserDataParallelBundle, type LoadUserDataParallelBundle } from
 export { APP_NOTIFICATIONS_BOOTSTRAP_LIMIT, APP_CONVERSATIONS_LIST_LIMIT } from './bootstrap-constants';
 export { getDisplayName } from './display-name';
 export { COMMITTED_AI_ONBOARDING_VERSION } from './onboarding-constants';
+export { isMessageDeletedForUser, filterVisibleMessagesForUser } from './message-visibility';
 export { subscribeMirrorCoreRealtime, type MirrorCoreRealtimeCallbacks } from './mirror-core-realtime';
 export {
   subscribeMirrorFeedRelationshipRealtime,

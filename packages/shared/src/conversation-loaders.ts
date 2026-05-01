@@ -4,6 +4,7 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { APP_CONVERSATIONS_LIST_LIMIT } from './bootstrap-constants';
+import { isMessageDeletedForUser } from './message-visibility';
 import { APP_USER_IDENTITY_SELECT } from './user-identity-select';
 
 export type RawMessageRow = Record<string, unknown> & {
@@ -74,11 +75,7 @@ export async function fetchConversationsBootstrap(
 
   const messagesByConversation: Record<string, RawMessageRow[]> = {};
   for (const m of sortedMessages as RawMessageRow[]) {
-    const isSender = m.sender_id === userId;
-    const isReceiver = m.receiver_id === userId;
-    const deletedForMe =
-      (isSender && m.deleted_for_sender) || (isReceiver && m.deleted_for_receiver);
-    if (deletedForMe) continue;
+    if (isMessageDeletedForUser(m, userId)) continue;
 
     const cid = m.conversation_id;
     if (!messagesByConversation[cid]) messagesByConversation[cid] = [];

@@ -17,6 +17,7 @@ import { useApp } from '@/contexts/AppContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
+import { normalizePhoneWithCountryCode } from '@committed/shared';
 import LegalAcceptanceCheckbox from '@/components/LegalAcceptanceCheckbox';
 import MessageModal from '@/components/MessageModal';
 import { LegalDocument } from '@/types';
@@ -72,9 +73,7 @@ export default function AuthScreen() {
   }, [countrySearch]);
 
   const getSignupPhoneNumber = () => {
-    const phoneInput = formData.phoneNumber.trim();
-    if (phoneInput.startsWith('+')) return phoneInput;
-    return `${selectedCountry.dialCode}${phoneInput.replace(/\D/g, '')}`;
+    return normalizePhoneWithCountryCode(selectedCountry.dialCode, formData.phoneNumber);
   };
 
   useEffect(() => {

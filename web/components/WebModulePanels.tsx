@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, Bell, CheckCircle2, Film, Loader2, MessageCircle, ShieldCheck, ThumbsUp, UploadCloud, UserCircle2 } from 'lucide-react';
 import { fetchConversationsBootstrap, getDisplayName, type RawMessageRow } from '@committed/shared';
+import { normalizePhonePreservePlus } from '@committed/shared';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { getPostVisibilityOrFilter, getReelVisibilityOrFilter } from '@/lib/content-visibility';
 import { excludeDatingProfilesForUser, filterVisibleMessagesForUser } from '@/lib/parity-helpers';
@@ -59,13 +60,6 @@ const privacyOptions = [
 const relationshipGoals = ['Long-term', 'Short-term', 'Friendship', 'Marriage', 'Casual'];
 const religionOptions = ['Christian', 'Muslim', 'Jewish', 'Hindu', 'Buddhist', 'Traditional', 'Spiritual', 'Agnostic', 'Atheist', 'Other', 'Prefer not to say'];
 const educationOptions = ['High school', 'Diploma', "Bachelor's", "Master's", 'Doctorate', 'Trade/Technical', 'Self-taught', 'Prefer not to say'];
-
-function normalizePhone(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return '';
-  if (trimmed.startsWith('+')) return `+${trimmed.slice(1).replace(/\D/g, '')}`;
-  return trimmed.replace(/[^\d+]/g, '');
-}
 
 function formatShortDate(value?: string | null) {
   if (!value) return 'Not set';
@@ -172,7 +166,7 @@ function RelationshipPanel() {
         partnerFacePhoto = publicData.publicUrl;
       }
 
-      const normalizedPhone = normalizePhone(form.partnerPhone);
+      const normalizedPhone = normalizePhonePreservePlus(form.partnerPhone);
       const { data: partnerRows } = await supabase
         .from('users')
         .select('id,full_name,phone_number')
@@ -748,7 +742,7 @@ function SettingsPanel() {
       if (!session?.user) throw new Error('Please sign in again.');
       const { error } = await supabase
         .from('users')
-        .update({ full_name: form.fullName.trim(), phone_number: normalizePhone(form.phone) })
+        .update({ full_name: form.fullName.trim(), phone_number: normalizePhonePreservePlus(form.phone) })
         .eq('id', session.user.id);
       if (error) throw error;
       setStatus('success');

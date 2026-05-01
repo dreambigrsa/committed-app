@@ -22,6 +22,7 @@ export { APP_NOTIFICATIONS_BOOTSTRAP_LIMIT, APP_CONVERSATIONS_LIST_LIMIT } from 
 export { getDisplayName } from './display-name';
 export { COMMITTED_AI_ONBOARDING_VERSION } from './onboarding-constants';
 export { isMessageDeletedForUser, filterVisibleMessagesForUser } from './message-visibility';
+export { normalizePhonePreservePlus, normalizePhoneWithCountryCode } from './phone-normalization';
 export { subscribeMirrorCoreRealtime, type MirrorCoreRealtimeCallbacks } from './mirror-core-realtime';
 export {
   subscribeMirrorFeedRelationshipRealtime,

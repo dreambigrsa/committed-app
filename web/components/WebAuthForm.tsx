@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AlertCircle, CheckCircle2, Eye, EyeOff, Loader2, Mail, UserRound } from 'lucide-react';
+import { normalizePhoneWithCountryCode } from '@committed/shared';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import OpenAppButton from '@/components/OpenAppButton';
 
@@ -31,14 +32,6 @@ const countryCodes = [
   { code: '+265', label: 'MW' },
   { code: '+258', label: 'MZ' },
 ];
-
-function normalizePhone(countryCode: string, rawPhone: string) {
-  const trimmed = rawPhone.trim();
-  if (!trimmed) return '';
-  if (trimmed.startsWith('+')) return trimmed.replace(/\s+/g, '');
-  const digits = trimmed.replace(/\D/g, '').replace(/^0+/, '');
-  return `${countryCode}${digits}`;
-}
 
 async function sendVerification(email: string, accessToken?: string) {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -195,7 +188,7 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
         if (missingRequired.length) {
           throw new Error('Please accept all required legal documents to continue.');
         }
-        const normalizedPhone = normalizePhone(countryCode, phone);
+        const normalizedPhone = normalizePhoneWithCountryCode(countryCode, phone);
         const redirectTo =
           typeof window !== 'undefined'
             ? `${window.location.origin}/auth-callback`

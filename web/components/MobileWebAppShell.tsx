@@ -42,6 +42,7 @@ import {
   fetchFeedPostsWithLikes,
   fetchFeedReelsWithLikes,
   getDisplayName,
+  subscribeMirrorCoreRealtime,
 } from '@committed/shared';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { buildPostWebUrl, buildReelWebUrl } from '@/lib/appLinks';
@@ -224,6 +225,27 @@ type MessageRow = {
   document_url?: string | null;
   created_at?: string | null;
 };
+
+function rawMessageToShellRow(m: Record<string, unknown>): MessageRow {
+  return {
+    id: String(m.id),
+    conversation_id: String(m.conversation_id),
+    sender_id: String(m.sender_id),
+    receiver_id: m.receiver_id != null ? String(m.receiver_id) : null,
+    content: (m.content as string | null) ?? null,
+    message_type: (m.message_type as string | null) ?? null,
+    media_url: (m.media_url as string | null) ?? null,
+    document_url: (m.document_url as string | null) ?? null,
+    created_at: (m.created_at as string | null) ?? null,
+  };
+}
+
+function previewTextFromRawMessage(m: Record<string, unknown>): string {
+  const mt = (m.message_type as string) || 'text';
+  if (mt === 'image') return '📷 Image';
+  if (mt === 'document') return `📄 ${(m.document_name as string | null) || 'Document'}`;
+  return ((m.content as string) || '').trim();
+}
 
 type StatusFeedItem = {
   user_id: string;
@@ -1736,6 +1758,96 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [loadAppData]);
+
+  useEffect(() => {
+    if (!supabase || !user?.id) return;
+    const uid = user.id;
+    return subscribeMirrorCoreRealtime(supabase, uid, {
+      onIncomingMessage: (row) => {
+        const msg = rawMessageToShellRow(row);
+        const cid = msg.conversation_id;
+        setMessagesByConversation((prev) => {
+          const list = prev[cid] || [];
+          if (list.some((m) => m.id === msg.id)) return prev;
+          return { ...prev, [cid]: [...list, msg] };
+        });
+        setConversations((prev) => {
+          const idx = prev.findIndex((c) => c.id === cid);
+          if (idx < 0) return prev;
+          const next = [...prev];
+          const conv = next[idx];
+          next[idx] = {
+            ...conv,
+            last_message: previewTextFromRawMessage(row) || conv.last_message || '',
+            last_message_at: (row.created_at as string) || conv.last_message_at,
+          };
+          return next.sort(
+            (a, b) =>
+              new Date(b.last_message_at || b.created_at || 0).getTime() -
+              new Date(a.last_message_at || a.created_at || 0).getTime()
+          );
+        });
+      },
+      onMessageUpdated: (row) => {
+        const msg = rawMessageToShellRow(row);
+        const cid = msg.conversation_id;
+        setMessagesByConversation((prev) => {
+          const list = prev[cid];
+          if (!list?.length) return prev;
+          return { ...prev, [cid]: list.map((m) => (m.id === msg.id ? msg : m)) };
+        });
+      },
+      onMessageRemovedFromThread: (conversationId, messageId) => {
+        setMessagesByConversation((prev) => {
+          const list = prev[conversationId];
+          if (!list) return prev;
+          return { ...prev, [conversationId]: list.filter((m) => m.id !== messageId) };
+        });
+      },
+      onConversationUpdated: (row) => {
+        const id = String(row.id);
+        setConversations((prev) => {
+          const idx = prev.findIndex((c) => c.id === id);
+          if (idx < 0) return prev;
+          const next = [...prev];
+          const conv = next[idx];
+          next[idx] = {
+            ...conv,
+            last_message: (row.last_message as string) ?? conv.last_message ?? '',
+            last_message_at: (row.last_message_at as string) ?? conv.last_message_at,
+          };
+          return next.sort(
+            (a, b) =>
+              new Date(b.last_message_at || b.created_at || 0).getTime() -
+              new Date(a.last_message_at || a.created_at || 0).getTime()
+          );
+        });
+      },
+      onConversationDeleted: (conversationId) => {
+        setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+        setMessagesByConversation((prev) => {
+          const next = { ...prev };
+          delete next[conversationId];
+          return next;
+        });
+      },
+      onNotificationInserted: (row) => {
+        const item: NotificationRow = {
+          id: String(row.id),
+          title: (row.title as string) ?? undefined,
+          message: (row.message as string) ?? undefined,
+          created_at: (row.created_at as string) ?? undefined,
+          read: row.read as boolean | undefined,
+          type: (row.type as string) ?? undefined,
+          data: row.data,
+        };
+        setNotifications((prev) => {
+          if (prev.some((n) => n.id === item.id)) return prev;
+          return [item, ...prev];
+        });
+      },
+    });
+  }, [supabase, user?.id]);
 
   useEffect(() => {
     if (!supabase || !user || appPath[0] !== 'admin' || !subPath || !adminGenericRoutes[subPath]) return;

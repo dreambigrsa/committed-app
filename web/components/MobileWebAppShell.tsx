@@ -37,10 +37,11 @@ import {
   X,
 } from 'lucide-react';
 import {
-  APP_CONVERSATIONS_LIST_LIMIT,
   APP_NOTIFICATIONS_BOOTSTRAP_LIMIT,
+  fetchConversationsBootstrap,
   fetchFeedPostsWithLikes,
   fetchFeedReelsWithLikes,
+  getDisplayName,
 } from '@committed/shared';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { buildPostWebUrl, buildReelWebUrl } from '@/lib/appLinks';
@@ -1089,7 +1090,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         email: authUser.email ?? null,
       });
 
-      const [postsBundle, reelsBundle, relationshipResult, myDatingResult, datingResult, notificationsResult, conversationsResult, likesResult, matchesResult] = await Promise.all([
+      const [postsBundle, reelsBundle, relationshipResult, myDatingResult, datingResult, notificationsResult, convBootstrap, likesResult, matchesResult] = await Promise.all([
         fetchFeedPostsWithLikes(supabase, authUser.id),
         fetchFeedReelsWithLikes(supabase, authUser.id),
         supabase
@@ -1117,12 +1118,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           .eq('user_id', authUser.id)
           .order('created_at', { ascending: false })
           .limit(APP_NOTIFICATIONS_BOOTSTRAP_LIMIT),
-        supabase
-          .from('conversations')
-          .select('id,last_message,last_message_at,created_at,participant_ids')
-          .contains('participant_ids', [authUser.id])
-          .order('last_message_at', { ascending: false })
-          .limit(APP_CONVERSATIONS_LIST_LIMIT),
+        fetchConversationsBootstrap(supabase, authUser.id),
         supabase
           .from('dating_likes')
           .select('id,liker_id,is_super_like,created_at')
@@ -1359,58 +1355,74 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       setDatingProfiles(discoverProfiles);
       setDatingIndex(0);
       setNotifications(((notificationsResult.data || []) as NotificationRow[]).filter(Boolean));
-      const conversationRows = ((conversationsResult.data || []) as ConversationRow[]).filter(Boolean);
-      const conversationIds = conversationRows.map((conversation) => conversation.id).filter(Boolean);
-      const participantIds = Array.from(new Set(
-        conversationRows
-          .flatMap((conversation) => conversation.participant_ids || [])
-          .filter((id) => id && id !== authUser.id)
-      ));
-
-      const [conversationMessagesResult, participantsResult, statusesResult] = await Promise.all([
-        conversationIds.length
-          ? supabase
-              .from('messages')
-              .select('id,conversation_id,sender_id,receiver_id,content,message_type,media_url,document_url,created_at,deleted_for_sender,deleted_for_receiver')
-              .in('conversation_id', conversationIds)
-              .order('created_at', { ascending: true })
-          : Promise.resolve({ data: [] }),
-        participantIds.length
-          ? supabase
-              .from('users')
-              .select('id,full_name,email,profile_picture')
-              .in('id', participantIds)
-          : Promise.resolve({ data: [] }),
-        supabase
-          .from('statuses')
-          .select('id,user_id,content_type,text_content,media_path,background_color,created_at,expires_at,archived,users!statuses_user_id_fkey(full_name,profile_picture)')
-          .eq('archived', false)
-          .gt('expires_at', new Date().toISOString())
-          .order('created_at', { ascending: false })
-          .limit(25),
-      ]);
 
       const participantsMap = new Map<string, WebUser>(
-        ((participantsResult.data || []) as WebUser[]).map((participant) => [participant.id, participant])
+        ((convBootstrap.participantUsers || []) as WebUser[]).map((participant) => [participant.id, participant])
       );
-      setConversations(conversationRows.map((conversation) => {
-        const names = (conversation.participant_ids || [])
-          .filter((id) => id !== authUser.id)
-          .map((id) => participantsMap.get(id)?.full_name || participantsMap.get(id)?.email || 'Committed member');
-        const avatars = Object.fromEntries(
-          (conversation.participant_ids || [])
+      const messagesByConv = convBootstrap.messagesByConversation || {};
+      const conversationRowsRaw = (convBootstrap.deduplicatedConversations || []) as ConversationRow[];
+      const conversationRows = conversationRowsRaw.filter(
+        (conversation) => (messagesByConv[conversation.id] || []).length > 0
+      );
+
+      setConversations(
+        conversationRows.map((conversation) => {
+          const rows = messagesByConv[conversation.id] || [];
+          const last = rows[rows.length - 1];
+          let lastMessage = conversation.last_message;
+          let lastMessageAt = conversation.last_message_at;
+          if (last) {
+            lastMessageAt = last.created_at;
+            const mt = last.message_type || 'text';
+            lastMessage =
+              mt === 'image'
+                ? '📷 Image'
+                : mt === 'document'
+                  ? `📄 ${(last.document_name as string | null) || 'Document'}`
+                  : ((last.content as string | null) || '');
+          }
+          const names = (conversation.participant_ids || [])
             .filter((id) => id !== authUser.id)
-            .map((id) => [id, participantsMap.get(id)?.profile_picture || null])
-        );
-        return { ...conversation, participantNames: names, participantAvatars: avatars };
-      }));
+            .map((id) => getDisplayName(participantsMap.get(id)));
+          const avatars = Object.fromEntries(
+            (conversation.participant_ids || [])
+              .filter((id) => id !== authUser.id)
+              .map((id) => [id, participantsMap.get(id)?.profile_picture || null])
+          );
+          return {
+            ...conversation,
+            last_message: lastMessage || conversation.last_message || '',
+            last_message_at: lastMessageAt || conversation.last_message_at,
+            participantNames: names,
+            participantAvatars: avatars,
+          };
+        })
+      );
 
       const messagesById: Record<string, MessageRow[]> = {};
-      const visibleMessages = filterVisibleMessagesForUser(((conversationMessagesResult.data || []) as MessageRow[]), authUser.id);
-      visibleMessages.forEach((message) => {
-        messagesById[message.conversation_id] = [...(messagesById[message.conversation_id] || []), message];
-      });
+      for (const conversation of conversationRows) {
+        const rows = messagesByConv[conversation.id] || [];
+        messagesById[conversation.id] = rows.map((m) => ({
+          id: m.id,
+          conversation_id: m.conversation_id,
+          sender_id: m.sender_id,
+          receiver_id: m.receiver_id ?? null,
+          content: (m.content as string | null) ?? null,
+          message_type: (m.message_type as string | null) ?? null,
+          media_url: (m.media_url as string | null) ?? null,
+          document_url: (m.document_url as string | null) ?? null,
+          created_at: m.created_at,
+        }));
+      }
       setMessagesByConversation(messagesById);
+
+      const statusesResult = await supabase
+        .from('statuses')
+        .select('id,user_id,content_type,text_content,media_path,background_color,created_at,expires_at,archived,users!statuses_user_id_fkey(full_name,profile_picture)')
+        .eq('archived', false)
+        .gt('expires_at', new Date().toISOString())
+        .order('created_at', { ascending: false })
+        .limit(25);
 
       const latestStatusByUser = new Map<string, StatusFeedItem>();
       ((statusesResult.data || []) as any[]).forEach((status) => {

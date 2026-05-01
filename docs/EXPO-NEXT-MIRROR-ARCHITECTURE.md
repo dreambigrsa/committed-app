@@ -18,8 +18,11 @@ This document is the **internal map** requested for system alignment: same backe
 | `packages/shared/src/conversation-loaders.ts` | `fetchConversationsBootstrap` — same conversation + message load as `AppContext` (dedupe, limits, deleted-for-me filter). |
 | `packages/shared/src/comment-loaders.ts` | `fetchPostCommentsAndLikes` / `fetchReelCommentsAndLikes`. |
 | `packages/shared/src/comment-tree.ts` | `buildPostCommentsByPostId` / `buildReelCommentsByReelId` (threaded trees + likes). |
+| `packages/shared/src/onboarding-constants.ts` | `COMMITTED_AI_ONBOARDING_VERSION` — same DB value for Expo onboarding, `CommittedAIConsentEnforcer`, and `WebAppGate`. |
 
-**Consumers:** `lib/supabase.ts`, `lib/trpc.ts`, `contexts/AppContext.tsx`, `web/lib/supabase-client.ts`, `web/lib/trpc-react.tsx` (+ `AuthSessionTrpcSync` for session-driven query invalidation), `web/lib/content-visibility.ts`, `web/components/MobileWebAppShell.tsx`.
+**Consumers:** `lib/supabase.ts`, `lib/trpc.ts`, `contexts/AppContext.tsx`, `web/lib/supabase-client.ts`, `web/lib/trpc-react.tsx` (+ `AuthSessionTrpcSync` for session-driven query invalidation), `web/lib/content-visibility.ts`, `web/components/MobileWebAppShell.tsx`, `web/components/WebAppGate.tsx`, `app/onboarding.tsx`, `components/CommittedAIConsentEnforcer.tsx`.
+
+**Full parity audit (screens, auth gaps, checklist):** [`docs/EXPO-NEXT-PARITY-AUDIT.md`](./EXPO-NEXT-PARITY-AUDIT.md).
 
 ## 1. Expo app — data & API layer
 
@@ -90,10 +93,13 @@ tRPC requests attach `Authorization: Bearer <supabase access_token>` (same as we
 
 ## 7. Known gaps (living list)
 
-- **Auth**: Web uses `WebAppGate` / marketing layouts; Expo uses `AuthContext` + `AppGate` — behaviour is similar but **not one shared module**.
+See **[`docs/EXPO-NEXT-PARITY-AUDIT.md`](./EXPO-NEXT-PARITY-AUDIT.md)** for the full checklist, auth/legal differences, and performance notes. Short form:
+
+- **Auth**: Web uses `WebAppGate` / marketing layouts; Expo uses `AuthContext` + `AppGate` — **not one shared module**. Web currently **hard-gates** on required legal docs; Expo treats legal as **soft** enforcement (`AppGate` comment + `LegalAcceptanceEnforcer`).
 - **Push / native**: Expo-only; web uses browser notifications only if explicitly implemented.
 - **Media capture**: Expo modules (camera, image picker); web uses file input / different constraints — **flow parity**, not pixel parity.
 - **Admin**: Many Expo `admin/*` screens; Next must match capabilities procedure-by-procedure via tRPC `admin.*`.
+- **Realtime**: `AppContext` subscriptions are richer than web shell today.
 - **Bundle**: `MobileWebAppShell` is a large client bundle; mirror growth should track code-splitting by route.
 
-Update this section as screens are ported.
+Update the audit doc as screens and shared modules are ported.

@@ -4,6 +4,7 @@ import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Bot, CheckCircle2, FileText, Loader2, Mail, ShieldCheck, Sparkles } from 'lucide-react';
+import { COMMITTED_AI_ONBOARDING_VERSION } from '@committed/shared';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 
 type LegalDoc = {
@@ -15,8 +16,6 @@ type LegalDoc = {
 };
 
 type GateStep = 'loading' | 'verify-email' | 'legal' | 'ai-consent' | 'ready' | 'error';
-
-const AI_ONBOARDING_VERSION = '1.0.0';
 
 const aiSteps = [
   {
@@ -243,7 +242,7 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
           {
             user_id: userId,
             has_completed_onboarding: true,
-            onboarding_version: AI_ONBOARDING_VERSION,
+            onboarding_version: COMMITTED_AI_ONBOARDING_VERSION,
             ai_explanation_viewed: true,
             consent_given: true,
             consent_given_at: now,

@@ -39,7 +39,7 @@ This is the **single checklist** aligned to your requirements (analysis → shar
 | 2.3 | Move **Zod schemas / validation** used by Expo forms into `packages/shared` if web forms mirror them. | ☐ |
 | 2.4 | **Do not** fork business rules in web-only modules; if web needs a rule, **import shared** or call **same tRPC**. | ☐ |
 
-**Already in shared (baseline):** feed loaders, bootstrap bundle, conversations bootstrap, comment loaders/trees, display name, user identity select, AI onboarding version, API base URL, feed visibility, core + feed realtime subscribers.
+**Already in shared (baseline):** feed loaders, bootstrap bundle, conversations bootstrap, comment loaders/trees, display name, user identity select, AI onboarding version, API base URL, feed visibility, core + feed realtime subscribers, message visibility filters, phone normalization helpers.
 
 ---
 

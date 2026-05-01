@@ -2,6 +2,17 @@
 
 This document is the **internal map** requested for system alignment: same backend, same API contracts, web is a different renderer.
 
+## 0. Shared package (`@committed/shared`)
+
+| Module | Role |
+|--------|------|
+| `packages/shared/src/committed-api-base-url.ts` | One resolver for tRPC base URL (Expo + Next env names). |
+| `packages/shared/src/supabase-public-config.ts` | Production Supabase URL + anon key fallbacks (public). |
+| `packages/shared/src/feed-visibility.ts` | Post/reel OR filters — **same strings** as `AppContext` / web shell. |
+| `packages/shared/src/feed-constants.ts` | Feed limits (50) + `APP_POST_USER_SELECT` aligned with Expo. |
+
+**Consumers:** `lib/supabase.ts`, `lib/trpc.ts`, `contexts/AppContext.tsx`, `web/lib/supabase-client.ts`, `web/lib/trpc-react.tsx`, `web/lib/content-visibility.ts`, `web/components/MobileWebAppShell.tsx`.
+
 ## 1. Expo app — data & API layer
 
 | Layer | Location | Role |
@@ -52,7 +63,7 @@ tRPC requests attach `Authorization: Bearer <supabase access_token>` (same as we
 | **API base URL** | Set `NEXT_PUBLIC_COMMITTED_API_BASE_URL` (see `web/.env.example`). |
 | **Supabase auth** | Partially aligned (e.g. password sign-in via `web/app/api/auth/sign-in` for browser reachability). |
 | **Screen parity** | `ExpoMirrorRoute` + `MobileWebAppShell` mirror **some** flows; large surface still split vs Expo `app/*` screens. |
-| **Shared TS modules** | Not yet a `packages/shared` workspace; **no** wholesale move of `lib/*` from Expo into shared package (next phase). |
+| **Shared TS modules** | ✅ `packages/shared` (`@committed/shared`) for API URL, Supabase public fallbacks, feed visibility + limits. Further extraction of `AppContext` loaders = next phase. |
 
 ## 5. Strict alignment rules (for ongoing work)
 

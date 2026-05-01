@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@committed/shared": "file:../packages/shared",
     "@supabase/supabase-js": "^2.97.0",
     "@tanstack/react-query": "^5.100.7",
     "@trpc/client": "^11.17.0",

@@ -36,6 +36,11 @@ import {
   User,
   X,
 } from 'lucide-react';
+import {
+  APP_FEED_POSTS_LIMIT,
+  APP_FEED_REELS_LIMIT,
+  APP_POST_USER_SELECT,
+} from '@committed/shared';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { buildPostWebUrl, buildReelWebUrl } from '@/lib/appLinks';
 import { getPostVisibilityOrFilter, getReelVisibilityOrFilter } from '@/lib/content-visibility';
@@ -1086,16 +1091,20 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       const [postsResult, reelsResult, relationshipResult, myDatingResult, datingResult, notificationsResult, conversationsResult, likesResult, matchesResult] = await Promise.all([
         supabase
           .from('posts')
-          .select('id,user_id,content,media_urls,media_type,comment_count,created_at,users!posts_user_id_fkey(full_name,profile_picture)')
+          .select(
+            `id,user_id,content,media_urls,media_type,comment_count,created_at,users!posts_user_id_fkey(${APP_POST_USER_SELECT})`
+          )
           .or(getPostVisibilityOrFilter(authUser.id))
           .order('created_at', { ascending: false })
-          .limit(30),
+          .limit(APP_FEED_POSTS_LIMIT),
         supabase
           .from('reels')
-          .select('id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(full_name,profile_picture)')
+          .select(
+            `id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(${APP_POST_USER_SELECT})`
+          )
           .or(getReelVisibilityOrFilter(authUser.id))
           .order('created_at', { ascending: false })
-          .limit(20),
+          .limit(APP_FEED_REELS_LIMIT),
         supabase
           .from('relationships')
           .select('id,user_id,partner_user_id,partner_name,partner_phone,type,status,start_date,privacy_level')

@@ -6,6 +6,7 @@ import { httpLink } from '@trpc/client';
 import { createTRPCReact } from '@trpc/react-query';
 import superjson from 'superjson';
 import type { AppRouter } from '@committed/backend/trpc/app-router';
+import { getCommittedApiBaseUrl } from '@committed/shared';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 
 /**
@@ -14,18 +15,11 @@ import { getSupabaseBrowser } from '@/lib/supabase-client';
  */
 export const trpc = createTRPCReact<AppRouter>();
 
-function getCommittedApiBaseUrl(): string {
-  const env = process.env.NEXT_PUBLIC_COMMITTED_API_BASE_URL?.replace(/\/$/, '');
-  if (env) return env;
-  // Align with Expo production default in `lib/trpc.ts`
-  return 'https://committed-5mxf.onrender.com';
-}
-
 export function createCommittedTrpcClient() {
   return trpc.createClient({
     links: [
       httpLink({
-        url: `${getCommittedApiBaseUrl()}/trpc`,
+        url: `${getCommittedApiBaseUrl({ useLocalhostWhenDevAndUnset: false })}/trpc`,
         transformer: superjson,
         async fetch(url, options) {
           const supabase = getSupabaseBrowser();

@@ -1,3 +1,4 @@
+const path = require("path");
 const { getDefaultConfig } = require("expo/metro-config");
 
 let withRorkMetro = (config) => config;
@@ -11,5 +12,6 @@ try {
 }
 
 const config = getDefaultConfig(__dirname);
+config.watchFolders = [...(config.watchFolders || []), path.resolve(__dirname, "packages")];
 
 module.exports = withRorkMetro(config);

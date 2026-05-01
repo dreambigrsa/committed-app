@@ -15,6 +15,7 @@ import { queueRelationshipChange, syncOfflineQueue, getOfflineQueue, Relationshi
 import { buildPostLink, buildReelLink } from '@/lib/deep-link-service';
 import { getStoredReferralCode, clearStoredReferralCode } from '@/lib/referral-storage';
 import { getDisplayName } from '@/lib/identity';
+import { getFeedPostVisibilityOrFilter, getFeedReelVisibilityOrFilter } from '@committed/shared';
 
 /** Reject if Supabase (or any) promise hangs — common on slow mobile networks. */
 function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string): Promise<T> {
@@ -670,7 +671,7 @@ export const [AppContext, useApp] = createContextHook(() => {
           *,
           users!posts_user_id_fkey(${postUserSelect})
         `)
-        .or(`moderation_status.eq.approved,user_id.eq.${userId}`)
+        .or(getFeedPostVisibilityOrFilter(userId))
         .order('created_at', { ascending: false })
         .limit(50);
       
@@ -727,7 +728,7 @@ export const [AppContext, useApp] = createContextHook(() => {
           *,
           users!reels_user_id_fkey(${postUserSelect})
         `)
-        .or(`status.eq.approved,user_id.eq.${userId}`)
+        .or(getFeedReelVisibilityOrFilter(userId))
         .order('created_at', { ascending: false })
         .limit(50);
       
@@ -739,7 +740,7 @@ export const [AppContext, useApp] = createContextHook(() => {
             *,
             users!reels_user_id_fkey(${postUserSelect})
           `)
-          .or(`moderation_status.eq.approved,user_id.eq.${userId}`)
+          .or(getFeedPostVisibilityOrFilter(userId))
           .order('created_at', { ascending: false })
           .limit(50);
         

@@ -10,8 +10,11 @@ This document is the **internal map** requested for system alignment: same backe
 | `packages/shared/src/supabase-public-config.ts` | Production Supabase URL + anon key fallbacks (public). |
 | `packages/shared/src/feed-visibility.ts` | Post/reel OR filters — **same strings** as `AppContext` / web shell. |
 | `packages/shared/src/feed-constants.ts` | Feed limits (50) + `APP_POST_USER_SELECT` aligned with Expo. |
+| `packages/shared/src/feed-loaders.ts` | `fetchFeedPostsWithLikes` / `fetchFeedReelsWithLikes` — **same** Supabase chains as `loadUserData` (used by Expo + `MobileWebAppShell`). |
+| `packages/shared/src/bootstrap-parallel-loaders.ts` | `fetchLoadUserDataParallelBundle` — ads, relationships, requests, notifications, alerts, blocks, follows, disputes (used by `AppContext`). |
+| `packages/shared/src/bootstrap-constants.ts` | Shared bootstrap limits (notifications 50, conversations list 50) — `MobileWebAppShell` aligned with `AppContext`. |
 
-**Consumers:** `lib/supabase.ts`, `lib/trpc.ts`, `contexts/AppContext.tsx`, `web/lib/supabase-client.ts`, `web/lib/trpc-react.tsx`, `web/lib/content-visibility.ts`, `web/components/MobileWebAppShell.tsx`.
+**Consumers:** `lib/supabase.ts`, `lib/trpc.ts`, `contexts/AppContext.tsx`, `web/lib/supabase-client.ts`, `web/lib/trpc-react.tsx` (+ `AuthSessionTrpcSync` for session-driven query invalidation), `web/lib/content-visibility.ts`, `web/components/MobileWebAppShell.tsx`.
 
 ## 1. Expo app — data & API layer
 

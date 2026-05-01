@@ -37,9 +37,10 @@ import {
   X,
 } from 'lucide-react';
 import {
-  APP_FEED_POSTS_LIMIT,
-  APP_FEED_REELS_LIMIT,
-  APP_POST_USER_SELECT,
+  APP_CONVERSATIONS_LIST_LIMIT,
+  APP_NOTIFICATIONS_BOOTSTRAP_LIMIT,
+  fetchFeedPostsWithLikes,
+  fetchFeedReelsWithLikes,
 } from '@committed/shared';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { buildPostWebUrl, buildReelWebUrl } from '@/lib/appLinks';
@@ -1088,23 +1089,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         email: authUser.email ?? null,
       });
 
-      const [postsResult, reelsResult, relationshipResult, myDatingResult, datingResult, notificationsResult, conversationsResult, likesResult, matchesResult] = await Promise.all([
-        supabase
-          .from('posts')
-          .select(
-            `id,user_id,content,media_urls,media_type,comment_count,created_at,users!posts_user_id_fkey(${APP_POST_USER_SELECT})`
-          )
-          .or(getPostVisibilityOrFilter(authUser.id))
-          .order('created_at', { ascending: false })
-          .limit(APP_FEED_POSTS_LIMIT),
-        supabase
-          .from('reels')
-          .select(
-            `id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(${APP_POST_USER_SELECT})`
-          )
-          .or(getReelVisibilityOrFilter(authUser.id))
-          .order('created_at', { ascending: false })
-          .limit(APP_FEED_REELS_LIMIT),
+      const [postsBundle, reelsBundle, relationshipResult, myDatingResult, datingResult, notificationsResult, conversationsResult, likesResult, matchesResult] = await Promise.all([
+        fetchFeedPostsWithLikes(supabase, authUser.id),
+        fetchFeedReelsWithLikes(supabase, authUser.id),
         supabase
           .from('relationships')
           .select('id,user_id,partner_user_id,partner_name,partner_phone,type,status,start_date,privacy_level')
@@ -1129,13 +1116,13 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           .select('id,title,message,created_at,read,type,data')
           .eq('user_id', authUser.id)
           .order('created_at', { ascending: false })
-          .limit(20),
+          .limit(APP_NOTIFICATIONS_BOOTSTRAP_LIMIT),
         supabase
           .from('conversations')
           .select('id,last_message,last_message_at,created_at,participant_ids')
           .contains('participant_ids', [authUser.id])
           .order('last_message_at', { ascending: false })
-          .limit(20),
+          .limit(APP_CONVERSATIONS_LIST_LIMIT),
         supabase
           .from('dating_likes')
           .select('id,liker_id,is_super_like,created_at')
@@ -1150,27 +1137,23 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           .limit(30),
       ]);
 
-      const fetchedPosts = ((postsResult.data || []) as FeedPost[]).filter(Boolean);
-      const postIds = fetchedPosts.map((post) => post.id);
-      const postLikes = postIds.length
-        ? await supabase.from('post_likes').select('post_id,user_id').in('post_id', postIds)
-        : { data: [] as Array<{ post_id: string; user_id: string }> };
-      const likesByPost = new Map<string, string[]>();
-      (postLikes.data || []).forEach((like: any) => {
-        likesByPost.set(like.post_id, [...(likesByPost.get(like.post_id) || []), like.user_id]);
-      });
-      setPosts(fetchedPosts.map((post) => ({ ...post, likes: likesByPost.get(post.id) || [] })));
+      const fetchedPosts = (postsBundle.posts || []) as FeedPost[];
+      const likesByPostId = postsBundle.likesByPostId || {};
+      setPosts(
+        fetchedPosts.map((post) => ({
+          ...post,
+          likes: likesByPostId[post.id] || [],
+        }))
+      );
 
-      const fetchedReels = ((reelsResult.data || []) as Reel[]).filter(Boolean);
-      const reelIds = fetchedReels.map((reel) => reel.id);
-      const reelLikes = reelIds.length
-        ? await supabase.from('reel_likes').select('reel_id,user_id').in('reel_id', reelIds)
-        : { data: [] as Array<{ reel_id: string; user_id: string }> };
-      const likesByReel = new Map<string, string[]>();
-      (reelLikes.data || []).forEach((like: any) => {
-        likesByReel.set(like.reel_id, [...(likesByReel.get(like.reel_id) || []), like.user_id]);
-      });
-      setReels(fetchedReels.map((reel) => ({ ...reel, likes: likesByReel.get(reel.id) || [] })));
+      const fetchedReels = (reelsBundle.reels || []) as Reel[];
+      const likesByReelId = reelsBundle.likesByReelId || {};
+      setReels(
+        fetchedReels.map((reel) => ({
+          ...reel,
+          likes: likesByReelId[reel.id] || [],
+        }))
+      );
       setRelationship((relationshipResult.data || null) as RelationshipRow | null);
       const ownDating = myDatingResult.data as any;
       setMyDatingProfile((ownDating || null) as DatingProfile | null);

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { httpLink } from '@trpc/client';
 import { createTRPCReact } from '@trpc/react-query';
 import superjson from 'superjson';
@@ -14,6 +14,28 @@ import { getSupabaseBrowser } from '@/lib/supabase-client';
  * All data mutations that go through the committed API must use this client for parity.
  */
 export const trpc = createTRPCReact<AppRouter>();
+
+/** Invalidate React Query when Supabase session changes so tRPC picks up new Bearer token. */
+function AuthSessionTrpcSync() {
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    const supabase = getSupabaseBrowser();
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (
+        event === 'SIGNED_IN' ||
+        event === 'SIGNED_OUT' ||
+        event === 'TOKEN_REFRESHED' ||
+        event === 'USER_UPDATED'
+      ) {
+        void queryClient.invalidateQueries();
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [queryClient]);
+  return null;
+}
 
 export function createCommittedTrpcClient() {
   return trpc.createClient({
@@ -56,7 +78,10 @@ export function CommittedAppProviders({ children }: { children: React.ReactNode 
 
   return (
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthSessionTrpcSync />
+        {children}
+      </QueryClientProvider>
     </trpc.Provider>
   );
 }

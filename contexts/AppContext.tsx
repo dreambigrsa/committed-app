@@ -15,7 +15,13 @@ import { queueRelationshipChange, syncOfflineQueue, getOfflineQueue, Relationshi
 import { buildPostLink, buildReelLink } from '@/lib/deep-link-service';
 import { getStoredReferralCode, clearStoredReferralCode } from '@/lib/referral-storage';
 import { getDisplayName } from '@/lib/identity';
-import { getFeedPostVisibilityOrFilter, getFeedReelVisibilityOrFilter } from '@committed/shared';
+import {
+  fetchFeedPostsWithLikes,
+  fetchFeedReelsWithLikes,
+  fetchLoadUserDataParallelBundle,
+  getFeedPostVisibilityOrFilter,
+  getFeedReelVisibilityOrFilter,
+} from '@committed/shared';
 
 /** Reject if Supabase (or any) promise hangs — common on slow mobile networks. */
 function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string): Promise<T> {
@@ -665,35 +671,9 @@ export const [AppContext, useApp] = createContextHook(() => {
         });
       }
 
-      const { data: postsData } = await supabase
-        .from('posts')
-        .select(`
-          *,
-          users!posts_user_id_fkey(${postUserSelect})
-        `)
-        .or(getFeedPostVisibilityOrFilter(userId))
-        .order('created_at', { ascending: false })
-        .limit(50);
-      
-      // Deduplicate posts by ID (in case the OR query returns duplicates)
-      const uniquePostsData = postsData ? Array.from(
-        new Map(postsData.map((p: any) => [p.id, p])).values()
-      ) : [];
-
-      const postIds = uniquePostsData.map((p: any) => p.id);
-      const { data: postLikesData } = postIds.length > 0
-        ? await supabase
-            .from('post_likes')
-            .select('post_id, user_id')
-            .in('post_id', postIds)
-        : { data: [] as any[] };
+      const { posts: uniquePostsData, likesByPostId } = await fetchFeedPostsWithLikes(supabase, userId);
 
       if (uniquePostsData) {
-        const likesByPostId: Record<string, string[]> = {};
-        (postLikesData || []).forEach((like: any) => {
-          if (!likesByPostId[like.post_id]) likesByPostId[like.post_id] = [];
-          likesByPostId[like.post_id].push(like.user_id);
-        });
         const formattedPosts: Post[] = uniquePostsData.map((p: any) => {
           const likes = likesByPostId[p.id] || [];
           return {
@@ -720,61 +700,11 @@ export const [AppContext, useApp] = createContextHook(() => {
         markStage('posts_loaded');
       }
 
-      // Load reels: show approved reels or user's own reels (regardless of status)
-      // Try 'status' column first (from migration), then try 'moderation_status', then show all
-      let { data: reelsData, error: reelsError } = await supabase
-        .from('reels')
-        .select(`
-          *,
-          users!reels_user_id_fkey(${postUserSelect})
-        `)
-        .or(getFeedReelVisibilityOrFilter(userId))
-        .order('created_at', { ascending: false })
-        .limit(50);
-      
-      // If status column doesn't exist, try moderation_status
-      if (reelsError) {
-        const { data: reelsDataModStatus } = await supabase
-          .from('reels')
-          .select(`
-            *,
-            users!reels_user_id_fkey(${postUserSelect})
-          `)
-          .or(getFeedPostVisibilityOrFilter(userId))
-          .order('created_at', { ascending: false })
-          .limit(50);
-        
-        if (reelsDataModStatus) {
-          reelsData = reelsDataModStatus;
-        } else {
-          // If neither column exists, show all reels
-          const { data: allReels } = await supabase
-            .from('reels')
-            .select(`
-              *,
-              users!reels_user_id_fkey(${postUserSelect})
-            `)
-            .order('created_at', { ascending: false })
-            .limit(50);
-          reelsData = allReels;
-        }
-      }
+      const { reels: reelsDataList, likesByReelId } = await fetchFeedReelsWithLikes(supabase, userId);
+      const reelsData = reelsDataList;
 
-      const reelIds = reelsData?.map((r: any) => r.id) || [];
-      const { data: reelLikesData } = reelIds.length > 0
-        ? await supabase
-            .from('reel_likes')
-            .select('reel_id, user_id')
-            .in('reel_id', reelIds)
-        : { data: [] as any[] };
-
-      if (reelsData) {
-        const likesByReelId: Record<string, string[]> = {};
-        (reelLikesData || []).forEach((like: any) => {
-          if (!likesByReelId[like.reel_id]) likesByReelId[like.reel_id] = [];
-          likesByReelId[like.reel_id].push(like.user_id);
-        });
-        const formattedReels: Reel[] = reelsData.map((r: any) => {
+      if (reelsDataList) {
+        const formattedReels: Reel[] = reelsDataList.map((r: any) => {
           const likes = likesByReelId[r.id] || [];
           return {
             id: r.id,
@@ -795,59 +725,16 @@ export const [AppContext, useApp] = createContextHook(() => {
         markStage('reels_loaded');
       }
 
-      const [
-        { data: adsData },
-        { data: relationshipsData },
-        { data: requestsData },
-        { data: notificationsData },
-        { data: cheatingAlertsData },
-        { data: blockedUsersData },
-        { data: followsData },
-        { data: disputesData },
-      ] = await Promise.all([
-        supabase
-          .from('advertisements')
-          .select('*')
-          .eq('active', true)
-          .eq('status', 'approved')
-          .eq('billing_status', 'paid')
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('relationships')
-          .select('*')
-          .or(`user_id.eq.${userId},partner_user_id.eq.${userId}`)
-          .in('status', ['pending', 'verified']),
-        supabase
-          .from('relationship_requests')
-          .select('*')
-          .eq('to_user_id', userId)
-          .eq('status', 'pending')
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('notifications')
-          .select('id,user_id,type,title,message,data,read,created_at')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(50),
-        supabase
-          .from('cheating_alerts')
-          .select('id,user_id,partner_user_id,alert_type,description,read,created_at')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('blocked_users')
-          .select('blocked_id')
-          .eq('blocker_id', userId),
-        supabase
-          .from('follows')
-          .select('id,follower_id,following_id,created_at')
-          .or(`follower_id.eq.${userId},following_id.eq.${userId}`),
-        supabase
-          .from('disputes')
-          .select('id,relationship_id,initiated_by,dispute_type,description,status,resolution,auto_resolve_at,resolved_at,resolved_by,created_at')
-          .eq('initiated_by', userId)
-          .order('created_at', { ascending: false }),
-      ]);
+      const {
+        adsData,
+        relationshipsData,
+        requestsData,
+        notificationsData,
+        cheatingAlertsData,
+        blockedUsersData,
+        followsData,
+        disputesData,
+      } = await fetchLoadUserDataParallelBundle(supabase, userId);
       markStage('parallel_bootstrap_queries_loaded');
 
       if (adsData) {

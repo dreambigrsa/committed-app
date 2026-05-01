@@ -223,28 +223,53 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
         return;
       }
 
-      // Avoid hanging forever if local sign-out stalls; sign-in will replace the session anyway.
+      // Clear any stale local session quickly; sign-in below replaces it.
       try {
-        await raceWithTimeout(
+        await Promise.race([
           supabaseBrowser.auth.signOut({ scope: 'local' }),
-          8000,
-          'Sign out'
-        );
+          new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+        ]);
       } catch {
         /* non-fatal */
       }
 
-      const { data, error: signInError } = await raceWithTimeout(
-        supabaseBrowser.auth.signInWithPassword({
-          email: normalizedEmail,
-          password,
+      // Same-origin sign-in: server calls Supabase (works when the browser cannot reach *.supabase.co).
+      type SignInApiOk = {
+        access_token: string;
+        refresh_token: string;
+        user: { id: string | null; email: string | null };
+        profile?: { is_verified: boolean | null } | null;
+      };
+      const signInPayload = await raceWithTimeout(
+        fetch('/api/auth/sign-in', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: normalizedEmail, password }),
+        }).then(async (res) => {
+          const payload = (await res.json().catch(() => ({}))) as SignInApiOk & { error?: string };
+          if (!res.ok) {
+            throw new Error(
+              typeof payload.error === 'string' && payload.error ? payload.error : 'Sign in failed.'
+            );
+          }
+          return payload;
         }),
-        45_000,
+        60_000,
         'Sign in'
       );
-      if (signInError) throw signInError;
 
-      const signedInUser = data.user;
+      const { access_token: accessToken, refresh_token: refreshToken, user: apiUser } = signInPayload;
+      if (!accessToken || !refreshToken) {
+        throw new Error('Sign-in returned no tokens. Please try again.');
+      }
+
+      const { error: setSessionError } = await supabaseBrowser.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      });
+      if (setSessionError) throw setSessionError;
+
+      const signedInUser = apiUser;
       if (!signedInUser?.id) {
         throw new Error('Sign-in succeeded but no user was returned. Please try again.');
       }
@@ -255,23 +280,12 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
         signInUserId: signedInUser.id,
       });
 
-      const userId = signedInUser.id;
-      if (userId) {
-        const { data: profile } = await supabaseBrowser
-          .from('profiles')
-          .select('is_verified')
-          .eq('id', userId)
-          .maybeSingle();
-        console.debug('[WebAuthForm] Profile fetch response', {
-          requestedUserId: userId,
-          profile,
-        });
-
-        if (profile && (profile as { is_verified?: boolean }).is_verified === false) {
-          await sendVerification(normalizedEmail, data.session?.access_token);
-          router.replace(`/verify-email?email=${encodeURIComponent(normalizedEmail)}`);
-          return;
-        }
+      const prof = signInPayload.profile;
+      console.debug('[WebAuthForm] Profile from sign-in API', { userId: signedInUser.id, profile: prof });
+      if (prof && prof.is_verified === false) {
+        await sendVerification(normalizedEmail, accessToken);
+        router.replace(`/verify-email?email=${encodeURIComponent(normalizedEmail)}`);
+        return;
       }
 
       const redirectParam =

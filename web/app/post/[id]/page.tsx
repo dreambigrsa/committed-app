@@ -6,6 +6,7 @@ import { Heart, Loader2, MessageCircle, Send } from 'lucide-react';
 import { APP_SCHEME } from '@/lib/appLinks';
 import OpenAppFallback from '@/components/OpenAppFallback';
 import ExpoMirrorRoute from '@/components/ExpoMirrorRoute';
+import { buildPostCommentsByPostId, fetchPostCommentsAndLikes } from '@committed/shared';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { getDisplayName } from '@/lib/identity';
 
@@ -74,21 +75,30 @@ export default function PostPage() {
         if (!cancelled) setPost(data || null);
         if (!data?.id) return;
 
-        const [likesRes, commentsRes, myLikeRes] = await Promise.all([
+        const [likesRes, commentsBundle, myLikeRes] = await Promise.all([
           supabase.from('post_likes').select('id', { count: 'exact', head: true }).eq('post_id', data.id),
-          supabase
-            .from('comments')
-            .select('id,post_id,user_id,content,created_at,users!comments_user_id_fkey(full_name,username,email,profile_picture)')
-            .eq('post_id', data.id)
-            .is('parent_comment_id', null)
-            .order('created_at', { ascending: false })
-            .limit(30),
+          fetchPostCommentsAndLikes(supabase, [data.id]),
           currentUserId ? supabase.from('post_likes').select('id').eq('post_id', data.id).eq('user_id', currentUserId).maybeSingle() : Promise.resolve({ data: null }),
         ]);
         if (cancelled) return;
         setLikesCount(likesRes.count || 0);
-        setComments(commentsRes.data || []);
-        setCommentsCount((commentsRes.data || []).length);
+        const byPost = buildPostCommentsByPostId(commentsBundle.commentsData, commentsBundle.commentLikesData);
+        const top = byPost[data.id] || [];
+        const sorted = [...top].sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        const forUi = sorted.slice(0, 30).map((c) => ({
+          id: c.id,
+          content: c.content,
+          users: {
+            full_name: c.userName,
+            username: null as string | null,
+            email: null as string | null,
+            profile_picture: c.userAvatar ?? null,
+          },
+        }));
+        setComments(forUi);
+        setCommentsCount(forUi.length);
         setIsLiked(Boolean(myLikeRes.data));
       } finally {
         if (!cancelled) setLoadingPost(false);

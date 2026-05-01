@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, Bell, CheckCircle2, Film, Loader2, MessageCircle, ShieldCheck, ThumbsUp, UploadCloud, UserCircle2 } from 'lucide-react';
+import { fetchConversationsBootstrap, getDisplayName, type RawMessageRow } from '@committed/shared';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { getPostVisibilityOrFilter, getReelVisibilityOrFilter } from '@/lib/content-visibility';
 import { excludeDatingProfilesForUser, filterVisibleMessagesForUser } from '@/lib/parity-helpers';
@@ -69,15 +70,6 @@ function normalizePhone(value: string) {
 function formatShortDate(value?: string | null) {
   if (!value) return 'Not set';
   return new Intl.DateTimeFormat('en', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date(value));
-}
-
-function getDisplayName(user?: { full_name?: string | null; username?: string | null; email?: string | null } | null) {
-  if (!user) return 'Committed member';
-  if (user.username?.trim()) return user.username.trim();
-  if (user.full_name?.trim() && !user.full_name.includes('@')) return user.full_name.trim();
-  if (user.full_name?.trim()) return user.full_name.trim();
-  if (user.email?.includes('@')) return user.email.split('@')[0] || 'Committed member';
-  return user.email || 'Committed member';
 }
 
 function StatusMessage({ status, message }: { status: Status; message: string }) {
@@ -1942,6 +1934,7 @@ function MessagesPanel() {
   const [status, setStatus] = useState<Status>('idle');
   const [notice, setNotice] = useState('');
   const [preferredConversationId, setPreferredConversationId] = useState('');
+  const messagesCacheRef = useRef<Record<string, any[]>>({});
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1960,22 +1953,70 @@ function MessagesPanel() {
       setLoading(false);
       return;
     }
-    setCurrentUserId(session.user.id);
-    const { data, error } = await supabase
-      .from('conversations')
-      .select('id,participant_ids,last_message,last_message_at,created_at')
-      .contains('participant_ids', [session.user.id])
-      .order('last_message_at', { ascending: false })
-      .limit(30);
-    if (!error) {
-      const list = data ?? [];
-      setConversations(list);
-      if (preferredConversationId) {
-        const requested = list.find((conversation: any) => conversation.id === preferredConversationId);
-        if (requested) {
-          await loadMessages(preferredConversationId);
-        }
+    const uid = session.user.id;
+    setCurrentUserId(uid);
+    const convBootstrap = await fetchConversationsBootstrap(supabase, uid);
+    type ConvBootstrapRow = {
+      id: string;
+      participant_ids?: string[] | null;
+      last_message?: string | null;
+      last_message_at?: string | null;
+      created_at?: string | null;
+    };
+    const participantsMap = new Map<string, { full_name?: string | null; username?: string | null; email?: string | null; profile_picture?: string | null }>(
+      (convBootstrap.participantUsers || []).map((p) => {
+        const row = p as { id: string };
+        return [row.id, p] as const;
+      })
+    );
+    const messagesByConv: Record<string, RawMessageRow[]> = convBootstrap.messagesByConversation || {};
+    const dedupList = (convBootstrap.deduplicatedConversations ?? []) as ConvBootstrapRow[];
+    const rawList = dedupList.filter((c) => (messagesByConv[c.id] || []).length > 0);
+
+    const cache: Record<string, any[]> = {};
+    for (const c of rawList) {
+      cache[c.id] = (messagesByConv[c.id] || []).map((m: any) => ({
+        id: m.id,
+        sender_id: m.sender_id,
+        receiver_id: m.receiver_id,
+        content: m.content ?? '',
+        message_type: m.message_type,
+        created_at: m.created_at,
+        deleted_for_sender: m.deleted_for_sender,
+        deleted_for_receiver: m.deleted_for_receiver,
+      }));
+    }
+    messagesCacheRef.current = cache;
+
+    const enriched = rawList.map((conversation) => {
+      const rows = messagesByConv[conversation.id] || [];
+      const last = rows[rows.length - 1];
+      let lastMessage = conversation.last_message;
+      let lastMessageAt = conversation.last_message_at;
+      if (last) {
+        lastMessageAt = last.created_at;
+        const mt = last.message_type || 'text';
+        lastMessage =
+          mt === 'image'
+            ? '📷 Image'
+            : mt === 'document'
+              ? `📄 ${(last.document_name as string | null) || 'Document'}`
+              : (last.content as string) || '';
       }
+      const otherIds = (conversation.participant_ids || []).filter((id: string) => id !== uid);
+      const titleLabel =
+        otherIds.map((id: string) => getDisplayName(participantsMap.get(id))).join(', ') || 'Conversation';
+      return {
+        ...conversation,
+        last_message: lastMessage || conversation.last_message || '',
+        last_message_at: lastMessageAt || conversation.last_message_at,
+        titleLabel,
+      };
+    });
+
+    setConversations(enriched);
+    if (preferredConversationId) {
+      await loadMessages(preferredConversationId);
     }
     setLoading(false);
   };
@@ -1987,6 +2028,11 @@ function MessagesPanel() {
       data: { session },
     } = await supabase.auth.getSession();
     const uid = session?.user?.id || '';
+    const cached = messagesCacheRef.current[conversationId];
+    if (cached !== undefined) {
+      setMessages(cached);
+      return;
+    }
     const { data } = await supabase
       .from('messages')
       .select('id,sender_id,receiver_id,content,message_type,created_at,deleted_for_sender,deleted_for_receiver')
@@ -1995,6 +2041,7 @@ function MessagesPanel() {
       .limit(80);
     const visible = filterVisibleMessagesForUser((data ?? []) as any[], uid);
     setMessages(visible);
+    messagesCacheRef.current[conversationId] = visible;
   };
 
   useEffect(() => {
@@ -2057,7 +2104,7 @@ function MessagesPanel() {
                 onClick={() => loadMessages(conversation.id)}
                 className={`rounded-2xl border p-4 text-left ${selectedId === conversation.id ? 'border-violet-500 bg-violet-50' : 'border-slate-200 bg-slate-50'}`}
               >
-                <p className="font-bold text-slate-950">Conversation</p>
+                <p className="font-bold text-slate-950">{conversation.titleLabel || 'Conversation'}</p>
                 <p className="mt-1 line-clamp-2 text-sm text-slate-600">{conversation.last_message || 'No recent message'}</p>
               </button>
             ))}

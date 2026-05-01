@@ -5,6 +5,7 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { APP_SCHEME } from '@/lib/appLinks';
 import OpenAppFallback from '@/components/OpenAppFallback';
 import ExpoMirrorRoute from '@/components/ExpoMirrorRoute';
+import { buildReelCommentsByReelId, fetchReelCommentsAndLikes } from '@committed/shared';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { getDisplayName } from '@/lib/identity';
 
@@ -73,20 +74,30 @@ export default function ReelPage() {
         if (!cancelled) setReel(data || null);
 
         if (!data?.id) return;
-        const [likesRes, commentsRes, myLikeRes] = await Promise.all([
+        const [likesRes, commentsBundle, myLikeRes] = await Promise.all([
           supabase.from('reel_likes').select('id', { count: 'exact', head: true }).eq('reel_id', data.id),
-          supabase
-            .from('reel_comments')
-            .select('id,reel_id,user_id,content,created_at,users!reel_comments_user_id_fkey(full_name,username,email,profile_picture)')
-            .eq('reel_id', data.id)
-            .order('created_at', { ascending: false })
-            .limit(20),
+          fetchReelCommentsAndLikes(supabase, [data.id]),
           currentUserId ? supabase.from('reel_likes').select('id').eq('reel_id', data.id).eq('user_id', currentUserId).maybeSingle() : Promise.resolve({ data: null }),
         ]);
         if (cancelled) return;
         setLikesCount(likesRes.count || 0);
-        setComments(commentsRes.data || []);
-        setCommentsCount((commentsRes.data || []).length);
+        const byReel = buildReelCommentsByReelId(commentsBundle.commentsData, commentsBundle.commentLikesData);
+        const top = byReel[data.id] || [];
+        const sorted = [...top].sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        const forUi = sorted.slice(0, 20).map((c) => ({
+          id: c.id,
+          content: c.content,
+          users: {
+            full_name: c.userName,
+            username: null as string | null,
+            email: null as string | null,
+            profile_picture: c.userAvatar ?? null,
+          },
+        }));
+        setComments(forUi);
+        setCommentsCount(forUi.length);
         setIsLiked(Boolean(myLikeRes.data));
       } finally {
         if (!cancelled) setLoadingReel(false);
@@ -133,7 +144,7 @@ export default function ReelPage() {
       const supabase = getSupabaseBrowser() as any;
       const { data, error } = await supabase
         .from('reel_comments')
-        .insert({ reel_id: reel.id, user_id: sessionUserId, content: text })
+        .insert({ reel_id: reel.id, user_id: sessionUserId, content: text, message_type: 'text' })
         .select('id,reel_id,user_id,content,created_at,users!reel_comments_user_id_fkey(full_name,username,email,profile_picture)')
         .single();
       if (error || !data) throw error || new Error('Unable to add comment');

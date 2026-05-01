@@ -100,6 +100,12 @@
 
 **Auth header:** `Authorization: Bearer <supabase access_token>` on tRPC (same contract web must use).
 
+### tRPC usage scan (Expo app/contexts)
+
+- Search pass for direct `trpc.` usage in `app/` + `contexts/` currently returns **no direct call sites**.
+- Practical implication: most feature flows in those folders are currently Supabase-first; tRPC usage is concentrated in shared API/client layers and backend route definitions.
+- Mirror rule still stands: where Expo uses tRPC procedures, web should use the same procedures and auth headers.
+
 ## Screen inventory (Expo Router files)
 
 **Count:** 106 `app/**/*.tsx` files (includes layouts, duplicates in listing).
@@ -123,11 +129,15 @@
 
 ## Database touchpoints
 
-There is **no single generated table list** in-repo. Practical approach:
+Generated inventory is now tracked in:
 
-1. Grep Expo + web + `backend/` for `.from('` and Supabase RPC names.
+- [`EXPO-SUPABASE-TABLE-INVENTORY.md`](./EXPO-SUPABASE-TABLE-INVENTORY.md) — **92** unique tables from Expo-side `app/`, `contexts/`, `lib/`, `components/`.
+
+Method:
+
+1. Script: `scripts/extract-supabase-tables.mjs`
 2. Treat **migrations** under `supabase/migrations/` as schema source of truth.
-3. When adding a mirror screen, **copy the same `.from()` / tRPC procedure** as Expo — do not invent parallel tables.
+3. When adding mirror pages, copy the same `.from()` / tRPC procedure — do not invent parallel tables.
 
 ## Data fetching patterns (Expo)
 
@@ -139,8 +149,17 @@ There is **no single generated table list** in-repo. Practical approach:
 | Realtime | `setupRealtimeSubscriptions` in `AppContext` |
 | Refresh | Pull-to-refresh / `loadUserData` retries per feature |
 
+### Pagination + cache notes (Phase 1.7)
+
+- **Bootstrap limits** are centralized for core lists in shared constants/loaders (e.g. feed, notifications, conversations).
+- **Conversation/message bootstrap** uses bounded list and message caps in shared loaders.
+- **Feed lists** are capped in shared feed loaders and supplemented by realtime updates.
+- **Cache behavior** in Expo is largely `AppContext`-driven (`writeCache` + hydration paths), with feature-specific local state in route screens.
+- **Refresh triggers** include explicit reload actions, auth state changes, visibility/app-state transitions, and realtime deltas.
+
 ## Related docs
 
 - Mirror architecture & shared modules: [`EXPO-NEXT-MIRROR-ARCHITECTURE.md`](./EXPO-NEXT-MIRROR-ARCHITECTURE.md)
 - Honest parity + gaps: [`EXPO-NEXT-PARITY-AUDIT.md`](./EXPO-NEXT-PARITY-AUDIT.md)
 - **Execution checklist:** [`EXPO-NEXT-MIRROR-MASTER-TODO.md`](./EXPO-NEXT-MIRROR-MASTER-TODO.md)
+- Supabase table inventory: [`EXPO-SUPABASE-TABLE-INVENTORY.md`](./EXPO-SUPABASE-TABLE-INVENTORY.md)

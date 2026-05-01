@@ -24,9 +24,9 @@ This is the **single checklist** aligned to your requirements (analysis → shar
 | 1.2 | Complete **root `Stack.Screen` inventory** from `app/_layout.tsx` (every screen name). | ☑ (see [`EXPO-APP-INTERNAL-MAP.md`](./EXPO-APP-INTERNAL-MAP.md)) |
 | 1.3 | Export **dating stack** routes from `app/dating/_layout.tsx` + nested files. | ☑ (table in internal map) |
 | 1.4 | Document **admin** route list (`app/admin/*.tsx` → capability). | ☑ (file list in internal map) |
-| 1.5 | Grep-driven **Supabase table usage** pass: `contexts/`, `app/`, `backend/`, `web/` — attach summary table or link to spreadsheet. | ☐ |
-| 1.6 | List **tRPC procedures** used by Expo (search `trpc.` / `api.` in `app/` + `contexts/`). | ☐ |
-| 1.7 | Document **pagination + cache keys** per heavy screen (feed, dating discovery, admin lists). | ☐ |
+| 1.5 | Grep-driven **Supabase table usage** pass: `contexts/`, `app/`, `backend/`, `web/` — attach summary table or link to spreadsheet. | ☑ (`EXPO-SUPABASE-TABLE-INVENTORY.md`, 92 Expo-side tables) |
+| 1.6 | List **tRPC procedures** used by Expo (search `trpc.` / `api.` in `app/` + `contexts/`). | ☑ (scan result documented in `EXPO-APP-INTERNAL-MAP.md`: no direct `trpc.` call sites in `app/` + `contexts/`) |
+| 1.7 | Document **pagination + cache keys** per heavy screen (feed, dating discovery, admin lists). | ☑ (documented in internal map notes; deeper per-screen profiling remains Phase 7) |
 
 ---
 

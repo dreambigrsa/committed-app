@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { APP_SCHEME } from '@/lib/appLinks';
 import OpenAppFallback from '@/components/OpenAppFallback';
+import ExpoMirrorRoute from '@/components/ExpoMirrorRoute';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { getDisplayName } from '@/lib/identity';
 
@@ -11,7 +12,10 @@ const FALLBACK_DELAY_MS = 1200;
 
 export default function ReelPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const id = typeof params.id === 'string' ? params.id : '';
+  const isCreateRoute = id === 'create';
+  const webMode = searchParams.get('web') === '1';
   const [showFallback, setShowFallback] = useState(false);
   const [loadingReel, setLoadingReel] = useState(true);
   const [reel, setReel] = useState<any>(null);
@@ -28,18 +32,23 @@ export default function ReelPage() {
   const deepLinkUrl = `${APP_SCHEME}reel/${id}`;
 
   useEffect(() => {
-    if (!id) {
+    if (isCreateRoute) return;
+    if (!id || webMode) {
       setShowFallback(true);
       return;
     }
     window.location.href = deepLinkUrl;
     const t = setTimeout(() => setShowFallback(true), FALLBACK_DELAY_MS);
     return () => clearTimeout(t);
-  }, [id, deepLinkUrl]);
+  }, [id, deepLinkUrl, isCreateRoute, webMode]);
 
   useEffect(() => {
     let cancelled = false;
     const loadReel = async () => {
+      if (isCreateRoute) {
+        setLoadingReel(false);
+        return;
+      }
       if (!id) {
         setLoadingReel(false);
         return;
@@ -87,7 +96,11 @@ export default function ReelPage() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, isCreateRoute]);
+
+  if (isCreateRoute) {
+    return <ExpoMirrorRoute initialTab="reels" />;
+  }
 
   const toggleLike = async () => {
     if (!reel?.id || !sessionUserId || likePending) return;

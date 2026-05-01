@@ -1639,7 +1639,7 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
               return (
                 <article key={post.id} className="rounded-xl border border-slate-200 bg-white p-4">
                   <div className="flex items-center justify-between gap-3">
-                    <Link href={`/dating/user-profile?userId=${encodeURIComponent(post.user_id)}`} className="font-bold text-slate-950 hover:text-violet-700">
+                    <Link href={`/app/dating/user-profile?userId=${encodeURIComponent(post.user_id)}`} className="font-bold text-slate-950 hover:text-violet-700">
                       {getDisplayName(post.users)}
                     </Link>
                     <div className="flex items-center gap-2">
@@ -1666,7 +1666,7 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
                           Message
                         </button>
                       ) : null}
-                      <Link href={`/post/${post.id}`} className="text-sm font-bold text-violet-700">Open</Link>
+                      <Link href={`/post/${post.id}?web=1`} className="text-sm font-bold text-violet-700">Open</Link>
                     </div>
                   </div>
                   <p className="mt-3 whitespace-pre-wrap text-[15px] leading-6 text-slate-700">{post.content}</p>
@@ -1739,7 +1739,7 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
                         Message
                       </button>
                     ) : null}
-                    <Link href={`/reel/${reel.id}`} className="text-violet-700">Open reel</Link>
+                    <Link href={`/reel/${reel.id}?web=1`} className="text-violet-700">Open reel</Link>
                   </div>
                 </div>
               </div>

@@ -5,6 +5,7 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { Heart, Loader2, MessageCircle, Send } from 'lucide-react';
 import { APP_SCHEME } from '@/lib/appLinks';
 import OpenAppFallback from '@/components/OpenAppFallback';
+import ExpoMirrorRoute from '@/components/ExpoMirrorRoute';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { getDisplayName } from '@/lib/identity';
 
@@ -14,6 +15,7 @@ export default function PostPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const id = typeof params.id === 'string' ? params.id : '';
+  const isCreateRoute = id === 'create';
   const webMode = searchParams.get('web') === '1';
   const [showFallback, setShowFallback] = useState(webMode);
   const [loadingPost, setLoadingPost] = useState(true);
@@ -30,6 +32,7 @@ export default function PostPage() {
   const deepLinkUrl = `${APP_SCHEME}post/${id}`;
 
   useEffect(() => {
+    if (isCreateRoute) return;
     if (!id || webMode) {
       setShowFallback(true);
       return;
@@ -37,11 +40,15 @@ export default function PostPage() {
     window.location.href = deepLinkUrl;
     const t = setTimeout(() => setShowFallback(true), FALLBACK_DELAY_MS);
     return () => clearTimeout(t);
-  }, [id, deepLinkUrl, webMode]);
+  }, [id, deepLinkUrl, isCreateRoute, webMode]);
 
   useEffect(() => {
     let cancelled = false;
     const loadPost = async () => {
+      if (isCreateRoute) {
+        setLoadingPost(false);
+        return;
+      }
       if (!id) {
         setLoadingPost(false);
         return;
@@ -91,7 +98,11 @@ export default function PostPage() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, isCreateRoute]);
+
+  if (isCreateRoute) {
+    return <ExpoMirrorRoute initialTab="feed" />;
+  }
 
   const toggleLike = async () => {
     if (!post?.id || !sessionUserId || likePending) return;

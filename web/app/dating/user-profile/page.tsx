@@ -4,12 +4,14 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { deepLinks } from '@/lib/appLinks';
 import OpenAppFallback from '@/components/OpenAppFallback';
+import ExpoMirrorRoute from '@/components/ExpoMirrorRoute';
 
 const FALLBACK_DELAY_MS = 1200;
 
 function DatingProfileBridge() {
   const searchParams = useSearchParams();
   const userId = searchParams.get('userId') || '';
+  const webMode = searchParams.get('web') === '1';
   const [showFallback, setShowFallback] = useState(false);
 
   const deepLinkUrl = useMemo(() => {
@@ -18,6 +20,10 @@ function DatingProfileBridge() {
   }, [userId]);
 
   useEffect(() => {
+    if (webMode) {
+      setShowFallback(true);
+      return;
+    }
     if (!deepLinkUrl) {
       setShowFallback(true);
       return;
@@ -26,7 +32,11 @@ function DatingProfileBridge() {
     window.location.href = deepLinkUrl;
     const timer = setTimeout(() => setShowFallback(true), FALLBACK_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [deepLinkUrl]);
+  }, [deepLinkUrl, webMode]);
+
+  if (webMode) {
+    return <ExpoMirrorRoute initialTab="dating" />;
+  }
 
   if (!userId) {
     return (

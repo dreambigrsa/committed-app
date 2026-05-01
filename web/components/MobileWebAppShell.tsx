@@ -83,6 +83,21 @@ type Reel = {
   likes?: string[];
 };
 
+type SocialComment = {
+  id: string;
+  targetId: string;
+  userId: string;
+  userName: string;
+  userAvatar?: string | null;
+  content: string;
+  stickerImageUrl?: string | null;
+  messageType?: 'text' | 'sticker';
+  likes: string[];
+  createdAt?: string | null;
+  parentCommentId?: string | null;
+  replies?: SocialComment[];
+};
+
 type DatingProfile = {
   id: string;
   user_id: string;
@@ -271,19 +286,38 @@ const routeToTab: Record<string, TabKey> = {
 };
 
 const adminRouteCards = [
+  ['analytics', 'Analytics', 'Product and trust metrics'],
   ['users', 'Manage Users', 'Roles, bans, restrictions, verification flags'],
+  ['roles', 'Roles', 'User roles and permissions'],
+  ['ban-appeals', 'Ban Appeals', 'Member appeal queue'],
+  ['reports', 'Reports', 'Reported content and user issues'],
+  ['disputes', 'Disputes', 'Relationship and safety disputes'],
   ['relationships', 'Manage Relationships', 'Verify, end, or remove relationships'],
   ['false-relationship-reports', 'False Reports', 'Review user reports without hiding relationships'],
   ['id-verifications', 'ID Verifications', 'Review identity documents'],
+  ['face-matching', 'Face Matching', 'Face verification providers and results'],
+  ['verification-services', 'Verification Services', 'Verification service configuration'],
+  ['dating', 'Dating Admin', 'Dating profiles and activity'],
+  ['dating-interests', 'Dating Interests', 'Interest chips available in dating'],
+  ['dating-date-options', 'Date Options', 'Date suggestion options'],
   ['professional-profiles', 'Professional Profiles', 'Applications and public profiles'],
+  ['professional-roles', 'Professional Roles', 'Roles professionals can apply for'],
   ['professional-sessions', 'Professional Sessions', 'Bookings and session status'],
   ['professional-reviews', 'Professional Reviews', 'Ratings and client feedback'],
+  ['professional-analytics', 'Professional Analytics', 'Professional session and review metrics'],
+  ['escalation-rules', 'Escalation Rules', 'Professional escalation automation'],
   ['posts-review', 'Posts Review', 'Moderation queue'],
   ['reels-review', 'Reels Review', 'Video moderation queue'],
   ['advertisements', 'Advertisements', 'Campaigns and boosted posts'],
+  ['payment-methods', 'Payment Methods', 'Manual payment options'],
   ['payment-verifications', 'Payment Verifications', 'Proof and subscription approvals'],
+  ['payment-proof-viewer', 'Payment Proof Viewer', 'View uploaded proof safely'],
   ['legal-policies', 'Legal Policies', 'Terms, privacy, and consent versions'],
   ['pricing', 'Pricing', 'Plans and limits'],
+  ['stickers', 'Stickers', 'Sticker packs and chat assets'],
+  ['trigger-words', 'Trigger Words', 'Safety trigger words'],
+  ['warning-templates', 'Warning Templates', 'Reusable moderation warnings'],
+  ['logs', 'Admin Logs', 'Recent admin actions'],
   ['settings', 'Admin Settings', 'Operational controls'],
 ] as const;
 
@@ -304,24 +338,25 @@ const verificationRouteCards = [
 
 const adminGenericRoutes: Record<string, { title: string; table: string; select: string; order?: string; description: string }> = {
   analytics: { title: 'Analytics', table: 'analytics_events', select: 'id,event_name,user_id,created_at', order: 'created_at', description: 'Recent product and safety analytics events.' },
-  'ban-appeals': { title: 'Ban Appeals', table: 'ban_appeals', select: 'id,user_id,reason,status,created_at', order: 'created_at', description: 'Member appeal queue.' },
-  dating: { title: 'Dating Admin', table: 'dating_profiles', select: 'id,user_id,age,location_city,is_active,created_at', order: 'created_at', description: 'Dating profile overview.' },
+  'ban-appeals': { title: 'Ban Appeals', table: 'ban_appeals', select: 'id,user_id,restriction_id,appeal_type,restricted_feature,reason,status,admin_response,reviewed_by,reviewed_at,created_at', order: 'created_at', description: 'Member appeal queue.' },
+  dating: { title: 'Dating Admin', table: 'dating_profiles', select: 'id,user_id,bio,age,location_city,location_country,is_active,show_me,admin_suspended,admin_suspended_reason,admin_limited,admin_limited_reason,premium_trial_ends_at,created_at,users!dating_profiles_user_id_fkey(full_name,email,profile_picture)', order: 'created_at', description: 'Dating profile overview.' },
   'dating-date-options': { title: 'Date Options', table: 'dating_date_options', select: 'id,title,category,is_active,created_at', order: 'created_at', description: 'Date suggestion options.' },
   'dating-interests': { title: 'Dating Interests', table: 'dating_interests', select: 'id,name,category,is_active,created_at', order: 'created_at', description: 'Interest chips available in dating.' },
   disputes: { title: 'Disputes', table: 'disputes', select: 'id,user_id,status,reason,created_at', order: 'created_at', description: 'Open disputes and resolution state.' },
   'escalation-rules': { title: 'Escalation Rules', table: 'escalation_rules', select: 'id,name,is_active,created_at', order: 'created_at', description: 'Professional escalation automation.' },
   'escalation-rules-fixed': { title: 'Escalation Rules', table: 'escalation_rules', select: 'id,name,is_active,created_at', order: 'created_at', description: 'Professional escalation automation.' },
-  'face-matching': { title: 'Face Matching', table: 'face_verification_results', select: 'id,user_id,status,confidence,created_at', order: 'created_at', description: 'Face matching verification results.' },
+  'face-matching': { title: 'Face Matching', table: 'face_matching_providers', select: 'id,name,is_active,created_at', order: 'created_at', description: 'Face matching provider configuration.' },
   'id-verifications': { title: 'ID Verifications', table: 'verification_documents', select: 'id,user_id,document_type,document_url,status,submitted_at,user:users!verification_documents_user_id_fkey(full_name,email)', order: 'submitted_at', description: 'Identity documents waiting for admin review.' },
-  logs: { title: 'Admin Logs', table: 'admin_logs', select: 'id,admin_id,action,target_type,created_at', order: 'created_at', description: 'Recent admin actions.' },
+  logs: { title: 'Admin Logs', table: 'activity_logs', select: 'id,user_id,action,entity_type,entity_id,created_at', order: 'created_at', description: 'Recent admin and safety activity.' },
   'payment-methods': { title: 'Payment Methods', table: 'payment_methods', select: 'id,name,type,is_active,created_at', order: 'created_at', description: 'Manual payment options.' },
   'professional-roles': { title: 'Professional Roles', table: 'professional_roles', select: 'id,name,category,is_active,created_at', order: 'created_at', description: 'Roles professionals can apply for.' },
-  reports: { title: 'Reports', table: 'reports', select: 'id,reported_by,reported_user_id,type,status,created_at', order: 'created_at', description: 'User and content reports.' },
-  roles: { title: 'Roles', table: 'roles', select: 'id,name,created_at', order: 'created_at', description: 'App role configuration.' },
+  'professional-analytics': { title: 'Professional Analytics', table: 'professional_sessions', select: 'id,user_id,professional_id,status,scheduled_date,booking_fee_amount,payment_status,created_at', order: 'created_at', description: 'Professional sessions used for analytics.' },
+  reports: { title: 'Reports', table: 'reported_content', select: 'id,reporter_id,content_type,content_id,reason,status,created_at', order: 'created_at', description: 'User and content reports.' },
+  roles: { title: 'Roles', table: 'users', select: 'id,full_name,email,role,created_at', order: 'created_at', description: 'User role configuration.' },
   settings: { title: 'Admin Settings', table: 'app_settings', select: 'id,key,value,updated_at', order: 'updated_at', description: 'Operational settings.' },
   stickers: { title: 'Stickers', table: 'stickers', select: 'id,name,is_active,created_at', order: 'created_at', description: 'Sticker packs and chat assets.' },
   'trigger-words': { title: 'Trigger Words', table: 'trigger_words', select: 'id,word,severity,is_active,created_at', order: 'created_at', description: 'Safety trigger words.' },
-  'verification-services': { title: 'Verification Services', table: 'verification_services', select: 'id,name,is_active,created_at', order: 'created_at', description: 'Verification service configuration.' },
+  'verification-services': { title: 'Verification Services', table: 'verification_service_configs', select: 'id,service_name,is_enabled,created_at', order: 'created_at', description: 'Verification service configuration.' },
   'warning-templates': { title: 'Warning Templates', table: 'warning_templates', select: 'id,title,severity,is_active,created_at', order: 'created_at', description: 'Reusable moderation warnings.' },
 };
 
@@ -343,6 +378,44 @@ function timeAgo(value?: string | null) {
 function mediaImage(url?: string | null) {
   if (!url) return null;
   return url;
+}
+
+function looksLikeUuid(value?: string | null) {
+  return !!value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function nestSocialComments(rows: any[], likesRows: any[], targetColumn: 'post_id' | 'reel_id') {
+  const likesByComment = new Map<string, string[]>();
+  (likesRows || []).forEach((like: any) => {
+    const commentId = String(like.comment_id || '');
+    if (!commentId) return;
+    likesByComment.set(commentId, [...(likesByComment.get(commentId) || []), like.user_id].filter(Boolean));
+  });
+
+  const all: SocialComment[] = (rows || []).map((comment: any) => ({
+    id: comment.id,
+    targetId: comment[targetColumn],
+    userId: comment.user_id,
+    userName: comment.users?.full_name || comment.users?.email || 'Committed member',
+    userAvatar: comment.users?.profile_picture || null,
+    content: comment.content || '',
+    stickerImageUrl: comment.stickers?.image_url || null,
+    messageType: comment.message_type || 'text',
+    likes: likesByComment.get(comment.id) || [],
+    createdAt: comment.created_at,
+    parentCommentId: comment.parent_comment_id || null,
+    replies: [],
+  }));
+  const topLevel: SocialComment[] = [];
+  const byId = new Map(all.map((comment) => [comment.id, comment]));
+  all.forEach((comment) => {
+    if (comment.parentCommentId && byId.has(comment.parentCommentId)) {
+      byId.get(comment.parentCommentId)?.replies?.push(comment);
+    } else {
+      topLevel.push(comment);
+    }
+  });
+  return topLevel;
 }
 
 function getDateStringFromParts(day?: string, month?: string, year?: string) {
@@ -509,14 +582,30 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const [loading, setLoading] = useState(true);
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [reels, setReels] = useState<Reel[]>([]);
+  const [routePost, setRoutePost] = useState<FeedPost | null>(null);
+  const [routePostLoading, setRoutePostLoading] = useState(false);
+  const [routeReel, setRouteReel] = useState<Reel | null>(null);
+  const [routeReelLoading, setRouteReelLoading] = useState(false);
+  const [postCommentsByPost, setPostCommentsByPost] = useState<Record<string, SocialComment[]>>({});
+  const [reelCommentsByReel, setReelCommentsByReel] = useState<Record<string, SocialComment[]>>({});
+  const [commentsLoadingByTarget, setCommentsLoadingByTarget] = useState<Record<string, boolean>>({});
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [commentSubmittingKey, setCommentSubmittingKey] = useState<string | null>(null);
   const [relationship, setRelationship] = useState<RelationshipRow | null>(null);
   const [datingProfiles, setDatingProfiles] = useState<DatingProfile[]>([]);
   const [myDatingProfile, setMyDatingProfile] = useState<DatingProfile | null>(null);
+  const [routeDatingProfile, setRouteDatingProfile] = useState<any>(null);
+  const [routeDatingProfileLoading, setRouteDatingProfileLoading] = useState(false);
+  const [routeDatingReaction, setRouteDatingReaction] = useState({ liked: false, superLiked: false, matched: false });
+  const [routeDatingBadges, setRouteDatingBadges] = useState<any[]>([]);
+  const [routeConversationStarters, setRouteConversationStarters] = useState<string[]>([]);
   const [datingLikes, setDatingLikes] = useState<DatingLike[]>([]);
   const [datingMatches, setDatingMatches] = useState<DatingMatch[]>([]);
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [conversations, setConversations] = useState<ConversationRow[]>([]);
   const [messagesByConversation, setMessagesByConversation] = useState<Record<string, MessageRow[]>>({});
+  const [routeConversationLoading, setRouteConversationLoading] = useState(false);
   const [statusFeed, setStatusFeed] = useState<StatusFeedItem[]>([]);
   const [adminRelationships, setAdminRelationships] = useState<any[]>([]);
   const [adminUsers, setAdminUsers] = useState<WebUser[]>([]);
@@ -524,6 +613,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const [bookings, setBookings] = useState<any[]>([]);
   const [ads, setAds] = useState<any[]>([]);
   const [dateRequests, setDateRequests] = useState<any[]>([]);
+  const [dateRequestTab, setDateRequestTab] = useState<'received' | 'sent'>('received');
   const [legalDocuments, setLegalDocuments] = useState<any[]>([]);
   const [adminPosts, setAdminPosts] = useState<any[]>([]);
   const [adminReels, setAdminReels] = useState<any[]>([]);
@@ -532,11 +622,24 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const [paymentSubmissions, setPaymentSubmissions] = useState<any[]>([]);
   const [adReceipts, setAdReceipts] = useState<any[]>([]);
   const [professionalProfile, setProfessionalProfile] = useState<any>(null);
+  const [professionalStatus, setProfessionalStatus] = useState<any>(null);
   const [professionalReviews, setProfessionalReviews] = useState<any[]>([]);
+  const [adminProfessionalSessions, setAdminProfessionalSessions] = useState<any[]>([]);
+  const [adminProfessionalReviews, setAdminProfessionalReviews] = useState<any[]>([]);
+  const [professionalDirectory, setProfessionalDirectory] = useState<any[]>([]);
   const [professionalRoles, setProfessionalRoles] = useState<any[]>([]);
   const [subscriptionPlans, setSubscriptionPlans] = useState<any[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
+  const [twoFactorRecord, setTwoFactorRecord] = useState<any>(null);
+  const [twoFactorSecret, setTwoFactorSecret] = useState('');
+  const [twoFactorBackupCodes, setTwoFactorBackupCodes] = useState<string[]>([]);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [activeSessions, setActiveSessions] = useState<any[]>([]);
   const [routeProfileUser, setRouteProfileUser] = useState<WebUser | null>(null);
+  const [routeProfileLoading, setRouteProfileLoading] = useState(false);
+  const [routeProfilePosts, setRouteProfilePosts] = useState<FeedPost[]>([]);
+  const [routeStatusItem, setRouteStatusItem] = useState<StatusFeedItem | null>(null);
+  const [routeStatusLoading, setRouteStatusLoading] = useState(false);
   const [routeRows, setRouteRows] = useState<any[]>([]);
   const [routeRowsLoading, setRouteRowsLoading] = useState(false);
   const [routeRowsError, setRouteRowsError] = useState<string | null>(null);
@@ -594,6 +697,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   });
   const [aiPrompt, setAiPrompt] = useState('');
   const [chatDraft, setChatDraft] = useState('');
+  const [chatMediaUrl, setChatMediaUrl] = useState('');
+  const [chatDocumentUrl, setChatDocumentUrl] = useState('');
   const [isCreatingContent, setIsCreatingContent] = useState(false);
   const [settingsForm, setSettingsForm] = useState({ fullName: '', username: '', phoneNumber: '' });
   const lastAuthUserIdRef = useRef<string | null>(null);
@@ -660,6 +765,20 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     credentialsUrl: '',
     rate: '',
   });
+  const [professionalAvailabilityForm, setProfessionalAvailabilityForm] = useState({
+    status: 'offline',
+    maxConcurrentSessions: '3',
+    quietHoursEnabled: false,
+    quietHoursStart: '22:00',
+    quietHoursEnd: '08:00',
+    quietHoursTimezone: 'UTC',
+    onlineAvailability: true,
+    inPersonAvailability: false,
+    pricingEnabled: false,
+    pricingCurrency: 'USD',
+    pricingRate: '',
+    pricingUnit: 'session',
+  });
   const [datingForm, setDatingForm] = useState({
     bio: '',
     age: '',
@@ -696,12 +815,17 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   });
   const [saving, setSaving] = useState(false);
 
-  const activeTab = useMemo<TabKey>(() => {
-    const segment = pathname?.split('/').filter(Boolean)[1] || initialTab;
-    return routeToTab[segment] || routeToTab[initialTab] || 'home';
-  }, [initialTab, pathname]);
+  const pathSegments = useMemo(() => pathname?.split('/').filter(Boolean) || [], [pathname]);
+  const appPath = useMemo(() => {
+    if (pathSegments[0] === 'app') return pathSegments.slice(1);
+    return pathSegments;
+  }, [pathSegments]);
 
-  const appPath = useMemo(() => pathname?.split('/').filter(Boolean).slice(1) || [], [pathname]);
+  const activeTab = useMemo<TabKey>(() => {
+    const segment = appPath[0] || initialTab;
+    return routeToTab[segment] || routeToTab[initialTab] || 'home';
+  }, [appPath, initialTab]);
+
   const subPath = appPath.slice(1).join('/');
 
   const supabase = useMemo<any>(() => {
@@ -716,14 +840,30 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     setUser(null);
     setPosts([]);
     setReels([]);
+    setRoutePost(null);
+    setRoutePostLoading(false);
+    setRouteReel(null);
+    setRouteReelLoading(false);
+    setPostCommentsByPost({});
+    setReelCommentsByReel({});
+    setCommentsLoadingByTarget({});
+    setCommentDrafts({});
+    setReplyDrafts({});
+    setCommentSubmittingKey(null);
     setRelationship(null);
     setDatingProfiles([]);
     setMyDatingProfile(null);
+    setRouteDatingProfile(null);
+    setRouteDatingProfileLoading(false);
+    setRouteDatingReaction({ liked: false, superLiked: false, matched: false });
+    setRouteDatingBadges([]);
+    setRouteConversationStarters([]);
     setDatingLikes([]);
     setDatingMatches([]);
     setNotifications([]);
     setConversations([]);
     setMessagesByConversation({});
+    setRouteConversationLoading(false);
     setStatusFeed([]);
     setAdminRelationships([]);
     setAdminUsers([]);
@@ -731,6 +871,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     setBookings([]);
     setAds([]);
     setDateRequests([]);
+    setDateRequestTab('received');
     setAdminPosts([]);
     setAdminReels([]);
     setProfessionalApplications([]);
@@ -738,12 +879,42 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     setPaymentSubmissions([]);
     setAdReceipts([]);
     setProfessionalProfile(null);
+    setProfessionalStatus(null);
     setProfessionalReviews([]);
+    setProfessionalAvailabilityForm({
+      status: 'offline',
+      maxConcurrentSessions: '3',
+      quietHoursEnabled: false,
+      quietHoursStart: '22:00',
+      quietHoursEnd: '08:00',
+      quietHoursTimezone: 'UTC',
+      onlineAvailability: true,
+      inPersonAvailability: false,
+      pricingEnabled: false,
+      pricingCurrency: 'USD',
+      pricingRate: '',
+      pricingUnit: 'session',
+    });
+    setAdminProfessionalSessions([]);
+    setAdminProfessionalReviews([]);
+    setProfessionalDirectory([]);
+    setTwoFactorRecord(null);
+    setTwoFactorSecret('');
+    setTwoFactorBackupCodes([]);
+    setTwoFactorCode('');
+    setActiveSessions([]);
     setRouteProfileUser(null);
+    setRouteProfileLoading(false);
+    setRouteProfilePosts([]);
+    setRouteStatusItem(null);
+    setRouteStatusLoading(false);
     setRouteRows([]);
     setSearchResults([]);
     setSettingsForm({ fullName: '', username: '', phoneNumber: '' });
     setSettingsProfilePictureUrl('');
+    setChatDraft('');
+    setChatMediaUrl('');
+    setChatDocumentUrl('');
   }, []);
 
   useEffect(() => {
@@ -1263,7 +1434,18 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       setStatusFeed(Array.from(latestStatusByUser.values()));
 
       if (isAdminRole(currentUser.role)) {
-        const [adminRelationshipsResult, adminUsersResult, adsResult, adminPostsResult, adminReelsResult, professionalApplicationsResult, falseReportsResult, paymentSubmissionsResult] = await Promise.all([
+        const [
+          adminRelationshipsResult,
+          adminUsersResult,
+          adsResult,
+          adminPostsResult,
+          adminReelsResult,
+          professionalApplicationsResult,
+          falseReportsResult,
+          paymentSubmissionsResult,
+          adminProfessionalSessionsResult,
+          adminProfessionalReviewsResult,
+        ] = await Promise.all([
           supabase
             .from('relationships')
             .select('id,user_id,partner_user_id,partner_name,partner_phone,type,status,start_date,privacy_level,verified_date,end_date,created_at,users!relationships_user_id_fkey(full_name,email,phone_number)')
@@ -1296,12 +1478,22 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             .limit(50),
           supabase
             .from('false_relationship_reports')
-            .select('id,relationship_id,reported_by,reason,details,status,resolution,created_at,relationship:relationships(id,user_id,partner_name,partner_phone,type,status),reporter:users!false_relationship_reports_reported_by_fkey(full_name,email)')
+            .select('id,relationship_id,reported_by,reason,details,status,resolution,created_at,relationship:relationships(id,user_id,partner_user_id,partner_name,partner_phone,type,status,privacy_level),reporter:users!false_relationship_reports_reported_by_fkey(full_name,email)')
             .order('created_at', { ascending: false })
             .limit(50),
           supabase
             .from('payment_submissions')
             .select('id,user_id,advertisement_id,subscription_plan_id,amount,method,reference,proof_url,payment_proof_url,transaction_reference,status,created_at,user:users!payment_submissions_user_id_fkey(full_name,email)')
+            .order('created_at', { ascending: false })
+            .limit(50),
+          supabase
+            .from('professional_sessions')
+            .select('id,conversation_id,user_id,professional_id,role_id,status,scheduled_date,scheduled_duration_minutes,session_type,location_type,location_address,booking_notes,booking_fee_amount,payment_status,created_at,user:users!professional_sessions_user_id_fkey(full_name,email,profile_picture),professional:professional_profiles!professional_sessions_professional_id_fkey(id,full_name)')
+            .order('scheduled_date', { ascending: false })
+            .limit(50),
+          supabase
+            .from('professional_reviews')
+            .select('id,professional_id,client_id,rating,review_text,is_anonymous,moderation_status,moderation_reason,moderated_by,moderated_at,reported_count,created_at,client:users!professional_reviews_client_id_fkey(full_name,email,profile_picture),professional:professional_profiles!professional_reviews_professional_id_fkey(full_name)')
             .order('created_at', { ascending: false })
             .limit(50),
         ]);
@@ -1313,6 +1505,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         setProfessionalApplications(professionalApplicationsResult.data || []);
         setFalseRelationshipReports(falseReportsResult.data || []);
         setPaymentSubmissions(paymentSubmissionsResult.data || []);
+        setAdminProfessionalSessions(adminProfessionalSessionsResult.data || []);
+        setAdminProfessionalReviews(adminProfessionalReviewsResult.data || []);
       } else {
         setAdminRelationships([]);
         setAdminUsers([]);
@@ -1322,9 +1516,26 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         setProfessionalApplications([]);
         setFalseRelationshipReports([]);
         setPaymentSubmissions([]);
+        setAdminProfessionalSessions([]);
+        setAdminProfessionalReviews([]);
       }
 
-      const [blockedResult, bookingsResult, ownAdsResult, dateRequestsResult, legalDocumentsResult, adReceiptsResult, professionalProfileResult, professionalRolesResult, subscriptionPlansResult, paymentMethodsResult] = await Promise.all([
+      const [
+        blockedResult,
+        bookingsResult,
+        ownAdsResult,
+        dateRequestsResult,
+        legalDocumentsResult,
+        adReceiptsResult,
+        professionalProfileResult,
+        professionalRolesResult,
+        professionalDirectoryResult,
+        subscriptionPlansResult,
+        paymentMethodsResult,
+        twoFactorResult,
+        userSessionsResult,
+        currentSessionResult,
+      ] = await Promise.all([
         supabase
           .from('blocked_users')
           .select('id,blocked_id,created_at,users!blocked_users_blocked_id_fkey(id,full_name,profile_picture,email)')
@@ -1355,13 +1566,13 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           .order('title', { ascending: true }),
         supabase
           .from('ad_payment_receipts')
-          .select('id,receipt_number,amount,currency,status,advertisement_id,created_at,advertisements(title,status)')
+          .select('id,receipt_number,amount,currency,advertisement_id,created_at,advertisements(title,status)')
           .eq('user_id', authUser.id)
           .order('created_at', { ascending: false })
           .limit(30),
         supabase
           .from('professional_profiles')
-          .select('id,user_id,full_name,bio,approval_status,is_active,rating_average,rating_count,review_count,role:professional_roles(name)')
+          .select('id,user_id,full_name,bio,approval_status,is_active,rating_average,rating_count,review_count,max_concurrent_sessions,quiet_hours_start,quiet_hours_end,quiet_hours_timezone,online_availability,in_person_availability,pricing_info,role:professional_roles(name)')
           .eq('user_id', authUser.id)
           .maybeSingle(),
         supabase
@@ -1369,6 +1580,13 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           .select('id,name,category,is_active')
           .eq('is_active', true)
           .order('name', { ascending: true }),
+        supabase
+          .from('professional_profiles')
+          .select('id,user_id,role_id,full_name,bio,approval_status,is_active,rating_average,rating_count,review_count,role:professional_roles(name)')
+          .eq('approval_status', 'approved')
+          .eq('is_active', true)
+          .order('rating_average', { ascending: false })
+          .limit(50),
         supabase
           .from('subscription_plans')
           .select('id,name,display_name,description,price_monthly,price_yearly,features,is_active,display_order')
@@ -1379,6 +1597,18 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           .select('id,name,type,description,instructions,is_active')
           .eq('is_active', true)
           .order('name', { ascending: true }),
+        supabase
+          .from('user_2fa')
+          .select('id,user_id,enabled,secret,backup_codes,last_used_at,created_at')
+          .eq('user_id', authUser.id)
+          .maybeSingle(),
+        supabase
+          .from('user_sessions')
+          .select('id,session_token,device_info,last_active,created_at,is_active')
+          .eq('user_id', authUser.id)
+          .eq('is_active', true)
+          .order('last_active', { ascending: false }),
+        supabase.auth.getSession(),
       ]);
       setBlockedUsers(blockedResult.data || []);
       setBookings(bookingsResult.data || []);
@@ -1387,17 +1617,62 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       setAdReceipts(adReceiptsResult.data || []);
       setProfessionalProfile(professionalProfileResult.data || null);
       setProfessionalRoles(professionalRolesResult.data || []);
+      setProfessionalDirectory(professionalDirectoryResult.data || []);
       setSubscriptionPlans(subscriptionPlansResult.data || []);
       setPaymentMethods(paymentMethodsResult.data || []);
+      setTwoFactorRecord(twoFactorResult.data || null);
+      setTwoFactorBackupCodes(Array.isArray(twoFactorResult.data?.backup_codes) ? twoFactorResult.data.backup_codes : []);
+      const currentSession = currentSessionResult.data?.session;
+      const storedSessions = userSessionsResult.data || [];
+      setActiveSessions([
+        ...(currentSession ? [{
+          id: currentSession.access_token,
+          session_token: currentSession.access_token,
+          device_info: 'Web browser (Current)',
+          last_active: new Date().toISOString(),
+          created_at: currentSession.expires_at ? new Date((currentSession.expires_at - 3600) * 1000).toISOString() : new Date().toISOString(),
+          is_active: true,
+          isCurrent: true,
+        }] : []),
+        ...storedSessions
+          .filter((sessionRow: any) => sessionRow.session_token !== currentSession?.access_token)
+          .map((sessionRow: any) => ({ ...sessionRow, isCurrent: false })),
+      ]);
       if (professionalProfileResult.data?.id) {
-        const { data: reviewRows } = await supabase
-          .from('professional_reviews')
-          .select('id,rating,review_text,is_anonymous,created_at,client:users!professional_reviews_client_id_fkey(full_name,profile_picture)')
-          .eq('professional_id', professionalProfileResult.data.id)
-          .order('created_at', { ascending: false })
-          .limit(50);
-        setProfessionalReviews(reviewRows || []);
+        const pricingInfo = professionalProfileResult.data.pricing_info && typeof professionalProfileResult.data.pricing_info === 'object'
+          ? professionalProfileResult.data.pricing_info
+          : null;
+        const [reviewRowsResult, statusRowsResult] = await Promise.all([
+          supabase
+            .from('professional_reviews')
+            .select('id,rating,review_text,is_anonymous,created_at,client:users!professional_reviews_client_id_fkey(full_name,profile_picture)')
+            .eq('professional_id', professionalProfileResult.data.id)
+            .order('created_at', { ascending: false })
+            .limit(50),
+          supabase
+            .from('professional_status')
+            .select('id,professional_id,status,current_session_count,last_seen_at,status_override,status_override_by,status_override_until,updated_at')
+            .eq('professional_id', professionalProfileResult.data.id)
+            .maybeSingle(),
+        ]);
+        setProfessionalReviews(reviewRowsResult.data || []);
+        setProfessionalStatus(statusRowsResult.data || null);
+        setProfessionalAvailabilityForm({
+          status: statusRowsResult.data?.status || 'offline',
+          maxConcurrentSessions: String(professionalProfileResult.data.max_concurrent_sessions || 3),
+          quietHoursEnabled: !!professionalProfileResult.data.quiet_hours_start,
+          quietHoursStart: professionalProfileResult.data.quiet_hours_start || '22:00',
+          quietHoursEnd: professionalProfileResult.data.quiet_hours_end || '08:00',
+          quietHoursTimezone: professionalProfileResult.data.quiet_hours_timezone || 'UTC',
+          onlineAvailability: professionalProfileResult.data.online_availability ?? true,
+          inPersonAvailability: professionalProfileResult.data.in_person_availability ?? false,
+          pricingEnabled: !!pricingInfo,
+          pricingCurrency: pricingInfo?.currency || 'USD',
+          pricingRate: pricingInfo?.rate != null ? String(pricingInfo.rate) : '',
+          pricingUnit: pricingInfo?.unit || 'session',
+        });
       } else {
+        setProfessionalStatus(null);
         setProfessionalReviews([]);
       }
       if (!isAdminRole(currentUser.role)) {
@@ -1490,33 +1765,430 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   useEffect(() => {
     if (!supabase || appPath[0] !== 'profile' || !appPath[1]) {
       setRouteProfileUser(null);
+      setRouteProfilePosts([]);
+      setRouteProfileLoading(false);
       return;
     }
     let cancelled = false;
     const loadProfileUser = async () => {
-      const { data } = await supabase
-        .from('users')
-        .select('id,full_name,username,email,phone_number,profile_picture,role,verified,email_verified,phone_verified,id_verified')
-        .eq('id', appPath[1])
-        .maybeSingle();
-      if (!cancelled) setRouteProfileUser((data || null) as WebUser | null);
+      setRouteProfileLoading(true);
+      try {
+        const identifier = decodeURIComponent(appPath[1]);
+        const userQuery = supabase
+          .from('users')
+          .select('id,full_name,username,email,phone_number,profile_picture,role,verified,email_verified,phone_verified,id_verified');
+        const { data } = looksLikeUuid(identifier)
+          ? await userQuery.eq('id', identifier).maybeSingle()
+          : await userQuery.eq('username', identifier.replace(/^@/, '')).maybeSingle();
+        const profileUser = (data || null) as WebUser | null;
+        if (!cancelled) setRouteProfileUser(profileUser);
+        if (profileUser?.id) {
+          const [profilePostsResult, profilePostLikesResult] = await Promise.all([
+            supabase
+              .from('posts')
+              .select('id,user_id,content,media_urls,media_type,comment_count,created_at,users!posts_user_id_fkey(full_name,profile_picture)')
+              .eq('user_id', profileUser.id)
+              .or(getPostVisibilityOrFilter(user?.id || profileUser.id))
+              .order('created_at', { ascending: false })
+              .limit(12),
+            supabase.from('post_likes').select('post_id,user_id').limit(500),
+          ]);
+          if (cancelled) return;
+          const likesByPost = new Map<string, string[]>();
+          ((profilePostLikesResult.data || []) as any[]).forEach((like) => {
+            likesByPost.set(like.post_id, [...(likesByPost.get(like.post_id) || []), like.user_id].filter(Boolean));
+          });
+          setRouteProfilePosts(((profilePostsResult.data || []) as FeedPost[]).map((post) => ({ ...post, likes: likesByPost.get(post.id) || [] })));
+        } else if (!cancelled) {
+          setRouteProfilePosts([]);
+        }
+      } finally {
+        if (!cancelled) setRouteProfileLoading(false);
+      }
     };
     void loadProfileUser();
     return () => {
       cancelled = true;
     };
-  }, [appPath, supabase]);
+  }, [appPath, supabase, user?.id]);
+
+  useEffect(() => {
+    const targetUserId = appPath[0] === 'dating' && subPath === 'user-profile'
+      ? (searchParams?.get('userId') || searchParams?.get('id') || '')
+      : '';
+    if (!supabase || !targetUserId) {
+      setRouteDatingProfile(null);
+      setRouteDatingProfileLoading(false);
+      setRouteDatingReaction({ liked: false, superLiked: false, matched: false });
+      setRouteDatingBadges([]);
+      setRouteConversationStarters([]);
+      return;
+    }
+    let cancelled = false;
+    const loadRouteDatingProfile = async () => {
+      setRouteDatingProfileLoading(true);
+      try {
+        const { data: profileRow } = await supabase
+          .from('dating_profiles')
+          .select('*')
+          .eq('user_id', targetUserId)
+          .maybeSingle();
+        if (!profileRow?.id) {
+          if (!cancelled) {
+            setRouteDatingProfile(null);
+            setRouteDatingReaction({ liked: false, superLiked: false, matched: false });
+            setRouteDatingBadges([]);
+            setRouteConversationStarters([]);
+          }
+          return;
+        }
+        const [
+          photosResult,
+          videosResult,
+          userResult,
+          badgesResult,
+          likeResult,
+          reciprocalLikeResult,
+        ] = await Promise.all([
+          supabase
+            .from('dating_photos')
+            .select('*')
+            .eq('dating_profile_id', profileRow.id)
+            .order('is_primary', { ascending: false })
+            .order('display_order', { ascending: true }),
+          supabase
+            .from('dating_videos')
+            .select('*')
+            .eq('dating_profile_id', profileRow.id)
+            .order('display_order', { ascending: true }),
+          supabase
+            .from('users')
+            .select('id,full_name,username,email,profile_picture,id_verified,email_verified,phone_verified,verified')
+            .eq('id', targetUserId)
+            .maybeSingle(),
+          supabase
+            .from('user_dating_badges')
+            .select('*')
+            .eq('user_id', targetUserId)
+            .order('earned_at', { ascending: false }),
+          user?.id && user.id !== targetUserId
+            ? supabase
+                .from('dating_likes')
+                .select('id,is_super_like')
+                .eq('liker_id', user.id)
+                .eq('liked_id', targetUserId)
+                .maybeSingle()
+            : Promise.resolve({ data: null }),
+          user?.id && user.id !== targetUserId
+            ? supabase
+                .from('dating_likes')
+                .select('id')
+                .eq('liker_id', targetUserId)
+                .eq('liked_id', user.id)
+                .maybeSingle()
+            : Promise.resolve({ data: null }),
+        ]);
+        const user1Id = user?.id && user.id < targetUserId ? user.id : targetUserId;
+        const user2Id = user?.id && user.id > targetUserId ? user.id : targetUserId;
+        const matchResult = user?.id && user.id !== targetUserId
+          ? await supabase
+              .from('dating_matches')
+              .select('id')
+              .eq('user1_id', user1Id)
+              .eq('user2_id', user2Id)
+              .maybeSingle()
+          : { data: null };
+        if (user?.id && user.id !== targetUserId) {
+          void supabase.from('dating_profiles').update({ last_active_at: new Date().toISOString() }).eq('user_id', targetUserId);
+        }
+        const normalizedProfile = {
+          ...profileRow,
+          users: userResult.data || null,
+          user: userResult.data || null,
+          dating_photos: photosResult.data || [],
+          photos: photosResult.data || [],
+          dating_videos: videosResult.data || [],
+          videos: videosResult.data || [],
+        };
+        const starters = [
+          ...(Array.isArray(profileRow.conversation_starters) ? profileRow.conversation_starters : []),
+          ...(Array.isArray(profileRow.prompts) ? profileRow.prompts.map((prompt: any) => prompt?.question).filter(Boolean) : []),
+          profileRow.what_makes_me_different ? 'What makes you different?' : null,
+          profileRow.local_spot ? `Tell me about ${profileRow.local_spot}` : null,
+          profileRow.weekend_style ? 'What does your perfect weekend look like?' : null,
+        ].filter(Boolean).slice(0, 4);
+        if (!cancelled) {
+          setRouteDatingProfile(normalizedProfile);
+          setRouteDatingBadges(badgesResult.data || []);
+          setRouteConversationStarters(starters as string[]);
+          setRouteDatingReaction({
+            liked: !!likeResult.data,
+            superLiked: !!(likeResult.data as any)?.is_super_like,
+            matched: !!matchResult.data || (!!likeResult.data && !!reciprocalLikeResult.data),
+          });
+        }
+      } finally {
+        if (!cancelled) setRouteDatingProfileLoading(false);
+      }
+    };
+    void loadRouteDatingProfile();
+    return () => {
+      cancelled = true;
+    };
+  }, [appPath, searchParams, subPath, supabase, user?.id]);
+
+  useEffect(() => {
+    const targetId = (appPath[0] === 'status' || appPath[0] === 'status-item') ? appPath[1] : '';
+    if (!supabase || !targetId) {
+      setRouteStatusItem(null);
+      setRouteStatusLoading(false);
+      return;
+    }
+    if (
+      statusFeed.some((status) =>
+        appPath[0] === 'status-item'
+          ? status.latest_status?.id === targetId
+          : status.user_id === targetId
+      )
+    ) {
+      setRouteStatusItem(null);
+      return;
+    }
+    let cancelled = false;
+    const loadRouteStatus = async () => {
+      setRouteStatusLoading(true);
+      try {
+        const query = supabase
+          .from('statuses')
+          .select('id,user_id,content_type,text_content,media_path,background_color,created_at,expires_at,archived,users!statuses_user_id_fkey(full_name,profile_picture)')
+          .eq('archived', false)
+          .gt('expires_at', new Date().toISOString())
+          .order('created_at', { ascending: false })
+          .limit(1);
+        const { data } = appPath[0] === 'status-item'
+          ? await query.eq('id', targetId)
+          : await query.eq('user_id', targetId);
+        const status = (data || [])[0] as any;
+        if (cancelled) return;
+        setRouteStatusItem(status ? {
+          user_id: status.user_id,
+          user_name: status.users?.full_name || 'Committed member',
+          user_avatar: status.users?.profile_picture || null,
+          latest_status: status,
+          has_unviewed: status.user_id !== user?.id,
+        } : null);
+      } finally {
+        if (!cancelled) setRouteStatusLoading(false);
+      }
+    };
+    void loadRouteStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [appPath, statusFeed, supabase, user?.id]);
+
+  useEffect(() => {
+    const conversationId = appPath[0] === 'messages' && appPath[1] ? appPath[1] : '';
+    if (!supabase || !user || !conversationId || conversations.some((conversation) => conversation.id === conversationId)) {
+      setRouteConversationLoading(false);
+      return;
+    }
+    let cancelled = false;
+    const loadRouteConversation = async () => {
+      setRouteConversationLoading(true);
+      try {
+        const { data: conversationRow } = await supabase
+          .from('conversations')
+          .select('id,last_message,last_message_at,created_at,participant_ids')
+          .eq('id', conversationId)
+          .contains('participant_ids', [user.id])
+          .maybeSingle();
+        if (!conversationRow?.id) return;
+        const participantIds = (conversationRow.participant_ids || []).filter((id: string) => id && id !== user.id);
+        const [participantsResult, messagesResult] = await Promise.all([
+          participantIds.length
+            ? supabase.from('users').select('id,full_name,email,profile_picture').in('id', participantIds)
+            : Promise.resolve({ data: [] }),
+          supabase
+            .from('messages')
+            .select('id,conversation_id,sender_id,receiver_id,content,message_type,media_url,document_url,created_at,deleted_for_sender,deleted_for_receiver')
+            .eq('conversation_id', conversationRow.id)
+            .order('created_at', { ascending: true }),
+        ]);
+        if (cancelled) return;
+        const participantMap = new Map<string, WebUser>(((participantsResult.data || []) as WebUser[]).map((participant) => [participant.id, participant]));
+        const hydratedConversation: ConversationRow = {
+          ...conversationRow,
+          participantNames: participantIds.map((id: string) => participantMap.get(id)?.full_name || participantMap.get(id)?.email || 'Committed member'),
+          participantAvatars: Object.fromEntries(participantIds.map((id: string) => [id, participantMap.get(id)?.profile_picture || null])),
+        };
+        setConversations((prev) => prev.some((conversation) => conversation.id === conversationRow.id) ? prev : [hydratedConversation, ...prev]);
+        const visibleMessages = filterVisibleMessagesForUser((messagesResult.data || []) as MessageRow[], user.id);
+        setMessagesByConversation((prev) => ({ ...prev, [conversationRow.id]: visibleMessages }));
+      } finally {
+        if (!cancelled) setRouteConversationLoading(false);
+      }
+    };
+    void loadRouteConversation();
+    return () => {
+      cancelled = true;
+    };
+  }, [appPath, conversations, supabase, user]);
+
+  const loadPostComments = useCallback(async (postId: string) => {
+    if (!supabase || !postId) return;
+    setCommentsLoadingByTarget((prev) => ({ ...prev, [`post:${postId}`]: true }));
+    try {
+      const commentsResult = await supabase
+        .from('comments')
+        .select('id,post_id,user_id,content,message_type,parent_comment_id,created_at,users!comments_user_id_fkey(full_name,email,profile_picture),stickers!comments_sticker_id_fkey(image_url,is_animated)')
+        .eq('post_id', postId)
+        .order('created_at', { ascending: true });
+      const commentIds = ((commentsResult.data || []) as any[]).map((comment) => comment.id).filter(Boolean);
+      const likesResult = commentIds.length
+        ? await supabase.from('comment_likes').select('comment_id,user_id').in('comment_id', commentIds)
+        : { data: [] };
+      setPostCommentsByPost((prev) => ({
+        ...prev,
+        [postId]: nestSocialComments(commentsResult.data || [], likesResult.data || [], 'post_id'),
+      }));
+    } finally {
+      setCommentsLoadingByTarget((prev) => ({ ...prev, [`post:${postId}`]: false }));
+    }
+  }, [supabase]);
+
+  const loadReelComments = useCallback(async (reelId: string) => {
+    if (!supabase || !reelId) return;
+    setCommentsLoadingByTarget((prev) => ({ ...prev, [`reel:${reelId}`]: true }));
+    try {
+      const commentsResult = await supabase
+        .from('reel_comments')
+        .select('id,reel_id,user_id,content,message_type,parent_comment_id,created_at,users!reel_comments_user_id_fkey(full_name,email,profile_picture),stickers!reel_comments_sticker_id_fkey(image_url,is_animated)')
+        .eq('reel_id', reelId)
+        .order('created_at', { ascending: true });
+      const commentIds = ((commentsResult.data || []) as any[]).map((comment) => comment.id).filter(Boolean);
+      const likesResult = commentIds.length
+        ? await supabase.from('reel_comment_likes').select('comment_id,user_id').in('comment_id', commentIds)
+        : { data: [] };
+      setReelCommentsByReel((prev) => ({
+        ...prev,
+        [reelId]: nestSocialComments(commentsResult.data || [], likesResult.data || [], 'reel_id'),
+      }));
+    } finally {
+      setCommentsLoadingByTarget((prev) => ({ ...prev, [`reel:${reelId}`]: false }));
+    }
+  }, [supabase]);
+
+  useEffect(() => {
+    const postId = appPath[0] === 'post' && appPath[1] !== 'create' ? appPath[1] : '';
+    if (!supabase || !user || !postId) {
+      setRoutePost(null);
+      setRoutePostLoading(false);
+      return;
+    }
+    const alreadyLoaded = posts.find((item) => item.id === postId) || null;
+    if (alreadyLoaded) {
+      setRoutePost(alreadyLoaded);
+      void loadPostComments(postId);
+      return;
+    }
+    let cancelled = false;
+    const loadRoutePost = async () => {
+      setRoutePostLoading(true);
+      try {
+        const [postResult, likesResult, countResult] = await Promise.all([
+          supabase
+            .from('posts')
+            .select('id,user_id,content,media_urls,media_type,comment_count,created_at,users!posts_user_id_fkey(full_name,profile_picture)')
+            .eq('id', postId)
+            .or(getPostVisibilityOrFilter(user.id))
+            .maybeSingle(),
+          supabase.from('post_likes').select('user_id').eq('post_id', postId),
+          supabase.from('comments').select('id', { count: 'exact', head: true }).eq('post_id', postId),
+        ]);
+        if (cancelled) return;
+        const loadedPost = postResult.data
+          ? {
+              ...(postResult.data as FeedPost),
+              likes: ((likesResult.data || []) as Array<{ user_id: string }>).map((like) => like.user_id).filter(Boolean),
+              comment_count: countResult.count ?? (postResult.data as FeedPost).comment_count ?? 0,
+            }
+          : null;
+        setRoutePost(loadedPost);
+        if (loadedPost && !posts.some((item) => item.id === loadedPost.id)) {
+          setPosts((prev) => [loadedPost, ...prev]);
+        }
+        if (loadedPost) void loadPostComments(postId);
+      } finally {
+        if (!cancelled) setRoutePostLoading(false);
+      }
+    };
+    void loadRoutePost();
+    return () => {
+      cancelled = true;
+    };
+  }, [appPath, loadPostComments, posts, supabase, user]);
+
+  useEffect(() => {
+    const reelId = appPath[0] === 'reel' && appPath[1] !== 'create' ? appPath[1] : '';
+    if (!supabase || !user || !reelId) {
+      setRouteReel(null);
+      setRouteReelLoading(false);
+      return;
+    }
+    const alreadyLoaded = reels.find((item) => item.id === reelId) || null;
+    if (alreadyLoaded) {
+      setRouteReel(alreadyLoaded);
+      void loadReelComments(reelId);
+      return;
+    }
+    let cancelled = false;
+    const loadRouteReel = async () => {
+      setRouteReelLoading(true);
+      try {
+        const [reelResult, likesResult] = await Promise.all([
+          supabase
+            .from('reels')
+            .select('id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(full_name,profile_picture)')
+            .eq('id', reelId)
+            .or(getReelVisibilityOrFilter(user.id))
+            .maybeSingle(),
+          supabase.from('reel_likes').select('user_id').eq('reel_id', reelId),
+        ]);
+        if (cancelled) return;
+        const loadedReel = reelResult.data
+          ? {
+              ...(reelResult.data as Reel),
+              likes: ((likesResult.data || []) as Array<{ user_id: string }>).map((like) => like.user_id).filter(Boolean),
+            }
+          : null;
+        setRouteReel(loadedReel);
+        if (loadedReel && !reels.some((item) => item.id === loadedReel.id)) {
+          setReels((prev) => [loadedReel, ...prev]);
+        }
+        if (loadedReel) void loadReelComments(reelId);
+      } finally {
+        if (!cancelled) setRouteReelLoading(false);
+      }
+    };
+    void loadRouteReel();
+    return () => {
+      cancelled = true;
+    };
+  }, [appPath, loadReelComments, reels, supabase, user]);
 
   const togglePostLike = async (post: FeedPost) => {
     if (!supabase || !user) return;
     const wasLiked = !!post.likes?.includes(user.id);
+    const nextLikes = (currentLikes: string[] = []) => wasLiked ? currentLikes.filter((id) => id !== user.id) : [...currentLikes, user.id];
     setPosts((prev) =>
       prev.map((item) =>
         item.id === post.id
-          ? { ...item, likes: wasLiked ? (item.likes || []).filter((id) => id !== user.id) : [...(item.likes || []), user.id] }
+          ? { ...item, likes: nextLikes(item.likes) }
           : item
       )
     );
+    setRoutePost((prev) => prev?.id === post.id ? { ...prev, likes: nextLikes(prev.likes) } : prev);
     if (wasLiked) {
       await supabase.from('post_likes').delete().eq('post_id', post.id).eq('user_id', user.id);
     } else {
@@ -1527,17 +2199,123 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const toggleReelLike = async (reel: Reel) => {
     if (!supabase || !user) return;
     const wasLiked = !!reel.likes?.includes(user.id);
+    const nextLikes = (currentLikes: string[] = []) => wasLiked ? currentLikes.filter((id) => id !== user.id) : [...currentLikes, user.id];
     setReels((prev) =>
       prev.map((item) =>
         item.id === reel.id
-          ? { ...item, likes: wasLiked ? (item.likes || []).filter((id) => id !== user.id) : [...(item.likes || []), user.id] }
+          ? { ...item, likes: nextLikes(item.likes) }
           : item
       )
     );
+    setRouteReel((prev) => prev?.id === reel.id ? { ...prev, likes: nextLikes(prev.likes) } : prev);
     if (wasLiked) {
       await supabase.from('reel_likes').delete().eq('reel_id', reel.id).eq('user_id', user.id);
     } else {
       await supabase.from('reel_likes').upsert({ reel_id: reel.id, user_id: user.id }, { onConflict: 'reel_id,user_id' });
+    }
+  };
+
+  const submitPostComment = async (postId: string, parentCommentId?: string) => {
+    if (!supabase || !user || !postId) return;
+    const draftKey = parentCommentId ? `post:${postId}:reply:${parentCommentId}` : `post:${postId}`;
+    const content = (parentCommentId ? (replyDrafts[draftKey] || '') : (commentDrafts[draftKey] || '')).trim();
+    if (!content) return;
+    setCommentSubmittingKey(draftKey);
+    const optimisticComment: SocialComment = {
+      id: `pending-${Date.now()}`,
+      targetId: postId,
+      userId: user.id,
+      userName: getUserDisplayName(user),
+      userAvatar: user.profile_picture,
+      content,
+      messageType: 'text',
+      likes: [],
+      createdAt: new Date().toISOString(),
+      parentCommentId: parentCommentId || null,
+      replies: [],
+    };
+    setPostCommentsByPost((prev) => {
+      const current = prev[postId] || [];
+      if (!parentCommentId) return { ...prev, [postId]: [...current, optimisticComment] };
+      return {
+        ...prev,
+        [postId]: current.map((comment) =>
+          comment.id === parentCommentId
+            ? { ...comment, replies: [...(comment.replies || []), optimisticComment] }
+            : comment
+        ),
+      };
+    });
+    setCommentDrafts((prev) => ({ ...prev, [draftKey]: '' }));
+    setReplyDrafts((prev) => ({ ...prev, [draftKey]: '' }));
+    setPosts((prev) => prev.map((post) => post.id === postId ? { ...post, comment_count: (post.comment_count || 0) + 1 } : post));
+    setRoutePost((prev) => prev?.id === postId ? { ...prev, comment_count: (prev.comment_count || 0) + 1 } : prev);
+    try {
+      await supabase.from('comments').insert({
+        post_id: postId,
+        user_id: user.id,
+        content,
+        parent_comment_id: parentCommentId || null,
+        message_type: 'text',
+      });
+      await loadPostComments(postId);
+    } catch {
+      setReactionNotice('Could not send comment');
+      window.setTimeout(() => setReactionNotice(null), 2200);
+      await loadPostComments(postId);
+    } finally {
+      setCommentSubmittingKey(null);
+    }
+  };
+
+  const submitReelComment = async (reelId: string, parentCommentId?: string) => {
+    if (!supabase || !user || !reelId) return;
+    const draftKey = parentCommentId ? `reel:${reelId}:reply:${parentCommentId}` : `reel:${reelId}`;
+    const content = (parentCommentId ? (replyDrafts[draftKey] || '') : (commentDrafts[draftKey] || '')).trim();
+    if (!content) return;
+    setCommentSubmittingKey(draftKey);
+    const optimisticComment: SocialComment = {
+      id: `pending-${Date.now()}`,
+      targetId: reelId,
+      userId: user.id,
+      userName: getUserDisplayName(user),
+      userAvatar: user.profile_picture,
+      content,
+      messageType: 'text',
+      likes: [],
+      createdAt: new Date().toISOString(),
+      parentCommentId: parentCommentId || null,
+      replies: [],
+    };
+    setReelCommentsByReel((prev) => {
+      const current = prev[reelId] || [];
+      if (!parentCommentId) return { ...prev, [reelId]: [...current, optimisticComment] };
+      return {
+        ...prev,
+        [reelId]: current.map((comment) =>
+          comment.id === parentCommentId
+            ? { ...comment, replies: [...(comment.replies || []), optimisticComment] }
+            : comment
+        ),
+      };
+    });
+    setCommentDrafts((prev) => ({ ...prev, [draftKey]: '' }));
+    setReplyDrafts((prev) => ({ ...prev, [draftKey]: '' }));
+    try {
+      await supabase.from('reel_comments').insert({
+        reel_id: reelId,
+        user_id: user.id,
+        content,
+        parent_comment_id: parentCommentId || null,
+        message_type: 'text',
+      });
+      await loadReelComments(reelId);
+    } catch {
+      setReactionNotice('Could not send comment');
+      window.setTimeout(() => setReactionNotice(null), 2200);
+      await loadReelComments(reelId);
+    } finally {
+      setCommentSubmittingKey(null);
     }
   };
 
@@ -1554,6 +2332,75 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         .upsert({ liker_id: user.id, liked_id: profile.user_id, is_super_like: action === 'super' }, { onConflict: 'liker_id,liked_id' });
     }
     window.setTimeout(() => setReactionNotice(null), 1800);
+  };
+
+  const reactToRouteDatingProfile = async (targetUserId: string, action: 'like' | 'pass' | 'super') => {
+    if (!supabase || !user || !targetUserId || targetUserId === user.id) return;
+    if (action === 'pass') {
+      await supabase.from('dating_passes').upsert({ passer_id: user.id, passed_id: targetUserId }, { onConflict: 'passer_id,passed_id' });
+      setReactionNotice('Passed for now');
+      window.setTimeout(() => setReactionNotice(null), 1800);
+      router.push('/app/dating');
+      return;
+    }
+    const isSuperLike = action === 'super';
+    const { data: likeRow } = await supabase
+      .from('dating_likes')
+      .upsert({ liker_id: user.id, liked_id: targetUserId, is_super_like: isSuperLike }, { onConflict: 'liker_id,liked_id' })
+      .select('id,is_super_like')
+      .single();
+    await supabase.from('dating_passes').delete().eq('passer_id', user.id).eq('passed_id', targetUserId);
+    const { data: mutualLike } = await supabase
+      .from('dating_likes')
+      .select('id')
+      .eq('liker_id', targetUserId)
+      .eq('liked_id', user.id)
+      .maybeSingle();
+    const user1Id = user.id < targetUserId ? user.id : targetUserId;
+    const user2Id = user.id > targetUserId ? user.id : targetUserId;
+    let matched = false;
+    if (mutualLike?.id) {
+      const { error: matchError } = await supabase
+        .from('dating_matches')
+        .upsert({ user1_id: user1Id, user2_id: user2Id }, { onConflict: 'user1_id,user2_id' });
+      matched = !matchError;
+    }
+    setRouteDatingReaction({ liked: true, superLiked: !!likeRow?.is_super_like || isSuperLike, matched });
+    setReactionNotice(matched ? "It's a match" : isSuperLike ? 'Super like sent' : 'Liked');
+    window.setTimeout(() => setReactionNotice(null), 1800);
+  };
+
+  const openConversationWithUser = async (targetUserId: string, openingMessage?: string) => {
+    if (!supabase || !user || !targetUserId || targetUserId === user.id) return;
+    const participantIds = [user.id, targetUserId].sort();
+    let { data: existing } = await supabase
+      .from('conversations')
+      .select('id,participant_ids,last_message,last_message_at,created_at')
+      .contains('participant_ids', participantIds)
+      .limit(1)
+      .maybeSingle();
+    if (!existing?.id) {
+      const created = await supabase
+        .from('conversations')
+        .insert({ participant_ids: participantIds, last_message: openingMessage || null, last_message_at: openingMessage ? new Date().toISOString() : null })
+        .select('id,participant_ids,last_message,last_message_at,created_at')
+        .single();
+      existing = created.data;
+    }
+    if (existing?.id && openingMessage) {
+      await supabase.from('messages').insert({
+        conversation_id: existing.id,
+        sender_id: user.id,
+        receiver_id: targetUserId,
+        content: openingMessage,
+        message_type: 'text',
+      });
+      await supabase.from('conversations').update({ last_message: openingMessage, last_message_at: new Date().toISOString() }).eq('id', existing.id);
+    }
+    if (existing?.id) {
+      await loadAppData();
+      router.push(`/app/messages/${existing.id}`);
+    }
   };
 
   const resetDatingPasses = async () => {
@@ -1840,17 +2687,24 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   };
 
   const sendChatMessage = async (conversation: ConversationRow) => {
-    if (!supabase || !user || !chatDraft.trim()) return;
+    if (!supabase || !user || (!chatDraft.trim() && !chatMediaUrl.trim() && !chatDocumentUrl.trim())) return;
     const receiverId = (conversation.participant_ids || []).find((id) => id !== user.id);
     const messageText = chatDraft.trim();
+    const mediaUrl = chatMediaUrl.trim();
+    const documentUrl = chatDocumentUrl.trim();
+    const messageType = documentUrl ? 'document' : mediaUrl ? 'image' : 'text';
     setChatDraft('');
+    setChatMediaUrl('');
+    setChatDocumentUrl('');
     const optimistic: MessageRow = {
       id: `pending-${Date.now()}`,
       conversation_id: conversation.id,
       sender_id: user.id,
       receiver_id: receiverId || null,
       content: messageText,
-      message_type: 'text',
+      media_url: mediaUrl || null,
+      document_url: documentUrl || null,
+      message_type: messageType,
       created_at: new Date().toISOString(),
     };
     setMessagesByConversation((prev) => ({
@@ -1862,17 +2716,19 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       sender_id: user.id,
       receiver_id: receiverId || null,
       content: messageText,
-      message_type: 'text',
+      media_url: mediaUrl || null,
+      document_url: documentUrl || null,
+      message_type: messageType,
     });
     if (!error) {
       await supabase
         .from('conversations')
-        .update({ last_message: messageText, last_message_at: new Date().toISOString() })
+        .update({ last_message: messageText || (documentUrl ? 'Document' : 'Photo'), last_message_at: new Date().toISOString() })
         .eq('id', conversation.id);
       const isAiConversation =
         conversation.id === 'committed-ai-local' ||
         (conversation.participantNames || []).some((name) => name.toLowerCase().includes('committed ai'));
-      if (isAiConversation) {
+      if (isAiConversation && messageText) {
         const aiReplyText = getCommittedAIReply(messageText, messagesByConversation[conversation.id] || [], user);
         const aiId = receiverId || 'committed-ai';
         const aiReply: MessageRow = {
@@ -2312,12 +3168,22 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
   const notificationHref = (notification: NotificationRow) => {
     const data = notification.data || {};
+    if (data.conversationId || data.conversation_id) return `/app/messages/${data.conversationId || data.conversation_id}`;
     if (data.postId || data.post_id) return `/app/post/${data.postId || data.post_id}`;
     if (data.reelId || data.reel_id) return `/app/reel/${data.reelId || data.reel_id}`;
     if (data.statusId || data.status_id) return `/app/status-item/${data.statusId || data.status_id}`;
+    if (data.dateRequestId || data.date_request_id) return '/app/dating/date-requests';
+    if (data.matchId || data.match_id) return '/app/dating/matches';
+    if (data.likerId || data.liker_id || data.likedByUserId || data.liked_by_user_id) return '/app/dating/likes-received';
+    if (data.bookingId || data.booking_id || data.sessionId || data.session_id || data.professionalSessionId || data.professional_session_id) return '/app/bookings';
+    if (data.paymentSubmissionId || data.payment_submission_id || data.paymentId || data.payment_id) return isAdminRole(user?.role) ? '/app/admin/payment-verifications' : '/app/dating/premium';
     if (data.relationshipId || data.relationship_id) return `/app/certificates/${data.relationshipId || data.relationship_id}`;
-    if (data.conversationId || data.conversation_id) return `/app/messages/${data.conversationId || data.conversation_id}`;
+    if (data.datingUserId || data.dating_user_id) return `/app/dating/user-profile?userId=${encodeURIComponent(data.datingUserId || data.dating_user_id)}`;
     if (data.userId || data.user_id) return `/app/profile/${data.userId || data.user_id}`;
+    if (notification.type === 'dating_match') return '/app/dating/matches';
+    if (notification.type === 'dating_like' || notification.type === 'dating_super_like') return '/app/dating/likes-received';
+    if (notification.type?.includes('payment')) return isAdminRole(user?.role) ? '/app/admin/payment-verifications' : '/app/dating/premium';
+    if (notification.type?.includes('booking') || notification.type?.includes('session')) return '/app/bookings';
     if (notification.type?.includes('message')) return '/app/messages';
     if (notification.type?.includes('dating')) return '/app/dating';
     if (notification.type?.includes('professional')) return '/app/professional';
@@ -2394,6 +3260,154 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     window.setTimeout(() => setReactionNotice(null), 1800);
   };
 
+  const generateBackupCodes = () => Array.from({ length: 10 }, () => Math.random().toString(36).slice(2, 10).toUpperCase());
+
+  const setupTwoFactor = async () => {
+    if (!supabase || !user) return;
+    setSaving(true);
+    try {
+      const secret = Math.random().toString(36).slice(2, 18).toUpperCase();
+      const backupCodes = generateBackupCodes();
+      const { data, error } = await supabase
+        .from('user_2fa')
+        .upsert({
+          user_id: user.id,
+          secret,
+          enabled: false,
+          backup_codes: backupCodes,
+        }, { onConflict: 'user_id' })
+        .select('id,user_id,enabled,secret,backup_codes,last_used_at,created_at')
+        .single();
+      if (error) throw error;
+      setTwoFactorRecord(data);
+      setTwoFactorSecret(secret);
+      setTwoFactorBackupCodes(backupCodes);
+      setReactionNotice('Save your backup codes, then enter any 6 digit authenticator code.');
+      window.setTimeout(() => setReactionNotice(null), 3000);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const verifyAndEnableTwoFactor = async () => {
+    if (!supabase || !user || !twoFactorRecord?.id || twoFactorCode.trim().length !== 6) return;
+    setSaving(true);
+    try {
+      const { data, error } = await supabase
+        .from('user_2fa')
+        .update({
+          enabled: true,
+          last_used_at: new Date().toISOString(),
+        })
+        .eq('user_id', user.id)
+        .select('id,user_id,enabled,secret,backup_codes,last_used_at,created_at')
+        .single();
+      if (error) throw error;
+      setTwoFactorRecord(data);
+      setTwoFactorSecret('');
+      setTwoFactorCode('');
+      setReactionNotice('Two-factor authentication enabled');
+      window.setTimeout(() => setReactionNotice(null), 1800);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const disableTwoFactor = async () => {
+    if (!supabase || !user) return;
+    setSaving(true);
+    try {
+      const { data, error } = await supabase
+        .from('user_2fa')
+        .update({
+          enabled: false,
+          secret: null,
+          backup_codes: null,
+        })
+        .eq('user_id', user.id)
+        .select('id,user_id,enabled,secret,backup_codes,last_used_at,created_at')
+        .maybeSingle();
+      if (error) throw error;
+      setTwoFactorRecord(data || null);
+      setTwoFactorSecret('');
+      setTwoFactorBackupCodes([]);
+      setTwoFactorCode('');
+      setReactionNotice('Two-factor authentication disabled');
+      window.setTimeout(() => setReactionNotice(null), 1800);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const endStoredSession = async (sessionId: string) => {
+    if (!supabase || !user) return;
+    const target = activeSessions.find((session) => session.id === sessionId);
+    if (target?.isCurrent) {
+      setReactionNotice('Use sign out for the current device');
+      window.setTimeout(() => setReactionNotice(null), 1800);
+      return;
+    }
+    const { error } = await supabase
+      .from('user_sessions')
+      .update({ is_active: false })
+      .eq('id', sessionId)
+      .eq('user_id', user.id);
+    if (!error) {
+      setActiveSessions((prev) => prev.filter((session) => session.id !== sessionId));
+      setReactionNotice('Session ended');
+      window.setTimeout(() => setReactionNotice(null), 1800);
+    }
+  };
+
+  const saveProfessionalAvailability = async () => {
+    if (!supabase || !user || !professionalProfile?.id) return;
+    setSaving(true);
+    try {
+      const maxConcurrentSessions = Math.max(1, Number(professionalAvailabilityForm.maxConcurrentSessions) || 3);
+      const pricingInfo = professionalAvailabilityForm.pricingEnabled && professionalAvailabilityForm.pricingRate.trim()
+        ? {
+            currency: professionalAvailabilityForm.pricingCurrency.trim() || 'USD',
+            rate: Number(professionalAvailabilityForm.pricingRate) || 0,
+            unit: professionalAvailabilityForm.pricingUnit || 'session',
+          }
+        : null;
+      const { data: profileData, error: profileError } = await supabase
+        .from('professional_profiles')
+        .update({
+          max_concurrent_sessions: maxConcurrentSessions,
+          quiet_hours_start: professionalAvailabilityForm.quietHoursEnabled ? professionalAvailabilityForm.quietHoursStart : null,
+          quiet_hours_end: professionalAvailabilityForm.quietHoursEnabled ? professionalAvailabilityForm.quietHoursEnd : null,
+          quiet_hours_timezone: professionalAvailabilityForm.quietHoursEnabled ? professionalAvailabilityForm.quietHoursTimezone : 'UTC',
+          online_availability: professionalAvailabilityForm.onlineAvailability,
+          in_person_availability: professionalAvailabilityForm.inPersonAvailability,
+          pricing_info: pricingInfo,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', professionalProfile.id)
+        .eq('user_id', user.id)
+        .select('id,user_id,full_name,bio,approval_status,is_active,rating_average,rating_count,review_count,max_concurrent_sessions,quiet_hours_start,quiet_hours_end,quiet_hours_timezone,online_availability,in_person_availability,pricing_info,role:professional_roles(name)')
+        .single();
+      if (profileError) throw profileError;
+      const { data: statusData, error: statusError } = await supabase
+        .from('professional_status')
+        .upsert({
+          professional_id: professionalProfile.id,
+          status: professionalAvailabilityForm.status,
+          last_seen_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'professional_id' })
+        .select('id,professional_id,status,current_session_count,last_seen_at,status_override,status_override_by,status_override_until,updated_at')
+        .single();
+      if (statusError) throw statusError;
+      setProfessionalProfile(profileData);
+      setProfessionalStatus(statusData);
+      setReactionNotice('Availability saved');
+      window.setTimeout(() => setReactionNotice(null), 1800);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const submitIdVerification = async () => {
     if (!supabase || !user || !verificationForm.documentUrl.trim()) return;
     setSaving(true);
@@ -2454,34 +3468,66 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
   const updateAdminDocumentStatus = async (id: string, status: 'approved' | 'rejected') => {
     if (!supabase || !user || !isAdminRole(user.role)) return;
+    setSaving(true);
     const patch = {
       status,
       reviewed_by: user.id,
       reviewed_at: new Date().toISOString(),
       rejection_reason: status === 'rejected' ? 'Rejected by admin' : null,
     };
-    const { error } = await supabase.from('verification_documents').update(patch).eq('id', id);
-    if (!error) {
-      setRouteRows((prev) => prev.map((item) => item.id === id ? { ...item, ...patch } : item));
-      setReactionNotice(status === 'approved' ? 'Document approved' : 'Document rejected');
+    try {
+      const { data: updatedDocument, error } = await supabase
+        .from('verification_documents')
+        .update(patch)
+        .eq('id', id)
+        .select('id,user_id,status,reviewed_by,reviewed_at,rejection_reason')
+        .maybeSingle();
+      if (error) throw error;
+      if (!updatedDocument) throw new Error('Document was not updated. Admin verification permission may be missing.');
+      if (status === 'approved' && updatedDocument.user_id) {
+        const { error: userError } = await supabase
+          .from('users')
+          .update({ id_verified: true, verified: true })
+          .eq('id', updatedDocument.user_id);
+        if (userError) throw userError;
+        setAdminUsers((prev) => prev.map((member) => member.id === updatedDocument.user_id ? { ...member, id_verified: true, verified: true } : member));
+        if (user?.id === updatedDocument.user_id) {
+          setUser((prev) => prev ? { ...prev, id_verified: true, verified: true } : prev);
+        }
+      }
+      setRouteRows((prev) => prev.map((item) => item.id === id ? { ...item, ...patch, ...(status === 'approved' ? { user: item.user ? { ...item.user, id_verified: true, verified: true } : item.user } : {}) } : item));
+      setReactionNotice(status === 'approved' ? 'ID approved and user verified' : 'Document rejected');
       window.setTimeout(() => setReactionNotice(null), 1800);
+    } catch (error: any) {
+      setReactionNotice(error?.message || 'Could not update document');
+      window.setTimeout(() => setReactionNotice(null), 2400);
+    } finally {
+      setSaving(false);
     }
   };
 
   const updateModeration = async (table: 'posts' | 'reels', id: string, status: 'approved' | 'rejected') => {
     if (!supabase || !user || !isAdminRole(user.role)) return;
+    setSaving(true);
     const patch = {
       moderation_status: status,
       reviewed_by: user.id,
       reviewed_at: new Date().toISOString(),
       rejection_reason: status === 'rejected' ? 'Rejected by admin' : null,
     };
-    const { error } = await supabase.from(table).update(patch).eq('id', id);
-    if (!error) {
+    try {
+      const { data, error } = await supabase.from(table).update(patch).eq('id', id).select('id').maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error(`${table === 'posts' ? 'Post' : 'Reel'} was not updated. Admin moderation permission may be missing.`);
       if (table === 'posts') setAdminPosts((prev) => prev.map((item) => item.id === id ? { ...item, ...patch } : item));
       if (table === 'reels') setAdminReels((prev) => prev.map((item) => item.id === id ? { ...item, ...patch } : item));
       setReactionNotice(status === 'approved' ? 'Approved' : 'Rejected');
       window.setTimeout(() => setReactionNotice(null), 1800);
+    } catch (error: any) {
+      setReactionNotice(error?.message || 'Could not update moderation status');
+      window.setTimeout(() => setReactionNotice(null), 2400);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -2568,23 +3614,103 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     if (!supabase || !user || !isAdminRole(user.role)) return;
     setSaving(true);
     try {
+      const rejectionReason = 'Payment verification failed';
       const patch: any = {
         status,
         verified_by: user.id,
         verified_at: new Date().toISOString(),
       };
-      if (status === 'rejected') patch.rejection_reason = 'Payment verification failed';
-      const { error } = await supabase.from('payment_submissions').update(patch).eq('id', payment.id);
+      if (status === 'rejected') patch.rejection_reason = rejectionReason;
+      const { data: updatedPayment, error } = await supabase
+        .from('payment_submissions')
+        .update(patch)
+        .eq('id', payment.id)
+        .select('id,user_id,advertisement_id,subscription_plan_id,amount,currency,status,verified_by,verified_at,rejection_reason')
+        .maybeSingle();
       if (error) throw error;
-      if (payment.advertisement_id) {
-        await supabase
+      if (!updatedPayment) {
+        throw new Error('Payment could not be updated. Please check admin payment permissions.');
+      }
+
+      if (updatedPayment.advertisement_id) {
+        const { data: updatedAd, error: adError } = await supabase
           .from('advertisements')
           .update(status === 'approved'
             ? { billing_status: 'paid', status: 'approved', active: true }
             : { billing_status: 'failed', status: 'rejected', active: false })
-          .eq('id', payment.advertisement_id);
+          .eq('id', updatedPayment.advertisement_id)
+          .select('id,status,billing_status,active')
+          .maybeSingle();
+        if (adError) throw adError;
+        if (!updatedAd) {
+          throw new Error('Payment was updated, but the advertisement was not updated.');
+        }
       }
-      setPaymentSubmissions((prev) => prev.map((item) => item.id === payment.id ? { ...item, ...patch } : item));
+
+      if (status === 'approved' && updatedPayment.advertisement_id && updatedPayment.user_id) {
+        const { data: existingReceipt, error: existingReceiptError } = await supabase
+          .from('ad_payment_receipts')
+          .select('id,receipt_number')
+          .eq('payment_submission_id', updatedPayment.id)
+          .limit(1)
+          .maybeSingle();
+        if (existingReceiptError) throw existingReceiptError;
+
+        let receiptNumber = existingReceipt?.receipt_number;
+        if (!existingReceipt) {
+          receiptNumber = `AD-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.random()
+            .toString(36)
+            .slice(2, 8)
+            .toUpperCase()}`;
+
+          const { error: receiptError } = await supabase.from('ad_payment_receipts').insert({
+            advertisement_id: updatedPayment.advertisement_id,
+            payment_submission_id: updatedPayment.id,
+            user_id: updatedPayment.user_id,
+            amount: updatedPayment.amount,
+            currency: updatedPayment.currency || 'USD',
+            receipt_number: receiptNumber,
+            issued_at: new Date().toISOString(),
+          });
+          if (receiptError) throw receiptError;
+        }
+
+        await supabase.rpc('create_notification', {
+          p_user_id: updatedPayment.user_id,
+          p_type: 'payment_approved',
+          p_title: 'Ad payment approved',
+          p_message: 'Your ad payment was approved. A receipt is now available.',
+          p_data: { advertisementId: updatedPayment.advertisement_id, receiptNumber },
+        });
+      }
+
+      if (status === 'rejected' && updatedPayment.user_id) {
+        await supabase.rpc('create_notification', {
+          p_user_id: updatedPayment.user_id,
+          p_type: 'payment_rejected',
+          p_title: updatedPayment.advertisement_id ? 'Ad payment rejected' : 'Payment rejected',
+          p_message: updatedPayment.advertisement_id
+            ? 'Your ad payment was rejected. Please check the rejection reason.'
+            : 'Your subscription payment was rejected. Please check the rejection reason.',
+          p_data: {
+            advertisementId: updatedPayment.advertisement_id,
+            subscriptionPlanId: updatedPayment.subscription_plan_id,
+            rejectionReason,
+          },
+        });
+      }
+
+      if (status === 'approved' && !updatedPayment.advertisement_id && updatedPayment.user_id) {
+        await supabase.rpc('create_notification', {
+          p_user_id: updatedPayment.user_id,
+          p_type: 'payment_approved',
+          p_title: 'Payment approved',
+          p_message: 'Your subscription payment was approved and your plan is active.',
+          p_data: { subscriptionPlanId: updatedPayment.subscription_plan_id },
+        });
+      }
+
+      setPaymentSubmissions((prev) => prev.map((item) => item.id === payment.id ? { ...item, ...patch, status } : item));
       setReactionNotice(status === 'approved' ? 'Payment approved' : 'Payment rejected');
       window.setTimeout(() => setReactionNotice(null), 1800);
     } finally {
@@ -2595,11 +3721,25 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const updateAdminUserVerification = async (memberId: string, verificationType: 'phone' | 'email' | 'id') => {
     if (!supabase || !user || !isAdminRole(user.role)) return;
     const field = verificationType === 'phone' ? 'phone_verified' : verificationType === 'email' ? 'email_verified' : 'id_verified';
-    const { error } = await supabase.from('users').update({ [field]: true }).eq('id', memberId);
-    if (!error) {
+    setSaving(true);
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .update({ [field]: true, ...(verificationType === 'id' ? { verified: true } : {}) })
+        .eq('id', memberId)
+        .select('id')
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error('User verification flag was not updated. Admin user permission may be missing.');
       setAdminUsers((prev) => prev.map((member) => member.id === memberId ? { ...member, [field]: true } : member));
+      if (user.id === memberId) setUser((prev) => prev ? { ...prev, [field]: true } : prev);
       setReactionNotice(`${verificationType.toUpperCase()} verified`);
       window.setTimeout(() => setReactionNotice(null), 1800);
+    } catch (error: any) {
+      setReactionNotice(error?.message || 'Could not update user verification');
+      window.setTimeout(() => setReactionNotice(null), 2400);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -2642,24 +3782,314 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     }
   };
 
-  const updateFalseReport = async (id: string, status: 'reviewing' | 'dismissed' | 'resolved') => {
+  const updateFalseReport = async (report: any, status: 'reviewing' | 'dismissed' | 'resolved') => {
     if (!supabase || !user || !isAdminRole(user.role)) return;
-    const patch: any = {
-      status,
-      resolution: status === 'reviewing'
-        ? 'Admin is reviewing this report. Relationship remains visible until a final decision is made.'
-        : status === 'dismissed'
-          ? 'Report dismissed. Relationship remains visible.'
-          : 'Report resolved by admin.',
-      resolved_by: user.id,
-      updated_at: new Date().toISOString(),
-    };
-    if (status !== 'reviewing') patch.resolved_at = new Date().toISOString();
-    const { error } = await supabase.from('false_relationship_reports').update(patch).eq('id', id);
-    if (!error) {
-      setFalseRelationshipReports((prev) => prev.map((item) => item.id === id ? { ...item, ...patch } : item));
-      setReactionNotice('Report updated');
+    setSaving(true);
+    try {
+      const now = new Date().toISOString();
+      const basePatch: any = {
+        status,
+        resolution: status === 'reviewing'
+          ? 'Admin is reviewing this report. Relationship remains visible until a final decision is made.'
+          : status === 'dismissed'
+            ? 'Admin reviewed the report and kept the relationship active.'
+            : 'Admin confirmed this relationship is false and ended it.',
+        resolved_by: user.id,
+        updated_at: now,
+      };
+      if (status !== 'reviewing') basePatch.resolved_at = now;
+
+      if (status === 'resolved') {
+        const relationship = report.relationship;
+        if (!relationship?.id) throw new Error('Relationship details are missing. Refresh and try again.');
+        const relationshipIds = [relationship.id];
+        if (relationship.user_id && relationship.partner_user_id) {
+          const { data: reciprocalRows, error: reciprocalError } = await supabase
+            .from('relationships')
+            .select('id')
+            .eq('user_id', relationship.partner_user_id)
+            .eq('partner_user_id', relationship.user_id)
+            .in('status', ['pending', 'verified']);
+          if (reciprocalError) throw reciprocalError;
+          reciprocalRows?.forEach((row: any) => {
+            if (row.id && !relationshipIds.includes(row.id)) relationshipIds.push(row.id);
+          });
+        }
+
+        const { data: endedRows, error: relationshipError } = await supabase
+          .from('relationships')
+          .update({ status: 'ended', end_date: now })
+          .in('id', relationshipIds)
+          .select('id,status,end_date');
+        if (relationshipError) throw relationshipError;
+        if (!endedRows?.length) throw new Error('Relationship was not ended. Admin relationship permission may be missing.');
+
+        const { data: resolvedReports, error: reportError } = await supabase
+          .from('false_relationship_reports')
+          .update(basePatch)
+          .eq('relationship_id', report.relationship_id)
+          .in('status', ['pending', 'reviewing'])
+          .select('id,status,resolution,resolved_by,resolved_at,updated_at');
+        if (reportError) throw reportError;
+        if (!resolvedReports?.length) throw new Error('Relationship ended, but the report was not resolved.');
+
+        const partnerIds = [relationship.user_id, relationship.partner_user_id].filter(Boolean);
+        await Promise.all(partnerIds.map((partnerId: string) => supabase.from('notifications').insert({
+          user_id: partnerId,
+          type: 'false_relationship_resolved',
+          title: 'Relationship Removed',
+          message: 'An admin reviewed a false relationship report and removed this relationship.',
+          data: { relationshipId: relationship.id, affectedRelationshipIds: endedRows.map((row: any) => row.id) },
+          read: false,
+        })));
+        if (report.reported_by) {
+          await supabase.from('notifications').insert({
+            user_id: report.reported_by,
+            type: 'false_relationship_resolved',
+            title: 'Report Resolved',
+            message: 'An admin confirmed your report and removed the false relationship.',
+            data: { reportId: report.id, relationshipId: relationship.id },
+            read: false,
+          });
+        }
+        setFalseRelationshipReports((prev) => prev.map((item) => (
+          item.relationship_id === report.relationship_id && ['pending', 'reviewing'].includes(item.status)
+            ? { ...item, ...basePatch, relationship: item.relationship ? { ...item.relationship, status: 'ended' } : item.relationship }
+            : item
+        )));
+        setAdminRelationships((prev) => prev.map((item) => relationshipIds.includes(item.id) ? { ...item, status: 'ended', end_date: now } : item));
+        setReactionNotice('False relationship ended');
+      } else {
+        const { data, error } = await supabase
+          .from('false_relationship_reports')
+          .update(basePatch)
+          .eq('id', report.id)
+          .select('id,status,resolution,resolved_by,resolved_at,updated_at')
+          .maybeSingle();
+        if (error) throw error;
+        if (!data) throw new Error('Report was not updated. Admin report permission may be missing.');
+        if (report.reported_by) {
+          await supabase.from('notifications').insert({
+            user_id: report.reported_by,
+            type: 'false_relationship_resolved',
+            title: status === 'reviewing' ? 'Report Under Review' : 'Report Dismissed',
+            message: status === 'reviewing'
+              ? 'Your false relationship report is under admin review. The relationship remains visible until a final decision is made.'
+              : 'An admin reviewed your report and kept the relationship active.',
+            data: { reportId: report.id, relationshipId: report.relationship_id },
+            read: false,
+          });
+        }
+        setFalseRelationshipReports((prev) => prev.map((item) => item.id === report.id ? { ...item, ...basePatch } : item));
+        setReactionNotice(status === 'reviewing' ? 'Report under review' : 'Report dismissed');
+      }
       window.setTimeout(() => setReactionNotice(null), 1800);
+    } catch (error: any) {
+      setReactionNotice(error?.message || 'Could not update report');
+      window.setTimeout(() => setReactionNotice(null), 2600);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateBanAppeal = async (appeal: any, action: 'approve' | 'reject') => {
+    if (!supabase || !user || !isAdminRole(user.role)) return;
+    setSaving(true);
+    try {
+      const patch = {
+        status: action === 'approve' ? 'approved' : 'rejected',
+        reviewed_by: user.id,
+        reviewed_at: new Date().toISOString(),
+        admin_response: action === 'approve'
+          ? 'Appeal approved. The related restriction has been lifted.'
+          : 'Appeal rejected after admin review.',
+      };
+      const { data, error } = await supabase
+        .from('ban_appeals')
+        .update(patch)
+        .eq('id', appeal.id)
+        .select('id,status,reviewed_by,reviewed_at,admin_response')
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error('Appeal was not updated. Admin appeal permission may be missing.');
+
+      if (action === 'approve') {
+        if (appeal.restriction_id) {
+          const { error: restrictionError } = await supabase
+            .from('user_restrictions')
+            .update({ is_active: false })
+            .eq('id', appeal.restriction_id);
+          if (restrictionError) throw restrictionError;
+        } else if (appeal.appeal_type === 'full_ban') {
+          const { error: userError } = await supabase
+            .from('users')
+            .update({ banned_at: null, banned_by: null, ban_reason: null })
+            .eq('id', appeal.user_id);
+          if (userError) throw userError;
+
+          const { error: restrictionError } = await supabase
+            .from('user_restrictions')
+            .update({ is_active: false })
+            .eq('user_id', appeal.user_id)
+            .eq('restricted_feature', 'all');
+          if (restrictionError) throw restrictionError;
+        } else if (appeal.restricted_feature) {
+          const { error: restrictionError } = await supabase
+            .from('user_restrictions')
+            .update({ is_active: false })
+            .eq('user_id', appeal.user_id)
+            .eq('restricted_feature', appeal.restricted_feature)
+            .eq('is_active', true);
+          if (restrictionError) throw restrictionError;
+        }
+      }
+
+      if (appeal.user_id) {
+        await supabase.from('notifications').insert({
+          user_id: appeal.user_id,
+          type: 'ban_appeal_reviewed',
+          title: action === 'approve' ? 'Appeal approved' : 'Appeal rejected',
+          message: patch.admin_response,
+          data: { appealId: appeal.id, action },
+          read: false,
+        });
+      }
+
+      setRouteRows((prev) => prev.map((item) => item.id === appeal.id ? { ...item, ...patch } : item));
+      setReactionNotice(action === 'approve' ? 'Appeal approved' : 'Appeal rejected');
+      window.setTimeout(() => setReactionNotice(null), 1800);
+    } catch (error: any) {
+      setReactionNotice(error?.message || 'Could not update appeal');
+      window.setTimeout(() => setReactionNotice(null), 2600);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateAdminDatingProfile = async (
+    profile: any,
+    action: 'suspend' | 'unsuspend' | 'limit' | 'unlimit' | 'premium' | 'badge_verified' | 'badge_premium' | 'delete'
+  ) => {
+    if (!supabase || !user || !isAdminRole(user.role)) return;
+    if (action === 'delete' && !window.confirm('Delete this dating profile? This cannot be undone.')) return;
+    setSaving(true);
+    try {
+      if (action === 'suspend' || action === 'unsuspend' || action === 'limit' || action === 'unlimit') {
+        const now = new Date().toISOString();
+        const patch = action === 'suspend'
+          ? {
+              admin_suspended: true,
+              admin_suspended_at: now,
+              admin_suspended_by: user.id,
+              admin_suspended_reason: 'Suspended by admin',
+              is_active: false,
+            }
+          : action === 'unsuspend'
+            ? {
+                admin_suspended: false,
+                admin_suspended_at: null,
+                admin_suspended_by: null,
+                admin_suspended_reason: null,
+                is_active: true,
+              }
+            : action === 'limit'
+              ? {
+                  admin_limited: true,
+                  admin_limited_at: now,
+                  admin_limited_by: user.id,
+                  admin_limited_reason: 'Limited by admin',
+                }
+              : {
+                  admin_limited: false,
+                  admin_limited_at: null,
+                  admin_limited_by: null,
+                  admin_limited_reason: null,
+                };
+        const { data, error } = await supabase
+          .from('dating_profiles')
+          .update(patch)
+          .eq('id', profile.id)
+          .select('id')
+          .maybeSingle();
+        if (error) throw error;
+        if (!data) throw new Error('Dating profile was not updated. Admin dating permission may be missing.');
+        setRouteRows((prev) => prev.map((item) => item.id === profile.id ? { ...item, ...patch } : item));
+        setReactionNotice(action === 'suspend' ? 'Profile suspended' : action === 'unsuspend' ? 'Profile unsuspended' : action === 'limit' ? 'Profile limited' : 'Profile limit removed');
+      }
+
+      if (action === 'premium') {
+        const { error } = await supabase.rpc('grant_trial_premium', {
+          p_user_id: profile.user_id,
+          p_granted_by: user.id,
+          p_days: 7,
+        });
+        if (error) throw error;
+        setRouteRows((prev) => prev.map((item) => item.id === profile.id ? { ...item, premium_trial_ends_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() } : item));
+        setReactionNotice('7-day premium trial granted');
+      }
+
+      if (action === 'badge_verified' || action === 'badge_premium') {
+        const badgeType = action === 'badge_verified' ? 'verified' : 'premium';
+        const { error } = await supabase
+          .from('user_dating_badges')
+          .upsert({
+            user_id: profile.user_id,
+            badge_type: badgeType,
+            earned_at: new Date().toISOString(),
+          }, { onConflict: 'user_id,badge_type' });
+        if (error) throw error;
+        setReactionNotice(`${badgeType} badge granted`);
+      }
+
+      if (action === 'delete') {
+        const { data, error } = await supabase
+          .from('dating_profiles')
+          .delete()
+          .eq('id', profile.id)
+          .select('id')
+          .maybeSingle();
+        if (error) throw error;
+        if (!data) throw new Error('Dating profile was not deleted. Admin dating permission may be missing.');
+        setRouteRows((prev) => prev.filter((item) => item.id !== profile.id));
+        setReactionNotice('Dating profile deleted');
+      }
+
+      window.setTimeout(() => setReactionNotice(null), 2000);
+    } catch (error: any) {
+      setReactionNotice(error?.message || 'Could not update dating profile');
+      window.setTimeout(() => setReactionNotice(null), 2600);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateProfessionalReviewModeration = async (review: any, status: 'approved' | 'rejected' | 'flagged') => {
+    if (!supabase || !user || !isAdminRole(user.role)) return;
+    setSaving(true);
+    try {
+      const patch = {
+        moderation_status: status,
+        moderated_by: user.id,
+        moderated_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        moderation_reason: status === 'approved' ? null : `${status} by admin`,
+      };
+      const { data, error } = await supabase
+        .from('professional_reviews')
+        .update(patch)
+        .eq('id', review.id)
+        .select('id,moderation_status,moderation_reason,moderated_by,moderated_at')
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error('Review was not moderated. Admin review permission may be missing.');
+      setAdminProfessionalReviews((prev) => prev.map((item) => item.id === review.id ? { ...item, ...patch } : item));
+      setReactionNotice(`Review ${status}`);
+      window.setTimeout(() => setReactionNotice(null), 1800);
+    } catch (error: any) {
+      setReactionNotice(error?.message || 'Could not moderate review');
+      window.setTimeout(() => setReactionNotice(null), 2600);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -3067,7 +4497,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                   <button type="button" onClick={() => void toggleReelLike(reel)} className="grid h-12 w-12 place-items-center rounded-full bg-white/18 backdrop-blur">
                     <Heart className={`h-6 w-6 ${user && reel.likes?.includes(user.id) ? 'fill-pink-500 text-pink-500' : 'text-white'}`} />
                   </button>
-                  <Link href={`/reel/${reel.id}?web=1#comments`} className="grid h-12 w-12 place-items-center rounded-full bg-white/18 backdrop-blur">
+                  <Link href={`/app/reel/${reel.id}#comments`} className="grid h-12 w-12 place-items-center rounded-full bg-white/18 backdrop-blur">
                     <MessageCircle className="h-6 w-6 text-white" />
                   </Link>
                   <button type="button" onClick={() => void shareText('Committed Reel', buildReelWebUrl(reel.id))} className="grid h-12 w-12 place-items-center rounded-full bg-white/18 backdrop-blur">
@@ -3079,7 +4509,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                 <button type="button" onClick={() => void toggleReelLike(reel)} className="rounded-full bg-white/18 px-4 py-2 text-sm font-black backdrop-blur">
                   {user && reel.likes?.includes(user.id) ? 'Liked' : 'Like'}
                 </button>
-                <Link href={`/reel/${reel.id}?web=1#comments`} className="rounded-full bg-white/18 px-4 py-2 text-sm font-black backdrop-blur">
+                <Link href={`/app/reel/${reel.id}#comments`} className="rounded-full bg-white/18 px-4 py-2 text-sm font-black backdrop-blur">
                   Comments
                 </Link>
                 <button type="button" onClick={() => void shareText('Committed Reel', buildReelWebUrl(reel.id))} className="rounded-full bg-white/18 px-4 py-2 text-sm font-black backdrop-blur">
@@ -3095,38 +4525,69 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
   const renderPostDetail = () => {
     const postId = appPath[1];
-    const post = posts.find((item) => item.id === postId);
+    const post = posts.find((item) => item.id === postId) || routePost;
+    const comments = postId ? (postCommentsByPost[postId] || []) : [];
+    const draftKey = `post:${postId}`;
+    if (routePostLoading) return <ScreenSkeleton />;
     if (!post) return <EmptyState icon={Heart} title="Post Not Found" text="This post is not loaded or is no longer available." action="Back to Feed" onAction={() => router.push('/app/feed')} />;
     return (
       <div className="space-y-3 px-3 py-3">
         <PostCard post={post} user={user} onLike={togglePostLike} onShare={shareText} />
-        <section id="comments" className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-          <h2 className="text-xl font-black text-slate-950">Comments</h2>
-          <p className="mt-2 text-sm text-slate-500">Open the comments sheet from the shared post page for threaded replies.</p>
-          <Link href={`/post/${post.id}?web=1#comments`} className="mt-4 inline-flex rounded-[16px] bg-blue-600 px-5 py-3 font-black text-white">View comments</Link>
-        </section>
+        <CommentThread
+          id="comments"
+          title="Comments"
+          comments={comments}
+          loading={!!commentsLoadingByTarget[`post:${post.id}`]}
+          draft={commentDrafts[draftKey] || ''}
+          onDraftChange={(value) => setCommentDrafts((prev) => ({ ...prev, [draftKey]: value }))}
+          onSubmit={() => void submitPostComment(post.id)}
+          replyDrafts={replyDrafts}
+          onReplyDraftChange={(key, value) => setReplyDrafts((prev) => ({ ...prev, [key]: value }))}
+          onReply={(commentId) => void submitPostComment(post.id, commentId)}
+          targetPrefix={`post:${post.id}`}
+          submittingKey={commentSubmittingKey}
+        />
       </div>
     );
   };
 
   const renderReelDetail = () => {
     const reelId = appPath[1];
-    const reel = reels.find((item) => item.id === reelId);
+    const reel = reels.find((item) => item.id === reelId) || routeReel;
+    const comments = reelId ? (reelCommentsByReel[reelId] || []) : [];
+    const draftKey = `reel:${reelId}`;
+    if (routeReelLoading) return <ScreenSkeleton />;
     if (!reel) return <EmptyState icon={Film} title="Reel Not Found" text="This reel is not loaded or is no longer available." action="Back to Reels" onAction={() => router.push('/app/reels')} />;
     return (
-      <div className="bg-slate-950">
+      <div className="space-y-3 bg-slate-950 pb-3">
         <article className="relative min-h-[calc(100vh-122px)] overflow-hidden bg-slate-900">
-          {reel.video_url ? <video src={reel.video_url} poster={reel.thumbnail_url || undefined} controls className="h-full min-h-[calc(100vh-122px)] w-full object-cover" /> : null}
+          {reel.video_url ? <video src={reel.video_url} poster={reel.thumbnail_url || undefined} controls className="h-full min-h-[calc(100vh-122px)] w-full object-cover" /> : reel.thumbnail_url ? <img src={reel.thumbnail_url} alt="" className="h-full min-h-[calc(100vh-122px)] w-full object-cover" /> : null}
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-4 text-white">
             <p className="font-black">{getUserDisplayName(reel.users)}</p>
             <p className="mt-2 text-sm leading-5 text-white/85">{reel.caption || 'Shared a reel'}</p>
             <div className="mt-4 flex gap-3">
-              <button type="button" onClick={() => void toggleReelLike(reel)} className="rounded-full bg-white/18 px-4 py-2 text-sm font-black backdrop-blur">Like</button>
+              <button type="button" onClick={() => void toggleReelLike(reel)} className="rounded-full bg-white/18 px-4 py-2 text-sm font-black backdrop-blur">{user && reel.likes?.includes(user.id) ? 'Liked' : 'Like'}</button>
               <button type="button" onClick={() => void shareText('Committed Reel', buildReelWebUrl(reel.id))} className="rounded-full bg-white/18 px-4 py-2 text-sm font-black backdrop-blur">Share</button>
-              <Link href={`/reel/${reel.id}?web=1#comments`} className="rounded-full bg-white/18 px-4 py-2 text-sm font-black backdrop-blur">Comments</Link>
+              <a href="#comments" className="rounded-full bg-white/18 px-4 py-2 text-sm font-black backdrop-blur">Comments</a>
             </div>
           </div>
         </article>
+        <div className="px-3">
+          <CommentThread
+            id="comments"
+            title="Reel comments"
+            comments={comments}
+            loading={!!commentsLoadingByTarget[`reel:${reel.id}`]}
+            draft={commentDrafts[draftKey] || ''}
+            onDraftChange={(value) => setCommentDrafts((prev) => ({ ...prev, [draftKey]: value }))}
+            onSubmit={() => void submitReelComment(reel.id)}
+            replyDrafts={replyDrafts}
+            onReplyDraftChange={(key, value) => setReplyDrafts((prev) => ({ ...prev, [key]: value }))}
+            onReply={(commentId) => void submitReelComment(reel.id, commentId)}
+            targetPrefix={`reel:${reel.id}`}
+            submittingKey={commentSubmittingKey}
+          />
+        </div>
       </div>
     );
   };
@@ -3135,20 +4596,22 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     const targetId = appPath[1];
     const item = appPath[0] === 'status-item'
       ? statusFeed.find((status) => status.latest_status?.id === targetId)
-      : statusFeed.find((status) => status.user_id === targetId) || statusFeed[0];
-    if (!item) return <EmptyState icon={Sparkles} title="No Status" text="This status is no longer available." action="Back to Feed" onAction={() => router.push('/app/feed')} />;
+      : (targetId ? statusFeed.find((status) => status.user_id === targetId) : statusFeed[0]);
+    const resolvedItem = item || routeStatusItem;
+    if (routeStatusLoading && !resolvedItem) return <ScreenSkeleton />;
+    if (!resolvedItem) return <EmptyState icon={Sparkles} title="No Status" text="This status is no longer available." action="Back to Feed" onAction={() => router.push('/app/feed')} />;
     return (
       <div className="grid min-h-[calc(100vh-122px)] place-items-center bg-slate-950 p-4 text-white">
-        <section className="relative flex min-h-[70vh] w-full flex-col justify-between overflow-hidden rounded-[28px] p-5 shadow-2xl" style={{ background: item.latest_status?.background_color || 'linear-gradient(135deg,#2563eb,#ec4899)' }}>
-          {item.latest_status?.media_path ? <img src={item.latest_status.media_path} alt="" className="absolute inset-0 h-full w-full object-cover opacity-70" /> : null}
+        <section className="relative flex min-h-[70vh] w-full flex-col justify-between overflow-hidden rounded-[28px] p-5 shadow-2xl" style={{ background: resolvedItem.latest_status?.background_color || 'linear-gradient(135deg,#2563eb,#ec4899)' }}>
+          {resolvedItem.latest_status?.media_path ? <img src={resolvedItem.latest_status.media_path} alt="" className="absolute inset-0 h-full w-full object-cover opacity-70" /> : null}
           <div className="relative z-10 flex items-center gap-3">
-            <Avatar src={item.user_avatar} name={item.user_name} />
+            <Avatar src={resolvedItem.user_avatar} name={resolvedItem.user_name} />
             <div>
-              <p className="font-black">{item.user_name}</p>
-              <p className="text-xs font-semibold text-white/75">{timeAgo(item.latest_status?.created_at)}</p>
+              <p className="font-black">{resolvedItem.user_name}</p>
+              <p className="text-xs font-semibold text-white/75">{timeAgo(resolvedItem.latest_status?.created_at)}</p>
             </div>
           </div>
-          <p className="relative z-10 text-4xl font-black leading-tight">{item.latest_status?.text_content || 'Status'}</p>
+          <p className="relative z-10 text-4xl font-black leading-tight">{resolvedItem.latest_status?.text_content || 'Status'}</p>
         </section>
       </div>
     );
@@ -3332,7 +4795,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             <Avatar src={like.user?.profile_picture} name={getUserDisplayName(like.user)} size="lg" />
             <div className="min-w-0 flex-1">
               <p className="truncate text-lg font-black text-slate-950">{getUserDisplayName(like.user) || 'Someone liked you'}</p>
-              <p className="text-sm font-semibold text-slate-500">{like.is_super_like ? 'Sent a super like' : 'Liked your profile'} · {timeAgo(like.created_at)}</p>
+              <p className="text-sm font-semibold text-slate-500">{like.is_super_like ? 'Sent a super like' : 'Liked your profile'} - {timeAgo(like.created_at)}</p>
             </div>
             <Heart className="h-6 w-6 fill-pink-500 text-pink-500" />
           </article>
@@ -3445,9 +4908,26 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     if (!dateRequests.length) {
       return <EmptyState icon={Calendar} title="No Date Requests" text="Create a date request with one of your matches to plan your first date." action="Go to Matches" onAction={() => router.push('/app/dating/matches')} />;
     }
+    const filteredRequests = dateRequests.filter((request) => dateRequestTab === 'sent' ? request.from_user_id === user?.id : request.to_user_id === user?.id);
     return (
       <div className="space-y-3 px-4 py-4">
-        {dateRequests.map((request) => {
+        <div className="grid grid-cols-2 gap-2 rounded-[20px] bg-white p-2 ring-1 ring-slate-200">
+          {(['received', 'sent'] as const).map((tab) => (
+            <button key={tab} type="button" onClick={() => setDateRequestTab(tab)} className={`rounded-[16px] py-3 text-sm font-black capitalize ${dateRequestTab === tab ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>
+              {tab}
+            </button>
+          ))}
+        </div>
+        {!filteredRequests.length ? (
+          <EmptyState
+            icon={Calendar}
+            title={dateRequestTab === 'received' ? 'No Received Requests' : 'No Sent Requests'}
+            text={dateRequestTab === 'received' ? 'Date invitations sent to you will appear here.' : 'Date requests you send to matches will appear here.'}
+            action={dateRequestTab === 'sent' ? 'Create Date Request' : 'Go to Matches'}
+            onAction={() => router.push(dateRequestTab === 'sent' ? '/app/dating/create-date-request' : '/app/dating/matches')}
+          />
+        ) : null}
+        {filteredRequests.map((request) => {
           const incoming = request.to_user_id === user?.id;
           const other = incoming ? request.from_user : request.to_user;
           return (
@@ -3844,32 +5324,135 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
   const renderDatingUserProfile = () => {
     const targetUserId = appPath[2] || searchParams?.get('userId') || searchParams?.get('id') || '';
-    const profile = datingProfiles.find((item) => item.user_id === targetUserId) || datingProfiles[datingIndex] || myDatingProfile;
+    const profile = routeDatingProfile || datingProfiles.find((item) => item.user_id === targetUserId) || (!targetUserId ? myDatingProfile : null);
+    if (routeDatingProfileLoading) {
+      return (
+        <div className="space-y-4 px-4 py-4">
+          <div className="h-[520px] animate-pulse rounded-[28px] bg-slate-200" />
+          <div className="h-24 animate-pulse rounded-[22px] bg-slate-200" />
+        </div>
+      );
+    }
     if (!profile) return <EmptyState icon={User} title="Profile Not Found" text="This dating profile is not available." action="Back to Dating" onAction={() => router.push('/app/dating')} />;
-    const photo = profile.dating_photos?.find((item) => item.is_primary)?.photo_url || profile.dating_photos?.[0]?.photo_url || profile.users?.profile_picture;
-    const name = profile.users?.full_name || 'Committed dater';
+    const photos = profile.dating_photos || profile.photos || [];
+    const videos = profile.dating_videos || profile.videos || [];
+    const profileUser = profile.users || profile.user || null;
+    const photo = photos.find((item: any) => item.is_primary)?.photo_url || photos[0]?.photo_url || profileUser?.profile_picture;
+    const name = profileUser?.full_name || profileUser?.username || 'Committed dater';
+    const isOwnProfile = profile.user_id === user?.id;
+    const details = [
+      ['Faith', profile.religion],
+      ['Education', profile.education],
+      ['Height', profile.height_cm ? `${profile.height_cm} cm` : null],
+      ['Kids', profile.kids],
+      ['Drinks', profile.drink],
+      ['Smokes', profile.smoke],
+      ['Exercise', profile.exercise],
+      ['Pets', profile.pets],
+      ['Work', profile.work],
+    ].filter(([, value]) => !!value);
+    const canMessage = isOwnProfile || routeDatingReaction.matched;
     return (
       <div className="space-y-4 px-4 py-4">
         <section className="overflow-hidden rounded-[28px] bg-slate-950 text-white shadow-xl">
           {photo ? <img src={photo} alt="" className="h-[360px] w-full object-cover" /> : <div className="grid h-[360px] place-items-center bg-gradient-to-br from-pink-500 to-blue-700 text-[120px] font-black">{initials(name)}</div>}
           <div className="p-5">
-            <h2 className="text-3xl font-black">{name} {profile.age ? profile.age : ''}</h2>
-            <p className="mt-1 flex items-center gap-1 text-sm font-semibold text-white/75"><MapPin className="h-4 w-4" />{[profile.location_city, profile.location_country].filter(Boolean).join(', ') || 'Location not set'}</p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-3xl font-black">{name} {profile.age ? profile.age : ''}</h2>
+                <p className="mt-1 flex items-center gap-1 text-sm font-semibold text-white/75"><MapPin className="h-4 w-4" />{[profile.location_city, profile.location_country].filter(Boolean).join(', ') || 'Location not set'}</p>
+              </div>
+              {(profileUser?.verified || profileUser?.id_verified || profileUser?.email_verified || profileUser?.phone_verified) ? (
+                <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-black text-white">Verified</span>
+              ) : null}
+            </div>
             <p className="mt-4 text-sm leading-6 text-white/85">{profile.bio || 'Looking for meaningful connections.'}</p>
+            {profile.headline ? <p className="mt-3 rounded-[18px] bg-white/10 p-3 text-sm font-bold text-white">{profile.headline}</p> : null}
             <div className="mt-4 flex flex-wrap gap-2">
               {[profile.intention_tag, profile.religion, ...(profile.relationship_goals || []), ...(profile.interests || [])].filter(Boolean).slice(0, 8).map((tag) => (
                 <span key={String(tag)} className="rounded-full bg-white/15 px-3 py-1.5 text-xs font-black">{tag}</span>
               ))}
             </div>
-            {profile.user_id !== user?.id ? (
+            {!isOwnProfile ? (
               <div className="mt-5 grid grid-cols-3 gap-2">
-                <button type="button" onClick={() => void reactToDatingProfile(profile, 'like')} className="rounded-[18px] bg-green-500 py-3 font-black">Like</button>
-                <button type="button" onClick={() => void reactToDatingProfile(profile, 'super')} className="rounded-[18px] bg-blue-600 py-3 font-black">Super</button>
-                <button type="button" onClick={() => router.push('/app/messages')} className="rounded-[18px] bg-white/15 py-3 font-black">Message</button>
+                <button type="button" onClick={() => void reactToRouteDatingProfile(profile.user_id, 'pass')} className="rounded-[18px] bg-white/15 py-3 font-black">Pass</button>
+                <button type="button" onClick={() => void reactToRouteDatingProfile(profile.user_id, 'super')} disabled={routeDatingReaction.superLiked} className="rounded-[18px] bg-blue-600 py-3 font-black disabled:opacity-55">{routeDatingReaction.superLiked ? 'Super liked' : 'Super'}</button>
+                <button type="button" onClick={() => void reactToRouteDatingProfile(profile.user_id, 'like')} disabled={routeDatingReaction.liked} className="rounded-[18px] bg-green-500 py-3 font-black disabled:opacity-55">{routeDatingReaction.liked ? 'Liked' : 'Like'}</button>
               </div>
             ) : null}
           </div>
         </section>
+        {routeDatingReaction.matched ? (
+          <section className="rounded-[24px] bg-gradient-to-br from-pink-500 to-blue-600 p-5 text-white shadow-xl shadow-pink-500/20">
+            <Sparkles className="h-9 w-9" />
+            <h3 className="mt-3 text-2xl font-black">It's a match</h3>
+            <p className="mt-2 text-sm leading-6 text-white/85">You both liked each other. Start the conversation while the spark is fresh.</p>
+            <button type="button" onClick={() => void openConversationWithUser(profile.user_id)} className="mt-4 w-full rounded-[18px] bg-white py-3 font-black text-pink-600">
+              Message {name.split(' ')[0] || 'match'}
+            </button>
+          </section>
+        ) : null}
+        {!isOwnProfile && routeConversationStarters.length ? (
+          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+            <p className="text-lg font-black text-slate-950">Conversation Starters</p>
+            <p className="mt-1 text-sm text-slate-500">Send one opener to start naturally.</p>
+            <div className="mt-3 space-y-2">
+              {routeConversationStarters.map((starter) => (
+                <button
+                  key={starter}
+                  type="button"
+                  onClick={() => void openConversationWithUser(profile.user_id, starter)}
+                  className="w-full rounded-[18px] bg-pink-50 px-4 py-3 text-left text-sm font-black text-pink-700 ring-1 ring-pink-100"
+                >
+                  {starter}
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : null}
+        {details.length ? (
+          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+            <p className="text-lg font-black text-slate-950">More About {name.split(' ')[0] || 'Them'}</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {details.map(([label, value]) => (
+                <div key={label} className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-100">
+                  <p className="text-xs font-black uppercase text-slate-400">{label}</p>
+                  <p className="mt-1 text-sm font-black text-slate-800">{String(value).replaceAll('_', ' ')}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+        {routeDatingBadges.length ? (
+          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+            <p className="text-lg font-black text-slate-950">Badges</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {routeDatingBadges.map((badge) => (
+                <span key={badge.id || badge.badge_type || badge.name} className="rounded-full bg-blue-50 px-3 py-2 text-xs font-black text-blue-700">
+                  {badge.badge_name || badge.badge_type || badge.name || 'Badge'}
+                </span>
+              ))}
+            </div>
+          </section>
+        ) : null}
+        {photos.length > 1 || videos.length ? (
+          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+            <p className="text-lg font-black text-slate-950">Photos and Videos</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {photos.slice(0, 6).map((item: any, index: number) => (
+                <img key={item.id || item.photo_url || index} src={item.photo_url} alt="" className="aspect-square rounded-[18px] object-cover" />
+              ))}
+              {videos.slice(0, 2).map((item: any, index: number) => (
+                <video key={item.id || item.video_url || index} src={item.video_url} className="aspect-square rounded-[18px] bg-black object-cover" controls />
+              ))}
+            </div>
+          </section>
+        ) : null}
+        {!isOwnProfile && !canMessage && routeDatingReaction.liked ? (
+          <section className="rounded-[22px] bg-amber-50 p-4 text-sm font-bold text-amber-800 ring-1 ring-amber-100">
+            You liked this profile. Messaging opens when you match or send an allowed conversation starter.
+          </section>
+        ) : null}
       </div>
     );
   };
@@ -4244,6 +5827,12 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
   const renderMessages = () => {
     const selectedConversation = subPath ? conversations.find((conversation) => conversation.id === subPath) : null;
+    if (subPath && routeConversationLoading && !selectedConversation) {
+      return <ScreenSkeleton />;
+    }
+    if (subPath && !routeConversationLoading && !selectedConversation) {
+      return <EmptyState icon={MessageCircle} title="Conversation Not Found" text="This conversation is unavailable or you do not have access to it." action="Back to Messages" onAction={() => router.push('/app/messages')} />;
+    }
     if (selectedConversation) {
       const messages = messagesByConversation[selectedConversation.id] || [];
       const title = selectedConversation.participantNames?.join(', ') || 'Conversation';
@@ -4268,7 +5857,14 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               return (
                 <div key={message.id} className={`flex ${own ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[78%] rounded-[20px] px-4 py-3 text-sm font-semibold leading-5 ${own ? 'rounded-br-md bg-blue-600 text-white' : 'rounded-bl-md bg-white text-slate-800 ring-1 ring-slate-200'}`}>
-                    {message.content || (message.media_url ? 'Media message' : 'Message')}
+                    {message.media_url ? <img src={message.media_url} alt="" className="mb-2 max-h-64 rounded-[14px] object-cover" /> : null}
+                    {message.document_url ? (
+                      <a href={message.document_url} target="_blank" rel="noreferrer" className={`mb-2 flex items-center gap-2 rounded-[14px] px-3 py-2 text-xs font-black ${own ? 'bg-white/15 text-white' : 'bg-slate-50 text-blue-700'}`}>
+                        <FileText className="h-4 w-4" />
+                        Open document
+                      </a>
+                    ) : null}
+                    {message.content || (message.media_url ? 'Photo' : message.document_url ? 'Document' : 'Message')}
                     <p className={`mt-1 text-[10px] ${own ? 'text-blue-100' : 'text-slate-400'}`}>{timeAgo(message.created_at)}</p>
                   </div>
                 </div>
@@ -4284,11 +5880,27 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               <button type="button" onClick={() => router.push('/app/admin')} className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-slate-700 ring-1 ring-slate-200">Open Admin</button>
             </div>
           ) : null}
-          <div className="sticky bottom-[64px] flex gap-2 border-t border-slate-200 bg-white p-3">
-            <input value={chatDraft} onChange={(event) => setChatDraft(event.target.value)} placeholder="Type a message..." className="h-12 min-w-0 flex-1 rounded-full bg-slate-100 px-4 text-sm font-semibold outline-none focus:ring-4 focus:ring-blue-100" />
-            <button type="button" onClick={() => void sendChatMessage(selectedConversation)} disabled={!chatDraft.trim()} className="grid h-12 w-12 place-items-center rounded-full bg-blue-600 text-white disabled:opacity-50">
-              <Send className="h-5 w-5" />
-            </button>
+          <div className="sticky bottom-[64px] border-t border-slate-200 bg-white p-3">
+            {chatMediaUrl || chatDocumentUrl ? (
+              <div className="mb-2 flex items-center justify-between gap-3 rounded-[16px] bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600 ring-1 ring-slate-200">
+                <span className="truncate">{chatDocumentUrl ? 'Document attached' : 'Image attached'}</span>
+                <button type="button" onClick={() => { setChatMediaUrl(''); setChatDocumentUrl(''); }} className="text-red-500">Remove</button>
+              </div>
+            ) : null}
+            <div className="flex gap-2">
+              <label className="grid h-12 w-12 cursor-pointer place-items-center rounded-full bg-slate-100 text-slate-600">
+                <Camera className="h-5 w-5" />
+                <input type="file" accept="image/*" className="hidden" onChange={(event) => void handleFileUpload(event, 'messages', 'Message image', setChatMediaUrl)} />
+              </label>
+              <label className="grid h-12 w-12 cursor-pointer place-items-center rounded-full bg-slate-100 text-slate-600">
+                <FileText className="h-5 w-5" />
+                <input type="file" accept="image/*,application/pdf,.doc,.docx,.txt" className="hidden" onChange={(event) => void handleFileUpload(event, 'messages', 'Message document', setChatDocumentUrl)} />
+              </label>
+              <input value={chatDraft} onChange={(event) => setChatDraft(event.target.value)} placeholder="Type a message..." className="h-12 min-w-0 flex-1 rounded-full bg-slate-100 px-4 text-sm font-semibold outline-none focus:ring-4 focus:ring-blue-100" />
+              <button type="button" onClick={() => void sendChatMessage(selectedConversation)} disabled={!chatDraft.trim() && !chatMediaUrl.trim() && !chatDocumentUrl.trim()} className="grid h-12 w-12 place-items-center rounded-full bg-blue-600 text-white disabled:opacity-50">
+                <Send className="h-5 w-5" />
+              </button>
+            </div>
           </div>
         </div>
       );
@@ -4480,8 +6092,55 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           <section className="rounded-[28px] bg-blue-600 p-5 text-white shadow-xl shadow-blue-600/20">
             <Shield className="h-10 w-10" />
             <h2 className="mt-4 text-3xl font-black">Two-Factor Authentication</h2>
-            <p className="mt-2 text-sm leading-6 text-blue-50">Use verified email and phone as the foundation for safer sign-ins.</p>
+            <p className="mt-2 text-sm leading-6 text-blue-50">Set up the same account protection flow available in the mobile app.</p>
           </section>
+          <div className="rounded-[24px] bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-lg font-black text-slate-950">{twoFactorRecord?.enabled ? '2FA is enabled' : '2FA is off'}</p>
+                <p className="mt-1 text-sm text-slate-500">{twoFactorRecord?.enabled ? 'Your account has an extra sign-in check.' : 'Generate a secret and backup codes to enable it.'}</p>
+              </div>
+              <span className={`rounded-full px-3 py-1 text-xs font-black ${twoFactorRecord?.enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                {twoFactorRecord?.enabled ? 'Enabled' : 'Off'}
+              </span>
+            </div>
+            {!twoFactorRecord?.enabled ? (
+              <button type="button" onClick={() => void setupTwoFactor()} disabled={saving} className="mt-4 flex w-full items-center justify-center gap-2 rounded-[18px] bg-blue-600 py-4 font-black text-white disabled:opacity-50">
+                {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Shield className="h-5 w-5" />}
+                {twoFactorRecord?.id ? 'Regenerate setup' : 'Start setup'}
+              </button>
+            ) : (
+              <button type="button" onClick={() => void disableTwoFactor()} disabled={saving} className="mt-4 flex w-full items-center justify-center gap-2 rounded-[18px] bg-red-50 py-4 font-black text-red-600 ring-1 ring-red-100 disabled:opacity-50">
+                {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <X className="h-5 w-5" />}
+                Disable 2FA
+              </button>
+            )}
+          </div>
+          {(twoFactorSecret || twoFactorBackupCodes.length) && !twoFactorRecord?.enabled ? (
+            <div className="space-y-4 rounded-[24px] bg-white p-5 shadow-sm ring-1 ring-slate-200">
+              {twoFactorSecret ? (
+                <div>
+                  <p className="text-sm font-black text-slate-700">Authenticator secret</p>
+                  <p className="mt-2 break-all rounded-[16px] bg-slate-50 p-4 font-mono text-sm font-bold text-slate-700 ring-1 ring-slate-200">{twoFactorSecret}</p>
+                </div>
+              ) : null}
+              {twoFactorBackupCodes.length ? (
+                <div>
+                  <p className="text-sm font-black text-slate-700">Backup codes</p>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    {twoFactorBackupCodes.map((code) => (
+                      <span key={code} className="rounded-[14px] bg-slate-50 px-3 py-2 text-center font-mono text-sm font-bold text-slate-700 ring-1 ring-slate-200">{code}</span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              <FormField label="6 digit verification code" value={twoFactorCode} onChange={setTwoFactorCode} inputMode="numeric" placeholder="123456" />
+              <button type="button" onClick={() => void verifyAndEnableTwoFactor()} disabled={saving || twoFactorCode.trim().length !== 6} className="flex w-full items-center justify-center gap-2 rounded-[18px] bg-blue-600 py-4 font-black text-white disabled:opacity-50">
+                {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle2 className="h-5 w-5" />}
+                Enable 2FA
+              </button>
+            </div>
+          ) : null}
           <div className="grid grid-cols-2 gap-3">
             <Link href="/app/verification/email" className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <Mail className="h-7 w-7 text-blue-600" />
@@ -4530,19 +6189,132 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       );
     }
     if (subPath === 'professional-availability') {
+      const statusOptions = [
+        ['online', 'Online', 'Use app activity to show availability'],
+        ['busy', 'Busy', 'Pause new session requests'],
+        ['away', 'Away', 'Available later'],
+        ['offline', 'Offline', 'Do not show as available'],
+      ] as const;
       return (
         <div className="space-y-4 px-4 py-4">
           <section className="rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-slate-200">
             <Calendar className="h-9 w-9 text-blue-600" />
             <h2 className="mt-3 text-2xl font-black text-slate-950">Professional Availability</h2>
-            <p className="mt-2 text-sm text-slate-500">{professionalProfile ? 'Your profile is ready for booking availability.' : 'Apply first so members can book you.'}</p>
+            <p className="mt-2 text-sm text-slate-500">{professionalProfile ? 'Control when members can book you, just like the mobile app.' : 'Apply first so members can book you.'}</p>
           </section>
           {professionalProfile ? (
-            <div className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-              <p className="font-black text-slate-950">{professionalProfile.full_name || user?.full_name}</p>
-              <p className="mt-1 text-sm text-slate-500">Status: {professionalProfile.approval_status || 'pending'} · {professionalProfile.is_active ? 'Active' : 'Inactive'}</p>
-              <Link href="/app/professional/bookings" className="mt-4 inline-flex rounded-[16px] bg-blue-600 px-5 py-3 font-black text-white">View bookings</Link>
-            </div>
+            <>
+              <div className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-black text-slate-950">{professionalProfile.full_name || user?.full_name}</p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Profile: {professionalProfile.approval_status || 'pending'} - {professionalProfile.is_active ? 'Active' : 'Inactive'}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Current sessions: {professionalStatus?.current_session_count || 0} / {professionalAvailabilityForm.maxConcurrentSessions || 3}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">{professionalAvailabilityForm.status}</span>
+                </div>
+                {professionalStatus?.status_override ? (
+                  <div className="mt-4 rounded-[18px] bg-amber-50 p-4 text-sm font-bold text-amber-800 ring-1 ring-amber-100">
+                    Admin override is active{professionalStatus.status_override_until ? ` until ${new Date(professionalStatus.status_override_until).toLocaleString()}` : ''}.
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+                <p className="text-lg font-black text-slate-950">Status Preference</p>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  {statusOptions.map(([value, label, hint]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setProfessionalAvailabilityForm((prev) => ({ ...prev, status: value }))}
+                      className={`rounded-[18px] p-4 text-left ring-1 ${professionalAvailabilityForm.status === value ? 'bg-blue-600 text-white ring-blue-600' : 'bg-slate-50 text-slate-700 ring-slate-200'}`}
+                    >
+                      <span className="block font-black">{label}</span>
+                      <span className={`mt-1 block text-xs font-semibold ${professionalAvailabilityForm.status === value ? 'text-blue-50' : 'text-slate-500'}`}>{hint}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+                <p className="text-lg font-black text-slate-950">Session Capacity</p>
+                <FormField label="Maximum concurrent sessions" value={professionalAvailabilityForm.maxConcurrentSessions} onChange={(maxConcurrentSessions) => setProfessionalAvailabilityForm((prev) => ({ ...prev, maxConcurrentSessions }))} inputMode="numeric" />
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setProfessionalAvailabilityForm((prev) => ({ ...prev, onlineAvailability: !prev.onlineAvailability }))}
+                    className={`rounded-[18px] px-4 py-3 text-sm font-black ring-1 ${professionalAvailabilityForm.onlineAvailability ? 'bg-blue-600 text-white ring-blue-600' : 'bg-slate-50 text-slate-600 ring-slate-200'}`}
+                  >
+                    Online sessions {professionalAvailabilityForm.onlineAvailability ? 'on' : 'off'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProfessionalAvailabilityForm((prev) => ({ ...prev, inPersonAvailability: !prev.inPersonAvailability }))}
+                    className={`rounded-[18px] px-4 py-3 text-sm font-black ring-1 ${professionalAvailabilityForm.inPersonAvailability ? 'bg-blue-600 text-white ring-blue-600' : 'bg-slate-50 text-slate-600 ring-slate-200'}`}
+                  >
+                    In person {professionalAvailabilityForm.inPersonAvailability ? 'on' : 'off'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-lg font-black text-slate-950">Quiet Hours</p>
+                    <p className="text-sm text-slate-500">Hide booking availability during your rest hours.</p>
+                  </div>
+                  <button type="button" onClick={() => setProfessionalAvailabilityForm((prev) => ({ ...prev, quietHoursEnabled: !prev.quietHoursEnabled }))} className={`rounded-full px-4 py-2 text-xs font-black ${professionalAvailabilityForm.quietHoursEnabled ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                    {professionalAvailabilityForm.quietHoursEnabled ? 'On' : 'Off'}
+                  </button>
+                </div>
+                {professionalAvailabilityForm.quietHoursEnabled ? (
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <FormField label="Start" value={professionalAvailabilityForm.quietHoursStart} onChange={(quietHoursStart) => setProfessionalAvailabilityForm((prev) => ({ ...prev, quietHoursStart }))} placeholder="22:00" />
+                    <FormField label="End" value={professionalAvailabilityForm.quietHoursEnd} onChange={(quietHoursEnd) => setProfessionalAvailabilityForm((prev) => ({ ...prev, quietHoursEnd }))} placeholder="08:00" />
+                    <div className="col-span-2">
+                      <FormField label="Timezone" value={professionalAvailabilityForm.quietHoursTimezone} onChange={(quietHoursTimezone) => setProfessionalAvailabilityForm((prev) => ({ ...prev, quietHoursTimezone }))} placeholder="UTC" />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-lg font-black text-slate-950">Pricing</p>
+                    <p className="text-sm text-slate-500">Set the same booking price shown to members.</p>
+                  </div>
+                  <button type="button" onClick={() => setProfessionalAvailabilityForm((prev) => ({ ...prev, pricingEnabled: !prev.pricingEnabled }))} className={`rounded-full px-4 py-2 text-xs font-black ${professionalAvailabilityForm.pricingEnabled ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                    {professionalAvailabilityForm.pricingEnabled ? 'On' : 'Off'}
+                  </button>
+                </div>
+                {professionalAvailabilityForm.pricingEnabled ? (
+                  <div className="mt-4 grid grid-cols-3 gap-3">
+                    <FormField label="Currency" value={professionalAvailabilityForm.pricingCurrency} onChange={(pricingCurrency) => setProfessionalAvailabilityForm((prev) => ({ ...prev, pricingCurrency }))} placeholder="USD" />
+                    <FormField label="Rate" value={professionalAvailabilityForm.pricingRate} onChange={(pricingRate) => setProfessionalAvailabilityForm((prev) => ({ ...prev, pricingRate }))} inputMode="decimal" placeholder="25" />
+                    <label className="block text-sm font-black text-slate-700">
+                      Unit
+                      <select value={professionalAvailabilityForm.pricingUnit} onChange={(event) => setProfessionalAvailabilityForm((prev) => ({ ...prev, pricingUnit: event.target.value }))} className="mt-2 w-full rounded-[18px] border border-slate-200 bg-white px-3 py-4 font-semibold outline-none focus:border-blue-500">
+                        <option value="session">Session</option>
+                        <option value="hour">Hour</option>
+                        <option value="minute">Minute</option>
+                      </select>
+                    </label>
+                  </div>
+                ) : null}
+              </div>
+
+              <button type="button" onClick={() => void saveProfessionalAvailability()} disabled={saving} className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-blue-600 py-4 font-black text-white shadow-xl shadow-blue-600/20 disabled:opacity-50">
+                {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
+                Save availability
+              </button>
+              <Link href="/app/professional/bookings" className="flex w-full items-center justify-center rounded-[20px] bg-white py-4 font-black text-blue-700 ring-1 ring-blue-100">View bookings</Link>
+            </>
           ) : (
             <EmptyState icon={Briefcase} title="No Professional Profile" text="Submit a professional application before managing availability." action="Apply Now" onAction={() => router.push('/app/settings/become-professional')} />
           )}
@@ -4554,9 +6326,31 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         <div className="space-y-4 px-4 py-4">
           <section className="rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-slate-200">
             <Shield className="h-9 w-9 text-blue-600" />
-            <h2 className="mt-3 text-2xl font-black text-slate-950">Sessions</h2>
-            <p className="mt-2 text-sm text-slate-500">Current web session for {user?.email || user?.phone_number || 'this account'}.</p>
+            <h2 className="mt-3 text-2xl font-black text-slate-950">Active Sessions</h2>
+            <p className="mt-2 text-sm text-slate-500">Manage devices signed in to {user?.email || user?.phone_number || 'this account'}.</p>
           </section>
+          {!activeSessions.length ? <EmptyState icon={Shield} title="No Active Sessions" text="Your current browser session will appear here after auth refresh." /> : null}
+          {activeSessions.map((session) => (
+            <article key={session.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+              <div className="flex items-start gap-3">
+                <div className="grid h-11 w-11 place-items-center rounded-full bg-blue-50 text-blue-600">
+                  <Shield className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-black text-slate-950">{session.device_info || 'Unknown device'}</p>
+                  <p className="mt-1 text-sm text-slate-500">Last active: {session.last_active ? new Date(session.last_active).toLocaleString() : 'Unknown'}</p>
+                  <p className="text-xs font-bold text-slate-400">Created: {session.created_at ? new Date(session.created_at).toLocaleDateString() : 'Unknown'}</p>
+                </div>
+                {session.isCurrent ? <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">Current</span> : null}
+              </div>
+              {!session.isCurrent ? (
+                <button type="button" onClick={() => void endStoredSession(session.id)} className="mt-4 flex w-full items-center justify-center gap-2 rounded-[16px] bg-red-50 py-3 text-sm font-black text-red-600 ring-1 ring-red-100">
+                  <Trash2 className="h-4 w-4" />
+                  End session
+                </button>
+              ) : null}
+            </article>
+          ))}
           <button type="button" onClick={() => void supabase?.auth.signOut().then(() => router.replace('/auth'))} className="w-full rounded-[20px] bg-red-50 py-4 font-black text-red-600 ring-1 ring-red-100">Sign out of this device</button>
         </div>
       );
@@ -4701,7 +6495,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           {legalDocuments.map((item) => (
             <Link key={item.id} href={`/app/legal/${item.slug}`} className="block rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <p className="font-black text-slate-950">{item.title}</p>
-              <p className="mt-1 text-sm text-slate-500">Version {item.version || '1.0'} {item.is_required ? '· Required' : ''}</p>
+              <p className="mt-1 text-sm text-slate-500">Version {item.version || '1.0'} {item.is_required ? '- Required' : ''}</p>
             </Link>
           ))}
         </div>
@@ -4713,7 +6507,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         <section className="rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-slate-200">
           <FileText className="h-9 w-9 text-blue-600" />
           <h1 className="mt-3 text-3xl font-black text-slate-950">{document.title}</h1>
-          <p className="mt-2 text-sm text-slate-500">Version {document.version || '1.0'} · Updated {document.updated_at ? new Date(document.updated_at).toLocaleDateString() : 'recently'}</p>
+          <p className="mt-2 text-sm text-slate-500">Version {document.version || '1.0'} - Updated {document.updated_at ? new Date(document.updated_at).toLocaleDateString() : 'recently'}</p>
         </section>
         <section className="rounded-[22px] bg-white p-5 text-sm leading-7 text-slate-700 shadow-sm ring-1 ring-slate-200">
           {(document.content || '').split('\n').map((line: string, index: number) => (
@@ -4737,7 +6531,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           {adReceipts.map((receipt) => (
             <Link key={receipt.id} href={`/app/ads/receipt?receiptId=${receipt.id}`} className="block rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <p className="text-lg font-black text-slate-950">{receipt.receipt_number || 'Receipt'}</p>
-              <p className="mt-1 text-sm text-slate-500">{receipt.advertisements?.title || 'Advertisement'} · {receipt.currency || 'USD'} {receipt.amount || 0}</p>
+              <p className="mt-1 text-sm text-slate-500">{receipt.advertisements?.title || 'Advertisement'} - {receipt.currency || 'USD'} {receipt.amount || 0}</p>
               <span className="mt-3 inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-black uppercase text-blue-700">{receipt.status || 'issued'}</span>
             </Link>
           ))}
@@ -4842,12 +6636,31 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           <>
             <label className="block text-sm font-black text-slate-700">
               Professional role
-              <select value={bookingForm.roleId} onChange={(event) => setBookingForm((prev) => ({ ...prev, roleId: event.target.value }))} className="mt-2 w-full rounded-[18px] border border-slate-200 bg-white px-4 py-4 font-semibold outline-none focus:border-blue-500">
+              <select value={bookingForm.roleId} onChange={(event) => setBookingForm((prev) => ({ ...prev, roleId: event.target.value, professionalId: '' }))} className="mt-2 w-full rounded-[18px] border border-slate-200 bg-white px-4 py-4 font-semibold outline-none focus:border-blue-500">
                 <option value="">Select a role</option>
                 {professionalRoles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
               </select>
             </label>
-            <FormField label="Professional profile ID" value={bookingForm.professionalId} onChange={(professionalId) => setBookingForm((prev) => ({ ...prev, professionalId }))} placeholder="Paste professional profile id" />
+            <label className="block text-sm font-black text-slate-700">
+              Professional
+              <select
+                value={bookingForm.professionalId}
+                onChange={(event) => {
+                  const selected = professionalDirectory.find((item) => item.id === event.target.value);
+                  setBookingForm((prev) => ({ ...prev, professionalId: event.target.value, roleId: selected?.role_id || prev.roleId }));
+                }}
+                className="mt-2 w-full rounded-[18px] border border-slate-200 bg-white px-4 py-4 font-semibold outline-none focus:border-blue-500"
+              >
+                <option value="">Select a professional</option>
+                {professionalDirectory
+                  .filter((profile) => !bookingForm.roleId || profile.role_id === bookingForm.roleId)
+                  .map((profile) => (
+                    <option key={profile.id} value={profile.id}>
+                      {profile.full_name || 'Professional'}{profile.role?.name ? ` - ${profile.role.name}` : ''}{profile.rating_average ? ` - ${Number(profile.rating_average).toFixed(1)} stars` : ''}
+                    </option>
+                  ))}
+              </select>
+            </label>
             <FormField label="Conversation ID" value={bookingForm.conversationId} onChange={(conversationId) => setBookingForm((prev) => ({ ...prev, conversationId }))} placeholder="Optional" />
           </>
         ) : selectedBooking ? (
@@ -4913,7 +6726,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           <section className="rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-slate-200">
             <Star className="h-9 w-9 fill-amber-400 text-amber-400" />
             <h2 className="mt-3 text-2xl font-black text-slate-950">Professional Reviews</h2>
-            <p className="mt-2 text-sm text-slate-500">{professionalProfile ? `${professionalProfile.rating_average || 0} average · ${professionalProfile.review_count || professionalReviews.length} reviews` : 'Reviews for your professional profile.'}</p>
+            <p className="mt-2 text-sm text-slate-500">{professionalProfile ? `${professionalProfile.rating_average || 0} average - ${professionalProfile.review_count || professionalReviews.length} reviews` : 'Reviews for your professional profile.'}</p>
           </section>
           {!professionalReviews.length ? <EmptyState icon={Star} title="No Reviews Yet" text="Reviews from completed sessions will appear here." /> : null}
           {professionalReviews.map((review) => (
@@ -4922,7 +6735,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                 <Avatar src={review.is_anonymous ? null : review.client?.profile_picture} name={review.is_anonymous ? 'Anonymous' : review.client?.full_name} />
                 <div>
                   <p className="font-black text-slate-950">{review.is_anonymous ? 'Anonymous client' : review.client?.full_name || 'Client'}</p>
-                  <p className="text-sm font-semibold text-amber-500">{'★'.repeat(Math.max(1, Number(review.rating || 0)))}</p>
+                  <p className="text-sm font-semibold text-amber-500">{`${Math.max(1, Number(review.rating || 0))}/5 stars`}</p>
                 </div>
               </div>
               <p className="mt-3 text-sm leading-6 text-slate-600">{review.review_text || 'No written review.'}</p>
@@ -4971,7 +6784,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         <section className="rounded-[24px] bg-white p-5 text-center shadow-sm ring-1 ring-slate-200">
           <p className="text-sm font-black uppercase text-slate-400">Relationship with</p>
           <h1 className="mt-2 text-3xl font-black text-slate-950">{rel.partner_name || 'Partner'}</h1>
-          <p className="mt-2 text-sm font-semibold capitalize text-slate-500">{rel.type || 'relationship'} · {rel.privacy_level || 'private'}</p>
+          <p className="mt-2 text-sm font-semibold capitalize text-slate-500">{rel.type || 'relationship'} - {rel.privacy_level || 'private'}</p>
           <p className="mt-4 text-sm text-slate-500">Started {rel.start_date ? new Date(rel.start_date).toLocaleDateString() : 'recently'}</p>
         </section>
       </div>
@@ -4981,10 +6794,12 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const renderUserProfileRoute = () => {
     const userId = appPath[1];
     if (!userId) return renderProfile();
+    if (routeProfileLoading) return <ScreenSkeleton />;
     const related = userId === user?.id
       ? user
       : routeProfileUser || datingLikes.find((item) => item.user?.id === userId)?.user || datingMatches.find((item) => item.user?.id === userId)?.user || null;
     if (!related) return <EmptyState icon={User} title="Profile Not Found" text="This profile is not loaded yet." action="Back" onAction={() => router.back()} />;
+    const relatedPosts = userId === user?.id ? posts.filter((post) => post.user_id === user.id).slice(0, 12) : routeProfilePosts;
     return (
       <div className="space-y-4 px-4 py-4">
         <section className="rounded-[28px] bg-white p-6 text-center shadow-sm ring-1 ring-slate-200">
@@ -4997,6 +6812,16 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           </div>
         </section>
         <Link href="/app/messages" className="block rounded-[20px] bg-blue-600 py-4 text-center font-black text-white">Message</Link>
+        <section className="space-y-3">
+          <h3 className="px-1 text-lg font-black text-slate-950">Posts</h3>
+          {!relatedPosts.length ? (
+            <div className="rounded-[22px] bg-white p-5 text-center text-sm font-semibold text-slate-500 shadow-sm ring-1 ring-slate-200">No visible posts yet.</div>
+          ) : (
+            relatedPosts.map((post) => (
+              <PostCard key={post.id} post={post} user={user} onLike={togglePostLike} onShare={shareText} />
+            ))
+          )}
+        </section>
       </div>
     );
   };
@@ -5019,14 +6844,14 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                 <div>
                   <p className="text-lg font-black text-slate-950">{rel.users?.full_name || 'Member'}</p>
                   <p className="text-sm text-slate-500">with {rel.partner_name || rel.partner_phone || 'Partner'}</p>
-                  <p className="mt-2 text-sm font-semibold capitalize text-slate-600">{rel.type || 'relationship'} · {rel.privacy_level || 'private'}</p>
+                  <p className="mt-2 text-sm font-semibold capitalize text-slate-600">{rel.type || 'relationship'} - {rel.privacy_level || 'private'}</p>
                 </div>
                 <span className={`rounded-full px-3 py-1 text-xs font-black uppercase ${rel.status === 'verified' ? 'bg-emerald-50 text-emerald-700' : rel.status === 'ended' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-700'}`}>{rel.status || 'pending'}</span>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => void updateAdminRelationship(rel.id, 'verify')} disabled={saving || rel.status === 'verified'} className="rounded-[16px] bg-cyan-500 py-3 text-sm font-black text-white disabled:opacity-40">Verify</button>
-                <button type="button" onClick={() => void updateAdminRelationship(rel.id, 'end')} disabled={saving || rel.status === 'ended'} className="rounded-[16px] bg-amber-500 py-3 text-sm font-black text-white disabled:opacity-40">End Review</button>
-                <button type="button" onClick={() => void updateAdminRelationship(rel.id, 'reject')} disabled={saving || rel.status === 'ended'} className="rounded-[16px] bg-red-500 py-3 text-sm font-black text-white disabled:opacity-40">Reject</button>
+                <button type="button" onClick={() => void updateAdminRelationship(rel.id, 'verify')} disabled={saving || rel.status !== 'pending'} className="rounded-[16px] bg-cyan-500 py-3 text-sm font-black text-white disabled:opacity-40">Verify</button>
+                <button type="button" onClick={() => void updateAdminRelationship(rel.id, 'end')} disabled={saving || rel.status !== 'verified'} className="rounded-[16px] bg-amber-500 py-3 text-sm font-black text-white disabled:opacity-40">End Review</button>
+                <button type="button" onClick={() => void updateAdminRelationship(rel.id, 'reject')} disabled={saving || rel.status !== 'pending'} className="rounded-[16px] bg-red-500 py-3 text-sm font-black text-white disabled:opacity-40">Reject</button>
                 <button type="button" onClick={() => void updateAdminRelationship(rel.id, 'delete')} disabled={saving} className="rounded-[16px] bg-red-800 py-3 text-sm font-black text-white disabled:opacity-40">Delete</button>
               </div>
             </article>
@@ -5060,8 +6885,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                 {(['phone', 'email', 'id'] as const).map((type) => {
                   const verified = type === 'phone' ? member.phone_verified : type === 'email' ? member.email_verified : member.id_verified;
                   return (
-                    <button key={type} type="button" onClick={() => void updateAdminUserVerification(member.id, type)} disabled={!!verified} className={`rounded-[14px] py-2 text-xs font-black uppercase ${verified ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-700'}`}>
-                      {type} {verified ? '✓' : 'x'}
+                    <button key={type} type="button" onClick={() => void updateAdminUserVerification(member.id, type)} disabled={saving || !!verified} className={`rounded-[14px] py-2 text-xs font-black uppercase disabled:opacity-50 ${verified ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-700'}`}>
+                      {type} {verified ? 'yes' : 'no'}
                     </button>
                   );
                 })}
@@ -5108,8 +6933,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               </div>
               {row.thumbnail_url ? <img src={row.thumbnail_url} alt="" className="mt-3 max-h-56 w-full rounded-[18px] object-cover" /> : null}
               <div className="mt-4 grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => void updateModeration(isPosts ? 'posts' : 'reels', row.id, 'approved')} className="rounded-[16px] bg-emerald-500 py-3 text-sm font-black text-white">Approve</button>
-                <button type="button" onClick={() => void updateModeration(isPosts ? 'posts' : 'reels', row.id, 'rejected')} className="rounded-[16px] bg-red-500 py-3 text-sm font-black text-white">Reject</button>
+                <button type="button" onClick={() => void updateModeration(isPosts ? 'posts' : 'reels', row.id, 'approved')} disabled={saving || row.moderation_status === 'approved'} className="rounded-[16px] bg-emerald-500 py-3 text-sm font-black text-white disabled:opacity-50">Approve</button>
+                <button type="button" onClick={() => void updateModeration(isPosts ? 'posts' : 'reels', row.id, 'rejected')} disabled={saving || row.moderation_status === 'rejected'} className="rounded-[16px] bg-red-500 py-3 text-sm font-black text-white disabled:opacity-50">Reject</button>
               </div>
             </article>
           ))}
@@ -5163,9 +6988,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               </div>
               <p className="mt-3 text-sm leading-6 text-slate-600">{report.details || report.reason || 'No details supplied.'}</p>
               <div className="mt-4 grid grid-cols-3 gap-2">
-                <button type="button" onClick={() => void updateFalseReport(report.id, 'reviewing')} className="rounded-[16px] bg-blue-600 py-3 text-xs font-black text-white">Review</button>
-                <button type="button" onClick={() => void updateFalseReport(report.id, 'dismissed')} className="rounded-[16px] bg-slate-700 py-3 text-xs font-black text-white">Dismiss</button>
-                <button type="button" onClick={() => void updateFalseReport(report.id, 'resolved')} className="rounded-[16px] bg-red-600 py-3 text-xs font-black text-white">Resolve</button>
+                <button type="button" onClick={() => void updateFalseReport(report, 'reviewing')} disabled={saving || report.status === 'reviewing' || report.status === 'resolved' || report.status === 'dismissed'} className="rounded-[16px] bg-blue-600 py-3 text-xs font-black text-white disabled:opacity-50">Review</button>
+                <button type="button" onClick={() => void updateFalseReport(report, 'dismissed')} disabled={saving || report.status === 'resolved' || report.status === 'dismissed'} className="rounded-[16px] bg-slate-700 py-3 text-xs font-black text-white disabled:opacity-50">Dismiss</button>
+                <button type="button" onClick={() => void updateFalseReport(report, 'resolved')} disabled={saving || report.status === 'resolved'} className="rounded-[16px] bg-red-600 py-3 text-xs font-black text-white disabled:opacity-50">End</button>
               </div>
             </article>
           ))}
@@ -5183,7 +7008,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           {paymentSubmissions.map((payment) => (
             <article key={payment.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <p className="text-lg font-black text-slate-950">{payment.user?.full_name || payment.user?.email || 'Payment'}</p>
-              <p className="mt-1 text-sm text-slate-500">{payment.transaction_reference || payment.reference || payment.method || 'No reference'} · {payment.amount || ''}</p>
+              <p className="mt-1 text-sm text-slate-500">{payment.transaction_reference || payment.reference || payment.method || 'No reference'} - {payment.amount || ''}</p>
               {payment.proof_url || payment.payment_proof_url ? <Link href={`/app/admin/payment-proof-viewer?imageUrl=${encodeURIComponent(payment.proof_url || payment.payment_proof_url)}`} className="mt-3 inline-flex rounded-[14px] bg-blue-50 px-4 py-2 text-sm font-black text-blue-700">View proof</Link> : null}
               <span className="mt-3 block rounded-full bg-amber-50 px-3 py-1 text-center text-xs font-black uppercase text-amber-700">{payment.status || 'pending'}</span>
               {payment.status === 'pending' ? (
@@ -5205,6 +7030,80 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             <X className="h-6 w-6" />
           </button>
           {imageUrl ? <img src={imageUrl} alt="Payment proof" className="max-h-[calc(100vh-160px)] w-full object-contain" /> : <EmptyState icon={CreditCard} title="No Proof Image" text="This payment submission has no proof image." />}
+        </div>
+      );
+    }
+    if (subPath === 'ban-appeals') {
+      return (
+        <div className="space-y-4 px-4 py-4">
+          <section className="rounded-[28px] bg-slate-950 p-5 text-white">
+            <Shield className="h-10 w-10 text-amber-300" />
+            <h2 className="mt-4 text-3xl font-black">Ban Appeals</h2>
+            <p className="mt-2 text-sm text-slate-300">Approve appeals by lifting the matching restriction, or reject with the restriction still active.</p>
+          </section>
+          {routeRowsLoading ? <ScreenSkeleton /> : null}
+          {!routeRowsLoading && !routeRows.length ? <EmptyState icon={Shield} title="No Appeals" text={routeRowsError || 'No ban appeals are waiting.'} /> : null}
+          {routeRows.map((appeal) => (
+            <article key={appeal.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-black text-slate-950">{appeal.appeal_type || appeal.restricted_feature || 'Appeal'}</p>
+                  <p className="mt-1 truncate text-sm text-slate-500">{appeal.user_id || 'Member'}</p>
+                </div>
+                <span className={`rounded-full px-3 py-1 text-xs font-black uppercase ${appeal.status === 'approved' ? 'bg-emerald-50 text-emerald-700' : appeal.status === 'rejected' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>{appeal.status || 'pending'}</span>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-slate-600">{appeal.reason || 'No appeal reason supplied.'}</p>
+              {appeal.admin_response ? <p className="mt-2 rounded-[16px] bg-slate-50 p-3 text-xs font-semibold text-slate-500">{appeal.admin_response}</p> : null}
+              {appeal.status === 'pending' || appeal.status === 'under_review' ? (
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => void updateBanAppeal(appeal, 'approve')} disabled={saving} className="rounded-[16px] bg-emerald-500 py-3 text-sm font-black text-white disabled:opacity-50">Approve</button>
+                  <button type="button" onClick={() => void updateBanAppeal(appeal, 'reject')} disabled={saving} className="rounded-[16px] bg-red-500 py-3 text-sm font-black text-white disabled:opacity-50">Reject</button>
+                </div>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      );
+    }
+    if (subPath === 'dating') {
+      return (
+        <div className="space-y-4 px-4 py-4">
+          <section className="rounded-[28px] bg-slate-950 p-5 text-white">
+            <Heart className="h-10 w-10 fill-pink-500 text-pink-500" />
+            <h2 className="mt-4 text-3xl font-black">Dating Admin</h2>
+            <p className="mt-2 text-sm text-slate-300">Manage profile safety, visibility, premium trials, and trust badges.</p>
+          </section>
+          {routeRowsLoading ? <ScreenSkeleton /> : null}
+          {!routeRowsLoading && !routeRows.length ? <EmptyState icon={Heart} title="No Dating Profiles" text={routeRowsError || 'No dating profiles are available.'} /> : null}
+          {routeRows.map((profile) => (
+            <article key={profile.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+              <div className="flex gap-3">
+                <Avatar src={profile.users?.profile_picture} name={profile.users?.full_name || profile.users?.email || 'Member'} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-black text-slate-950">{profile.users?.full_name || profile.users?.email || 'Dating member'}</p>
+                  <p className="truncate text-sm text-slate-500">{[profile.age, profile.location_city, profile.location_country].filter(Boolean).join(' - ') || profile.user_id}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <span className={`rounded-full px-2 py-1 text-xs font-black ${profile.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{profile.is_active ? 'active' : 'inactive'}</span>
+                    {profile.admin_suspended ? <span className="rounded-full bg-red-50 px-2 py-1 text-xs font-black text-red-700">suspended</span> : null}
+                    {profile.admin_limited ? <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-black text-amber-700">limited</span> : null}
+                    {profile.premium_trial_ends_at ? <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-black text-blue-700">premium trial</span> : null}
+                  </div>
+                </div>
+              </div>
+              {profile.bio ? <p className="mt-3 line-clamp-3 text-sm leading-6 text-slate-600">{profile.bio}</p> : null}
+              {profile.admin_suspended_reason || profile.admin_limited_reason ? (
+                <p className="mt-3 rounded-[16px] bg-slate-50 p-3 text-xs font-semibold text-slate-500">{profile.admin_suspended_reason || profile.admin_limited_reason}</p>
+              ) : null}
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => void updateAdminDatingProfile(profile, profile.admin_suspended ? 'unsuspend' : 'suspend')} disabled={saving} className={`rounded-[16px] py-3 text-sm font-black text-white disabled:opacity-50 ${profile.admin_suspended ? 'bg-emerald-600' : 'bg-red-500'}`}>{profile.admin_suspended ? 'Unsuspend' : 'Suspend'}</button>
+                <button type="button" onClick={() => void updateAdminDatingProfile(profile, profile.admin_limited ? 'unlimit' : 'limit')} disabled={saving} className={`rounded-[16px] py-3 text-sm font-black text-white disabled:opacity-50 ${profile.admin_limited ? 'bg-emerald-600' : 'bg-amber-500'}`}>{profile.admin_limited ? 'Unlimit' : 'Limit'}</button>
+                <button type="button" onClick={() => void updateAdminDatingProfile(profile, 'premium')} disabled={saving} className="rounded-[16px] bg-blue-600 py-3 text-sm font-black text-white disabled:opacity-50">7-day Premium</button>
+                <button type="button" onClick={() => void updateAdminDatingProfile(profile, 'badge_verified')} disabled={saving} className="rounded-[16px] bg-pink-600 py-3 text-sm font-black text-white disabled:opacity-50">Verified Badge</button>
+                <button type="button" onClick={() => void updateAdminDatingProfile(profile, 'badge_premium')} disabled={saving} className="rounded-[16px] bg-violet-600 py-3 text-sm font-black text-white disabled:opacity-50">Premium Badge</button>
+                <button type="button" onClick={() => void updateAdminDatingProfile(profile, 'delete')} disabled={saving} className="rounded-[16px] bg-red-800 py-3 text-sm font-black text-white disabled:opacity-50">Delete</button>
+              </div>
+            </article>
+          ))}
         </div>
       );
     }
@@ -5244,14 +7143,25 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           <section className="rounded-[28px] bg-slate-950 p-5 text-white">
             <Calendar className="h-10 w-10 text-blue-300" />
             <h2 className="mt-4 text-3xl font-black">Professional Sessions</h2>
-            <p className="mt-2 text-sm text-slate-300">Session and booking queue from the mobile admin area.</p>
+            <p className="mt-2 text-sm text-slate-300">Full booking/session queue from the mobile admin area.</p>
           </section>
-          {!bookings.length ? <EmptyState icon={Calendar} title="No Sessions Loaded" text="Current user sessions are loaded here; full admin queue remains available from mobile." /> : null}
-          {bookings.map((session) => (
+          {!adminProfessionalSessions.length ? <EmptyState icon={Calendar} title="No Sessions Loaded" text="No professional sessions are available in the admin queue." /> : null}
+          {adminProfessionalSessions.map((session) => (
             <article key={session.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-              <p className="font-black text-slate-950">{session.professional?.full_name || session.session_type || 'Session'}</p>
-              <p className="mt-1 text-sm text-slate-500">{session.scheduled_date ? new Date(session.scheduled_date).toLocaleString() : 'No schedule'} · {session.location_type || 'online'}</p>
-              <span className="mt-3 inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-black uppercase text-blue-700">{session.status || 'pending'}</span>
+              <div className="flex items-start gap-3">
+                <Avatar src={session.user?.profile_picture} name={session.user?.full_name || session.user?.email || 'Client'} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-black text-slate-950">{session.user?.full_name || session.user?.email || 'Client'}</p>
+                  <p className="mt-1 text-sm text-slate-500">with {session.professional?.full_name || 'professional'}</p>
+                </div>
+                <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black uppercase text-blue-700">{session.status || 'pending'}</span>
+              </div>
+              <p className="mt-1 text-sm text-slate-500">{session.scheduled_date ? new Date(session.scheduled_date).toLocaleString() : 'No schedule'} - {session.location_type || 'online'}</p>
+              <div className="mt-3 grid gap-2 text-sm text-slate-600">
+                <p>{session.session_type || 'session'} - {session.scheduled_duration_minutes || 60} min - payment {session.payment_status || 'not set'}</p>
+                {session.location_address ? <p>{session.location_address}</p> : null}
+                {session.booking_notes ? <p className="rounded-[14px] bg-slate-50 p-3">{session.booking_notes}</p> : null}
+              </div>
             </article>
           ))}
         </div>
@@ -5265,12 +7175,24 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             <h2 className="mt-4 text-3xl font-black">Professional Reviews</h2>
             <p className="mt-2 text-sm text-slate-300">Ratings and feedback moderation.</p>
           </section>
-          {!professionalReviews.length ? <EmptyState icon={Star} title="No Reviews Loaded" text="Reviews for your professional profile appear here." /> : null}
-          {professionalReviews.map((review) => (
+          {!adminProfessionalReviews.length ? <EmptyState icon={Star} title="No Reviews Loaded" text="No professional reviews are available in the admin queue." /> : null}
+          {adminProfessionalReviews.map((review) => (
             <article key={review.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-              <p className="font-black text-slate-950">{review.client?.full_name || 'Client'}</p>
-              <p className="mt-1 text-sm font-semibold text-amber-500">{'★'.repeat(Math.max(1, Number(review.rating || 0)))}</p>
+              <p className="font-black text-slate-950">{review.client?.full_name || review.client?.email || 'Client'}</p>
+              <p className="mt-1 text-sm text-slate-500">for {review.professional?.full_name || 'professional'}</p>
+              <p className="mt-1 text-sm font-semibold text-amber-500">{`${Math.max(1, Number(review.rating || 0))}/5 stars`}</p>
               <p className="mt-2 text-sm text-slate-600">{review.review_text || 'No written review.'}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {review.is_anonymous ? <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase text-slate-600">Anonymous</span> : null}
+                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-black uppercase ${review.moderation_status === 'approved' ? 'bg-emerald-50 text-emerald-700' : review.moderation_status === 'rejected' ? 'bg-red-50 text-red-700' : review.moderation_status === 'flagged' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>{review.moderation_status || 'pending'}</span>
+                {review.reported_count ? <span className="inline-flex rounded-full bg-red-50 px-3 py-1 text-xs font-black uppercase text-red-700">{review.reported_count} reports</span> : null}
+              </div>
+              {review.moderation_reason ? <p className="mt-3 rounded-[16px] bg-slate-50 p-3 text-xs font-semibold text-slate-500">{review.moderation_reason}</p> : null}
+              <div className="mt-4 grid grid-cols-3 gap-2">
+                <button type="button" onClick={() => void updateProfessionalReviewModeration(review, 'approved')} disabled={saving || review.moderation_status === 'approved'} className="rounded-[16px] bg-emerald-500 py-3 text-xs font-black text-white disabled:opacity-50">Approve</button>
+                <button type="button" onClick={() => void updateProfessionalReviewModeration(review, 'flagged')} disabled={saving || review.moderation_status === 'flagged'} className="rounded-[16px] bg-amber-500 py-3 text-xs font-black text-white disabled:opacity-50">Flag</button>
+                <button type="button" onClick={() => void updateProfessionalReviewModeration(review, 'rejected')} disabled={saving || review.moderation_status === 'rejected'} className="rounded-[16px] bg-red-500 py-3 text-xs font-black text-white disabled:opacity-50">Reject</button>
+              </div>
             </article>
           ))}
         </div>
@@ -5441,6 +7363,151 @@ function FormField({
   );
 }
 
+function CommentThread({
+  id,
+  title,
+  comments,
+  loading,
+  draft,
+  onDraftChange,
+  onSubmit,
+  replyDrafts,
+  onReplyDraftChange,
+  onReply,
+  targetPrefix,
+  submittingKey,
+}: {
+  id?: string;
+  title: string;
+  comments: SocialComment[];
+  loading: boolean;
+  draft: string;
+  onDraftChange: (value: string) => void;
+  onSubmit: () => void;
+  replyDrafts: Record<string, string>;
+  onReplyDraftChange: (key: string, value: string) => void;
+  onReply: (commentId: string) => void;
+  targetPrefix: string;
+  submittingKey: string | null;
+}) {
+  return (
+    <section id={id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-black text-slate-950">{title}</h2>
+        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-500">{comments.length}</span>
+      </div>
+      <div className="mt-4 space-y-3">
+        {loading ? (
+          <div className="rounded-[18px] bg-slate-50 p-4 text-sm font-semibold text-slate-500">Loading comments...</div>
+        ) : !comments.length ? (
+          <div className="rounded-[22px] bg-gradient-to-br from-blue-50 to-pink-50 p-5 text-center ring-1 ring-blue-100">
+            <MessageCircle className="mx-auto h-10 w-10 text-blue-500" />
+            <p className="mt-3 text-lg font-black text-slate-950">No comments yet</p>
+            <p className="mt-1 text-sm font-semibold text-slate-500">Start the conversation with something kind.</p>
+          </div>
+        ) : (
+          comments.map((comment) => (
+            <CommentItem
+              key={comment.id}
+              comment={comment}
+              replyDrafts={replyDrafts}
+              onReplyDraftChange={onReplyDraftChange}
+              onReply={onReply}
+              targetPrefix={targetPrefix}
+              submittingKey={submittingKey}
+            />
+          ))
+        )}
+      </div>
+      <div className="sticky bottom-[76px] mt-4 rounded-[20px] border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/10">
+        <div className="flex items-end gap-2">
+          <textarea
+            value={draft}
+            onChange={(event) => onDraftChange(event.target.value)}
+            placeholder="Write a comment..."
+            rows={1}
+            className="min-h-11 flex-1 resize-none rounded-[16px] bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-950 outline-none focus:ring-4 focus:ring-blue-100"
+          />
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={!draft.trim() || submittingKey === targetPrefix}
+            className="grid h-11 w-11 place-items-center rounded-full bg-blue-600 text-white disabled:bg-slate-300"
+          >
+            <Send className="h-5 w-5" />
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CommentItem({
+  comment,
+  replyDrafts,
+  onReplyDraftChange,
+  onReply,
+  targetPrefix,
+  submittingKey,
+}: {
+  comment: SocialComment;
+  replyDrafts: Record<string, string>;
+  onReplyDraftChange: (key: string, value: string) => void;
+  onReply: (commentId: string) => void;
+  targetPrefix: string;
+  submittingKey: string | null;
+}) {
+  const replyKey = `${targetPrefix}:reply:${comment.id}`;
+  const replyDraft = replyDrafts[replyKey] || '';
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-3">
+        <Avatar src={comment.userAvatar} name={comment.userName} size="sm" />
+        <div className="min-w-0 flex-1">
+          <div className="rounded-[18px] bg-slate-100 px-4 py-3">
+            <p className="font-black text-slate-950">{comment.userName}</p>
+            {comment.stickerImageUrl ? <img src={comment.stickerImageUrl} alt="" className="mt-2 h-20 w-20 rounded-xl object-contain" /> : null}
+            {comment.content ? <p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-slate-700">{comment.content}</p> : null}
+          </div>
+          <div className="mt-1 flex items-center gap-3 px-2 text-xs font-bold text-slate-400">
+            <span>{timeAgo(comment.createdAt)}</span>
+            <span>{comment.likes.length} likes</span>
+          </div>
+          <div className="mt-2 flex items-end gap-2">
+            <input
+              value={replyDraft}
+              onChange={(event) => onReplyDraftChange(replyKey, event.target.value)}
+              placeholder="Reply..."
+              className="h-10 flex-1 rounded-full bg-slate-50 px-4 text-sm font-semibold outline-none ring-1 ring-slate-200 focus:ring-blue-200"
+            />
+            <button
+              type="button"
+              onClick={() => onReply(comment.id)}
+              disabled={!replyDraft.trim() || submittingKey === replyKey}
+              className="grid h-10 w-10 place-items-center rounded-full bg-slate-950 text-white disabled:bg-slate-300"
+            >
+              <Send className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+      {comment.replies?.length ? (
+        <div className="ml-12 space-y-2 border-l border-slate-200 pl-3">
+          {comment.replies.map((reply) => (
+            <div key={reply.id} className="flex gap-2">
+              <Avatar src={reply.userAvatar} name={reply.userName} size="sm" />
+              <div className="flex-1 rounded-[16px] bg-slate-50 px-3 py-2">
+                <p className="text-sm font-black text-slate-950">{reply.userName}</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{reply.content}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function PostCard({
   post,
   user,
@@ -5475,7 +7542,7 @@ function PostCard({
           <Heart className={`h-5 w-5 ${liked ? 'fill-current' : ''}`} />
           Like
         </button>
-        <Link href={`/post/${post.id}?web=1#comments`} className="flex items-center justify-center gap-2 py-3 text-sm font-black text-slate-600">
+        <Link href={`/app/post/${post.id}#comments`} className="flex items-center justify-center gap-2 py-3 text-sm font-black text-slate-600">
           <MessageCircle className="h-5 w-5" />
           Comment
         </Link>

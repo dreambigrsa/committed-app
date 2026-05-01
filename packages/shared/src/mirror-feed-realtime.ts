@@ -28,10 +28,16 @@ export type MirrorFeedRelationshipCallbacks = {
   onReelsChange: (payload: PostgresChangePayload) => void | Promise<void>;
   /** Called when `relationships` rows involving this user may have changed. */
   onRelationshipsChange: () => void | Promise<void>;
+  /**
+   * When provided, subscribes to `relationship_requests` where `to_user_id` = userId
+   * (same filter as `AppContext` realtime). Use to refetch requests / notifications / relationship UI.
+   */
+  onRelationshipRequestsToUser?: () => void | Promise<void>;
 };
 
 /**
- * Subscribes to posts and reels (`event: *`) and relationships (user or partner = userId).
+ * Subscribes to posts and reels (`event: *`), relationships (user or partner = userId),
+ * and optionally `relationship_requests` for the recipient user.
  */
 export function subscribeMirrorFeedRelationshipRealtime(
   client: SupabaseClient,
@@ -97,6 +103,26 @@ export function subscribeMirrorFeedRelationshipRealtime(
     )
     .subscribe();
   channels.push(relationshipsChannel);
+
+  if (cb.onRelationshipRequestsToUser) {
+    const relReqChannel = client
+      .channel(`mirror_feed_rel_requests_${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'relationship_requests',
+          filter: `to_user_id=eq.${userId}`,
+        },
+        () => {
+          if (shouldIgnore()) return;
+          void cb.onRelationshipRequestsToUser!();
+        }
+      )
+      .subscribe();
+    channels.push(relReqChannel);
+  }
 
   return () => {
     for (const ch of channels) {

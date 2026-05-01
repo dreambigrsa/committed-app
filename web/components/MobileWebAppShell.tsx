@@ -1913,11 +1913,31 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       }
     };
 
+    const refreshNotificationsBootstrap = async () => {
+      try {
+        const { data } = await supabase
+          .from('notifications')
+          .select('id,title,message,created_at,read,type,data')
+          .eq('user_id', uid)
+          .order('created_at', { ascending: false })
+          .limit(APP_NOTIFICATIONS_BOOTSTRAP_LIMIT);
+        setNotifications(((data || []) as NotificationRow[]).filter(Boolean));
+      } catch {
+        /* ignore */
+      }
+    };
+
+    const onRelationshipRequestsToUser = async () => {
+      await refreshRelationship();
+      await refreshNotificationsBootstrap();
+    };
+
     unsubs.push(
       subscribeMirrorFeedRelationshipRealtime(supabase, uid, {
         onPostsChange: handlePostsChange,
         onReelsChange: handleReelsChange,
         onRelationshipsChange: refreshRelationship,
+        onRelationshipRequestsToUser,
       })
     );
 

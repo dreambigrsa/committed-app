@@ -23,7 +23,7 @@ This document is the **internal map** requested for system alignment: same backe
 | `packages/shared/src/comment-tree.ts` | `buildPostCommentsByPostId` / `buildReelCommentsByReelId` (threaded trees + likes). |
 | `packages/shared/src/onboarding-constants.ts` | `COMMITTED_AI_ONBOARDING_VERSION` — same DB value for Expo onboarding, `CommittedAIConsentEnforcer`, and `WebAppGate`. |
 | `packages/shared/src/mirror-core-realtime.ts` | `subscribeMirrorCoreRealtime` — messages / conversations / notifications channels (same filters as `AppContext` core handlers); used by `MobileWebAppShell`. |
-| `packages/shared/src/mirror-feed-realtime.ts` | `subscribeMirrorFeedRelationshipRealtime` — `posts` / `reels` (`*`) and `relationships` (user or partner); shell applies same fetch/merge rules as `AppContext`. |
+| `packages/shared/src/mirror-feed-realtime.ts` | `subscribeMirrorFeedRelationshipRealtime` — `posts` / `reels` (`*`), `relationships` (user or partner), optional `relationship_requests` (`to_user_id`); shell applies same fetch/merge rules as `AppContext`. |
 
 **Consumers:** `lib/supabase.ts`, `lib/trpc.ts`, `contexts/AppContext.tsx`, `web/lib/supabase-client.ts`, `web/lib/trpc-react.tsx` (+ `AuthSessionTrpcSync` for session-driven query invalidation), `web/lib/content-visibility.ts`, `web/components/MobileWebAppShell.tsx`, `web/components/WebAppGate.tsx`, `app/onboarding.tsx`, `components/CommittedAIConsentEnforcer.tsx`.
 

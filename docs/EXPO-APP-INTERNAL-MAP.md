@@ -6,24 +6,64 @@
 
 ### Root stack (`app/_layout.tsx`)
 
-| Route segment | Notes |
-|---------------|--------|
-| `index` | Entry / redirect |
-| `auth`, `sign-in`, `sign-up`, `signup`, `auth-callback` | Auth |
-| `onboarding` | Full-screen modal |
-| `verify-email`, `reset-password` | Account recovery / verify |
-| `legal/[slug]` | Legal document reader |
-| `(tabs)` | Main tab shell (see below) |
-| `profile/[userId]` | User profile |
-| `relationship/register` | Modal |
-| `messages/[conversationId]` | Chat |
-| `admin/*` | Many admin screens (see file list) |
-| `settings`, `settings/*` | Settings subtree |
-| `professional/session-requests` | Pro flow |
-| `dating` | Stack (`dating/_layout.tsx` + screens) |
+**Explicit `Stack.Screen` registrations** (Expo Router still discovers other file-based routes; this is what the root layout names):
+
+| `Stack.Screen` name | Header / notes |
+|---------------------|----------------|
+| `index` | `headerShown: false` |
+| `auth` | `headerShown: false` |
+| `sign-in` | `headerShown: false` |
+| `sign-up` | `headerShown: false` |
+| `signup` | `headerShown: false` |
+| `auth-callback` | `headerShown: false` |
+| `onboarding` | `headerShown: false`, `presentation: fullScreenModal` |
+| `verify-email` | `headerShown: false` |
+| `reset-password` | `headerShown: false` |
+| `legal/[slug]` | Title: Legal Document |
+| `(tabs)` | `headerShown: false` |
+| `profile/[userId]` | Title: Profile |
+| `relationship/register` | Modal, Register Relationship |
+| `messages/[conversationId]` | Title: Chat |
+| `admin/index` | Admin Dashboard |
+| `admin/advertisements` | Advertisements |
+| `admin/stickers` | Sticker Management |
+| `settings` | Settings |
+| `settings/2fa` | Two-Factor Authentication |
+| `settings/sessions` | Active Sessions |
+| `settings/blocked-users` | Blocked Users |
+| `settings/become-professional` | Become a Professional |
+| `settings/professional-availability` | Professional Availability |
+| `professional/session-requests` | Session Requests |
+| `dating` | `headerShown: false` (stack of dating screens) |
+| `dating/premium` | `headerShown: false` |
+| `dating/payment-submit` | `headerShown: false` |
 | `+not-found` | 404 |
 
-Additional stack screens exist beyond the excerpt in `_layout.tsx`; **source of truth** = `app/_layout.tsx` full `Stack.Screen` list + nested layouts.
+**File-based routes not repeated above** still resolve (e.g. `admin/users.tsx` → `/admin/users`). Inventory: **35** files under `app/admin/*.tsx`, plus other top-level folders (`post/`, `reel/`, `bookings/`, `verification/`, `status/`, `ads/`, `certificates/`, `anniversary/`, etc.).
+
+### Dating stack (`app/dating/*.tsx`)
+
+| File | Typical path |
+|------|----------------|
+| `_layout.tsx` | Stack wrapper + back to dating home |
+| `dashboard.tsx` | `/dating/dashboard` |
+| `filters.tsx` | `/dating/filters` |
+| `matches.tsx` | `/dating/matches` |
+| `likes-received.tsx` | `/dating/likes-received` |
+| `user-profile.tsx` | `/dating/user-profile` |
+| `profile-setup.tsx` | `/dating/profile-setup` |
+| `profile-preview.tsx` | `/dating/profile-preview` |
+| `photo-gallery.tsx` | `/dating/photo-gallery` |
+| `video-player.tsx` | `/dating/video-player` |
+| `date-requests.tsx` | `/dating/date-requests` |
+| `create-date-request.tsx` | `/dating/create-date-request` |
+| `edit-date-request.tsx` | `/dating/edit-date-request` |
+| `premium.tsx` | `/dating/premium` |
+| `payment-submit.tsx` | `/dating/payment-submit` |
+
+### Admin screens (`app/admin/*.tsx`)
+
+`index`, `advertisements`, `analytics`, `ban-appeals`, `dating`, `dating-date-options`, `dating-interests`, `disputes`, `escalation-rules`, `escalation-rules-fixed`, `face-matching`, `false-relationship-reports`, `id-verifications`, `legal-policies`, `logs`, `payment-methods`, `payment-proof-viewer`, `payment-verifications`, `posts-review`, `pricing`, `professional-analytics`, `professional-profiles`, `professional-reviews`, `professional-roles`, `professional-sessions`, `relationships`, `reports`, `reels-review`, `roles`, `settings`, `stickers`, `trigger-words`, `users`, `verification-services`, `warning-templates`.
 
 ### Tabs (`app/(tabs)/_layout.tsx`)
 

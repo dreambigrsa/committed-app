@@ -111,7 +111,7 @@ Legend: **Aligned** = same shared loaders / same tables / same intent. **Partial
 | Push notifications | **Missing** on web (browser not native push) |
 | Camera / native pickers | **Different by platform** (expected) |
 | Offline / AsyncStorage caches | **Expo-heavy**; web relies more on in-memory + RQ |
-| Realtime subscriptions | **Expo:** full `AppContext` channels. **Web:** `subscribeMirrorCoreRealtime` + `subscribeMirrorFeedRelationshipRealtime` (messages, conversations, notifications, **posts**, **reels**, **relationship** refresh). Remaining: e.g. `relationship_requests` realtime, notification polling fallback parity. |
+| Realtime subscriptions | **Expo:** full `AppContext` channels. **Web:** `subscribeMirrorCoreRealtime` + `subscribeMirrorFeedRelationshipRealtime` (messages, conversations, notifications, posts, reels, relationships, **`relationship_requests` → `to_user_id`** refreshes relationship + notification list). Remaining: notification polling fallback parity, any other AppContext-only channels. |
 
 ## 8. Performance & data
 

@@ -2,6 +2,8 @@
 
 **Purpose:** Satisfy the “final validation” ask: same backend and behavior where implemented, renderer differs. This is a **living audit**; the mirror is advanced incrementally—**not** every Expo screen has a 1:1 Next implementation yet.
 
+**Program tracker (what to do next):** [`EXPO-NEXT-MIRROR-MASTER-TODO.md`](./EXPO-NEXT-MIRROR-MASTER-TODO.md)
+
 ## 1. Executive summary
 
 | Area | Status |

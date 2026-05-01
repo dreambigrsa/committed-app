@@ -2,6 +2,9 @@
 
 This document is the **internal map** requested for system alignment: same backend, same API contracts, web is a different renderer.
 
+**Execution checklist (phased work):** [`EXPO-NEXT-MIRROR-MASTER-TODO.md`](./EXPO-NEXT-MIRROR-MASTER-TODO.md)  
+**Expo structure reference:** [`EXPO-APP-INTERNAL-MAP.md`](./EXPO-APP-INTERNAL-MAP.md)
+
 ## 0. Shared package (`@committed/shared`)
 
 | Module | Role |

@@ -43,11 +43,33 @@ function normalizePhone(countryCode: string, rawPhone: string) {
 async function sendVerification(email: string, accessToken?: string) {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-  await fetch('/api/auth/send-verification', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ email }),
+  const controller = new AbortController();
+  const kill = window.setTimeout(() => controller.abort(), 20_000);
+  try {
+    const res = await fetch('/api/auth/send-verification', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ email }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(body || `Verification request failed (${res.status})`);
+    }
+  } finally {
+    window.clearTimeout(kill);
+  }
+}
+
+function raceWithTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new Error(`${label} is taking too long. Check your connection and try again.`)),
+      ms
+    );
   });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
 }
 
 export default function WebAuthForm({ mode }: { mode: Mode }) {
@@ -201,25 +223,39 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
         return;
       }
 
-      await supabaseBrowser.auth.signOut({ scope: 'local' });
-      const { data, error: signInError } = await supabaseBrowser.auth.signInWithPassword({
-        email: normalizedEmail,
-        password,
-      });
+      // Avoid hanging forever if local sign-out stalls; sign-in will replace the session anyway.
+      try {
+        await raceWithTimeout(
+          supabaseBrowser.auth.signOut({ scope: 'local' }),
+          8000,
+          'Sign out'
+        );
+      } catch {
+        /* non-fatal */
+      }
+
+      const { data, error: signInError } = await raceWithTimeout(
+        supabaseBrowser.auth.signInWithPassword({
+          email: normalizedEmail,
+          password,
+        }),
+        45_000,
+        'Sign in'
+      );
       if (signInError) throw signInError;
 
-      const {
-        data: { user: authenticatedUser },
-        error: authenticatedUserError,
-      } = await supabaseBrowser.auth.getUser();
+      const signedInUser = data.user;
+      if (!signedInUser?.id) {
+        throw new Error('Sign-in succeeded but no user was returned. Please try again.');
+      }
+
       console.debug('[WebAuthForm] Authenticated user object', {
-        id: authenticatedUser?.id ?? data.user?.id ?? null,
-        email: authenticatedUser?.email ?? data.user?.email ?? null,
-        signInUserId: data.user?.id ?? null,
-        error: authenticatedUserError?.message ?? null,
+        id: signedInUser.id,
+        email: signedInUser.email ?? null,
+        signInUserId: signedInUser.id,
       });
 
-      const userId = authenticatedUser?.id || data.user?.id;
+      const userId = signedInUser.id;
       if (userId) {
         const { data: profile } = await supabaseBrowser
           .from('profiles')

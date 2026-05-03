@@ -3518,28 +3518,46 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     const loadRouteDatingProfile = async () => {
       setRouteDatingProfileLoading(true);
       try {
-        const { data: sessionData } = await supabase.auth.getSession().catch(() => ({ data: { session: null } } as any));
-        const viewerUserId = String(sessionData?.session?.user?.id || user?.id || '');
-        const fetchProfileByUserId = (userId: string) =>
-          supabase.from('dating_profiles').select('*').eq('user_id', userId).maybeSingle();
-        const fetchProfileByProfileId = (profileId: string) =>
-          supabase.from('dating_profiles').select('*').eq('id', profileId).maybeSingle();
+        const [
+          {
+            data: { user: authUser },
+          },
+          { data: sessionData },
+        ] = await Promise.all([
+          supabase.auth.getUser().catch(() => ({ data: { user: null } } as any)),
+          supabase.auth.getSession().catch(() => ({ data: { session: null } } as any)),
+        ]);
+        const viewerUserId = String(authUser?.id || sessionData?.session?.user?.id || user?.id || '');
+        const fetchProfileByUserId = async (userId: string) => {
+          const { data, error } = await supabase.from('dating_profiles').select('*').eq('user_id', userId).single();
+          if (error) {
+            if (error.code === 'PGRST116') return null;
+            if (process.env.NODE_ENV !== 'production') console.warn('[Web dating profile] profile by user failed', error.message);
+            return null;
+          }
+          return data || null;
+        };
+        const fetchProfileByProfileId = async (profileId: string) => {
+          const { data, error } = await supabase.from('dating_profiles').select('*').eq('id', profileId).single();
+          if (error) {
+            if (error.code === 'PGRST116') return null;
+            if (process.env.NODE_ENV !== 'production') console.warn('[Web dating profile] profile by id failed', error.message);
+            return null;
+          }
+          return data || null;
+        };
 
         let profileRow: any = null;
         if (explicitUserId) {
-          const { data } = await fetchProfileByUserId(explicitUserId);
-          profileRow = data || null;
+          profileRow = await fetchProfileByUserId(explicitUserId);
         }
         if (!profileRow?.id && explicitProfileId) {
-          const { data } = await fetchProfileByProfileId(explicitProfileId);
-          profileRow = data || null;
+          profileRow = await fetchProfileByProfileId(explicitProfileId);
         }
         if (!profileRow?.id && legacyId) {
-          const { data: byUserId } = await fetchProfileByUserId(legacyId);
-          profileRow = byUserId || null;
+          profileRow = await fetchProfileByUserId(legacyId);
           if (!profileRow?.id) {
-            const { data: byProfileId } = await fetchProfileByProfileId(legacyId);
-            profileRow = byProfileId || null;
+            profileRow = await fetchProfileByProfileId(legacyId);
           }
         }
         if (!profileRow?.id) {
@@ -4491,7 +4509,12 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
   const resetDatingPasses = async () => {
     if (!supabase || !user) return;
-    await supabase.from('dating_passes').delete().eq('passer_id', user.id);
+    const { error } = await supabase.from('dating_passes').delete().eq('passer_id', user.id);
+    if (error) {
+      setReactionNotice(`Could not reset passes: ${error.message || 'permission denied'}`);
+      window.setTimeout(() => setReactionNotice(null), 4000);
+      return;
+    }
     setReactionNotice('Showing passed profiles again');
     window.setTimeout(() => setReactionNotice(null), 1800);
     await loadAppData();
@@ -9181,6 +9204,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     const targetUserId = searchParams?.get('userId') || searchParams?.get('user_id') || '';
     const targetProfileId = searchParams?.get('profileId') || searchParams?.get('profile_id') || '';
     const legacyId = searchParams?.get('id') || appPath[2] || '';
+    const hasExplicitProfileRoute = !!(targetUserId || targetProfileId || legacyId);
     const fallbackProfile =
       datingProfiles.find(
         (item) =>
@@ -9214,7 +9238,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               ? routeAny.videos
               : fallbackAny?.videos || fallbackAny?.dating_videos || []),
         }
-      : fallbackProfile || ownProfile;
+      : hasExplicitProfileRoute
+        ? null
+        : fallbackProfile || ownProfile;
     const profile = normalizeDatingProfileForWeb(rawProfile);
     if (routeDatingProfileLoading) {
       return (

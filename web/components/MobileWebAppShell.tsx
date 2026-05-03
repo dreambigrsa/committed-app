@@ -167,6 +167,7 @@ type DatingDiscoveryUser = {
   id?: string;
   full_name?: string | null;
   username?: string | null;
+  email?: string | null;
   profile_picture?: string | null;
   id_verified?: boolean | null;
   email_verified?: boolean | null;
@@ -1309,6 +1310,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const [adminReportsStatusFilter, setAdminReportsStatusFilter] = useState<'all' | 'pending' | 'reviewing' | 'resolved' | 'dismissed'>('all');
   const [adminReportsSearch, setAdminReportsSearch] = useState('');
   const [adminBanAppealSearch, setAdminBanAppealSearch] = useState('');
+  const [adminDatingProfileSearch, setAdminDatingProfileSearch] = useState('');
   const [adminProfessionalApplicationsSearch, setAdminProfessionalApplicationsSearch] = useState('');
   const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
   const [bookings, setBookings] = useState<any[]>([]);
@@ -1691,6 +1693,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     setAdminReportsStatusFilter('all');
     setAdminReportsSearch('');
     setAdminBanAppealSearch('');
+    setAdminDatingProfileSearch('');
     setAdminProfessionalApplicationsSearch('');
     setBlockedUsers([]);
     setBookings([]);
@@ -2486,37 +2489,91 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         fallbackRuns += 1;
         discoverProfiles = applyDatingDiscoveryExclusions(await queryDiscoveryRows(), true);
       }
-      const discoverUserIds = Array.from(new Set(discoverProfiles.map((item) => item.user_id).filter(Boolean)));
       const discoverProfileIds = discoverProfiles.map((item) => item.id).filter(Boolean);
-      const [discoverUsersResult, discoverPhotosResult] = await Promise.all([
-        discoverUserIds.length
-          ? supabase
-              .from('users')
-              .select('id,full_name,username,profile_picture,id_verified,email_verified,phone_verified')
-              .in('id', discoverUserIds)
-          : Promise.resolve({ data: [] as DatingDiscoveryUser[] }),
-        discoverProfileIds.length
-          ? supabase
-              .from('dating_photos')
-              .select('dating_profile_id,photo_url,is_primary,display_order')
-              .in('dating_profile_id', discoverProfileIds)
-              .order('is_primary', { ascending: false })
-              .order('display_order', { ascending: true })
-          : Promise.resolve({ data: [] as Array<{ dating_profile_id: string; photo_url: string; is_primary?: boolean | null }> }),
-      ]);
-      const discoverUsersById = new Map<string, DatingDiscoveryUser>(
-        ((discoverUsersResult.data || []) as DatingDiscoveryUser[]).filter((r) => r.id).map((row) => [row.id as string, row])
-      );
-      const discoverPhotosByProfile = new Map<string, Array<{ photo_url: string; is_primary?: boolean | null }>>();
-      ((discoverPhotosResult.data || []) as Array<{ dating_profile_id: string; photo_url: string; is_primary?: boolean | null }>).forEach((photo) => {
-        const existing = discoverPhotosByProfile.get(photo.dating_profile_id) || [];
-        discoverPhotosByProfile.set(photo.dating_profile_id, [...existing, { photo_url: photo.photo_url, is_primary: photo.is_primary }]);
+      const enrichedByProfileId = new Map<
+        string,
+        { users: DatingDiscoveryUser | null; dating_photos: Array<{ photo_url: string; is_primary?: boolean | null }> }
+      >();
+
+      if (discoverProfileIds.length) {
+        const { data: embeddedRows, error: embedErr } = await supabase
+          .from('dating_profiles')
+          .select(
+            `id,users!dating_profiles_user_id_fkey(id,full_name,username,email,profile_picture,id_verified,email_verified,phone_verified),dating_photos(photo_url,is_primary,display_order)`
+          )
+          .in('id', discoverProfileIds);
+        if (embedErr && !discoveryError) discoveryError = embedErr.message;
+        for (const row of (embeddedRows || []) as Array<{
+          id: string;
+          users?: DatingDiscoveryUser | DatingDiscoveryUser[] | null;
+          dating_photos?: Array<{ photo_url: string; is_primary?: boolean | null; display_order?: number | null }> | null;
+        }>) {
+          if (!row?.id) continue;
+          const rawU = row.users;
+          const userObj =
+            rawU && typeof rawU === 'object' && !Array.isArray(rawU) ? (rawU as DatingDiscoveryUser) : null;
+          const photos = Array.isArray(row.dating_photos) ? [...row.dating_photos] : [];
+          photos.sort((a, b) => {
+            const pa = a?.is_primary ? 1 : 0;
+            const pb = b?.is_primary ? 1 : 0;
+            return pb - pa;
+          });
+          enrichedByProfileId.set(row.id, {
+            users: userObj,
+            dating_photos: photos.map((p) => ({ photo_url: p.photo_url, is_primary: p.is_primary })),
+          });
+        }
+      }
+
+      discoverProfiles = discoverProfiles.map((item) => {
+        const slice = item.id ? enrichedByProfileId.get(item.id) : undefined;
+        return {
+          ...item,
+          users: slice?.users ?? null,
+          dating_photos: slice?.dating_photos?.length ? slice.dating_photos : [],
+        };
       });
-      discoverProfiles = discoverProfiles.map((item) => ({
-        ...item,
-        users: discoverUsersById.get(item.user_id) || null,
-        dating_photos: discoverPhotosByProfile.get(item.id) || [],
-      }));
+
+      const profilesMissingUsers = discoverProfiles.filter((p) => !p.users && p.user_id);
+      if (profilesMissingUsers.length) {
+        const missingUserIds = Array.from(new Set(profilesMissingUsers.map((p) => p.user_id).filter(Boolean) as string[]));
+        const { data: userRows } = await supabase
+          .from('users')
+          .select('id,full_name,username,email,profile_picture,id_verified,email_verified,phone_verified')
+          .in('id', missingUserIds);
+        const userMap = new Map<string, DatingDiscoveryUser>(
+          ((userRows || []) as DatingDiscoveryUser[]).filter((r) => r.id).map((row) => [row.id as string, row])
+        );
+        discoverProfiles = discoverProfiles.map((p) =>
+          p.users || !p.user_id ? p : { ...p, users: userMap.get(p.user_id) || null }
+        );
+      }
+
+      const profilesMissingPhotos = discoverProfiles.filter((p) => !(p.dating_photos?.length) && p.id);
+      if (profilesMissingPhotos.length) {
+        const missingPhotoProfileIds = Array.from(
+          new Set(profilesMissingPhotos.map((p) => p.id).filter(Boolean) as string[])
+        );
+        const { data: photoRows } = await supabase
+          .from('dating_photos')
+          .select('dating_profile_id,photo_url,is_primary,display_order')
+          .in('dating_profile_id', missingPhotoProfileIds)
+          .order('is_primary', { ascending: false })
+          .order('display_order', { ascending: true });
+        const discoverPhotosByProfile = new Map<string, Array<{ photo_url: string; is_primary?: boolean | null }>>();
+        ((photoRows || []) as Array<{ dating_profile_id: string; photo_url: string; is_primary?: boolean | null }>).forEach(
+          (photo) => {
+            const existing = discoverPhotosByProfile.get(photo.dating_profile_id) || [];
+            discoverPhotosByProfile.set(photo.dating_profile_id, [
+              ...existing,
+              { photo_url: photo.photo_url, is_primary: photo.is_primary },
+            ]);
+          }
+        );
+        discoverProfiles = discoverProfiles.map((p) =>
+          p.dating_photos?.length || !p.id ? p : { ...p, dating_photos: discoverPhotosByProfile.get(p.id) || [] }
+        );
+      }
       const viewerLat = typeof ownDating?.location_latitude === 'number' ? ownDating.location_latitude : null;
       const viewerLon = typeof ownDating?.location_longitude === 'number' ? ownDating.location_longitude : null;
       if (viewerLat != null && viewerLon != null) {
@@ -3023,6 +3080,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       setAdminReportsStatusFilter('all');
     }
     if (subPath !== 'ban-appeals') setAdminBanAppealSearch('');
+    if (subPath !== 'dating') setAdminDatingProfileSearch('');
     if (subPath !== 'professional-profiles') setAdminProfessionalApplicationsSearch('');
   }, [subPath]);
 
@@ -8200,13 +8258,6 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
     return (
       <div className="flex min-h-[calc(100vh-122px)] flex-col px-4 pb-4 pt-3">
-        <div className="mb-2 flex items-center gap-2 rounded-[18px] bg-slate-100 px-3 py-2 ring-1 ring-slate-200">
-          <Sparkles className="h-4 w-4 shrink-0 text-pink-600" />
-          <div className="min-w-0">
-            <p className="text-xs font-black text-slate-900">Discover</p>
-            <p className="truncate text-[11px] font-semibold text-slate-500">Tap the card to open the full dating profile (same as the native app).</p>
-          </div>
-        </div>
         <div className="relative flex min-h-[470px] flex-1 flex-col">
           <DatingDiscoverSwipeDeck
             profileKey={profile.user_id}
@@ -8263,6 +8314,40 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           <Crown className="h-4 w-4 fill-current" />
           Go Premium
         </Link>
+        <div className="mt-3 rounded-[18px] bg-white px-3 py-3 ring-1 ring-slate-200" data-swipe-ignore>
+          <p className="text-center text-xs font-black text-slate-900">Date plans</p>
+          <p className="mt-1 text-center text-[11px] font-semibold leading-relaxed text-slate-500">
+            When you and someone else match, you can propose a time from{' '}
+            <Link href="/app/dating/matches" className="font-black text-blue-600 underline decoration-blue-200 underline-offset-2">
+              Matches
+            </Link>{' '}
+            or open{' '}
+            <Link href="/app/dating/date-requests" className="font-black text-blue-600 underline decoration-blue-200 underline-offset-2">
+              Date requests
+            </Link>{' '}
+            to accept or decline invites.
+          </p>
+          <div className="mt-2 flex flex-wrap justify-center gap-2">
+            <Link
+              href="/app/dating/matches"
+              className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-800 ring-1 ring-slate-200"
+            >
+              Matches
+            </Link>
+            <Link
+              href="/app/dating/create-date-request"
+              className="rounded-full bg-blue-600 px-3 py-1.5 text-xs font-black text-white shadow-sm"
+            >
+              Plan a date
+            </Link>
+            <Link
+              href="/app/dating/date-requests"
+              className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-800 ring-1 ring-slate-200"
+            >
+              Inbox
+            </Link>
+          </div>
+        </div>
       </div>
     );
   };
@@ -12735,6 +12820,25 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       );
     }
     if (subPath === 'dating') {
+      const datingAdminSearchQ = adminDatingProfileSearch.trim().toLowerCase();
+      const datingAdminFilteredRows = !datingAdminSearchQ
+        ? routeRows
+        : routeRows.filter((profile: any) => {
+            const blob = [
+              profile.user_id,
+              profile.id,
+              profile.users?.full_name,
+              profile.users?.email,
+              profile.location_city,
+              profile.location_country,
+              profile.bio,
+              profile.users?.id,
+            ]
+              .filter(Boolean)
+              .join(' ')
+              .toLowerCase();
+            return blob.includes(datingAdminSearchQ);
+          });
       return (
         <div className="space-y-4 px-4 py-4">
           <section className="rounded-[28px] bg-slate-950 p-5 text-white">
@@ -12742,9 +12846,24 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             <h2 className="mt-4 text-3xl font-black">Dating Admin</h2>
             <p className="mt-2 text-sm text-slate-300">Manage profile safety, visibility, premium trials, and trust badges.</p>
           </section>
+          <div className="flex items-center gap-2 rounded-[22px] border border-slate-200 bg-white px-4 py-1 shadow-sm ring-1 ring-slate-200">
+            <Search className="h-5 w-5 shrink-0 text-slate-400" aria-hidden />
+            <input
+              type="search"
+              value={adminDatingProfileSearch}
+              onChange={(event) => setAdminDatingProfileSearch(event.target.value)}
+              placeholder="Search name, email, user id, city…"
+              className="min-w-0 flex-1 border-0 bg-transparent py-3 text-sm font-semibold text-slate-950 outline-none ring-0 placeholder:text-slate-400"
+              autoComplete="off"
+              aria-label="Search dating profiles"
+            />
+          </div>
           {routeRowsLoading ? <ScreenSkeleton /> : null}
           {!routeRowsLoading && !routeRows.length ? <EmptyState icon={Heart} title="No Dating Profiles" text={routeRowsError || 'No dating profiles are available.'} /> : null}
-          {routeRows.map((profile) => {
+          {!routeRowsLoading && routeRows.length > 0 && !datingAdminFilteredRows.length ? (
+            <p className="rounded-[18px] bg-slate-50 px-4 py-3 text-center text-sm font-semibold text-slate-600 ring-1 ring-slate-200">No profiles match your search.</p>
+          ) : null}
+          {datingAdminFilteredRows.map((profile) => {
             const memberId = profile.user_id || profile.users?.id;
             return (
             <article key={profile.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">

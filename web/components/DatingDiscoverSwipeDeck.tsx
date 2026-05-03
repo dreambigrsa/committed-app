@@ -25,11 +25,14 @@ export type DatingDiscoveryCardProfile = {
   users?: {
     full_name?: string | null;
     username?: string | null;
+    email?: string | null;
     profile_picture?: string | null;
     id_verified?: boolean | null;
     email_verified?: boolean | null;
     phone_verified?: boolean | null;
   } | null;
+  /** Expo/mobile discovery uses `user` singular — accept both. */
+  user?: DatingDiscoveryCardProfile['users'];
   dating_photos?: { photo_url: string; is_primary?: boolean | null }[] | null;
 };
 
@@ -86,11 +89,14 @@ export function DatingDiscoveryCardFace({ profile, supabase }: DatingDiscoveryCa
   const currentPhotoRaw = photoCount ? photoUrlsRaw[safeIdx] : avatarFallback;
   const currentPhoto = currentPhotoRaw ? resolveDatingPhoto(String(currentPhotoRaw)) : '';
 
-  const u = profile.users;
+  const u = profile.users ?? profile.user ?? null;
   const name =
-    getUserDisplayName(u ? { full_name: u.full_name, username: u.username ?? null, email: null } : null) ||
+    getUserDisplayName(
+      u ? { full_name: u.full_name, username: u.username ?? null, email: u.email ?? null } : null
+    ) ||
     u?.full_name?.trim() ||
-    'Profile';
+    u?.username?.trim() ||
+    'Member';
 
   const interests = (profile.interests || []).map((x) => datingInterestLabel(x)).filter(Boolean);
   const interestChips = interests.slice(0, 4);

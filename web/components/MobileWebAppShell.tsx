@@ -688,6 +688,46 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const [loading, setLoading] = useState(true);
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [reels, setReels] = useState<Reel[]>([]);
+
+  /** Joined `users` on own posts/reels can expose name/photo when the direct `users` row merge missed them (RLS/timing). */
+  const shellAvatarFromFeed = useMemo(() => {
+    const id = user?.id;
+    if (!id) return { picture: undefined as string | undefined, fullName: undefined as string | undefined };
+    let picture: string | undefined;
+    let fullName: string | undefined;
+    for (const p of posts) {
+      if (p.user_id !== id || !p.users) continue;
+      if (!picture && p.users.profile_picture?.trim()) picture = p.users.profile_picture.trim();
+      if (!fullName && p.users.full_name?.trim()) fullName = p.users.full_name.trim();
+      if (picture && fullName) break;
+    }
+    if (!picture || !fullName) {
+      for (const r of reels) {
+        if (r.user_id !== id || !r.users) continue;
+        if (!picture && r.users.profile_picture?.trim()) picture = r.users.profile_picture.trim();
+        if (!fullName && r.users.full_name?.trim()) fullName = r.users.full_name.trim();
+        if (picture && fullName) break;
+      }
+    }
+    return { picture, fullName };
+  }, [user?.id, posts, reels]);
+
+  const shellAvatarSrc = useMemo(
+    () => (user?.profile_picture && user.profile_picture.trim()) || shellAvatarFromFeed.picture || undefined,
+    [user?.profile_picture, shellAvatarFromFeed.picture]
+  );
+
+  const shellAvatarNameUser = useMemo(
+    () =>
+      user
+        ? {
+            ...user,
+            full_name: (user.full_name && user.full_name.trim()) || shellAvatarFromFeed.fullName || user.full_name,
+          }
+        : null,
+    [user, shellAvatarFromFeed.fullName]
+  );
+
   const [routePost, setRoutePost] = useState<FeedPost | null>(null);
   const [routePostLoading, setRoutePostLoading] = useState(false);
   const [routeReel, setRouteReel] = useState<Reel | null>(null);
@@ -1526,7 +1566,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       (postLikes.data || []).forEach((like: any) => {
         likesByPost.set(like.post_id, [...(likesByPost.get(like.post_id) || []), like.user_id]);
       });
-      setPosts(fetchedPosts.map((post) => ({ ...post, likes: likesByPost.get(post.id) || [] })));
+      const enrichedPosts = fetchedPosts.map((post) => ({ ...post, likes: likesByPost.get(post.id) || [] }));
+      setPosts(enrichedPosts);
 
       const fetchedReels = ((reelsResult.data || []) as Reel[]).filter(Boolean);
       const reelIds = fetchedReels.map((reel) => reel.id);
@@ -1537,7 +1578,37 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       (reelLikes.data || []).forEach((like: any) => {
         likesByReel.set(like.reel_id, [...(likesByReel.get(like.reel_id) || []), like.user_id]);
       });
-      setReels(fetchedReels.map((reel) => ({ ...reel, likes: likesByReel.get(reel.id) || [] })));
+      const enrichedReels = fetchedReels.map((reel) => ({ ...reel, likes: likesByReel.get(reel.id) || [] }));
+      setReels(enrichedReels);
+
+      const ownPostUsers = enrichedPosts.find((p) => p.user_id === authUser.id)?.users;
+      const ownReelUsers = enrichedReels.find((r) => r.user_id === authUser.id)?.users;
+      const fromFeedProfilePicture = ownPostUsers?.profile_picture?.trim() || ownReelUsers?.profile_picture?.trim();
+      const fromFeedFullName = ownPostUsers?.full_name?.trim() || ownReelUsers?.full_name?.trim();
+      if (fromFeedProfilePicture || fromFeedFullName) {
+        setUser((prev) => {
+          if (!prev || prev.id !== authUser.id) return prev;
+          const next = { ...prev };
+          if (fromFeedProfilePicture && !(prev.profile_picture || '').trim()) {
+            next.profile_picture = resolveProfilePictureUrl(fromFeedProfilePicture) || fromFeedProfilePicture;
+          }
+          if (fromFeedFullName && !(prev.full_name || '').trim()) {
+            next.full_name = fromFeedFullName;
+          }
+          if (next.profile_picture === prev.profile_picture && next.full_name === prev.full_name) return prev;
+          return next;
+        });
+        if (fromFeedProfilePicture) {
+          setSettingsProfilePictureUrl((prev) => ((prev || '').trim() ? prev : fromFeedProfilePicture));
+        }
+        if (fromFeedFullName) {
+          setSettingsForm((prev) => ({
+            ...prev,
+            fullName: (prev.fullName || '').trim() ? prev.fullName : fromFeedFullName,
+          }));
+        }
+      }
+
       setRelationship((relationshipResult.data || null) as RelationshipRow | null);
       const ownDating = myDatingResult.data as any;
       setMyDatingProfile((ownDating || null) as DatingProfile | null);
@@ -6283,7 +6354,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               <span className="text-3xl leading-none">‹</span>
             </button>
           ) : (
-            <Avatar src={user?.profile_picture} name={getUserDisplayName(user)} size="sm" />
+            <Avatar src={shellAvatarSrc} name={getUserDisplayName(shellAvatarNameUser)} size="sm" />
           )}
           <h1 className="flex-1 text-xl font-black text-slate-950">{current.label === 'Notify' ? 'Notifications' : current.label}</h1>
           {activeTab === 'dating' ? (
@@ -6358,10 +6429,10 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     <div className="px-4 py-4">
       <section className="rounded-[28px] bg-gradient-to-br from-blue-600 to-blue-800 px-5 py-6 text-white shadow-xl shadow-blue-700/20">
         <div className="flex items-center gap-3">
-          <Avatar src={user?.profile_picture} name={getUserDisplayName(user)} size="lg" />
+          <Avatar src={shellAvatarSrc} name={getUserDisplayName(shellAvatarNameUser)} size="lg" />
           <div>
             <p className="text-sm font-semibold text-blue-100">Welcome back</p>
-            <h2 className="text-2xl font-black">{getUserDisplayName(user)}</h2>
+            <h2 className="text-2xl font-black">{getUserDisplayName(shellAvatarNameUser)}</h2>
           </div>
         </div>
         <p className="mt-5 text-sm leading-6 text-blue-50">Verify love, stay accountable, meet meaningful people, and keep every connection in one familiar app experience.</p>
@@ -6430,7 +6501,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       <div className="space-y-3 px-3 py-3">
         {renderStatusStrip()}
         <div className="flex items-center gap-3 rounded-[22px] border border-slate-200 bg-white p-3 shadow-sm">
-          <Avatar src={user?.profile_picture} name={getUserDisplayName(user)} />
+          <Avatar src={shellAvatarSrc} name={getUserDisplayName(shellAvatarNameUser)} />
           <Link href="/app/create-post" className="flex-1 rounded-full bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-500">
             What is on your heart?
           </Link>
@@ -6605,9 +6676,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const renderCreatePost = () => (
     <div className="space-y-4 px-4 py-4">
       <div className="flex items-center gap-3 rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-        <Avatar src={user?.profile_picture} name={getUserDisplayName(user)} />
+        <Avatar src={shellAvatarSrc} name={getUserDisplayName(shellAvatarNameUser)} />
         <div>
-          <p className="font-black text-slate-950">{getUserDisplayName(user)}</p>
+          <p className="font-black text-slate-950">{getUserDisplayName(shellAvatarNameUser)}</p>
           <p className="text-sm text-slate-500">Create post</p>
         </div>
       </div>
@@ -8258,7 +8329,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     <div className="px-4 py-4">
       <section className="rounded-[28px] bg-white p-5 text-center shadow-sm ring-1 ring-slate-200">
         <div className="mx-auto w-fit">
-          <Avatar src={user?.profile_picture} name={getUserDisplayName(user)} size="lg" />
+          <Avatar src={shellAvatarSrc} name={getUserDisplayName(shellAvatarNameUser)} size="lg" />
         </div>
         <h2 className="mt-4 text-2xl font-black text-slate-950">{getUserDisplayName(user)}</h2>
         <p className="text-sm text-slate-500">{user?.username ? `@${user.username}` : user?.email}</p>
@@ -8294,7 +8365,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       {renderAvatarHardDebugPanel()}
       <section className="rounded-[26px] bg-white p-5 shadow-sm ring-1 ring-slate-200">
         <div className="flex items-center gap-3">
-          <Avatar src={settingsProfilePictureUrl || user?.profile_picture} name={getUserDisplayName(user)} size="lg" />
+          <Avatar src={settingsProfilePictureUrl || shellAvatarSrc} name={getUserDisplayName(shellAvatarNameUser)} size="lg" />
           <div>
             <h2 className="text-2xl font-black text-slate-950">Settings</h2>
             <p className="text-sm text-slate-500">{user?.username ? `@${user.username}` : 'Account and profile details'}</p>

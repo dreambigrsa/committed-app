@@ -18,6 +18,7 @@ import {
   FileText,
   Film,
   Flag,
+  Grid3X3 as Grid,
   Heart,
   Home,
   Image as ImageIcon,
@@ -41,6 +42,8 @@ import {
   Star,
   Trash2,
   User,
+  UserMinus,
+  UserPlus,
   Users,
   X,
 } from 'lucide-react';
@@ -890,6 +893,13 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const [routeProfileUser, setRouteProfileUser] = useState<WebUser | null>(null);
   const [routeProfileLoading, setRouteProfileLoading] = useState(false);
   const [routeProfilePosts, setRouteProfilePosts] = useState<FeedPost[]>([]);
+  const [routeProfileReels, setRouteProfileReels] = useState<Reel[]>([]);
+  const [routeProfileFollowers, setRouteProfileFollowers] = useState(0);
+  const [routeProfileFollowingCount, setRouteProfileFollowingCount] = useState(0);
+  const [routeProfileIsFollowing, setRouteProfileIsFollowing] = useState(false);
+  const [routeProfileIsBlocked, setRouteProfileIsBlocked] = useState(false);
+  const [routeProfileFollowBusy, setRouteProfileFollowBusy] = useState(false);
+  const [routeProfileTab, setRouteProfileTab] = useState<'posts' | 'reels'>('posts');
   const [routeStatusItem, setRouteStatusItem] = useState<StatusFeedItem | null>(null);
   const [routeStatusLoading, setRouteStatusLoading] = useState(false);
   const [routeRows, setRouteRows] = useState<any[]>([]);
@@ -1247,6 +1257,13 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     setRouteProfileUser(null);
     setRouteProfileLoading(false);
     setRouteProfilePosts([]);
+    setRouteProfileReels([]);
+    setRouteProfileFollowers(0);
+    setRouteProfileFollowingCount(0);
+    setRouteProfileIsFollowing(false);
+    setRouteProfileIsBlocked(false);
+    setRouteProfileFollowBusy(false);
+    setRouteProfileTab('posts');
     setRouteStatusItem(null);
     setRouteStatusLoading(false);
     setRouteRows([]);
@@ -2486,12 +2503,18 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     if (!supabase || appPath[0] !== 'profile' || !appPath[1]) {
       setRouteProfileUser(null);
       setRouteProfilePosts([]);
+      setRouteProfileReels([]);
+      setRouteProfileFollowers(0);
+      setRouteProfileFollowingCount(0);
+      setRouteProfileIsFollowing(false);
+      setRouteProfileIsBlocked(false);
       setRouteProfileLoading(false);
       return;
     }
     let cancelled = false;
     const loadProfileUser = async () => {
       setRouteProfileLoading(true);
+      setRouteProfileTab('posts');
       try {
         const identifier = decodeURIComponent(appPath[1]);
         const userQuery = supabase
@@ -2502,25 +2525,77 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           : await userQuery.eq('username', identifier.replace(/^@/, '')).maybeSingle();
         const profileUser = (data || null) as WebUser | null;
         if (!cancelled) setRouteProfileUser(profileUser);
-        if (profileUser?.id) {
-          const [profilePostsResult, profilePostLikesResult] = await Promise.all([
-            supabase
-              .from('posts')
-              .select('id,user_id,content,media_urls,media_type,comment_count,created_at,users!posts_user_id_fkey(full_name,profile_picture)')
-              .eq('user_id', profileUser.id)
-              .or(getPostVisibilityOrFilter(user?.id || profileUser.id))
-              .order('created_at', { ascending: false })
-              .limit(12),
-            supabase.from('post_likes').select('post_id,user_id').limit(500),
-          ]);
-          if (cancelled) return;
-          const likesByPost = new Map<string, string[]>();
-          ((profilePostLikesResult.data || []) as any[]).forEach((like) => {
-            likesByPost.set(like.post_id, [...(likesByPost.get(like.post_id) || []), like.user_id].filter(Boolean));
-          });
-          setRouteProfilePosts(((profilePostsResult.data || []) as FeedPost[]).map((post) => ({ ...post, likes: likesByPost.get(post.id) || [] })));
-        } else if (!cancelled) {
-          setRouteProfilePosts([]);
+        if (!profileUser?.id) {
+          if (!cancelled) {
+            setRouteProfilePosts([]);
+            setRouteProfileReels([]);
+            setRouteProfileFollowers(0);
+            setRouteProfileFollowingCount(0);
+            setRouteProfileIsFollowing(false);
+            setRouteProfileIsBlocked(false);
+          }
+          return;
+        }
+        const viewerId = user?.id || '';
+        const isOther = !!viewerId && viewerId !== profileUser.id;
+
+        const baseQueries: Promise<any>[] = [
+          supabase
+            .from('posts')
+            .select('id,user_id,content,media_urls,media_type,comment_count,created_at,users!posts_user_id_fkey(full_name,profile_picture)')
+            .eq('user_id', profileUser.id)
+            .or(getPostVisibilityOrFilter(viewerId || profileUser.id))
+            .order('created_at', { ascending: false })
+            .limit(24),
+          supabase.from('post_likes').select('post_id,user_id').limit(500),
+          supabase
+            .from('reels')
+            .select('id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(full_name,profile_picture)')
+            .eq('user_id', profileUser.id)
+            .or(getReelVisibilityOrFilter(viewerId || profileUser.id))
+            .order('created_at', { ascending: false })
+            .limit(24),
+          supabase.from('follows').select('id', { count: 'exact', head: true }).eq('following_id', profileUser.id),
+          supabase.from('follows').select('id', { count: 'exact', head: true }).eq('follower_id', profileUser.id),
+        ];
+
+        if (isOther) {
+          baseQueries.push(
+            supabase.from('follows').select('id').eq('follower_id', viewerId).eq('following_id', profileUser.id).maybeSingle()
+          );
+          baseQueries.push(
+            supabase.from('blocked_users').select('id').eq('blocker_id', viewerId).eq('blocked_id', profileUser.id).maybeSingle()
+          );
+        }
+
+        const results = await Promise.all(baseQueries);
+        if (cancelled) return;
+
+        const profilePostsResult = results[0];
+        const profilePostLikesResult = results[1];
+        const profileReelsResult = results[2];
+        const followersCountRes = results[3];
+        const followingCountRes = results[4];
+        const followRowRes = isOther ? results[5] : null;
+        const blockRowRes = isOther ? results[6] : null;
+
+        const likesByPost = new Map<string, string[]>();
+        ((profilePostLikesResult.data || []) as any[]).forEach((like) => {
+          likesByPost.set(like.post_id, [...(likesByPost.get(like.post_id) || []), like.user_id].filter(Boolean));
+        });
+        setRouteProfilePosts(((profilePostsResult.data || []) as FeedPost[]).map((post) => ({ ...post, likes: likesByPost.get(post.id) || [] })));
+
+        const reelRows = (profileReelsResult.data || []) as Reel[];
+        setRouteProfileReels(reelRows.map((r) => ({ ...r, likes: r.likes || [] })));
+
+        setRouteProfileFollowers(typeof followersCountRes.count === 'number' ? followersCountRes.count : 0);
+        setRouteProfileFollowingCount(typeof followingCountRes.count === 'number' ? followingCountRes.count : 0);
+        if (isOther) {
+          setRouteProfileIsFollowing(!!followRowRes?.data?.id);
+          setRouteProfileIsBlocked(!!blockRowRes?.data?.id);
+        } else {
+          setRouteProfileIsFollowing(false);
+          setRouteProfileIsBlocked(false);
         }
       } finally {
         if (!cancelled) setRouteProfileLoading(false);
@@ -3374,6 +3449,75 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     if (existing?.id) {
       await loadAppData();
       router.push(`/app/messages/${existing.id}`);
+    }
+  };
+
+  const toggleProfileRouteFollow = async (subjectUserId: string) => {
+    if (!supabase || !user || !subjectUserId || subjectUserId === user.id || routeProfileFollowBusy) return;
+    setRouteProfileFollowBusy(true);
+    try {
+      if (routeProfileIsFollowing) {
+        const { error } = await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', subjectUserId);
+        if (error) throw error;
+        setRouteProfileIsFollowing(false);
+        setRouteProfileFollowers((n) => Math.max(0, n - 1));
+      } else {
+        const { error } = await supabase.from('follows').insert({ follower_id: user.id, following_id: subjectUserId });
+        if (error && (error as { code?: string }).code !== '23505') throw error;
+        setRouteProfileIsFollowing(true);
+        setRouteProfileFollowers((n) => n + 1);
+        const display = user.full_name || user.email || 'Someone';
+        await supabase.from('notifications').insert({
+          user_id: subjectUserId,
+          title: 'New Follower',
+          message: `${display} started following you`,
+          type: 'follow',
+          data: { followerId: user.id, follower_id: user.id },
+          read: false,
+        });
+      }
+    } catch {
+      setReactionNotice('Could not update follow');
+      window.setTimeout(() => setReactionNotice(null), 2200);
+    } finally {
+      setRouteProfileFollowBusy(false);
+    }
+  };
+
+  const toggleProfileRouteBlock = async (subjectUserId: string) => {
+    if (!supabase || !user || !subjectUserId || subjectUserId === user.id) return;
+    const name = getUserDisplayName(routeProfileUser) || 'this member';
+    if (routeProfileIsBlocked) {
+      if (!window.confirm(`Unblock ${name}? They can interact with you again.`)) return;
+      try {
+        const { error: unblockErr } = await supabase.from('blocked_users').delete().eq('blocker_id', user.id).eq('blocked_id', subjectUserId);
+        if (unblockErr) throw unblockErr;
+        setBlockedUsers((prev) => prev.filter((item) => item.blocked_id !== subjectUserId));
+        setRouteProfileIsBlocked(false);
+        setReactionNotice('User unblocked');
+        window.setTimeout(() => setReactionNotice(null), 1800);
+      } catch {
+        setReactionNotice('Could not unblock user');
+        window.setTimeout(() => setReactionNotice(null), 2200);
+      }
+      return;
+    }
+    if (!window.confirm(`Block ${name}? They cannot message you or see certain activity.`)) return;
+    try {
+      const { error } = await supabase.from('blocked_users').insert({ blocker_id: user.id, blocked_id: subjectUserId });
+      if (error) throw error;
+      if (routeProfileIsFollowing) {
+        await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', subjectUserId);
+        setRouteProfileIsFollowing(false);
+        setRouteProfileFollowers((n) => Math.max(0, n - 1));
+      }
+      setBlockedUsers((prev) => [...prev, { blocked_id: subjectUserId, users: routeProfileUser }]);
+      setRouteProfileIsBlocked(true);
+      setReactionNotice('User blocked');
+      window.setTimeout(() => setReactionNotice(null), 2200);
+    } catch {
+      setReactionNotice('Could not block user');
+      window.setTimeout(() => setReactionNotice(null), 2200);
     }
   };
 
@@ -10058,23 +10202,32 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   };
 
   const renderUserProfileRoute = () => {
-    const userId = appPath[1];
-    if (!userId) return renderProfile();
+    const rawSegment = appPath[1];
+    if (!rawSegment) return renderProfile();
+    const profileSubjectId = decodeURIComponent(rawSegment);
     if (routeProfileLoading) return <ScreenSkeleton />;
-    const related = userId === user?.id
-      ? user
-      : routeProfileUser || datingLikes.find((item) => item.user?.id === userId)?.user || datingMatches.find((item) => item.user?.id === userId)?.user || null;
+    const related =
+      profileSubjectId === user?.id
+        ? user
+        : routeProfileUser ||
+          datingLikes.find((item) => item.user?.id === profileSubjectId)?.user ||
+          datingMatches.find((item) => item.user?.id === profileSubjectId)?.user ||
+          null;
     if (!related) return <EmptyState icon={User} title="Profile Not Found" text="This profile is not loaded yet." action="Back" onAction={() => router.back()} />;
-    const relatedPosts = userId === user?.id ? posts.filter((post) => post.user_id === user.id).slice(0, 12) : routeProfilePosts;
+    const isSelf = profileSubjectId === user?.id;
+    const relatedPosts = isSelf && user ? posts.filter((post) => post.user_id === user.id).slice(0, 24) : routeProfilePosts;
+    const relatedReels = isSelf && user ? reels.filter((reel) => reel.user_id === user.id).slice(0, 24) : routeProfileReels;
+    const showSocial = !!user && !isSelf;
+
     return (
       <div className="space-y-4 px-4 py-4">
         <section className="rounded-[28px] bg-white p-6 text-center shadow-sm ring-1 ring-slate-200">
           <div className="mx-auto w-fit">
-            <ProfileUserLink viewerUserId={user?.id} subjectUserId={userId} className="inline-block rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
+            <ProfileUserLink viewerUserId={user?.id} subjectUserId={profileSubjectId} className="inline-block rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
               <Avatar src={related.profile_picture} name={getUserDisplayName(related)} size="lg" />
             </ProfileUserLink>
           </div>
-          <ProfileUserLink viewerUserId={user?.id} subjectUserId={userId} className="mt-4 inline-block">
+          <ProfileUserLink viewerUserId={user?.id} subjectUserId={profileSubjectId} className="mt-4 inline-block">
             <h2 className="text-3xl font-black text-slate-950 hover:underline">{getUserDisplayName(related)}</h2>
           </ProfileUserLink>
           <p className="text-sm text-slate-500">{related.username ? `@${related.username}` : related.email}</p>
@@ -10082,30 +10235,108 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             {related.verified ? <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700">Verified</span> : null}
             <span className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-black text-blue-700">{related.role || 'user'}</span>
           </div>
+          <div className="mt-5 grid grid-cols-2 gap-3 text-center">
+            <div className="rounded-[18px] bg-slate-50 py-3 ring-1 ring-slate-100">
+              <p className="text-xl font-black text-slate-950">{routeProfileFollowers}</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Followers</p>
+            </div>
+            <div className="rounded-[18px] bg-slate-50 py-3 ring-1 ring-slate-100">
+              <p className="text-xl font-black text-slate-950">{routeProfileFollowingCount}</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Following</p>
+            </div>
+          </div>
         </section>
-        {user && userId === user.id ? (
+
+        {isSelf ? (
           <Link href="/app/messages" className="block rounded-[20px] bg-blue-600 py-4 text-center font-black text-white">
             Messages
           </Link>
-        ) : user && userId ? (
+        ) : showSocial ? (
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              disabled={routeProfileFollowBusy}
+              onClick={() => void toggleProfileRouteFollow(profileSubjectId)}
+              className={`flex items-center justify-center gap-2 rounded-[20px] py-4 text-center text-sm font-black ${
+                routeProfileIsFollowing ? 'bg-slate-200 text-slate-800' : 'bg-blue-600 text-white'
+              } disabled:opacity-60`}
+            >
+              {routeProfileIsFollowing ? <UserMinus className="h-5 w-5" /> : <UserPlus className="h-5 w-5" />}
+              {routeProfileIsFollowing ? 'Unfollow' : 'Follow'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void openConversationWithUser(profileSubjectId)}
+              className="flex items-center justify-center gap-2 rounded-[20px] bg-slate-900 py-4 text-center text-sm font-black text-white"
+            >
+              <MessageCircle className="h-5 w-5" />
+              Message
+            </button>
+          </div>
+        ) : null}
+
+        {showSocial ? (
           <button
             type="button"
-            onClick={() => void openConversationWithUser(userId)}
-            className="block w-full rounded-[20px] bg-blue-600 py-4 text-center font-black text-white"
+            onClick={() => void toggleProfileRouteBlock(profileSubjectId)}
+            className={`w-full rounded-[18px] py-3 text-sm font-black ${routeProfileIsBlocked ? 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200' : 'bg-red-50 text-red-700 ring-1 ring-red-100'}`}
           >
-            Message
+            {routeProfileIsBlocked ? 'Unblock user' : 'Block user'}
           </button>
         ) : null}
-        <section className="space-y-3">
-          <h3 className="px-1 text-lg font-black text-slate-950">Posts</h3>
-          {!relatedPosts.length ? (
-            <div className="rounded-[22px] bg-white p-5 text-center text-sm font-semibold text-slate-500 shadow-sm ring-1 ring-slate-200">No visible posts yet.</div>
-          ) : (
-            relatedPosts.map((post) => (
-              <PostCard key={post.id} post={post} user={user} onLike={togglePostLike} onShare={shareText} />
-            ))
-          )}
-        </section>
+
+        <div className="grid grid-cols-2 gap-2 rounded-[20px] bg-slate-100 p-1">
+          <button
+            type="button"
+            onClick={() => setRouteProfileTab('posts')}
+            className={`rounded-[16px] py-3 text-sm font-black ${routeProfileTab === 'posts' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
+          >
+            <span className="inline-flex items-center justify-center gap-2">
+              <Grid className="h-4 w-4" />
+              Posts
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setRouteProfileTab('reels')}
+            className={`rounded-[16px] py-3 text-sm font-black ${routeProfileTab === 'reels' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
+          >
+            <span className="inline-flex items-center justify-center gap-2">
+              <Film className="h-4 w-4" />
+              Reels
+            </span>
+          </button>
+        </div>
+
+        {routeProfileTab === 'posts' ? (
+          <section className="space-y-3">
+            {!relatedPosts.length ? (
+              <div className="rounded-[22px] bg-white p-5 text-center text-sm font-semibold text-slate-500 shadow-sm ring-1 ring-slate-200">No visible posts yet.</div>
+            ) : (
+              relatedPosts.map((post) => <PostCard key={post.id} post={post} user={user} onLike={togglePostLike} onShare={shareText} />)
+            )}
+          </section>
+        ) : (
+          <section className="space-y-3">
+            {!relatedReels.length ? (
+              <div className="rounded-[22px] bg-white p-5 text-center text-sm font-semibold text-slate-500 shadow-sm ring-1 ring-slate-200">No reels to show yet.</div>
+            ) : (
+              <div className="grid grid-cols-3 gap-1.5">
+                {relatedReels.map((reel) => (
+                  <Link key={reel.id} href={`/app/reel/${reel.id}`} className="relative aspect-[9/16] overflow-hidden rounded-xl bg-slate-900 ring-1 ring-slate-200">
+                    {reel.thumbnail_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={reel.thumbnail_url} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="grid h-full w-full place-items-center text-[10px] font-black text-white">Reel</div>
+                    )}
+                    {reel.caption ? <p className="absolute inset-x-0 bottom-0 line-clamp-2 bg-black/55 px-1 py-1 text-[9px] font-semibold text-white">{reel.caption}</p> : null}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
       </div>
     );
   };

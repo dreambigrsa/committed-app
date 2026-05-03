@@ -7,12 +7,25 @@ import OpenAppFallback from '@/components/OpenAppFallback';
 
 const FALLBACK_DELAY_MS = 1200;
 
+function webHrefForOpenTarget(target: string): string | undefined {
+  const raw = (target || 'sign-in').trim().replace(/^\//, '');
+  if (!raw) return '/sign-in';
+  const lower = raw.toLowerCase();
+  if (lower === 'sign-in' || lower === 'signin') return '/sign-in';
+  if (lower === 'sign-up' || lower === 'signup') return '/sign-up';
+  if (lower === 'home' || lower === 'feed') return '/app';
+  if (lower.startsWith('post/')) return `/app/${raw.split('?')[0]}`;
+  if (lower.startsWith('reel/')) return `/app/${raw.split('?')[0]}`;
+  return undefined;
+}
+
 function OpenContent() {
   const searchParams = useSearchParams();
   const target = searchParams.get('target') || 'sign-in';
   const [showFallback, setShowFallback] = useState(false);
 
   const deepLinkUrl = `${APP_SCHEME}${target}`;
+  const webShellHref = webHrefForOpenTarget(target);
 
   useEffect(() => {
     window.location.href = deepLinkUrl;
@@ -28,7 +41,7 @@ function OpenContent() {
           <p className="mt-2 text-sm text-slate-500">If the app doesn&apos;t open, use the options below.</p>
         </div>
       ) : (
-        <OpenAppFallback deepLinkUrl={deepLinkUrl} />
+        <OpenAppFallback deepLinkUrl={deepLinkUrl} webShellHref={webShellHref} webShellLabel="Continue in browser" />
       )}
     </div>
   );

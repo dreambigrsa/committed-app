@@ -68,6 +68,43 @@ function debugAuth(label: string, payload: Record<string, unknown>) {
   }
 }
 
+const WEB_REFERRAL_STORAGE_KEY = 'committed:web_referral_code';
+
+function readPendingWebReferral(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    return (sessionStorage.getItem(WEB_REFERRAL_STORAGE_KEY) || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+function writePendingWebReferral(code: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(WEB_REFERRAL_STORAGE_KEY, code);
+  } catch {
+    // ignore
+  }
+}
+
+async function applyPendingWebReferral(supabase: { from: (t: string) => any }, userId: string) {
+  const code = readPendingWebReferral();
+  if (!code) return;
+  const { error } = await supabase
+    .from('users')
+    .update({ referred_by_code: code })
+    .eq('id', userId)
+    .is('referred_by_code', null);
+  if (!error) {
+    try {
+      sessionStorage.removeItem(WEB_REFERRAL_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+  }
+}
+
 export default function WebAuthForm({ mode }: { mode: Mode }) {
   const router = useRouter();
   const [fullName, setFullName] = useState('');
@@ -100,6 +137,13 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
     }
     return true;
   }, [email, password, isSignUp, fullName, phone, legalAcceptances, legalDocs, loadingLegalDocs]);
+
+  useEffect(() => {
+    if (!isSignUp || typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const ref = (params.get('ref') || params.get('referral') || '').trim();
+    if (ref) writePendingWebReferral(ref);
+  }, [isSignUp]);
 
   useEffect(() => {
     let cancelled = false;
@@ -234,6 +278,11 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
           }
         }
 
+        const signedInUserId = data.session?.user?.id || data.user?.id;
+        if (signedInUserId) {
+          await applyPendingWebReferral(supabaseBrowser, signedInUserId);
+        }
+
         await sendVerification(normalizedEmail, data.session?.access_token);
         router.replace(`/verify-email?email=${encodeURIComponent(normalizedEmail)}`);
         return;
@@ -257,6 +306,10 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
         signInUserId: data.user?.id ?? null,
         error: null,
       });
+
+      if (data.user?.id) {
+        await applyPendingWebReferral(supabaseBrowser, data.user.id);
+      }
 
       const redirectParam =
         typeof window !== 'undefined'

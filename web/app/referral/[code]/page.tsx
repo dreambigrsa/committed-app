@@ -50,6 +50,8 @@ export default function ReferralPage() {
           deepLinkUrl={deepLinkUrl}
           title="Join with referral"
           description="Tap below to open Committed with this referral link, or download the app if you don't have it yet."
+          webShellHref={`/sign-up?ref=${encodeURIComponent(code)}`}
+          webShellLabel="Sign up on web with this code"
         />
       )}
     </div>

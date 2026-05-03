@@ -74,6 +74,8 @@ type WebUser = {
   full_name?: string | null;
   email?: string | null;
   phone_number?: string | null;
+  gender?: string | null;
+  date_of_birth?: string | null;
   profile_picture?: string | null;
   username?: string | null;
   role?: string | null;
@@ -909,7 +911,14 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const [chatMediaUrl, setChatMediaUrl] = useState('');
   const [chatDocumentUrl, setChatDocumentUrl] = useState('');
   const [isCreatingContent, setIsCreatingContent] = useState(false);
-  const [settingsForm, setSettingsForm] = useState({ fullName: '', username: '', phoneNumber: '' });
+  const [settingsForm, setSettingsForm] = useState({
+    fullName: '',
+    username: '',
+    phoneNumber: '',
+    email: '',
+    gender: '',
+    dateOfBirth: '',
+  });
   const [privacySettings, setPrivacySettings] = useState({
     profileVisibility: 'public',
     searchVisibility: true,
@@ -1171,7 +1180,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     setSearchMode('text');
     setSearchPhoto('');
     setSearchResultFilter('all');
-    setSettingsForm({ fullName: '', username: '', phoneNumber: '' });
+    setSettingsForm({ fullName: '', username: '', phoneNumber: '', email: '', gender: '', dateOfBirth: '' });
     setPrivacySettings({ profileVisibility: 'public', searchVisibility: true, allowSearchByPhone: true });
     setNotificationSettings({
       relationshipUpdates: true,
@@ -1438,6 +1447,18 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         hadProfileError: !!profileError,
       });
 
+      /** Same extra row as mobile `loadSettings` — some DBs add `gender` / `date_of_birth` on `users` after base schema. */
+      if (profile?.id) {
+        const { data: genderDobRow, error: genderDobError } = await supabase
+          .from('users')
+          .select('gender, date_of_birth')
+          .eq('id', authUser.id)
+          .maybeSingle();
+        if (!genderDobError && genderDobRow) {
+          profile = { ...(profile as Record<string, unknown>), ...genderDobRow } as typeof profile;
+        }
+      }
+
       setDebugUsersRowProfilePicture(
         profile != null &&
           profile.profile_picture != null &&
@@ -1498,6 +1519,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         full_name: resolvedProfile.full_name?.trim() || null,
         email: resolvedProfile.email || authUser.email,
         phone_number: resolvedProfile.phone_number,
+        gender: resolvedProfile.gender ?? null,
+        date_of_birth: resolvedProfile.date_of_birth ?? null,
         profile_picture: resolvedProfile.profile_picture,
         username: resolvedProfile.username,
         role: resolvedProfile.role || 'user',
@@ -1527,6 +1550,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         fullName: currentUser.full_name || '',
         username: currentUser.username || '',
         phoneNumber: currentUser.phone_number || '',
+        email: (currentUser.email || '').trim(),
+        gender: (currentUser.gender || '').trim(),
+        dateOfBirth: (currentUser.date_of_birth || '').trim(),
       });
       setSettingsProfilePictureUrl(currentUser.profile_picture || '');
       setVerificationForm((prev) => ({
@@ -6104,17 +6130,18 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       const existing = typeof user.profile_picture === 'string' ? user.profile_picture.trim() : '';
       const nextPicture = staged || existing || null;
 
-      const { error: userError } = await supabase
-        .from('users')
-        .update({
-          full_name: settingsForm.fullName.trim(),
-          username: settingsForm.username.trim() || null,
-          phone_number: settingsForm.phoneNumber.trim(),
-          profile_picture: nextPicture,
-          email: user.email || null,
-          role: user.role || null,
-        })
-        .eq('id', user.id);
+      const userPatch: Record<string, unknown> = {
+        full_name: settingsForm.fullName.trim(),
+        username: settingsForm.username.trim() || null,
+        phone_number: settingsForm.phoneNumber.trim(),
+        profile_picture: nextPicture,
+        email: user.email || null,
+        role: user.role || null,
+      };
+      if (settingsForm.gender.trim()) userPatch.gender = settingsForm.gender.trim();
+      if (settingsForm.dateOfBirth.trim()) userPatch.date_of_birth = settingsForm.dateOfBirth.trim();
+
+      const { error: userError } = await supabase.from('users').update(userPatch).eq('id', user.id);
       if (userError) throw userError;
 
       const { error: settingsError } = await supabase
@@ -6134,17 +6161,19 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       } else {
         setReactionNotice('Settings saved');
       }
-      setUser((prev) =>
-        prev
-          ? {
-              ...prev,
-              full_name: settingsForm.fullName.trim(),
-              username: settingsForm.username.trim() || null,
-              phone_number: settingsForm.phoneNumber.trim(),
-              profile_picture: nextPicture,
-            }
-          : prev
-      );
+      setUser((prev) => {
+        if (!prev) return prev;
+        const next: WebUser = {
+          ...prev,
+          full_name: settingsForm.fullName.trim(),
+          username: settingsForm.username.trim() || null,
+          phone_number: settingsForm.phoneNumber.trim(),
+          profile_picture: nextPicture,
+        };
+        if (settingsForm.gender.trim()) next.gender = settingsForm.gender.trim();
+        if (settingsForm.dateOfBirth.trim()) next.date_of_birth = settingsForm.dateOfBirth.trim();
+        return next;
+      });
       window.setTimeout(() => setReactionNotice(null), 3200);
     } catch (err: any) {
       setReactionNotice(err?.message || 'Could not save settings');
@@ -8447,6 +8476,25 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       <FormField label="Full name" value={settingsForm.fullName} onChange={(fullName) => setSettingsForm((prev) => ({ ...prev, fullName }))} />
       <FormField label="Username" value={settingsForm.username} onChange={(username) => setSettingsForm((prev) => ({ ...prev, username }))} placeholder="Optional" />
       <FormField label="Phone number" value={settingsForm.phoneNumber} onChange={(phoneNumber) => setSettingsForm((prev) => ({ ...prev, phoneNumber }))} />
+      <FormField
+        label="Email address"
+        value={settingsForm.email}
+        onChange={() => {}}
+        readOnly
+        hint="Same as mobile: sign-in email is managed in your account provider; this field is read-only here."
+      />
+      <FormField
+        label="Gender (optional)"
+        value={settingsForm.gender}
+        onChange={(gender) => setSettingsForm((prev) => ({ ...prev, gender }))}
+        placeholder="Male, Female, Other"
+      />
+      <FormField
+        label="Date of birth (optional)"
+        value={settingsForm.dateOfBirth}
+        onChange={(dateOfBirth) => setSettingsForm((prev) => ({ ...prev, dateOfBirth }))}
+        placeholder="YYYY-MM-DD"
+      />
       <section className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
         <p className="text-sm font-black text-slate-900">Verification Status</p>
         <div className="mt-3 grid grid-cols-2 gap-2">
@@ -10879,6 +10927,8 @@ function FormField({
   multiline = false,
   inputMode,
   type = 'text',
+  readOnly = false,
+  hint,
 }: {
   label: string;
   value: string;
@@ -10887,28 +10937,36 @@ function FormField({
   multiline?: boolean;
   inputMode?: HTMLAttributes<HTMLInputElement>['inputMode'];
   type?: string;
+  readOnly?: boolean;
+  hint?: string;
 }) {
+  const fieldClass = readOnly
+    ? 'cursor-not-allowed rounded-[20px] border border-slate-200 bg-slate-100 px-4 text-base font-semibold text-slate-600 outline-none'
+    : 'rounded-[20px] border border-slate-200 bg-white px-4 text-base font-semibold text-slate-950 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100';
   return (
     <label className="block">
       <span className="mb-2 block text-sm font-black text-slate-700">{label}</span>
       {multiline ? (
         <textarea
           value={value}
+          readOnly={readOnly}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
           rows={4}
-          className="w-full resize-none rounded-[20px] border border-slate-200 bg-white px-4 py-4 text-base font-semibold text-slate-950 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+          className={`w-full resize-none py-4 ${fieldClass}`}
         />
       ) : (
         <input
           value={value}
+          readOnly={readOnly}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
           inputMode={inputMode}
           type={type}
-          className="h-14 w-full rounded-[20px] border border-slate-200 bg-white px-4 text-base font-semibold text-slate-950 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+          className={`h-14 w-full ${fieldClass}`}
         />
       )}
+      {hint ? <p className="mt-1.5 text-xs font-semibold text-slate-500">{hint}</p> : null}
     </label>
   );
 }

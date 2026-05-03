@@ -72,6 +72,8 @@ type UsersRow = {
   username?: string | null;
   email?: string | null;
   phone_number?: string | null;
+  gender?: string | null;
+  date_of_birth?: string | null;
   profile_picture?: string | null;
   role?: string | null;
   verified?: boolean | null;
@@ -124,6 +126,11 @@ export function mergeUsersProfileForWebShell(profile: UsersRow | null, authUser:
     username: profile?.username ?? null,
     email: profile?.email || authUser.email || null,
     phone_number,
+    gender: profile?.gender != null && String(profile.gender).trim() !== '' ? String(profile.gender).trim() : null,
+    date_of_birth:
+      profile?.date_of_birth != null && String(profile.date_of_birth).trim() !== ''
+        ? String(profile.date_of_birth).trim()
+        : null,
     profile_picture,
     role: (profile?.role as string | undefined) || metadataRole || 'user',
     verified: profile?.verified ?? null,

@@ -705,7 +705,7 @@ function SettingsPanel() {
   const [status, setStatus] = useState<Status>('idle');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ fullName: '', phone: '', email: '', isVerified: false });
+  const [form, setForm] = useState({ fullName: '', phone: '', email: '', gender: '', dateOfBirth: '', isVerified: false });
 
   useEffect(() => {
     let cancelled = false;
@@ -717,6 +717,7 @@ function SettingsPanel() {
         } = await supabase.auth.getSession();
         if (!session?.user) return;
         const { data: userRow } = await supabase.from('users').select('full_name,phone_number,email').eq('id', session.user.id).maybeSingle();
+        const { data: genderDobRow } = await supabase.from('users').select('gender, date_of_birth').eq('id', session.user.id).maybeSingle();
         const { data: profile } = await supabase.from('profiles').select('is_verified').eq('id', session.user.id).maybeSingle();
         const meta = (session.user.user_metadata || {}) as Record<string, string | undefined>;
         const emailLower = (session.user.email || '').trim().toLowerCase();
@@ -725,8 +726,10 @@ function SettingsPanel() {
         if (!cancelled) {
           setForm({
             fullName: (rowFull && !rowFullLooksLikeEmail ? rowFull : '') || (meta.full_name || '').trim() || '',
-            phone: userRow?.phone_number || meta.phone_number || '',
+            phone: userRow?.phone_number || meta.phone_number || meta.phone || '',
             email: userRow?.email || session.user.email || '',
+            gender: (genderDobRow?.gender && String(genderDobRow.gender)) || '',
+            dateOfBirth: (genderDobRow?.date_of_birth && String(genderDobRow.date_of_birth)) || '',
             isVerified: Boolean(profile?.is_verified),
           });
         }
@@ -750,10 +753,13 @@ function SettingsPanel() {
         data: { session },
       } = await supabase.auth.getSession();
       if (!session?.user) throw new Error('Please sign in again.');
-      const { error } = await supabase
-        .from('users')
-        .update({ full_name: form.fullName.trim(), phone_number: normalizePhone(form.phone) })
-        .eq('id', session.user.id);
+      const patch: Record<string, string> = {
+        full_name: form.fullName.trim(),
+        phone_number: normalizePhone(form.phone),
+      };
+      if (form.gender.trim()) patch.gender = form.gender.trim();
+      if (form.dateOfBirth.trim()) patch.date_of_birth = form.dateOfBirth.trim();
+      const { error } = await supabase.from('users').update(patch).eq('id', session.user.id);
       if (error) throw error;
       setStatus('success');
       setMessage('Account details saved.');
@@ -781,6 +787,8 @@ function SettingsPanel() {
       <form onSubmit={save} className="mt-6 grid gap-4">
         <Field label="Full name" value={form.fullName} onChange={(value) => setForm({ ...form, fullName: value })} />
         <Field label="Phone number" value={form.phone} onChange={(value) => setForm({ ...form, phone: value })} placeholder="+263..." />
+        <Field label="Gender (optional)" value={form.gender} onChange={(value) => setForm({ ...form, gender: value })} placeholder="Male, Female, Other" />
+        <Field label="Date of birth (optional)" value={form.dateOfBirth} onChange={(value) => setForm({ ...form, dateOfBirth: value })} placeholder="YYYY-MM-DD" />
         <div className="flex flex-col gap-3 sm:flex-row">
           <button type="submit" disabled={status === 'loading'} className="min-h-[54px] flex-1 rounded-2xl bg-violet-600 px-6 font-bold text-white disabled:opacity-60">
             {status === 'loading' ? 'Saving...' : 'Save account'}

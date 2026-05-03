@@ -114,6 +114,72 @@ function formatDatingProfileValue(value: string) {
   return value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function firstPresent<T = unknown>(...values: T[]): T | undefined {
+  return values.find((value) => value !== undefined && value !== null && String(value).trim() !== '');
+}
+
+function parseArrayValue(raw: unknown): any[] {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      return raw.split(',').map((item) => item.trim()).filter(Boolean);
+    }
+  }
+  return [];
+}
+
+function calculateAgeFromDate(raw: unknown): number | null {
+  if (!raw) return null;
+  const date = new Date(String(raw));
+  if (Number.isNaN(date.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - date.getFullYear();
+  const monthDelta = today.getMonth() - date.getMonth();
+  if (monthDelta < 0 || (monthDelta === 0 && today.getDate() < date.getDate())) age -= 1;
+  return age > 0 && age < 120 ? age : null;
+}
+
+function normalizeDatingProfileForWeb(raw: any) {
+  if (!raw) return raw;
+  const profileUser = raw.users || raw.user || null;
+  const age =
+    firstPresent(raw.age, raw.ageYears, raw.age_years) ??
+    calculateAgeFromDate(firstPresent(raw.date_of_birth, raw.dateOfBirth, profileUser?.date_of_birth, profileUser?.dateOfBirth));
+  return {
+    ...raw,
+    user_id: firstPresent(raw.user_id, raw.userId, profileUser?.id) || raw.user_id,
+    users: profileUser,
+    user: profileUser,
+    age,
+    bio: firstPresent(raw.bio, raw.about) ?? raw.bio,
+    date_of_birth: firstPresent(raw.date_of_birth, raw.dateOfBirth, profileUser?.date_of_birth, profileUser?.dateOfBirth) ?? null,
+    location_city: firstPresent(raw.location_city, raw.locationCity, raw.city, profileUser?.location_city, profileUser?.city) ?? null,
+    location_country: firstPresent(raw.location_country, raw.locationCountry, raw.country, profileUser?.location_country, profileUser?.country) ?? null,
+    location_latitude: firstPresent(raw.location_latitude, raw.locationLatitude) ?? raw.location_latitude,
+    location_longitude: firstPresent(raw.location_longitude, raw.locationLongitude) ?? raw.location_longitude,
+    relationship_goals: parseArrayValue(firstPresent(raw.relationship_goals, raw.relationshipGoals)),
+    interests: parseArrayValue(firstPresent(raw.interests, raw.interestTags)),
+    values: parseArrayValue(firstPresent(raw.values, raw.valueTags)),
+    prompts: parseArrayValue(raw.prompts),
+    intention_tag: firstPresent(raw.intention_tag, raw.intentionTag, raw.intention) ?? raw.intention_tag,
+    what_im_looking_for: firstPresent(raw.what_im_looking_for, raw.whatImLookingFor) ?? raw.what_im_looking_for,
+    what_makes_me_different: firstPresent(raw.what_makes_me_different, raw.whatMakesMeDifferent) ?? raw.what_makes_me_different,
+    weekend_style: firstPresent(raw.weekend_style, raw.weekendStyle) ?? raw.weekend_style,
+    daily_question_answer: firstPresent(raw.daily_question_answer, raw.dailyQuestionAnswer) ?? raw.daily_question_answer,
+    local_food: firstPresent(raw.local_food, raw.localFood) ?? raw.local_food,
+    local_slang: firstPresent(raw.local_slang, raw.localSlang) ?? raw.local_slang,
+    local_spot: firstPresent(raw.local_spot, raw.localSpot) ?? raw.local_spot,
+    height_cm: firstPresent(raw.height_cm, raw.heightCm) ?? raw.height_cm,
+    dating_photos: raw.dating_photos || raw.photos || [],
+    photos: raw.photos || raw.dating_photos || [],
+    dating_videos: raw.dating_videos || raw.videos || [],
+    videos: raw.videos || raw.dating_videos || [],
+  };
+}
+
 type RouteProfileRelationshipRow = {
   id: string;
   type?: string | null;
@@ -489,7 +555,7 @@ const verificationRouteCards = [
 ] as const;
 
 const USERS_SELECT_WITH_OPTIONAL_COLUMNS =
-  'id, full_name, username, email, phone_number, profile_picture, role, verified, email_verified, phone_verified, id_verified, banned_at, banned_by, ban_reason' as const;
+  'id, full_name, username, email, phone_number, gender, date_of_birth, profile_picture, role, verified, email_verified, phone_verified, id_verified, banned_at, banned_by, ban_reason' as const;
 const USERS_SELECT_BASE =
   'id, full_name, email, phone_number, profile_picture, role, email_verified, phone_verified, id_verified' as const;
 const POST_SELECT_WITH_OPTIONAL_USER_COLUMNS =
@@ -3546,7 +3612,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           profileRow.weekend_style ? 'What does your perfect weekend look like?' : null,
         ].filter(Boolean).slice(0, 4);
         if (!cancelled) {
-          setRouteDatingProfile(normalizedProfile);
+          setRouteDatingProfile(normalizeDatingProfileForWeb(normalizedProfile));
           setRouteDatingBadges(badgesResult.data || []);
           setRouteConversationStarters(starters as string[]);
           setRouteDatingReaction({
@@ -9094,7 +9160,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     const targetUserId = searchParams?.get('userId') || searchParams?.get('user_id') || '';
     const targetProfileId = searchParams?.get('profileId') || searchParams?.get('profile_id') || '';
     const legacyId = searchParams?.get('id') || appPath[2] || '';
-    const profile =
+    const rawProfile =
       routeDatingProfile ||
       datingProfiles.find(
         (item) =>
@@ -9103,6 +9169,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           (!!legacyId && (item.user_id === legacyId || item.id === legacyId))
       ) ||
       (!targetUserId && !targetProfileId && !legacyId ? myDatingProfile : null);
+    const profile = normalizeDatingProfileForWeb(rawProfile);
     if (routeDatingProfileLoading) {
       return (
         <div className="space-y-4 px-4 py-4">
@@ -9132,18 +9199,6 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           : null;
     const name = profileUser?.full_name || profileUser?.username || 'Committed dater';
     const isOwnProfile = profile.user_id === user?.id;
-    const parseJsonArray = (raw: unknown): any[] => {
-      if (Array.isArray(raw)) return raw;
-      if (typeof raw === 'string') {
-        try {
-          const v = JSON.parse(raw);
-          return Array.isArray(v) ? v : [];
-        } catch {
-          return [];
-        }
-      }
-      return [];
-    };
     let rawPrompts = profile.prompts;
     if (typeof rawPrompts === 'string') {
       try {
@@ -9153,9 +9208,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       }
     }
     const profilePrompts = Array.isArray(rawPrompts) ? rawPrompts.filter((p: any) => p && (p.question || p.answer)) : [];
-    const valuesList = parseJsonArray(profile.values);
-    const interestsList = parseJsonArray(profile.interests);
-    const relationshipGoals = parseJsonArray(profile.relationship_goals);
+    const valuesList = parseArrayValue(profile.values);
+    const interestsList = parseArrayValue(profile.interests);
+    const relationshipGoals = parseArrayValue(profile.relationship_goals);
     const lifestyleHas =
       !!profile.kids ||
       !!profile.work ||

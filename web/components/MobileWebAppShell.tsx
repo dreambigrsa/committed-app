@@ -55,6 +55,7 @@ import {
   resolveProfilePictureUrlWithSupabase,
 } from '@/lib/profile-media-url';
 import { mergeUsersProfileForWebShell, usersRowBootstrapFromAuth } from '@/lib/web-user-profile';
+import { parseSupabaseCount } from '@/lib/supabase-count';
 import { profileBrowseHref, webAppProfileHref } from '@/lib/web-app-profile-href';
 import ReportUserModal from '@/components/ReportUserModal';
 import { buildPostWebUrl, buildReelWebUrl } from '@/lib/appLinks';
@@ -2602,8 +2603,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle(),
-          supabase.from('follows').select('id', { count: 'exact', head: true }).eq('following_id', profileUser.id),
-          supabase.from('follows').select('id', { count: 'exact', head: true }).eq('follower_id', profileUser.id),
+          supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', profileUser.id),
+          supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', profileUser.id),
         ];
 
         if (isOther) {
@@ -2637,8 +2638,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         const reelRows = (profileReelsResult.data || []) as Reel[];
         setRouteProfileReels(reelRows.map((r) => ({ ...r, likes: r.likes || [] })));
 
-        setRouteProfileFollowers(typeof followersCountRes.count === 'number' ? followersCountRes.count : 0);
-        setRouteProfileFollowingCount(typeof followingCountRes.count === 'number' ? followingCountRes.count : 0);
+        setRouteProfileFollowers(parseSupabaseCount(followersCountRes));
+        setRouteProfileFollowingCount(parseSupabaseCount(followingCountRes));
         setRouteProfileStatusType((statusRes.data as { status_type?: string } | null)?.status_type ?? null);
         setRouteProfileRelationship((relRes.data as RouteProfileRelationshipRow | null) ?? null);
         if (isOther) {
@@ -10284,8 +10285,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           null;
     if (!related) return <EmptyState icon={User} title="Profile Not Found" text="This profile is not loaded yet." action="Back" onAction={() => router.back()} />;
     const isSelf = profileSubjectId === user?.id;
-    const relatedPosts = isSelf && user ? posts.filter((post) => post.user_id === user.id).slice(0, 60) : routeProfilePosts;
-    const relatedReels = isSelf && user ? reels.filter((reel) => reel.user_id === user.id).slice(0, 60) : routeProfileReels;
+    /** Always use profile-route fetch (same as mobile): feed `posts`/`reels` are capped and can omit reel `thumbnail_url` shapes the grid expects. */
+    const relatedPosts = routeProfilePosts;
+    const relatedReels = routeProfileReels;
     const showSocial = !!user && !isSelf;
     const postsCount = relatedPosts.length;
     const online = routeProfileStatusType === 'online';
@@ -10517,11 +10519,14 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-1.5">
-                {relatedReels.map((reel) => (
+                {relatedReels.map((reel) => {
+                  const rawThumb = reel.thumbnail_url?.trim() || '';
+                  const thumbUrl = rawThumb ? resolveProfilePictureUrl(rawThumb) || rawThumb : '';
+                  return (
                   <Link key={reel.id} href={`/app/reel/${reel.id}`} className="relative aspect-[9/16] overflow-hidden rounded-lg bg-slate-900 ring-1 ring-slate-200">
-                    {reel.thumbnail_url ? (
+                    {thumbUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={reel.thumbnail_url} alt="" className="h-full w-full object-cover" />
+                      <img src={thumbUrl} alt="" className="h-full w-full object-cover" />
                     ) : (
                       <div className="grid h-full w-full place-items-center text-[10px] font-black text-white">Reel</div>
                     )}
@@ -10529,7 +10534,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                       <p className="absolute inset-x-0 bottom-0 line-clamp-2 bg-black/55 px-1 py-1 text-[9px] font-semibold text-white">{reel.caption}</p>
                     ) : null}
                   </Link>
-                ))}
+                );
+                })}
               </div>
             )}
           </section>

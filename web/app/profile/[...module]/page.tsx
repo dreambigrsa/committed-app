@@ -20,6 +20,7 @@ import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { getDisplayName } from '@/lib/identity';
 import { resolveProfilePictureUrl } from '@/lib/profile-media-url';
 import { getPostVisibilityOrFilter, getReelVisibilityOrFilter } from '@/lib/content-visibility';
+import { parseSupabaseCount } from '@/lib/supabase-count';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -135,11 +136,11 @@ export default function PublicProfilePage() {
             .limit(60),
           supabase
             .from('posts')
-            .select('id', { count: 'exact', head: true })
+            .select('*', { count: 'exact', head: true })
             .eq('user_id', userRow.id)
             .or(postFilter),
-          supabase.from('follows').select('id', { count: 'exact', head: true }).eq('following_id', userRow.id),
-          supabase.from('follows').select('id', { count: 'exact', head: true }).eq('follower_id', userRow.id),
+          supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', userRow.id),
+          supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userRow.id),
           supabase.from('user_status').select('status_type').eq('user_id', userRow.id).maybeSingle(),
           supabase
             .from('relationships')
@@ -155,9 +156,12 @@ export default function PublicProfilePage() {
         setProfile(userRow);
         setPosts(postsResult.data || []);
         setReels(reelsResult.data || []);
-        setPostsTotal(typeof postsCountResult.count === 'number' ? postsCountResult.count : (postsResult.data || []).length);
-        setFollowersCount(typeof followersResult.count === 'number' ? followersResult.count : 0);
-        setFollowingCount(typeof followingResult.count === 'number' ? followingResult.count : 0);
+        {
+          const parsedPostsTotal = parseSupabaseCount(postsCountResult);
+          setPostsTotal(parsedPostsTotal > 0 ? parsedPostsTotal : (postsResult.data || []).length);
+        }
+        setFollowersCount(parseSupabaseCount(followersResult));
+        setFollowingCount(parseSupabaseCount(followingResult));
         setStatusType((statusResult.data as { status_type?: string } | null)?.status_type ?? null);
         setRelationship((relResult.data as PublicRelationshipRow | null) ?? null);
       } catch {
@@ -405,15 +409,18 @@ export default function PublicProfilePage() {
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-1.5">
-                {reels.map((reel) => (
+                {reels.map((reel) => {
+                  const raw = (reel.thumbnail_url || '').trim();
+                  const thumb = raw ? resolveProfilePictureUrl(raw) || raw : '';
+                  return (
                   <Link
                     key={reel.id}
                     href={`/reel/${reel.id}?web=1`}
                     className="relative aspect-[9/16] overflow-hidden rounded-lg bg-slate-900 ring-1 ring-slate-200"
                   >
-                    {reel.thumbnail_url ? (
+                    {thumb ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={reel.thumbnail_url} alt="" className="h-full w-full object-cover" />
+                      <img src={thumb} alt="" className="h-full w-full object-cover" />
                     ) : (
                       <div className="grid h-full w-full place-items-center text-[10px] font-black text-white">Reel</div>
                     )}
@@ -423,7 +430,8 @@ export default function PublicProfilePage() {
                       </p>
                     ) : null}
                   </Link>
-                ))}
+                );
+                })}
               </div>
             )}
           </section>

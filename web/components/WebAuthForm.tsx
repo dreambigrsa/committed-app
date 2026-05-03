@@ -217,7 +217,14 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
         return;
       }
 
-      await withTimeout(supabaseBrowser.auth.signOut({ scope: 'local' }), 6000, 'Clearing old web session');
+      // Best-effort: clear stale local tokens before password sign-in. Do not block the user
+      // if this hangs (IndexedDB locks, privacy extensions, slow storage) — sign-in replaces the session.
+      try {
+        await withTimeout(supabaseBrowser.auth.signOut({ scope: 'local' }), 15000, 'Clearing old web session');
+      } catch {
+        /* proceed */
+      }
+
       const { data, error: signInError } = await withTimeout(
         supabaseBrowser.auth.signInWithPassword({
           email: normalizedEmail,

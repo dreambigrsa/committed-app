@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { HTMLAttributes } from 'react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import {
   Bell,
   Ban,
@@ -5896,36 +5896,55 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     if (!supabase || !user) return;
     setSaving(true);
     try {
-      const { error } = await supabase
+      const staged = settingsProfilePictureUrl.trim();
+      const existing = typeof user.profile_picture === 'string' ? user.profile_picture.trim() : '';
+      const nextPicture = staged || existing || null;
+
+      const { error: userError } = await supabase
         .from('users')
-        .upsert({
-          id: user.id,
+        .update({
           full_name: settingsForm.fullName.trim(),
           username: settingsForm.username.trim() || null,
           phone_number: settingsForm.phoneNumber.trim(),
-          profile_picture: settingsProfilePictureUrl.trim() || null,
+          profile_picture: nextPicture,
           email: user.email || null,
           role: user.role || null,
-        }, { onConflict: 'id' });
-      if (error) throw error;
+        })
+        .eq('id', user.id);
+      if (userError) throw userError;
+
       const { error: settingsError } = await supabase
         .from('user_settings')
-        .upsert({
-          user_id: user.id,
-          notification_settings: notificationSettings,
-          privacy_settings: privacySettings,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'user_id' });
-      if (settingsError) throw settingsError;
-      setUser((prev) => prev ? {
-        ...prev,
-        full_name: settingsForm.fullName.trim(),
-        username: settingsForm.username.trim() || null,
-        phone_number: settingsForm.phoneNumber.trim(),
-        profile_picture: settingsProfilePictureUrl.trim() || null,
-      } : prev);
-      setReactionNotice('Settings saved');
-      window.setTimeout(() => setReactionNotice(null), 1800);
+        .upsert(
+          {
+            user_id: user.id,
+            notification_settings: notificationSettings,
+            privacy_settings: privacySettings,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id' }
+        );
+      if (settingsError) {
+        console.warn('[Web settings] user_settings upsert failed:', settingsError);
+        setReactionNotice(`Profile saved. Preferences not synced: ${settingsError.message}`);
+      } else {
+        setReactionNotice('Settings saved');
+      }
+      setUser((prev) =>
+        prev
+          ? {
+              ...prev,
+              full_name: settingsForm.fullName.trim(),
+              username: settingsForm.username.trim() || null,
+              phone_number: settingsForm.phoneNumber.trim(),
+              profile_picture: nextPicture,
+            }
+          : prev
+      );
+      window.setTimeout(() => setReactionNotice(null), 3200);
+    } catch (err: any) {
+      setReactionNotice(err?.message || 'Could not save settings');
+      window.setTimeout(() => setReactionNotice(null), 3200);
     } finally {
       setSaving(false);
     }
@@ -6128,6 +6147,31 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       if (event?.target) event.target.value = '';
     }
   }, [uploadMediaFile]);
+
+  /** Upload then persist `users.profile_picture` immediately so refresh keeps the photo (matches mobile Settings). */
+  const handleProfilePhotoUpload = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file || !supabase || !user) return;
+      setUploadingLabel('Profile photo');
+      try {
+        const url = await uploadMediaFile(file, 'avatars');
+        setSettingsProfilePictureUrl(url);
+        const { error } = await supabase.from('users').update({ profile_picture: url }).eq('id', user.id);
+        if (error) throw error;
+        setUser((prev) => (prev ? { ...prev, profile_picture: url } : prev));
+        setReactionNotice('Profile photo saved');
+        window.setTimeout(() => setReactionNotice(null), 2200);
+      } catch (err: any) {
+        setReactionNotice(err?.message || 'Could not save profile photo');
+        window.setTimeout(() => setReactionNotice(null), 3200);
+      } finally {
+        setUploadingLabel('');
+        if (event.target) event.target.value = '';
+      }
+    },
+    [supabase, user, uploadMediaFile]
+  );
 
   const renderHeader = () => {
     const current = tabs.find((tab) => tab.key === activeTab) || tabs[0];
@@ -8076,7 +8120,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       <label className="flex cursor-pointer items-center justify-center gap-2 rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm">
         <UploadCloud className="h-5 w-5 text-blue-600" />
         {uploadingLabel === 'Profile photo' ? 'Uploading profile photo...' : 'Upload profile photo'}
-        <input type="file" accept="image/*" className="hidden" onChange={(event) => void handleFileUpload(event, 'avatars', 'Profile photo', setSettingsProfilePictureUrl)} />
+        <input type="file" accept="image/*" className="hidden" onChange={(event) => void handleProfilePhotoUpload(event)} />
       </label>
       {settingsProfilePictureUrl ? (
         <img
@@ -8156,7 +8200,12 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           <Link href="/app/verification" className="rounded-[14px] bg-slate-50 px-3 py-3 text-sm font-black text-slate-700 ring-1 ring-slate-200">Status & privacy controls</Link>
         </div>
       </section>
-      <button type="button" onClick={() => void saveSettings()} disabled={saving} className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-blue-600 py-4 text-base font-black text-white disabled:opacity-60">
+      <button
+        type="button"
+        onClick={() => void saveSettings()}
+        disabled={saving || uploadingLabel === 'Profile photo'}
+        className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-blue-600 py-4 text-base font-black text-white disabled:opacity-60"
+      >
         {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
         Save changes
       </button>

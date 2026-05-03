@@ -1,15 +1,15 @@
 /**
- * In-app shell profile URL: own account → main profile tab; other users → `/app/profile/{userId}`.
- * Used by web mirror UI so avatars and names navigate like the native app.
+ * In-app shell profile URL for a **member profile** (stats, posts grid, etc.).
+ * Always `/app/profile/{userId}` — including when viewing yourself — so taps on your
+ * own name in feed/reels match “view profile” UX. The profile **hub** (settings list)
+ * stays at `/app/profile` via bottom nav only, not via user links.
  */
 export function webAppProfileHref(
-  viewerUserId: string | null | undefined,
+  _viewerUserId: string | null | undefined,
   subjectUserId: string | null | undefined
 ): string | null {
   const sid = (subjectUserId || '').trim();
   if (!sid) return null;
-  const vid = (viewerUserId || '').trim();
-  if (vid && sid === vid) return '/app/profile';
   return `/app/profile/${encodeURIComponent(sid)}`;
 }
 
@@ -26,7 +26,6 @@ export function profileBrowseHref(
   const sid = (subjectUserId || '').trim();
   if (!sid) return null;
   const vid = (viewerUserId || '').trim();
-  if (vid && sid === vid) return '/app/profile';
   if (vid) return `/app/profile/${encodeURIComponent(sid)}`;
   const uname = (subjectUsername || '').trim().replace(/^@/, '');
   if (uname) return `/profile/${encodeURIComponent(uname)}`;

@@ -50,14 +50,8 @@ async function sendVerification(email: string, accessToken?: string) {
   });
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timeout = window.setTimeout(() => reject(new Error(`${label} timed out. Please try again.`)), timeoutMs);
-    promise
-      .then(resolve)
-      .catch(reject)
-      .finally(() => window.clearTimeout(timeout));
-  });
+function delay(ms: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 }
 
 function debugAuth(label: string, payload: Record<string, unknown>) {
@@ -217,33 +211,23 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
         return;
       }
 
-      // Best-effort: clear stale local tokens before password sign-in. Do not block the user
-      // if this hangs (IndexedDB locks, privacy extensions, slow storage) — sign-in replaces the session.
-      try {
-        await withTimeout(supabaseBrowser.auth.signOut({ scope: 'local' }), 15000, 'Clearing old web session');
-      } catch {
-        /* proceed */
-      }
+      // Best-effort local clear before password sign-in. Cap wait at 2s so hung storage never blocks sign-in.
+      await Promise.race([
+        supabaseBrowser.auth.signOut({ scope: 'local' }).catch(() => undefined),
+        delay(2000),
+      ]);
 
-      const { data, error: signInError } = await withTimeout(
-        supabaseBrowser.auth.signInWithPassword({
-          email: normalizedEmail,
-          password,
-        }),
-        12000,
-        'Sign in'
-      );
+      const { data, error: signInError } = await supabaseBrowser.auth.signInWithPassword({
+        email: normalizedEmail,
+        password,
+      });
       if (signInError) throw signInError;
 
-      const {
-        data: { user: authenticatedUser },
-        error: authenticatedUserError,
-      } = await withTimeout(supabaseBrowser.auth.getUser(), 8000, 'Loading authenticated user');
       debugAuth('[WebAuthForm] Authenticated user object', {
-        id: authenticatedUser?.id ?? data.user?.id ?? null,
-        email: authenticatedUser?.email ?? data.user?.email ?? null,
+        id: data.user?.id ?? null,
+        email: data.user?.email ?? null,
         signInUserId: data.user?.id ?? null,
-        error: authenticatedUserError?.message ?? null,
+        error: null,
       });
 
       const redirectParam =

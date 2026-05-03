@@ -113,9 +113,9 @@ export default function PublicRelationshipSearch() {
   };
 
   return (
-    <section id="trust-safety" className="bg-[#f8faf7] py-16">
+    <section id="trust-safety" className="bg-[#f8faf7] py-16 md:py-20">
       <div className="mx-auto max-w-7xl px-5 md:px-8">
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl shadow-slate-950/5">
           <div className="grid lg:grid-cols-[0.95fr_1.05fr]">
             <div className="bg-slate-950 p-6 text-white md:p-8">
               <span className="inline-flex items-center gap-2 rounded-md bg-teal-400 px-3 py-1.5 text-xs font-black uppercase text-slate-950">
@@ -151,29 +151,29 @@ export default function PublicRelationshipSearch() {
                 <Shield className="h-8 w-8 text-teal-600" />
               </div>
               <form onSubmit={handleSearch} className="flex flex-col gap-3 sm:flex-row">
-              <label className="sr-only" htmlFor="public-relationship-query">
-                Search public relationships
-              </label>
-              <div className="relative flex-1">
-                <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-                <input
-                  id="public-relationship-query"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Name or phone number"
-                  className="min-h-[54px] w-full rounded-md border border-slate-200 bg-slate-50 pl-12 pr-4 font-semibold outline-none transition focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-100"
-                  autoComplete="off"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={query.trim().length < 2 || loading}
-                className="inline-flex min-h-[54px] items-center justify-center gap-2 rounded-md bg-teal-500 px-6 font-black text-slate-950 shadow-lg shadow-teal-100 disabled:opacity-60"
-              >
-                {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
-                Search
-              </button>
-            </form>
+                <label className="sr-only" htmlFor="public-relationship-query">
+                  Search public relationships
+                </label>
+                <div className="relative flex-1">
+                  <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    id="public-relationship-query"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Name or phone number"
+                    className="min-h-[54px] w-full rounded-md border border-slate-200 bg-slate-50 pl-12 pr-4 font-semibold outline-none transition focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-100"
+                    autoComplete="off"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={query.trim().length < 2 || loading}
+                  className="inline-flex min-h-[54px] items-center justify-center gap-2 rounded-md bg-teal-500 px-6 font-black text-slate-950 shadow-lg shadow-teal-100 transition hover:bg-teal-400 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
+                  Search
+                </button>
+              </form>
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <div className="flex items-center gap-2 rounded-md bg-teal-50 px-4 py-3 text-sm font-bold text-teal-900">
@@ -198,48 +198,48 @@ export default function PublicRelationshipSearch() {
                   const startDate = formatDate(item.start_date);
                   return (
                     <article key={item.relationship_id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                    <div className="flex items-start gap-4">
-                      <div className="relative flex h-16 w-24 shrink-0 items-center">
-                        <div className="grid h-14 w-14 place-items-center rounded-full bg-blue-600 text-sm font-black text-white">
-                          {initials(item.person_name)}
+                      <div className="flex items-start gap-4">
+                        <div className="relative flex h-16 w-24 shrink-0 items-center">
+                          <div className="grid h-14 w-14 place-items-center rounded-full bg-blue-600 text-sm font-black text-white">
+                            {initials(item.person_name)}
+                          </div>
+                          <div className="absolute left-10 grid h-14 w-14 place-items-center rounded-full bg-pink-600 text-sm font-black text-white ring-4 ring-slate-50">
+                            {initials(item.partner_name)}
+                          </div>
+                          <div className="absolute left-[38px] top-5 grid h-7 w-7 place-items-center rounded-full bg-white text-pink-600 shadow-sm">
+                            <Heart className="h-4 w-4 fill-pink-600" />
+                          </div>
                         </div>
-                        <div className="absolute left-10 grid h-14 w-14 place-items-center rounded-full bg-pink-600 text-sm font-black text-white ring-4 ring-slate-50">
-                          {initials(item.partner_name)}
-                        </div>
-                        <div className="absolute left-[38px] top-5 grid h-7 w-7 place-items-center rounded-full bg-white text-pink-600 shadow-sm">
-                          <Heart className="h-4 w-4 fill-pink-600" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="truncate text-lg font-black text-slate-950">{item.person_name}</p>
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-black uppercase text-emerald-700">
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              Verified
+                            </span>
+                          </div>
+                          <p className="mt-1 text-sm font-semibold text-slate-600">with {item.partner_name}</p>
+                          <p className="mt-2 text-sm text-slate-500">{getRelationshipTypeLabel(item.relationship_type)} relationship</p>
                         </div>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="truncate text-lg font-black text-slate-950">{item.person_name}</p>
-                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-black uppercase text-emerald-700">
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            Verified
+                      <div className="mt-4 flex flex-wrap gap-2 text-xs font-bold text-slate-600">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5">
+                          <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                          Public record
+                        </span>
+                        {verifiedDate ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5">
+                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                            Verified {verifiedDate}
                           </span>
-                        </div>
-                        <p className="mt-1 text-sm font-semibold text-slate-600">with {item.partner_name}</p>
-                        <p className="mt-2 text-sm text-slate-500">{getRelationshipTypeLabel(item.relationship_type)} relationship</p>
+                        ) : null}
+                        {startDate ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5">
+                            <CalendarHeart className="h-3.5 w-3.5 text-pink-600" />
+                            Started {startDate}
+                          </span>
+                        ) : null}
                       </div>
-                    </div>
-                    <div className="mt-4 flex flex-wrap gap-2 text-xs font-bold text-slate-600">
-                      <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5">
-                        <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-                        Public record
-                      </span>
-                      {verifiedDate ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5">
-                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                          Verified {verifiedDate}
-                        </span>
-                      ) : null}
-                      {startDate ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5">
-                          <CalendarHeart className="h-3.5 w-3.5 text-pink-600" />
-                          Started {startDate}
-                        </span>
-                      ) : null}
-                    </div>
                     </article>
                   );
                 })}

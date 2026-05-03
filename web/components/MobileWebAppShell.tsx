@@ -56,7 +56,7 @@ import {
   resolveReelThumbnailUrl,
 } from '@/lib/profile-media-url';
 import { mergeUsersProfileForWebShell, usersRowBootstrapFromAuth } from '@/lib/web-user-profile';
-import { parseSupabaseCount } from '@/lib/supabase-count';
+import { countRowsByColumn } from '@/lib/supabase-count';
 import { profileBrowseHref, webAppProfileHref } from '@/lib/web-app-profile-href';
 import ReportUserModal from '@/components/ReportUserModal';
 import { buildPostWebUrl, buildReelWebUrl } from '@/lib/appLinks';
@@ -2815,9 +2815,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle(),
-          supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', profileUser.id),
-          supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', profileUser.id),
-          supabase.from('posts').select('*', { count: 'exact', head: true }).eq('user_id', profileUser.id),
+          countRowsByColumn(supabase, 'follows', 'following_id', profileUser.id),
+          countRowsByColumn(supabase, 'follows', 'follower_id', profileUser.id),
+          countRowsByColumn(supabase, 'posts', 'user_id', profileUser.id),
         ];
 
         if (isOther) {
@@ -2837,9 +2837,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         const profileReelsResult = results[2];
         const statusRes = results[3];
         const relRes = results[4];
-        const followersCountRes = results[5];
-        const followingCountRes = results[6];
-        const postsTotalCountRes = results[7];
+        const followersCount = Number(results[5] || 0);
+        const followingCount = Number(results[6] || 0);
+        const postsTotalCount = Number(results[7] || 0);
         const followRowRes = isOther ? results[8] : null;
         const blockRowRes = isOther ? results[9] : null;
 
@@ -2857,15 +2857,14 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         setRouteProfilePosts(((profilePostsResult.data || []) as FeedPost[]).map((post) => ({ ...post, likes: likesByPost.get(post.id) || [] })));
         {
           const loaded = ((profilePostsResult.data || []) as FeedPost[]).length;
-          const c = parseSupabaseCount(postsTotalCountRes);
-          setRouteProfilePostsTotal(postsTotalCountRes.error ? loaded : c > 0 ? c : loaded);
+          setRouteProfilePostsTotal(postsTotalCount > 0 ? postsTotalCount : loaded);
         }
 
         const reelRows = (profileReelsResult.data || []) as Reel[];
         setRouteProfileReels(reelRows.map((r) => ({ ...r, likes: r.likes || [] })));
 
-        setRouteProfileFollowers(parseSupabaseCount(followersCountRes));
-        setRouteProfileFollowingCount(parseSupabaseCount(followingCountRes));
+        setRouteProfileFollowers(followersCount);
+        setRouteProfileFollowingCount(followingCount);
         const statusRow = statusRes.data as { status_type?: string; last_active_at?: string } | null;
         setRouteProfileStatusType(statusRow?.status_type ?? null);
         setRouteProfileLastActiveAt(statusRow?.last_active_at ?? null);

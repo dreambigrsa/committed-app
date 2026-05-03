@@ -19,7 +19,7 @@ import OpenAppFallback from '@/components/OpenAppFallback';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { getDisplayName } from '@/lib/identity';
 import { resolveProfilePictureUrl, resolveReelThumbnailUrl } from '@/lib/profile-media-url';
-import { parseSupabaseCount } from '@/lib/supabase-count';
+import { countRowsByColumn } from '@/lib/supabase-count';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -112,9 +112,9 @@ export default function PublicProfilePage() {
         const [
           postsResult,
           reelsResult,
-          postsCountResult,
-          followersResult,
-          followingResult,
+          postsCount,
+          followersCountValue,
+          followingCountValue,
           statusResult,
           relResult,
         ] = await Promise.all([
@@ -130,9 +130,9 @@ export default function PublicProfilePage() {
             .eq('user_id', userRow.id)
             .order('created_at', { ascending: false })
             .limit(60),
-          supabase.from('posts').select('*', { count: 'exact', head: true }).eq('user_id', userRow.id),
-          supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', userRow.id),
-          supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userRow.id),
+          countRowsByColumn(supabase, 'posts', 'user_id', userRow.id),
+          countRowsByColumn(supabase, 'follows', 'following_id', userRow.id),
+          countRowsByColumn(supabase, 'follows', 'follower_id', userRow.id),
           supabase.from('user_status').select('status_type').eq('user_id', userRow.id).maybeSingle(),
           supabase
             .from('relationships')
@@ -156,11 +156,10 @@ export default function PublicProfilePage() {
         setReels(reelsResult.data || []);
         {
           const loaded = (postsResult.data || []).length;
-          const c = parseSupabaseCount(postsCountResult);
-          setPostsTotal(postsCountResult.error ? loaded : c > 0 ? c : loaded);
+          setPostsTotal(postsCount > 0 ? Number(postsCount) : loaded);
         }
-        setFollowersCount(parseSupabaseCount(followersResult));
-        setFollowingCount(parseSupabaseCount(followingResult));
+        setFollowersCount(Number(followersCountValue || 0));
+        setFollowingCount(Number(followingCountValue || 0));
         setStatusType((statusResult.data as { status_type?: string } | null)?.status_type ?? null);
         setRelationship((relResult.data as PublicRelationshipRow | null) ?? null);
       } catch {

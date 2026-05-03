@@ -19,3 +19,38 @@ export function parseSupabaseCount(
   }
   return 0;
 }
+
+export async function countRowsByColumn(
+  supabase: any,
+  table: string,
+  column: string,
+  value: string,
+  fallbackLimit = 1000
+): Promise<number> {
+  if (!supabase || !table || !column || !value) return 0;
+
+  const exact = await supabase
+    .from(table)
+    .select('id', { count: 'exact', head: true })
+    .eq(column, value);
+  if (!exact.error) {
+    const count = parseSupabaseCount(exact);
+    if (count > 0 || exact.count === 0) return count;
+  } else if (process.env.NODE_ENV !== 'production') {
+    console.warn(`[countRowsByColumn:${table}.${column}]`, exact.error.message);
+  }
+
+  const rows = await supabase
+    .from(table)
+    .select('id')
+    .eq(column, value)
+    .limit(fallbackLimit);
+  if (rows.error) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(`[countRowsByColumn:${table}.${column}:fallback]`, rows.error.message);
+    }
+    return 0;
+  }
+
+  return Array.isArray(rows.data) ? rows.data.length : 0;
+}

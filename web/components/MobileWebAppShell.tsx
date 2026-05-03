@@ -44,6 +44,8 @@ import {
   X,
 } from 'lucide-react';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
+import { getDisplayName as getUserDisplayName } from '@/lib/identity';
+import { mergeUsersProfileForWebShell, usersRowBootstrapFromAuth } from '@/lib/web-user-profile';
 import { buildPostWebUrl, buildReelWebUrl } from '@/lib/appLinks';
 import { getPostVisibilityOrFilter, getReelVisibilityOrFilter } from '@/lib/content-visibility';
 import { filterVisibleMessagesForUser } from '@/lib/parity-helpers';
@@ -500,15 +502,6 @@ function debugWebShell(label: string, payload: Record<string, unknown>) {
   if (process.env.NODE_ENV !== 'production') {
     console.debug(label, payload);
   }
-}
-
-function getUserDisplayName(user?: { full_name?: string | null; username?: string | null; email?: string | null } | null) {
-  if (!user) return 'Committed member';
-  if (user.username?.trim()) return user.username.trim();
-  if (user.full_name?.trim() && !user.full_name.includes('@')) return user.full_name.trim();
-  if (user.email?.includes('@')) return user.email.split('@')[0] || 'Committed member';
-  if (user.full_name?.includes('@')) return user.full_name.split('@')[0] || 'Committed member';
-  return user.email || 'Committed member';
 }
 
 function getCommittedAIReply(
@@ -1275,11 +1268,51 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       }
       lastAuthUserIdRef.current = authUser.id;
 
-      const { data: profile } = await supabase
-        .from('users')
-        .select('id, full_name, username, email, phone_number, profile_picture, role, verified, email_verified, phone_verified, id_verified, banned_at, banned_by, ban_reason')
-        .eq('id', authUser.id)
-        .maybeSingle();
+      const usersSelect =
+        'id, full_name, username, email, phone_number, profile_picture, role, verified, email_verified, phone_verified, id_verified, banned_at, banned_by, ban_reason' as const;
+
+      const fetchUsersRow = async () =>
+        supabase.from('users').select(usersSelect).eq('id', authUser.id).maybeSingle();
+
+      let { data: profile, error: profileError } = await fetchUsersRow();
+
+      if (profileError) {
+        debugWebShell('[WebAppShell] Profile fetch error', {
+          requestedUserId: authUser.id,
+          message: profileError.message,
+          code: profileError.code,
+        });
+      }
+
+      if (!profile && !profileError) {
+        await supabase.auth.refreshSession().catch(() => undefined);
+        const retry = await fetchUsersRow();
+        profile = retry.data;
+        profileError = retry.error;
+        if (profileError) {
+          debugWebShell('[WebAppShell] Profile fetch error (after refresh)', {
+            requestedUserId: authUser.id,
+            message: profileError.message,
+            code: profileError.code,
+          });
+        }
+      }
+
+      if (!profile && !profileError) {
+        const { error: upsertError } = await supabase
+          .from('users')
+          .upsert(usersRowBootstrapFromAuth(authUser), { onConflict: 'id' });
+        if (upsertError) {
+          debugWebShell('[WebAppShell] users bootstrap upsert failed', { message: upsertError.message, code: upsertError.code });
+        } else {
+          const refetch = await fetchUsersRow();
+          profile = refetch.data;
+          if (refetch.error) {
+            debugWebShell('[WebAppShell] Profile refetch after bootstrap error', { message: refetch.error.message });
+          }
+        }
+      }
+
       debugWebShell('[WebAppShell] Profile fetch response', {
         requestedUserId: authUser.id,
         profileUserId: profile?.id ?? null,
@@ -1287,65 +1320,19 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         fullName: profile?.full_name ?? null,
         username: profile?.username ?? null,
         hasProfilePicture: !!profile?.profile_picture,
+        hadProfileError: !!profileError,
       });
 
-      if (!profile) {
-        // Ensure a user profile row exists for the authenticated account so web and mobile stay aligned.
-        const metadataRole = typeof authUser.user_metadata?.role === 'string' ? authUser.user_metadata.role : null;
-        await supabase.from('users').upsert(
-          {
-            id: authUser.id,
-            full_name: authUser.email || 'Committed member',
-            username: null,
-            email: authUser.email || null,
-            phone_number: authUser.phone || null,
-            role: metadataRole || 'user',
-            profile_picture:
-              authUser.user_metadata?.profile_picture ||
-              authUser.user_metadata?.avatar_url ||
-              authUser.user_metadata?.picture ||
-              null,
-            email_verified: !!authUser.email_confirmed_at,
-            phone_verified: !!authUser.phone_confirmed_at,
-          },
-          { onConflict: 'id' }
-        );
-      }
-
-      const resolvedProfile = profile || {
-        id: authUser.id,
-        full_name: authUser.email || 'Committed member',
-        username: null,
-        email: authUser.email || null,
-        phone_number: authUser.phone || null,
-        profile_picture:
-          authUser.user_metadata?.profile_picture ||
-          authUser.user_metadata?.avatar_url ||
-          authUser.user_metadata?.picture ||
-          null,
-        role: (typeof authUser.user_metadata?.role === 'string' ? authUser.user_metadata.role : 'user'),
-        verified: null,
-        email_verified: !!authUser.email_confirmed_at,
-        phone_verified: !!authUser.phone_confirmed_at,
-        id_verified: null,
-        banned_at: null,
-        banned_by: null,
-        ban_reason: null,
-      };
+      const resolvedProfile = mergeUsersProfileForWebShell(profile, authUser);
 
       const currentUser: WebUser = {
         id: authUser.id,
-        full_name: resolvedProfile.full_name || resolvedProfile.username || authUser.email || 'Committed member',
+        full_name: resolvedProfile.full_name ?? 'Committed member',
         email: resolvedProfile.email || authUser.email,
         phone_number: resolvedProfile.phone_number,
-        profile_picture:
-          resolvedProfile.profile_picture ||
-          authUser.user_metadata?.profile_picture ||
-          authUser.user_metadata?.avatar_url ||
-          authUser.user_metadata?.picture ||
-          null,
+        profile_picture: resolvedProfile.profile_picture,
         username: resolvedProfile.username,
-        role: resolvedProfile.role || (typeof authUser.user_metadata?.role === 'string' ? authUser.user_metadata.role : 'user'),
+        role: resolvedProfile.role || 'user',
         verified: resolvedProfile.verified,
         email_verified: resolvedProfile.email_verified ?? !!authUser.email_confirmed_at,
         phone_verified: resolvedProfile.phone_verified ?? !!authUser.phone_confirmed_at,
@@ -1355,6 +1342,19 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         ban_reason: resolvedProfile.ban_reason,
       };
       setUser(currentUser);
+      debugWebShell('[WebAppShell] WEB USER (auth)', {
+        id: authUser.id,
+        email: authUser.email ?? null,
+        user_metadata: authUser.user_metadata ?? null,
+      });
+      debugWebShell('[WebAppShell] PROFILE (merged for UI)', {
+        id: currentUser.id,
+        full_name: currentUser.full_name,
+        username: currentUser.username,
+        email: currentUser.email,
+        phone_number: currentUser.phone_number,
+        hasProfilePicture: !!currentUser.profile_picture,
+      });
       setSettingsForm({
         fullName: currentUser.full_name || '',
         username: currentUser.username || '',

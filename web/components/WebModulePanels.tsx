@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, Bell, CheckCircle2, Film, Loader2, MessageCircle, ShieldCheck, ThumbsUp, UploadCloud, UserCircle2 } from 'lucide-react';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
+import { getDisplayName } from '@/lib/identity';
 import { getPostVisibilityOrFilter, getReelVisibilityOrFilter } from '@/lib/content-visibility';
 import { excludeDatingProfilesForUser, filterVisibleMessagesForUser } from '@/lib/parity-helpers';
 
@@ -69,15 +70,6 @@ function normalizePhone(value: string) {
 function formatShortDate(value?: string | null) {
   if (!value) return 'Not set';
   return new Intl.DateTimeFormat('en', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date(value));
-}
-
-function getDisplayName(user?: { full_name?: string | null; username?: string | null; email?: string | null } | null) {
-  if (!user) return 'Committed member';
-  if (user.username?.trim()) return user.username.trim();
-  if (user.full_name?.trim() && !user.full_name.includes('@')) return user.full_name.trim();
-  if (user.full_name?.trim()) return user.full_name.trim();
-  if (user.email?.includes('@')) return user.email.split('@')[0] || 'Committed member';
-  return user.email || 'Committed member';
 }
 
 function StatusMessage({ status, message }: { status: Status; message: string }) {
@@ -726,10 +718,14 @@ function SettingsPanel() {
         if (!session?.user) return;
         const { data: userRow } = await supabase.from('users').select('full_name,phone_number,email').eq('id', session.user.id).maybeSingle();
         const { data: profile } = await supabase.from('profiles').select('is_verified').eq('id', session.user.id).maybeSingle();
+        const meta = (session.user.user_metadata || {}) as Record<string, string | undefined>;
+        const emailLower = (session.user.email || '').trim().toLowerCase();
+        const rowFull = (userRow?.full_name || '').trim();
+        const rowFullLooksLikeEmail = !!rowFull && rowFull.toLowerCase() === emailLower;
         if (!cancelled) {
           setForm({
-            fullName: userRow?.full_name || session.user.user_metadata?.full_name || '',
-            phone: userRow?.phone_number || '',
+            fullName: (rowFull && !rowFullLooksLikeEmail ? rowFull : '') || (meta.full_name || '').trim() || '',
+            phone: userRow?.phone_number || meta.phone_number || '',
             email: userRow?.email || session.user.email || '',
             isVerified: Boolean(profile?.is_verified),
           });

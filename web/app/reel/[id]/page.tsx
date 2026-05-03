@@ -1,12 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { APP_SCHEME } from '@/lib/appLinks';
 import OpenAppFallback from '@/components/OpenAppFallback';
 import ExpoMirrorRoute from '@/components/ExpoMirrorRoute';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { getDisplayName } from '@/lib/identity';
+import { resolveProfilePictureUrl } from '@/lib/profile-media-url';
+import { webAppProfileHref } from '@/lib/web-app-profile-href';
 
 const FALLBACK_DELAY_MS = 1200;
 
@@ -197,7 +200,28 @@ export default function ReelPage() {
             <div className="flex aspect-[9/16] items-center justify-center bg-neutral-900 text-neutral-400 lg:aspect-video">Reel preview unavailable</div>
           )}
           <div className="p-4 md:p-5">
-            <p className="text-sm font-semibold text-neutral-300">{getDisplayName(reel?.users)}</p>
+            {reel?.user_id ? (
+              <Link
+                href={webAppProfileHref(sessionUserId, reel.user_id) ?? `/app/profile/${encodeURIComponent(reel.user_id)}`}
+                className="flex items-center gap-3 text-neutral-100 outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-violet-400"
+              >
+                {reel?.users?.profile_picture ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={resolveProfilePictureUrl(reel.users.profile_picture) || reel.users.profile_picture}
+                    alt=""
+                    className="h-10 w-10 shrink-0 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-violet-600 text-sm font-black text-white">
+                    {getDisplayName(reel?.users).charAt(0)}
+                  </div>
+                )}
+                <span className="text-sm font-semibold text-neutral-200 hover:underline">{getDisplayName(reel?.users)}</span>
+              </Link>
+            ) : (
+              <p className="text-sm font-semibold text-neutral-300">{getDisplayName(reel?.users)}</p>
+            )}
             <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-neutral-100">{reel?.caption || 'Open in app for full interactions and comments.'}</p>
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <button
@@ -246,12 +270,47 @@ export default function ReelPage() {
             </button>
           </div>
           <div className="mt-4 max-h-[360px] space-y-2 overflow-auto pr-1">
-            {comments.map((comment) => (
-              <div key={comment.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
-                <p className="text-xs font-semibold text-neutral-300">{getDisplayName(comment.users)}</p>
-                <p className="mt-1 text-sm text-white">{comment.content}</p>
+            {comments.map((comment) => {
+              const commentProfileHref = comment.user_id
+                ? webAppProfileHref(sessionUserId, comment.user_id) ?? `/app/profile/${encodeURIComponent(comment.user_id)}`
+                : '';
+              const commentPic = comment.users?.profile_picture
+                ? resolveProfilePictureUrl(comment.users.profile_picture) || comment.users.profile_picture
+                : '';
+              return (
+              <div key={comment.id} className="flex gap-2 rounded-xl border border-white/10 bg-white/5 p-3">
+                {comment.user_id && commentProfileHref ? (
+                  <Link href={commentProfileHref} className="shrink-0 self-start rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-violet-400">
+                    {commentPic ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={commentPic} alt="" className="h-9 w-9 rounded-full object-cover" />
+                    ) : (
+                      <div className="grid h-9 w-9 place-items-center rounded-full bg-violet-600 text-xs font-black text-white">
+                        {getDisplayName(comment.users).charAt(0)}
+                      </div>
+                    )}
+                  </Link>
+                ) : commentPic ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={commentPic} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" />
+                ) : (
+                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/10 text-xs font-black text-neutral-200">
+                    {getDisplayName(comment.users).charAt(0)}
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  {comment.user_id && commentProfileHref ? (
+                    <Link href={commentProfileHref} className="text-xs font-semibold text-neutral-300 hover:underline">
+                      {getDisplayName(comment.users)}
+                    </Link>
+                  ) : (
+                    <p className="text-xs font-semibold text-neutral-300">{getDisplayName(comment.users)}</p>
+                  )}
+                  <p className="mt-1 text-sm text-white">{comment.content}</p>
+                </div>
               </div>
-            ))}
+            );
+            })}
             {comments.length === 0 ? <p className="text-sm text-neutral-400">No comments yet.</p> : null}
           </div>
         </div>
@@ -265,6 +324,7 @@ export default function ReelPage() {
             deepLinkUrl={deepLinkUrl}
             title="Watch reel in app"
             description="Tap below to open this reel in Committed, or download the app if you don't have it yet."
+            webShellHref={`/app/reel/${encodeURIComponent(id)}`}
           />
         )}
         <div className="rounded-2xl border border-white/15 bg-neutral-950 p-4 text-sm text-neutral-400 lg:col-span-2">

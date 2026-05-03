@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { AlertTriangle, Bell, CheckCircle2, Film, Loader2, MessageCircle, ShieldCheck, ThumbsUp, UploadCloud, UserCircle2 } from 'lucide-react';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { getDisplayName } from '@/lib/identity';
+import { webAppProfileHref } from '@/lib/web-app-profile-href';
 import { getPostVisibilityOrFilter, getReelVisibilityOrFilter } from '@/lib/content-visibility';
 import { excludeDatingProfilesForUser, filterVisibleMessagesForUser } from '@/lib/parity-helpers';
 
@@ -653,8 +654,11 @@ function DatingProfilePanel() {
             {candidates.map((candidate) => {
               const photo = candidate.dating_photos?.find((item) => item.is_primary)?.photo_url || candidate.dating_photos?.[0]?.photo_url || candidate.users?.profile_picture;
               const name = getDisplayName(candidate.users);
-              return (
-                <article key={candidate.id} className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-50">
+              const candidateProfileHref = candidate.user_id
+                ? `/app/dating/user-profile?userId=${encodeURIComponent(candidate.user_id)}`
+                : null;
+              const profilePreview = (
+                <>
                   <div className="flex min-h-[170px] items-center justify-center bg-gradient-to-br from-rose-500 to-violet-700 text-white">
                     {photo ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -663,7 +667,7 @@ function DatingProfilePanel() {
                       <span className="font-display text-7xl font-black">{name.slice(0, 2).toUpperCase()}</span>
                     )}
                   </div>
-                  <div className="p-5">
+                  <div className="p-5 pb-3">
                     <h4 className="font-display text-2xl font-bold text-slate-950">
                       {name} {candidate.age ? <span className="text-slate-500">{candidate.age}</span> : null}
                     </h4>
@@ -679,7 +683,22 @@ function DatingProfilePanel() {
                           </span>
                         ))}
                     </div>
-                    <div className="mt-5 grid grid-cols-3 gap-2">
+                  </div>
+                </>
+              );
+              return (
+                <article key={candidate.id} className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-50">
+                  {candidateProfileHref ? (
+                    <Link
+                      href={candidateProfileHref}
+                      className="block text-left text-inherit outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2"
+                    >
+                      {profilePreview}
+                    </Link>
+                  ) : (
+                    profilePreview
+                  )}
+                    <div className="grid grid-cols-3 gap-2 px-5 pb-5">
                       <button type="button" onClick={() => passCandidate(candidate.user_id)} className="rounded-xl bg-slate-200 px-3 py-3 font-bold text-slate-700">
                         Pass
                       </button>
@@ -690,7 +709,6 @@ function DatingProfilePanel() {
                         Like
                       </button>
                     </div>
-                  </div>
                 </article>
               );
             })}
@@ -1643,7 +1661,10 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
               return (
                 <article key={post.id} className="rounded-xl border border-slate-200 bg-white p-4">
                   <div className="flex items-center justify-between gap-3">
-                    <Link href={`/app/dating/user-profile?userId=${encodeURIComponent(post.user_id)}`} className="font-bold text-slate-950 hover:text-violet-700">
+                    <Link
+                      href={post.user_id ? (webAppProfileHref(currentUserId, post.user_id) ?? `/app/profile/${encodeURIComponent(post.user_id)}`) : '#'}
+                      className="font-bold text-slate-950 hover:text-violet-700 hover:underline"
+                    >
                       {getDisplayName(post.users)}
                     </Link>
                     <div className="flex items-center gap-2">
@@ -1670,7 +1691,9 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
                           Message
                         </button>
                       ) : null}
-                      <Link href={`/post/${post.id}?web=1`} className="text-sm font-bold text-violet-700">Open</Link>
+                      <Link href={`/app/post/${post.id}`} className="text-sm font-bold text-violet-700">
+                        Open
+                      </Link>
                     </div>
                   </div>
                   <p className="mt-3 whitespace-pre-wrap text-[15px] leading-6 text-slate-700">{post.content}</p>
@@ -1687,10 +1710,26 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
                       const key = `${post.id}:${comment.id}`;
                       return (
                         <div key={comment.id} className="rounded-xl border border-slate-200 bg-white p-3">
-                          <p className="text-sm"><span className="font-bold">{getDisplayName(comment.users)}:</span> {comment.content}</p>
+                          <p className="text-sm">
+                            <Link
+                              href={comment.user_id ? (webAppProfileHref(currentUserId, comment.user_id) ?? `/app/profile/${encodeURIComponent(comment.user_id)}`) : '#'}
+                              className="font-bold hover:underline"
+                            >
+                              {getDisplayName(comment.users)}:
+                            </Link>{' '}
+                            {comment.content}
+                          </p>
                           <div className="mt-2 pl-3">
                             {(repliesByParent[comment.id] || []).slice(0, 2).map((reply: any) => (
-                              <p key={reply.id} className="mt-1 text-sm text-slate-600"><span className="font-semibold">{getDisplayName(reply.users)}:</span> {reply.content}</p>
+                              <p key={reply.id} className="mt-1 text-sm text-slate-600">
+                                <Link
+                                  href={reply.user_id ? (webAppProfileHref(currentUserId, reply.user_id) ?? `/app/profile/${encodeURIComponent(reply.user_id)}`) : '#'}
+                                  className="font-semibold hover:underline"
+                                >
+                                  {getDisplayName(reply.users)}:
+                                </Link>{' '}
+                                {reply.content}
+                              </p>
                             ))}
                           </div>
                           <button type="button" onClick={() => setReplyingTo((value) => ({ ...value, [post.id]: comment.id }))} className="mt-2 text-xs font-semibold text-violet-700">
@@ -1729,7 +1768,12 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
                 )}
               </div>
               <div className="p-4">
-                <p className="font-bold text-slate-950">{getDisplayName(reel.users)}</p>
+                <Link
+                  href={reel.user_id ? (webAppProfileHref(currentUserId, reel.user_id) ?? `/app/profile/${encodeURIComponent(reel.user_id)}`) : '#'}
+                  className="block font-bold text-slate-950 hover:underline"
+                >
+                  {getDisplayName(reel.users)}
+                </Link>
                 <p className="mt-1 line-clamp-2 text-sm text-slate-600">{reel.caption || 'Reel'}</p>
                 <div className="mt-3 flex items-center justify-between text-sm font-semibold">
                   <span className="text-slate-600">{reel.likesCount || 0} likes • {reel.commentsCount || 0} comments</span>
@@ -1743,7 +1787,9 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
                         Message
                       </button>
                     ) : null}
-                    <Link href={`/reel/${reel.id}?web=1`} className="text-violet-700">Open reel</Link>
+                    <Link href={`/app/reel/${reel.id}`} className="text-violet-700">
+                      Open reel
+                    </Link>
                   </div>
                 </div>
               </div>

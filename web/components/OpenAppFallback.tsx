@@ -9,6 +9,9 @@ type Props = {
   deepLinkUrl: string;
   title?: string;
   description?: string;
+  /** In-browser mirror (e.g. `/app/post/…`) when the native app does not open. */
+  webShellHref?: string;
+  webShellLabel?: string;
 };
 
 /** Shared fallback UI when deep link doesn't open the app: Open button, QR, store links */
@@ -16,6 +19,8 @@ export default function OpenAppFallback({
   deepLinkUrl,
   title = 'Open in app',
   description,
+  webShellHref,
+  webShellLabel = 'Continue in browser',
 }: Props) {
   const isMobile =
     typeof navigator !== 'undefined' &&
@@ -29,13 +34,21 @@ export default function OpenAppFallback({
     <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-xl">
       <h1 className="font-display text-xl font-bold text-slate-900 text-center">{title}</h1>
       <p className="mt-2 text-center text-slate-600">{description ?? defaultDesc}</p>
-      <div className="mt-6 flex justify-center">
+      <div className="mt-6 flex flex-col items-center gap-3">
         <a
           href={deepLinkUrl}
           className="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-6 py-3 font-semibold text-white hover:bg-primary-700"
         >
           Open Committed
         </a>
+        {webShellHref ? (
+          <Link
+            href={webShellHref}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+          >
+            {webShellLabel}
+          </Link>
+        ) : null}
       </div>
       <div className="mt-8 flex flex-col items-center gap-4 rounded-xl bg-slate-50 p-4">
         <p className="flex items-center gap-2 text-sm font-medium text-slate-700">

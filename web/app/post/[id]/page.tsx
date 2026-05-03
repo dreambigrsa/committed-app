@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { Heart, Loader2, MessageCircle, Send } from 'lucide-react';
 import { APP_SCHEME } from '@/lib/appLinks';
@@ -9,6 +10,7 @@ import ExpoMirrorRoute from '@/components/ExpoMirrorRoute';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { getDisplayName } from '@/lib/identity';
 import { resolveProfilePictureUrl } from '@/lib/profile-media-url';
+import { webAppProfileHref } from '@/lib/web-app-profile-href';
 
 const FALLBACK_DELAY_MS = 1200;
 
@@ -169,22 +171,48 @@ export default function PostPage() {
           ) : (
             <>
               <div className="flex items-center gap-3 p-4">
-                {post?.users?.profile_picture ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={resolveProfilePictureUrl(post.users.profile_picture) || post.users.profile_picture}
-                    alt=""
-                    className="h-11 w-11 rounded-full object-cover"
-                  />
+                {post?.user_id ? (
+                  <Link
+                    href={webAppProfileHref(sessionUserId, post.user_id) ?? `/app/profile/${encodeURIComponent(post.user_id)}`}
+                    className="flex shrink-0 items-center gap-3 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500"
+                  >
+                    {post?.users?.profile_picture ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={resolveProfilePictureUrl(post.users.profile_picture) || post.users.profile_picture}
+                        alt=""
+                        className="h-11 w-11 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="grid h-11 w-11 place-items-center rounded-full bg-blue-600 font-black text-white">
+                        {getDisplayName(post?.users).charAt(0)}
+                      </div>
+                    )}
+                    <div>
+                      <p className="font-black hover:underline">{getDisplayName(post?.users)}</p>
+                      <p className="text-xs font-semibold text-slate-400">Shared post</p>
+                    </div>
+                  </Link>
                 ) : (
-                  <div className="grid h-11 w-11 place-items-center rounded-full bg-blue-600 font-black text-white">
-                    {getDisplayName(post?.users).charAt(0)}
-                  </div>
+                  <>
+                    {post?.users?.profile_picture ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={resolveProfilePictureUrl(post.users.profile_picture) || post.users.profile_picture}
+                        alt=""
+                        className="h-11 w-11 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="grid h-11 w-11 place-items-center rounded-full bg-blue-600 font-black text-white">
+                        {getDisplayName(post?.users).charAt(0)}
+                      </div>
+                    )}
+                    <div>
+                      <p className="font-black">{getDisplayName(post?.users)}</p>
+                      <p className="text-xs font-semibold text-slate-400">Shared post</p>
+                    </div>
+                  </>
                 )}
-                <div>
-                  <p className="font-black">{getDisplayName(post?.users)}</p>
-                  <p className="text-xs font-semibold text-slate-400">Shared post</p>
-                </div>
               </div>
               {post?.content ? <p className="whitespace-pre-wrap px-4 pb-4 text-[15px] leading-6">{post.content}</p> : null}
               {post?.media_urls?.[0] ? (
@@ -230,12 +258,47 @@ export default function PostPage() {
             </button>
           </div>
           <div className="mt-4 max-h-[420px] space-y-2 overflow-auto pr-1">
-            {comments.map((comment) => (
-              <div key={comment.id} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-                <p className="text-xs font-black text-slate-500">{getDisplayName(comment.users)}</p>
-                <p className="mt-1 text-sm text-slate-900">{comment.content}</p>
+            {comments.map((comment) => {
+              const commentProfileHref = comment.user_id
+                ? webAppProfileHref(sessionUserId, comment.user_id) ?? `/app/profile/${encodeURIComponent(comment.user_id)}`
+                : '';
+              const commentPic = comment.users?.profile_picture
+                ? resolveProfilePictureUrl(comment.users.profile_picture) || comment.users.profile_picture
+                : '';
+              return (
+              <div key={comment.id} className="flex gap-2 rounded-xl border border-slate-100 bg-slate-50 p-3">
+                {comment.user_id && commentProfileHref ? (
+                  <Link href={commentProfileHref} className="shrink-0 self-start rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
+                    {commentPic ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={commentPic} alt="" className="h-9 w-9 rounded-full object-cover" />
+                    ) : (
+                      <div className="grid h-9 w-9 place-items-center rounded-full bg-blue-600 text-xs font-black text-white">
+                        {getDisplayName(comment.users).charAt(0)}
+                      </div>
+                    )}
+                  </Link>
+                ) : commentPic ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={commentPic} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" />
+                ) : (
+                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-200 text-xs font-black text-slate-600">
+                    {getDisplayName(comment.users).charAt(0)}
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  {comment.user_id && commentProfileHref ? (
+                    <Link href={commentProfileHref} className="text-xs font-black text-slate-500 hover:underline">
+                      {getDisplayName(comment.users)}
+                    </Link>
+                  ) : (
+                    <p className="text-xs font-black text-slate-500">{getDisplayName(comment.users)}</p>
+                  )}
+                  <p className="mt-1 text-sm text-slate-900">{comment.content}</p>
+                </div>
               </div>
-            ))}
+            );
+            })}
             {comments.length === 0 ? <p className="text-sm text-slate-500">No comments yet.</p> : null}
           </div>
         </section>
@@ -251,6 +314,7 @@ export default function PostPage() {
               deepLinkUrl={deepLinkUrl}
               title="View post in app"
               description="Tap below to open this post in Committed, or download the app if you don't have it yet."
+              webShellHref={`/app/post/${encodeURIComponent(id)}`}
             />
           )
         ) : null}

@@ -175,7 +175,7 @@ export default function PublicProfilePage() {
             {!posts.length ? <p className="rounded-[20px] bg-slate-50 p-4 text-sm font-semibold text-slate-500 ring-1 ring-slate-200">No public posts loaded for this profile.</p> : null}
             <div className="space-y-3">
               {posts.map((post) => (
-                <a key={post.id} href={`/post/${post.id}`} className="block rounded-[20px] bg-slate-50 p-4 ring-1 ring-slate-200">
+                <a key={post.id} href={`/post/${post.id}?web=1`} className="block rounded-[20px] bg-slate-50 p-4 ring-1 ring-slate-200">
                   <p className="line-clamp-3 text-sm font-semibold leading-6 text-slate-700">{post.content || 'Post'}</p>
                   {post.media_urls?.[0] ? <img src={post.media_urls[0]} alt="" className="mt-3 max-h-48 w-full rounded-[16px] object-cover" /> : null}
                 </a>
@@ -191,7 +191,7 @@ export default function PublicProfilePage() {
             {!reels.length ? <p className="rounded-[20px] bg-slate-50 p-4 text-sm font-semibold text-slate-500 ring-1 ring-slate-200">No public reels loaded for this profile.</p> : null}
             <div className="grid grid-cols-2 gap-3">
               {reels.map((reel) => (
-                <a key={reel.id} href={`/reel/${reel.id}`} className="min-h-32 rounded-[20px] bg-slate-950 p-3 text-white">
+                <a key={reel.id} href={`/reel/${reel.id}?web=1`} className="min-h-32 rounded-[20px] bg-slate-950 p-3 text-white">
                   {reel.thumbnail_url ? <img src={reel.thumbnail_url} alt="" className="h-32 w-full rounded-[16px] object-cover" /> : null}
                   <p className="mt-2 line-clamp-2 text-xs font-semibold">{reel.caption || 'Reel'}</p>
                 </a>

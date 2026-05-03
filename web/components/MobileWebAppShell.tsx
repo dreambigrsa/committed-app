@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { HTMLAttributes } from 'react';
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import {
   Bell,
   Ban,
@@ -11,6 +11,7 @@ import {
   Calendar,
   Camera,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   Clock,
   CreditCard,
@@ -51,10 +52,12 @@ import {
   resolveProfilePictureUrlWithSupabase,
 } from '@/lib/profile-media-url';
 import { mergeUsersProfileForWebShell, usersRowBootstrapFromAuth } from '@/lib/web-user-profile';
+import { webAppProfileHref } from '@/lib/web-app-profile-href';
 import { buildPostWebUrl, buildReelWebUrl } from '@/lib/appLinks';
 import { getPostVisibilityOrFilter, getReelVisibilityOrFilter } from '@/lib/content-visibility';
 import { filterVisibleMessagesForUser } from '@/lib/parity-helpers';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { DatingDiscoverSwipeDeck, DatingDiscoveryCardFace } from '@/components/DatingDiscoverSwipeDeck';
 
 type TabKey = 'home' | 'feed' | 'reels' | 'dating' | 'search' | 'notifications' | 'messages' | 'profile';
 
@@ -126,6 +129,16 @@ type SocialComment = {
   replies?: SocialComment[];
 };
 
+type DatingDiscoveryUser = {
+  id?: string;
+  full_name?: string | null;
+  username?: string | null;
+  profile_picture?: string | null;
+  id_verified?: boolean | null;
+  email_verified?: boolean | null;
+  phone_verified?: boolean | null;
+};
+
 type DatingProfile = {
   id: string;
   user_id: string;
@@ -133,6 +146,8 @@ type DatingProfile = {
   age?: number | null;
   location_city?: string | null;
   location_country?: string | null;
+  location_latitude?: number | null;
+  location_longitude?: number | null;
   relationship_goals?: string[] | null;
   interests?: string[] | null;
   religion?: string | null;
@@ -145,8 +160,15 @@ type DatingProfile = {
   height_cm?: number | null;
   last_active_at?: string | null;
   looking_for?: string | null;
+  is_active?: boolean | null;
+  admin_limited?: boolean | null;
+  admin_suspended?: boolean | null;
+  /** Discovery gender filter (mutual compatibility with `looking_for`) — parity with `lib/dating-service`. */
+  gender?: string | null;
   intention_tag?: string | null;
-  users?: { full_name?: string | null; profile_picture?: string | null } | null;
+  /** Set when viewer + profile both have coordinates (parity with mobile `distance_km`). */
+  distance_km?: number;
+  users?: DatingDiscoveryUser | null;
   dating_photos?: { photo_url: string; is_primary?: boolean | null }[] | null;
 };
 
@@ -172,6 +194,52 @@ type DatingDiscoveryFilters = {
   verifiedOnly?: boolean;
   activeRecently?: boolean;
 };
+
+/** Haversine distance in km — same formula as `lib/dating-service` discovery filtering. */
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+/** Same rules as `getDatingDiscovery` in `lib/dating-service.ts` when `lookingFor` is not `everyone`. */
+function passesDatingMutualGenderFilter(
+  lookingFor: string,
+  ownGenderRaw: string | null | undefined,
+  profile: { gender?: string | null; looking_for?: string | null }
+): boolean {
+  const lf = String(lookingFor || 'everyone').toLowerCase();
+  if (lf === 'everyone') return true;
+  const cg = String(ownGenderRaw || '').trim().toLowerCase();
+  const currentGender = cg === 'prefer_not_to_say' ? '' : cg;
+  const profileGender = String(profile.gender || '').trim().toLowerCase();
+  const profileLookingFor = String(profile.looking_for || 'everyone').toLowerCase();
+
+  if (!profileGender || profileGender === 'prefer_not_to_say') return false;
+
+  if (lf === 'men') {
+    if (profileGender !== 'male') return false;
+    if (profileLookingFor === 'everyone') return true;
+    if (!currentGender) return true;
+    if (profileLookingFor === 'men' && (currentGender === 'male' || currentGender === 'non_binary')) return true;
+    if (profileLookingFor === 'women' && (currentGender === 'female' || currentGender === 'non_binary')) return true;
+    return false;
+  }
+  if (lf === 'women') {
+    if (profileGender !== 'female') return false;
+    if (profileLookingFor === 'everyone') return true;
+    if (!currentGender) return true;
+    if (profileLookingFor === 'women' && (currentGender === 'female' || currentGender === 'non_binary')) return true;
+    if (profileLookingFor === 'men' && (currentGender === 'male' || currentGender === 'non_binary')) return true;
+    return false;
+  }
+  return true;
+}
 
 const DATING_DISCOVERY_FILTERS_KEY = 'committed:dating-discovery-filters:v1';
 const RELIGION_OPTIONS = ['Christian', 'Muslim', 'Jewish', 'Hindu', 'Buddhist', 'Traditional', 'Spiritual', 'Agnostic', 'Atheist', 'Other'];
@@ -617,6 +685,26 @@ function Avatar({ src, name, size = 'md' }: { src?: string | null; name?: string
   );
 }
 
+function ProfileUserLink({
+  viewerUserId,
+  subjectUserId,
+  className,
+  children,
+}: {
+  viewerUserId: string | null | undefined;
+  subjectUserId: string | null | undefined;
+  className?: string;
+  children: ReactNode;
+}) {
+  const href = webAppProfileHref(viewerUserId, subjectUserId);
+  if (!href) return <>{children}</>;
+  return (
+    <Link href={href} className={className}>
+      {children}
+    </Link>
+  );
+}
+
 function ScreenSkeleton() {
   return (
     <div className="space-y-4 px-4 py-4">
@@ -754,6 +842,12 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const [routeConversationStarters, setRouteConversationStarters] = useState<string[]>([]);
   const [datingLikes, setDatingLikes] = useState<DatingLike[]>([]);
   const [datingMatches, setDatingMatches] = useState<DatingMatch[]>([]);
+  /** Web discover flow: full-screen celebration when a swipe like creates a mutual match (parity with native dating match modal). */
+  const [datingDiscoveryMatchModal, setDatingDiscoveryMatchModal] = useState<{
+    name: string;
+    photoUrl: string | null;
+    otherUserId: string;
+  } | null>(null);
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [conversations, setConversations] = useState<ConversationRow[]>([]);
   const [messagesByConversation, setMessagesByConversation] = useState<Record<string, MessageRow[]>>({});
@@ -1100,6 +1194,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     setRouteConversationStarters([]);
     setDatingLikes([]);
     setDatingMatches([]);
+    setDatingDiscoveryMatchModal(null);
     setNotifications([]);
     setConversations([]);
     setMessagesByConversation({});
@@ -1588,13 +1683,19 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           .maybeSingle(),
         supabase
           .from('dating_profiles')
-          .select('id,user_id,bio,age,location_city,location_country,relationship_goals,interests,intention_tag,looking_for,age_range_min,age_range_max,max_distance_km')
+          .select(
+            'id,user_id,bio,age,gender,location_city,location_country,location_latitude,location_longitude,relationship_goals,interests,intention_tag,looking_for,age_range_min,age_range_max,max_distance_km'
+          )
           .eq('user_id', authUser.id)
           .maybeSingle(),
         supabase
           .from('dating_profiles')
-          .select('id,user_id,bio,age,location_city,location_country,relationship_goals,interests,intention_tag,is_active')
+          .select(
+            'id,user_id,bio,age,gender,location_city,location_country,location_latitude,location_longitude,relationship_goals,interests,intention_tag,looking_for,is_active,last_active_at,admin_limited,admin_suspended'
+          )
           .eq('is_active', true)
+          .eq('admin_limited', false)
+          .eq('admin_suspended', false)
           .neq('user_id', authUser.id)
           .limit(50),
         supabase
@@ -1749,15 +1850,14 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       const applyProfileFilters = (rows: DatingProfile[]) => {
         return rows.filter((item) => {
           if (!item?.user_id || item.user_id === authUser.id) return false;
+          if (item.is_active === false) return false;
+          if (item.admin_limited || item.admin_suspended) return false;
           if (typeof item.age === 'number') {
             if (item.age < ownMinAge || item.age > ownMaxAge) return false;
           }
           if (ownCity && item.location_city && !item.location_city.toLowerCase().includes(ownCity.toLowerCase())) return false;
           if (ownCountry && item.location_country && !item.location_country.toLowerCase().includes(ownCountry.toLowerCase())) return false;
-          if (ownLookingFor !== 'everyone') {
-            const itemLookingFor = String((item as any).looking_for || 'everyone').toLowerCase();
-            if (itemLookingFor !== 'everyone' && itemLookingFor !== ownLookingFor) return false;
-          }
+          if (!passesDatingMutualGenderFilter(ownLookingFor, ownDating?.gender, item)) return false;
           if (intentionTags.length && (!item.intention_tag || !intentionTags.includes(item.intention_tag))) return false;
           if (religions.length && (!item.religion || !religions.includes(item.religion))) return false;
           if (educationLevels.length && (!item.education || !educationLevels.includes(item.education))) return false;
@@ -1782,8 +1882,12 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         // Try strict discovery first, then progressively relax to avoid false "empty" states.
         const strict = await supabase
           .from('dating_profiles')
-          .select('id,user_id,bio,age,location_city,location_country,relationship_goals,interests,intention_tag,looking_for,is_active')
+          .select(
+            'id,user_id,bio,age,gender,location_city,location_country,location_latitude,location_longitude,relationship_goals,interests,intention_tag,looking_for,is_active,last_active_at,admin_limited,admin_suspended'
+          )
           .eq('is_active', true)
+          .eq('admin_limited', false)
+          .eq('admin_suspended', false)
           .neq('user_id', authUser.id)
           .limit(80);
         if (!strict.error && strict.data) {
@@ -1793,7 +1897,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
         const relaxed = await supabase
           .from('dating_profiles')
-          .select('id,user_id,bio,age,location_city,location_country,relationship_goals,interests,intention_tag,looking_for')
+          .select(
+            'id,user_id,bio,age,gender,location_city,location_country,location_latitude,location_longitude,relationship_goals,interests,intention_tag,looking_for,last_active_at,admin_limited,admin_suspended,is_active'
+          )
           .neq('user_id', authUser.id)
           .limit(80);
         if (!relaxed.error && relaxed.data) {
@@ -1842,9 +1948,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         discoverUserIds.length
           ? supabase
               .from('users')
-              .select('id,full_name,profile_picture,id_verified,email_verified,phone_verified')
+              .select('id,full_name,username,profile_picture,id_verified,email_verified,phone_verified')
               .in('id', discoverUserIds)
-          : Promise.resolve({ data: [] as Array<{ id: string; full_name?: string | null; profile_picture?: string | null }> }),
+          : Promise.resolve({ data: [] as DatingDiscoveryUser[] }),
         discoverProfileIds.length
           ? supabase
               .from('dating_photos')
@@ -1854,9 +1960,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               .order('display_order', { ascending: true })
           : Promise.resolve({ data: [] as Array<{ dating_profile_id: string; photo_url: string; is_primary?: boolean | null }> }),
       ]);
-      const discoverUsersById = new Map<string, { full_name?: string | null; profile_picture?: string | null }>(
-        ((discoverUsersResult.data || []) as Array<{ id: string; full_name?: string | null; profile_picture?: string | null }>)
-          .map((row) => [row.id, { full_name: row.full_name, profile_picture: row.profile_picture }])
+      const discoverUsersById = new Map<string, DatingDiscoveryUser>(
+        ((discoverUsersResult.data || []) as DatingDiscoveryUser[]).filter((r) => r.id).map((row) => [row.id as string, row])
       );
       const discoverPhotosByProfile = new Map<string, Array<{ photo_url: string; is_primary?: boolean | null }>>();
       ((discoverPhotosResult.data || []) as Array<{ dating_profile_id: string; photo_url: string; is_primary?: boolean | null }>).forEach((photo) => {
@@ -1868,11 +1973,33 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         users: discoverUsersById.get(item.user_id) || null,
         dating_photos: discoverPhotosByProfile.get(item.id) || [],
       }));
+      const viewerLat = typeof ownDating?.location_latitude === 'number' ? ownDating.location_latitude : null;
+      const viewerLon = typeof ownDating?.location_longitude === 'number' ? ownDating.location_longitude : null;
+      if (viewerLat != null && viewerLon != null) {
+        discoverProfiles = discoverProfiles.map((item) => {
+          const lat = typeof item.location_latitude === 'number' ? item.location_latitude : null;
+          const lon = typeof item.location_longitude === 'number' ? item.location_longitude : null;
+          if (lat == null || lon == null) return item;
+          return { ...item, distance_km: haversineKm(viewerLat, viewerLon, lat, lon) };
+        });
+      }
+      const maxDistanceKm = Number(savedDiscoveryFilters.maxDistance ?? ownDating?.max_distance_km ?? 50);
+      if (Number.isFinite(maxDistanceKm) && maxDistanceKm > 0 && viewerLat != null && viewerLon != null) {
+        discoverProfiles = discoverProfiles.filter((item) => {
+          const lat = typeof item.location_latitude === 'number' ? item.location_latitude : null;
+          const lon = typeof item.location_longitude === 'number' ? item.location_longitude : null;
+          if (lat == null || lon == null) return true;
+          return haversineKm(viewerLat, viewerLon, lat, lon) <= maxDistanceKm;
+        });
+      }
       if (hasPhotos) {
         discoverProfiles = discoverProfiles.filter((item) => (item.dating_photos || []).length > 0);
       }
       if (verifiedOnly) {
-        discoverProfiles = discoverProfiles.filter((item) => !!(item.users as any)?.id_verified || !!(item.users as any)?.email_verified || !!(item.users as any)?.phone_verified);
+        discoverProfiles = discoverProfiles.filter(
+          (item) =>
+            !!(item.users?.id_verified || item.users?.email_verified || item.users?.phone_verified)
+        );
       }
       setDatingDebug({
         initial: initialDiscoveryRows.length,
@@ -2002,17 +2129,17 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             .limit(50),
           supabase
             .from('payment_submissions')
-            .select('id,user_id,advertisement_id,subscription_plan_id,amount,method,reference,proof_url,payment_proof_url,transaction_reference,status,created_at,user:users!payment_submissions_user_id_fkey(full_name,email)')
+            .select('id,user_id,advertisement_id,subscription_plan_id,amount,method,reference,proof_url,payment_proof_url,transaction_reference,status,created_at,user:users!payment_submissions_user_id_fkey(full_name,email,profile_picture)')
             .order('created_at', { ascending: false })
             .limit(50),
           supabase
             .from('professional_sessions')
-            .select('id,conversation_id,user_id,professional_id,role_id,status,scheduled_date,scheduled_duration_minutes,session_type,location_type,location_address,booking_notes,booking_fee_amount,payment_status,created_at,user:users!professional_sessions_user_id_fkey(full_name,email,profile_picture),professional:professional_profiles!professional_sessions_professional_id_fkey(id,full_name)')
+            .select('id,conversation_id,user_id,professional_id,role_id,status,scheduled_date,scheduled_duration_minutes,session_type,location_type,location_address,booking_notes,booking_fee_amount,payment_status,created_at,user:users!professional_sessions_user_id_fkey(full_name,email,profile_picture),professional:professional_profiles!professional_sessions_professional_id_fkey(id,full_name,user_id,pro_user:users!professional_profiles_user_id_fkey(id,full_name,profile_picture))')
             .order('scheduled_date', { ascending: false })
             .limit(50),
           supabase
             .from('professional_reviews')
-            .select('id,professional_id,client_id,rating,review_text,is_anonymous,moderation_status,moderation_reason,moderated_by,moderated_at,reported_count,created_at,client:users!professional_reviews_client_id_fkey(full_name,email,profile_picture),professional:professional_profiles!professional_reviews_professional_id_fkey(full_name)')
+            .select('id,professional_id,client_id,rating,review_text,is_anonymous,moderation_status,moderation_reason,moderated_by,moderated_at,reported_count,created_at,client:users!professional_reviews_client_id_fkey(full_name,email,profile_picture),professional:professional_profiles!professional_reviews_professional_id_fkey(full_name,user_id,pro_user:users!professional_profiles_user_id_fkey(id,full_name))')
             .order('created_at', { ascending: false })
             .limit(50),
         ]);
@@ -2064,7 +2191,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           .limit(50),
         supabase
           .from('professional_sessions')
-          .select('id,conversation_id,user_id,professional_id,role_id,status,scheduled_date,scheduled_duration_minutes,session_type,location_type,location_address,booking_notes,booking_fee_amount,created_at,professional:professional_profiles!professional_sessions_professional_id_fkey(id,full_name)')
+          .select(
+            'id,conversation_id,user_id,professional_id,role_id,status,scheduled_date,scheduled_duration_minutes,session_type,location_type,location_address,booking_notes,booking_fee_amount,created_at,professional:professional_profiles!professional_sessions_professional_id_fkey(id,full_name,user_id,pro_user:users!professional_profiles_user_id_fkey(id,full_name,profile_picture))'
+          )
           .eq('user_id', authUser.id)
           .order('scheduled_date', { ascending: false })
           .limit(30),
@@ -2641,6 +2770,14 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   }, [appPath, relationship, searchParams, supabase, user]);
 
   useEffect(() => {
+    if (appPath[0] !== 'messages') return;
+    if (appPath[1]) return;
+    const cid = (searchParams?.get('conversationId') || '').trim();
+    if (!cid) return;
+    router.replace(`/app/messages/${encodeURIComponent(cid)}`);
+  }, [appPath, router, searchParams]);
+
+  useEffect(() => {
     const conversationId = appPath[0] === 'messages' && appPath[1] ? appPath[1] : '';
     if (!supabase || !user || !conversationId || conversations.some((conversation) => conversation.id === conversationId)) {
       setRouteConversationLoading(false);
@@ -3073,18 +3210,103 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
   const reactToDatingProfile = async (profile: DatingProfile, action: 'like' | 'pass' | 'super') => {
     if (!supabase || !user) return;
-    setDatingIndex((prev) => Math.min(prev + 1, datingProfiles.length));
-    if (action === 'pass') {
-      setReactionNotice('Passed for now');
-      await supabase.from('dating_passes').upsert({ passer_id: user.id, passed_id: profile.user_id }, { onConflict: 'passer_id,passed_id' });
-    } else {
-      setReactionNotice(action === 'super' ? 'Super like sent' : 'Liked');
-      await supabase
-        .from('dating_likes')
-        .upsert({ liker_id: user.id, liked_id: profile.user_id, is_super_like: action === 'super' }, { onConflict: 'liker_id,liked_id' });
+    let hideReactionToast = false;
+    try {
+      if (action === 'pass') {
+        setReactionNotice('Passed for now');
+        const { error } = await supabase
+          .from('dating_passes')
+          .upsert({ passer_id: user.id, passed_id: profile.user_id }, { onConflict: 'passer_id,passed_id' });
+        if (error) throw error;
+      } else {
+        const isSuper = action === 'super';
+        const { error } = await supabase.from('dating_likes').upsert(
+          { liker_id: user.id, liked_id: profile.user_id, is_super_like: isSuper },
+          { onConflict: 'liker_id,liked_id' }
+        );
+        if (error) throw error;
+        await supabase.from('dating_passes').delete().eq('passer_id', user.id).eq('passed_id', profile.user_id);
+
+        const { data: mutualLike } = await supabase
+          .from('dating_likes')
+          .select('id')
+          .eq('liker_id', profile.user_id)
+          .eq('liked_id', user.id)
+          .maybeSingle();
+
+        const uid = user.id;
+        const pid = profile.user_id;
+        const user1Id = uid < pid ? uid : pid;
+        const user2Id = uid > pid ? uid : pid;
+
+        if (mutualLike?.id) {
+          const { data: matchRow, error: matchError } = await supabase
+            .from('dating_matches')
+            .upsert({ user1_id: user1Id, user2_id: user2Id }, { onConflict: 'user1_id,user2_id' })
+            .select('id,matched_at,created_at')
+            .single();
+          if (!matchError && matchRow?.id) {
+            hideReactionToast = true;
+            const rawPic = (profile.users?.profile_picture || '').trim();
+            const picUrl = rawPic
+              ? resolveProfilePictureUrlWithSupabase(supabase, rawPic) || resolveProfilePictureUrl(rawPic) || rawPic
+              : null;
+            const name =
+              getUserDisplayName(
+                profile.users
+                  ? { full_name: profile.users.full_name, username: profile.users.username ?? null, email: null }
+                  : null
+              ) ||
+              profile.users?.full_name?.trim() ||
+              'Match';
+            const otherUser: WebUser = {
+              id: profile.user_id,
+              full_name: profile.users?.full_name ?? null,
+              username: profile.users?.username ?? null,
+              email: null,
+              profile_picture: picUrl || rawPic || null,
+            };
+            setDatingMatches((prev) => {
+              const filtered = prev.filter((m) => m.id !== matchRow.id);
+              return [
+                {
+                  id: matchRow.id,
+                  user1_id: user1Id,
+                  user2_id: user2Id,
+                  matched_at: matchRow.matched_at ?? new Date().toISOString(),
+                  created_at: matchRow.created_at ?? new Date().toISOString(),
+                  user: otherUser,
+                },
+                ...filtered,
+              ];
+            });
+            setReactionNotice(null);
+            setDatingDiscoveryMatchModal({ name, photoUrl: picUrl, otherUserId: profile.user_id });
+          } else {
+            setReactionNotice(isSuper ? 'Super like sent' : 'Liked');
+          }
+        } else {
+          setReactionNotice(isSuper ? 'Super like sent' : 'Liked');
+        }
+      }
+      setDatingIndex((prev) => Math.min(prev + 1, datingProfiles.length));
+    } catch {
+      setReactionNotice('Could not save swipe');
+      hideReactionToast = false;
     }
-    window.setTimeout(() => setReactionNotice(null), 1800);
+    if (!hideReactionToast) {
+      window.setTimeout(() => setReactionNotice(null), 1800);
+    }
   };
+
+  useEffect(() => {
+    if (!datingDiscoveryMatchModal) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDatingDiscoveryMatchModal(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [datingDiscoveryMatchModal]);
 
   const reactToRouteDatingProfile = async (targetUserId: string, action: 'like' | 'pass' | 'super') => {
     if (!supabase || !user || !targetUserId || targetUserId === user.id) return;
@@ -4279,6 +4501,11 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   };
 
   const notificationHref = (notification: NotificationRow) => {
+    const shellProfile = (subjectId: string | null | undefined) => {
+      const sid = String(subjectId ?? '').trim();
+      if (!sid) return '/app/notifications';
+      return webAppProfileHref(user?.id, sid) ?? `/app/profile/${encodeURIComponent(sid)}`;
+    };
     const data = notification.data || {};
     const postId = data.postId || data.post_id || data.postID;
     const reelId = data.reelId || data.reel_id || data.reelID;
@@ -4297,7 +4524,13 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     if (statusId) return `/app/status-item/${statusId}`;
     if (data.dateRequestId || data.date_request_id) return '/app/dating/date-requests';
     if (data.matchId || data.match_id) return '/app/dating/matches';
-    if (likerId) return `/app/dating/user-profile?userId=${encodeURIComponent(likerId)}`;
+    if (
+      likerId &&
+      (notification.type === 'dating_like' || notification.type === 'dating_super_like')
+    ) {
+      return `/app/dating/user-profile?userId=${encodeURIComponent(String(likerId))}`;
+    }
+    if (likerId) return shellProfile(likerId);
     if (data.bookingId || data.booking_id || data.sessionId || data.session_id || data.professionalSessionId || data.professional_session_id) return '/app/bookings';
     if (data.paymentSubmissionId || data.payment_submission_id || data.paymentId || data.payment_id) {
       const targetType = data.advertisementId || data.advertisement_id ? 'ads' : 'subscriptions';
@@ -4307,10 +4540,15 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       if (notification.type === 'relationship_request' || notification.type === 'relationship_end_request' || disputeId) return '/app/notifications?tab=requests';
       return `/app/certificates/${relationshipId}`;
     }
-    if (data.datingUserId || data.dating_user_id) return `/app/dating/user-profile?userId=${encodeURIComponent(data.datingUserId || data.dating_user_id)}`;
-    if (followerId) return `/app/profile/${followerId}`;
-    if (matchedUserId && notification.type === 'dating_match') return `/app/dating/user-profile?userId=${encodeURIComponent(matchedUserId)}`;
-    if (data.userId || data.user_id) return `/app/profile/${data.userId || data.user_id}`;
+    if (data.datingUserId || data.dating_user_id) {
+      const du = String(data.datingUserId || data.dating_user_id || '').trim();
+      return du ? `/app/dating/user-profile?userId=${encodeURIComponent(du)}` : '/app/dating';
+    }
+    if (followerId) return shellProfile(followerId);
+    if (matchedUserId && notification.type === 'dating_match') {
+      return `/app/dating/user-profile?userId=${encodeURIComponent(String(matchedUserId))}`;
+    }
+    if (data.userId || data.user_id) return shellProfile(data.userId || data.user_id);
     if (notification.type === 'dating_match') return '/app/dating/matches';
     if (notification.type === 'dating_like' || notification.type === 'dating_super_like') return '/app/dating/likes-received';
     if (notification.type?.includes('payment')) return isAdminRole(user?.role) ? '/app/admin/payment-verifications' : '/app/dating/premium';
@@ -6432,7 +6670,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               <span className="text-3xl leading-none">‹</span>
             </button>
           ) : (
-            <Avatar src={shellAvatarSrc} name={getUserDisplayName(shellAvatarNameUser)} size="sm" />
+            <ProfileUserLink viewerUserId={user?.id} subjectUserId={user?.id} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
+              <Avatar src={shellAvatarSrc} name={getUserDisplayName(shellAvatarNameUser)} size="sm" />
+            </ProfileUserLink>
           )}
           <h1 className="flex-1 text-xl font-black text-slate-950">{current.label === 'Notify' ? 'Notifications' : current.label}</h1>
           {activeTab === 'dating' ? (
@@ -6486,18 +6726,34 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           <span className="mt-2 text-xs font-black">Your story</span>
         </Link>
         {statusFeed.map((item) => (
-          <Link key={item.user_id} href={`/app/status/${item.user_id}`} className={`${compact ? 'min-w-[76px]' : 'min-w-[104px]'} relative overflow-hidden rounded-[20px] bg-slate-900 p-2 text-white shadow-sm`}>
+          <div
+            key={item.user_id}
+            role="button"
+            tabIndex={0}
+            onClick={() => router.push(`/app/status/${encodeURIComponent(item.user_id)}`)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                router.push(`/app/status/${encodeURIComponent(item.user_id)}`);
+              }
+            }}
+            className={`${compact ? 'min-w-[76px]' : 'min-w-[104px]'} relative cursor-pointer overflow-hidden rounded-[20px] bg-slate-900 p-2 text-left text-white shadow-sm`}
+          >
             <div className="absolute inset-0 opacity-60" style={{ background: item.latest_status?.background_color || 'linear-gradient(135deg,#2563eb,#ec4899)' }} />
             {item.latest_status?.media_path ? <img src={item.latest_status.media_path} alt="" className="absolute inset-0 h-full w-full object-cover opacity-70" /> : null}
             <div className="relative z-10 flex min-h-[96px] flex-col justify-between">
-              <Avatar src={item.user_avatar} name={item.user_name} size="sm" />
+              <span className="inline-block self-start" onClick={(event) => event.stopPropagation()}>
+                <ProfileUserLink viewerUserId={user?.id} subjectUserId={item.user_id} className="rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-white">
+                  <Avatar src={item.user_avatar} name={item.user_name} size="sm" />
+                </ProfileUserLink>
+              </span>
               <div>
                 <p className="line-clamp-2 text-xs font-black">{item.latest_status?.text_content || item.user_name}</p>
                 <p className="mt-1 truncate text-[10px] font-semibold text-white/75">{item.user_name}</p>
               </div>
             </div>
             {item.has_unviewed ? <span className="absolute right-2 top-2 h-3 w-3 rounded-full bg-pink-500 ring-2 ring-white" /> : null}
-          </Link>
+          </div>
         ))}
       </div>
     );
@@ -6507,10 +6763,14 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     <div className="px-4 py-4">
       <section className="rounded-[28px] bg-gradient-to-br from-blue-600 to-blue-800 px-5 py-6 text-white shadow-xl shadow-blue-700/20">
         <div className="flex items-center gap-3">
-          <Avatar src={shellAvatarSrc} name={getUserDisplayName(shellAvatarNameUser)} size="lg" />
+          <ProfileUserLink viewerUserId={user?.id} subjectUserId={user?.id} className="shrink-0 rounded-full outline-none ring-offset-2 ring-blue-200 focus-visible:ring-2 focus-visible:ring-white">
+            <Avatar src={shellAvatarSrc} name={getUserDisplayName(shellAvatarNameUser)} size="lg" />
+          </ProfileUserLink>
           <div>
             <p className="text-sm font-semibold text-blue-100">Welcome back</p>
-            <h2 className="text-2xl font-black">{getUserDisplayName(shellAvatarNameUser)}</h2>
+            <ProfileUserLink viewerUserId={user?.id} subjectUserId={user?.id} className="inline-block">
+              <h2 className="text-2xl font-black hover:underline">{getUserDisplayName(shellAvatarNameUser)}</h2>
+            </ProfileUserLink>
           </div>
         </div>
         <p className="mt-5 text-sm leading-6 text-blue-50">Verify love, stay accountable, meet meaningful people, and keep every connection in one familiar app experience.</p>
@@ -6540,7 +6800,13 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               <p className="text-sm font-black uppercase text-slate-500">{relationship.status === 'verified' ? 'Verified' : 'Pending confirmation'}</p>
               <span className={`rounded-full px-3 py-1 text-xs font-black ${relationship.status === 'verified' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{relationship.status}</span>
             </div>
-            <p className="mt-3 text-2xl font-black text-slate-950">{relationship.partner_name || 'Partner'}</p>
+            {relationship.partner_user_id ? (
+              <ProfileUserLink viewerUserId={user?.id} subjectUserId={relationship.partner_user_id} className="mt-3 block min-w-0">
+                <p className="truncate text-2xl font-black text-slate-950 hover:underline">{relationship.partner_name || 'Partner'}</p>
+              </ProfileUserLink>
+            ) : (
+              <p className="mt-3 text-2xl font-black text-slate-950">{relationship.partner_name || 'Partner'}</p>
+            )}
             <p className="text-sm font-semibold capitalize text-slate-500">{relationship.type || 'relationship'}</p>
           </div>
         ) : (
@@ -6579,7 +6845,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       <div className="space-y-3 px-3 py-3">
         {renderStatusStrip()}
         <div className="flex items-center gap-3 rounded-[22px] border border-slate-200 bg-white p-3 shadow-sm">
-          <Avatar src={shellAvatarSrc} name={getUserDisplayName(shellAvatarNameUser)} />
+          <ProfileUserLink viewerUserId={user?.id} subjectUserId={user?.id} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
+            <Avatar src={shellAvatarSrc} name={getUserDisplayName(shellAvatarNameUser)} />
+          </ProfileUserLink>
           <Link href="/app/create-post" className="flex-1 rounded-full bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-500">
             What is on your heart?
           </Link>
@@ -6614,7 +6882,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-4 text-white">
               <div className="flex items-end justify-between gap-4">
                 <div>
-                  <p className="font-black">{getUserDisplayName(reel.users)}</p>
+                  <ProfileUserLink viewerUserId={user?.id} subjectUserId={reel.user_id} className="inline-block">
+                    <p className="font-black hover:underline">{getUserDisplayName(reel.users)}</p>
+                  </ProfileUserLink>
                   <p className="mt-2 text-sm leading-5 text-white/85">{reel.caption || 'Shared a reel'}</p>
                 </div>
                 <div className="flex flex-col gap-3">
@@ -6692,7 +6962,16 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         <article className="relative min-h-[calc(100vh-122px)] overflow-hidden bg-slate-900">
           {reel.video_url ? <video src={reel.video_url} poster={reel.thumbnail_url || undefined} controls className="h-full min-h-[calc(100vh-122px)] w-full object-cover" /> : reel.thumbnail_url ? <img src={reel.thumbnail_url} alt="" className="h-full min-h-[calc(100vh-122px)] w-full object-cover" /> : null}
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-4 text-white">
-            <p className="font-black">{getUserDisplayName(reel.users)}</p>
+            <div className="flex items-center gap-3">
+              <ProfileUserLink viewerUserId={user?.id} subjectUserId={reel.user_id} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-white">
+                <Avatar src={reel.users?.profile_picture} name={getUserDisplayName(reel.users)} />
+              </ProfileUserLink>
+              <div className="min-w-0 flex-1">
+                <ProfileUserLink viewerUserId={user?.id} subjectUserId={reel.user_id} className="inline-block min-w-0">
+                  <p className="truncate font-black hover:underline">{getUserDisplayName(reel.users)}</p>
+                </ProfileUserLink>
+              </div>
+            </div>
             <p className="mt-2 text-sm leading-5 text-white/85">{reel.caption || 'Shared a reel'}</p>
             <div className="mt-4 flex gap-3">
               <button type="button" onClick={() => void toggleReelLike(reel)} className="rounded-full bg-white/18 px-4 py-2 text-sm font-black backdrop-blur">{user && reel.likes?.includes(user.id) ? 'Liked' : 'Like'}</button>
@@ -6739,9 +7018,17 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         <section className="relative flex min-h-[70vh] w-full flex-col justify-between overflow-hidden rounded-[28px] p-5 shadow-2xl" style={{ background: resolvedItem.latest_status?.background_color || 'linear-gradient(135deg,#2563eb,#ec4899)' }}>
           {resolvedItem.latest_status?.media_path ? <img src={resolvedItem.latest_status.media_path} alt="" className="absolute inset-0 h-full w-full object-cover opacity-70" /> : null}
           <div className="relative z-10 flex items-center gap-3">
-            <Avatar src={resolvedItem.user_avatar} name={resolvedItem.user_name} />
+            <ProfileUserLink
+              viewerUserId={user?.id}
+              subjectUserId={resolvedItem.user_id}
+              className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-white"
+            >
+              <Avatar src={resolvedItem.user_avatar} name={resolvedItem.user_name} />
+            </ProfileUserLink>
             <div>
-              <p className="font-black">{resolvedItem.user_name}</p>
+              <ProfileUserLink viewerUserId={user?.id} subjectUserId={resolvedItem.user_id} className="inline-block">
+                <p className="font-black hover:underline">{resolvedItem.user_name}</p>
+              </ProfileUserLink>
               <p className="text-xs font-semibold text-white/75">{timeAgo(resolvedItem.latest_status?.created_at)}</p>
             </div>
           </div>
@@ -6754,9 +7041,13 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const renderCreatePost = () => (
     <div className="space-y-4 px-4 py-4">
       <div className="flex items-center gap-3 rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-        <Avatar src={shellAvatarSrc} name={getUserDisplayName(shellAvatarNameUser)} />
+        <ProfileUserLink viewerUserId={user?.id} subjectUserId={user?.id} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
+          <Avatar src={shellAvatarSrc} name={getUserDisplayName(shellAvatarNameUser)} />
+        </ProfileUserLink>
         <div>
-          <p className="font-black text-slate-950">{getUserDisplayName(shellAvatarNameUser)}</p>
+          <ProfileUserLink viewerUserId={user?.id} subjectUserId={user?.id} className="inline-block">
+            <p className="font-black text-slate-950 hover:underline">{getUserDisplayName(shellAvatarNameUser)}</p>
+          </ProfileUserLink>
           <p className="text-sm text-slate-500">Create post</p>
         </div>
       </div>
@@ -6886,49 +7177,35 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         </div>
       );
     }
-    const photo = profile.dating_photos?.find((item) => item.is_primary)?.photo_url || profile.dating_photos?.[0]?.photo_url || profile.users?.profile_picture;
-    const name = profile.users?.full_name || 'Committed dater';
-    const tags = [...(profile.relationship_goals || []), ...(profile.interests || [])].slice(0, 4);
+
+    const nextProfile = datingProfiles[datingIndex + 1] ?? null;
+
     const openDatingProfile = () => {
       if (!profile.user_id) return;
+      // Same route family as Expo `dating/user-profile` — loads `dating_profiles`, photos, badges, starters (not generic `/app/profile`).
       router.push(`/app/dating/user-profile?userId=${encodeURIComponent(profile.user_id)}`);
     };
+
     return (
       <div className="flex min-h-[calc(100vh-122px)] flex-col px-4 pb-4 pt-3">
+        <div className="relative flex min-h-[470px] flex-1 flex-col">
+          <DatingDiscoverSwipeDeck
+            profileKey={profile.user_id}
+            front={<DatingDiscoveryCardFace profile={profile} supabase={supabase} />}
+            back={nextProfile ? <DatingDiscoveryCardFace profile={nextProfile} supabase={supabase} /> : null}
+            onSwipeLeft={() => reactToDatingProfile(profile, 'pass')}
+            onSwipeRight={() => reactToDatingProfile(profile, 'like')}
+          />
+        </div>
         <button
           type="button"
+          data-swipe-ignore
           onClick={openDatingProfile}
-          className="relative flex-1 overflow-hidden rounded-[26px] bg-slate-900 text-left shadow-2xl shadow-slate-950/20"
+          className="mt-3 w-full rounded-[16px] bg-white py-3 text-sm font-black text-slate-800 ring-1 ring-slate-200"
         >
-          {photo ? (
-            <img src={photo} alt="" className="h-full min-h-[470px] w-full object-cover" />
-          ) : (
-            <div className="grid h-full min-h-[470px] place-items-center bg-gradient-to-br from-orange-500 to-slate-900 text-[150px] font-black text-white">
-              {initials(name)}
-            </div>
-          )}
-          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/65 to-transparent p-5 text-white">
-            <h2 className="text-3xl font-black">
-              {name} {profile.age ? <span className="font-bold">{profile.age}</span> : null}
-            </h2>
-            <p className="mt-1 flex items-center gap-1 text-sm font-semibold">
-              <MapPin className="h-4 w-4" />
-              {[profile.location_city, profile.location_country].filter(Boolean).join(', ') || 'Location not set'}
-            </p>
-            <p className="mt-3 text-sm leading-5">{profile.bio || 'Looking for meaningful connections and authentic conversations.'}</p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {[profile.intention_tag, profile.religion, ...tags].filter(Boolean).slice(0, 5).map((tag) => (
-                <span key={String(tag)} className="rounded-full bg-white/18 px-3 py-1.5 text-xs font-black backdrop-blur">
-                  {tag}
-                </span>
-              ))}
-            </div>
-          </div>
-        </button>
-        <button type="button" onClick={openDatingProfile} className="mt-3 w-full rounded-[16px] bg-white py-3 text-sm font-black text-slate-800 ring-1 ring-slate-200">
           Open full profile
         </button>
-        <div className="mt-4 flex items-center justify-center gap-4">
+        <div className="mt-4 flex items-center justify-center gap-4" data-swipe-ignore>
           <button type="button" onClick={() => void reactToDatingProfile(profile, 'pass')} className="grid h-16 w-16 place-items-center rounded-full bg-red-500 text-white shadow-xl shadow-red-500/25 active:scale-95">
             <X className="h-8 w-8" />
           </button>
@@ -6950,7 +7227,15 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     return (
       <div className="space-y-3 px-4 py-4">
         {datingLikes.map((like) => (
-          <Link key={like.id} href={like.liker_id ? `/app/dating/user-profile?userId=${encodeURIComponent(like.liker_id)}` : '/app/dating/likes-received'} className="flex items-center gap-3 rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm active:bg-pink-50">
+          <Link
+            key={like.id}
+            href={
+              like.liker_id
+                ? `/app/dating/user-profile?userId=${encodeURIComponent(like.liker_id)}`
+                : '/app/dating/likes-received'
+            }
+            className="flex items-center gap-3 rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm active:bg-pink-50"
+          >
             <Avatar src={like.user?.profile_picture} name={getUserDisplayName(like.user)} size="lg" />
             <div className="min-w-0 flex-1">
               <p className="truncate text-lg font-black text-slate-950">{getUserDisplayName(like.user) || 'Someone liked you'}</p>
@@ -6969,21 +7254,51 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     }
     return (
       <div className="space-y-3 px-4 py-4">
-        {datingMatches.map((match) => (
-          <article key={match.id} className="flex items-center gap-3 rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
-            <Avatar src={match.user?.profile_picture} name={getUserDisplayName(match.user)} size="lg" />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-lg font-black text-slate-950">{getUserDisplayName(match.user) || 'Matched member'}</p>
-              <p className="text-sm font-semibold text-slate-500">Matched {timeAgo(match.matched_at || match.created_at)}</p>
-            </div>
-            <button type="button" onClick={() => {
-              const targetUserId = match.user?.id || (match.user1_id === user?.id ? match.user2_id : match.user1_id) || '';
-              if (targetUserId) void openConversationWithUser(targetUserId);
-            }} className="grid h-11 w-11 place-items-center rounded-full bg-blue-600 text-white">
-              <MessageCircle className="h-5 w-5" />
-            </button>
-          </article>
-        ))}
+        {datingMatches.map((match) => {
+          const matchPeerId = match.user?.id || (match.user1_id === user?.id ? match.user2_id : match.user1_id) || '';
+          const profileHref = matchPeerId
+            ? `/app/dating/user-profile?userId=${encodeURIComponent(matchPeerId)}`
+            : '/app/dating/matches';
+          const openMatchChat = () => {
+            if (matchPeerId) void openConversationWithUser(matchPeerId);
+          };
+          return (
+            <article
+              key={match.id}
+              className="flex items-center gap-3 rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm"
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  if (matchPeerId) router.push(profileHref);
+                }}
+                className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50"
+                disabled={!matchPeerId}
+                aria-label="View dating profile"
+              >
+                <Avatar src={match.user?.profile_picture} name={getUserDisplayName(match.user)} size="lg" />
+              </button>
+              <button
+                type="button"
+                onClick={openMatchChat}
+                disabled={!matchPeerId}
+                className="min-w-0 flex-1 rounded-[14px] px-1 py-0.5 text-left outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50"
+              >
+                <p className="truncate text-lg font-black text-slate-950">{getUserDisplayName(match.user) || 'Matched member'}</p>
+                <p className="text-sm font-semibold text-slate-500">Matched {timeAgo(match.matched_at || match.created_at)}</p>
+              </button>
+              <button
+                type="button"
+                onClick={openMatchChat}
+                disabled={!matchPeerId}
+                className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-blue-600 text-white disabled:opacity-50"
+                aria-label="Open chat"
+              >
+                <MessageCircle className="h-5 w-5" />
+              </button>
+            </article>
+          );
+        })}
       </div>
     );
   };
@@ -7129,13 +7444,21 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         {filteredRequests.map((request) => {
           const incoming = request.to_user_id === user?.id;
           const other = incoming ? request.from_user : request.to_user;
+          const otherId = other?.id || (incoming ? request.from_user_id : request.to_user_id) || '';
           return (
             <article key={request.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <div className="flex items-start gap-3">
-                <Avatar src={other?.profile_picture} name={getUserDisplayName(other)} />
+                <ProfileUserLink viewerUserId={user?.id} subjectUserId={otherId} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
+                  <Avatar src={other?.profile_picture} name={getUserDisplayName(other)} />
+                </ProfileUserLink>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-lg font-black text-slate-950">{request.date_title || 'Date request'}</p>
-                  <p className="truncate text-sm text-slate-500">{incoming ? 'From' : 'To'} {getUserDisplayName(other)}</p>
+                  <p className="truncate text-sm text-slate-500">
+                    {incoming ? 'From' : 'To'}{' '}
+                    <ProfileUserLink viewerUserId={user?.id} subjectUserId={otherId} className="inline font-semibold text-slate-600 hover:underline">
+                      {getUserDisplayName(other)}
+                    </ProfileUserLink>
+                  </p>
                   <p className="mt-2 text-sm font-semibold text-slate-600">{request.date_location || request.location_name || 'Location not set'}</p>
                   <p className="text-xs font-semibold text-slate-400">{request.date_time ? new Date(request.date_time).toLocaleString() : [request.proposed_date, request.proposed_time].filter(Boolean).join(' ')}</p>
                 </div>
@@ -8134,14 +8457,42 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             const status = statusLabel(item.relationshipStatus);
             const isVerified = status === 'Verified';
             const isPending = status === 'Pending';
-            const cardHref = item.id ? `/profile/${item.id}` : '';
-            const body = (
-              <article className="flex gap-3 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200">
-                <Avatar src={item.profilePicture || item.facePhotoUrl} name={item.fullName} />
+            const cardHref = item.id ? webAppProfileHref(user?.id, item.id) : '';
+            const rowKey = item.id || item.relationshipId || item.fullName;
+            return (
+              <article
+                key={rowKey}
+                role={cardHref ? 'button' : undefined}
+                tabIndex={cardHref ? 0 : undefined}
+                onClick={
+                  cardHref
+                    ? (event) => {
+                        if ((event.target as HTMLElement).closest('a')) return;
+                        router.push(cardHref);
+                      }
+                    : undefined
+                }
+                onKeyDown={
+                  cardHref
+                    ? (event) => {
+                        if (event.key !== 'Enter' && event.key !== ' ') return;
+                        if ((event.target as HTMLElement).closest('a')) return;
+                        event.preventDefault();
+                        router.push(cardHref);
+                      }
+                    : undefined
+                }
+                className={`flex gap-3 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 ${cardHref ? 'cursor-pointer' : ''}`}
+              >
+                <ProfileUserLink viewerUserId={user?.id} subjectUserId={item.id} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
+                  <Avatar src={item.profilePicture || item.facePhotoUrl} name={item.fullName} />
+                </ProfileUserLink>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="truncate text-lg font-black text-slate-950">{item.fullName || 'Unknown'}</p>
+                      <ProfileUserLink viewerUserId={user?.id} subjectUserId={item.id} className="block min-w-0">
+                        <p className="truncate text-lg font-black text-slate-950 hover:underline">{item.fullName || 'Unknown'}</p>
+                      </ProfileUserLink>
                       <p className="text-sm font-semibold text-slate-500">{item.phoneNumber || (item.isRegisteredUser ? 'Phone hidden' : 'Non-registered partner')}</p>
                     </div>
                     {item.id ? <ChevronRight className="mt-1 h-5 w-5 shrink-0 text-slate-300" /> : null}
@@ -8160,7 +8511,6 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                 </div>
               </article>
             );
-            return cardHref ? <Link key={item.id || item.relationshipId || item.fullName} href={cardHref}>{body}</Link> : <div key={item.relationshipId || item.phoneNumber || item.fullName}>{body}</div>;
           })}
           {(searchQuery || searchPhoto) && !isSearching && !filteredResults.length ? <EmptyState icon={Search} title="No Results" text="Try another name, phone number, photo, or filter." /> : null}
         </div>
@@ -8219,9 +8569,17 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       return (
         <div className="flex min-h-[calc(100vh-122px)] flex-col">
           <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
-            <Avatar src={avatar} name={title} />
+            <ProfileUserLink
+              viewerUserId={user?.id}
+              subjectUserId={firstParticipantId}
+              className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500"
+            >
+              <Avatar src={avatar} name={title} />
+            </ProfileUserLink>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-lg font-black text-slate-950">{title}</p>
+              <ProfileUserLink viewerUserId={user?.id} subjectUserId={firstParticipantId} className="block min-w-0">
+                <p className="truncate text-lg font-black text-slate-950 hover:underline">{title}</p>
+              </ProfileUserLink>
               <p className="text-xs font-semibold text-slate-500">Messages sync from the same mobile conversations.</p>
             </div>
           </div>
@@ -8300,17 +8658,49 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           </div>
         </section>
         {!conversations.length ? <EmptyState icon={MessageCircle} title="No Messages Yet" text="Conversations from matches and connections will appear here." /> : null}
-        {conversations.map((conversation) => (
-          <Link key={conversation.id} href={`/app/messages/${conversation.id}`} className="flex items-center gap-3 rounded-[20px] bg-white p-3 active:bg-slate-50">
-            <Avatar src={Object.values(conversation.participantAvatars || {})[0]} name={conversation.participantNames?.[0] || 'Committed member'} />
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-black text-slate-950">{conversation.participantNames?.join(', ') || 'Conversation'}</p>
-              <p className="truncate text-sm text-slate-500">{conversation.last_message || 'Open chat'}</p>
+        {conversations.map((conversation) => {
+          const otherId = (conversation.participant_ids || []).find((id) => id && id !== user?.id) || '';
+          const avatarSrc = otherId
+            ? conversation.participantAvatars?.[otherId]
+            : Object.values(conversation.participantAvatars || {})[0];
+          const displayName = conversation.participantNames?.join(', ') || 'Conversation';
+          const chatHref = `/app/messages/${conversation.id}`;
+          return (
+            <div key={conversation.id} className="flex items-center gap-3 rounded-[20px] bg-white p-3">
+              <span className="shrink-0" onClick={(event) => event.stopPropagation()}>
+                <ProfileUserLink
+                  viewerUserId={user?.id}
+                  subjectUserId={otherId || undefined}
+                  className="rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500"
+                >
+                  <Avatar src={avatarSrc} name={conversation.participantNames?.[0] || 'Committed member'} />
+                </ProfileUserLink>
+              </span>
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => router.push(chatHref)}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter' && event.key !== ' ') return;
+                  event.preventDefault();
+                  router.push(chatHref);
+                }}
+                className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-[14px] active:opacity-90"
+              >
+                <div className="min-w-0 flex-1">
+                  <span className="block min-w-0" onClick={(event) => event.stopPropagation()}>
+                    <ProfileUserLink viewerUserId={user?.id} subjectUserId={otherId || undefined} className="block min-w-0">
+                      <p className="truncate font-black text-slate-950 hover:underline">{displayName}</p>
+                    </ProfileUserLink>
+                  </span>
+                  <p className="truncate text-sm text-slate-500">{conversation.last_message || 'Open chat'}</p>
+                </div>
+                <span className="shrink-0 text-xs font-semibold text-slate-400">{timeAgo(conversation.last_message_at || conversation.created_at)}</span>
+              </div>
+              <Send className="h-5 w-5 shrink-0 text-slate-400" aria-hidden />
             </div>
-            <span className="text-xs font-semibold text-slate-400">{timeAgo(conversation.last_message_at || conversation.created_at)}</span>
-            <Send className="h-5 w-5 text-slate-400" />
-          </Link>
-        ))}
+          );
+        })}
       </div>
     );
   };
@@ -8407,9 +8797,13 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     <div className="px-4 py-4">
       <section className="rounded-[28px] bg-white p-5 text-center shadow-sm ring-1 ring-slate-200">
         <div className="mx-auto w-fit">
-          <Avatar src={shellAvatarSrc} name={getUserDisplayName(shellAvatarNameUser)} size="lg" />
+          <ProfileUserLink viewerUserId={user?.id} subjectUserId={user?.id} className="inline-block rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
+            <Avatar src={shellAvatarSrc} name={getUserDisplayName(shellAvatarNameUser)} size="lg" />
+          </ProfileUserLink>
         </div>
-        <h2 className="mt-4 text-2xl font-black text-slate-950">{getUserDisplayName(user)}</h2>
+        <ProfileUserLink viewerUserId={user?.id} subjectUserId={user?.id} className="mt-4 inline-block">
+          <h2 className="text-2xl font-black text-slate-950 hover:underline">{getUserDisplayName(user)}</h2>
+        </ProfileUserLink>
         <p className="text-sm text-slate-500">{user?.username ? `@${user.username}` : user?.email}</p>
         <div className="mt-4 flex justify-center gap-2">
           <span className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-black text-blue-700">{user?.role || 'user'}</span>
@@ -8443,7 +8837,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       {renderAvatarHardDebugPanel()}
       <section className="rounded-[26px] bg-white p-5 shadow-sm ring-1 ring-slate-200">
         <div className="flex items-center gap-3">
-          <Avatar src={settingsProfilePictureUrl || shellAvatarSrc} name={getUserDisplayName(shellAvatarNameUser)} size="lg" />
+          <ProfileUserLink viewerUserId={user?.id} subjectUserId={user?.id} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
+            <Avatar src={settingsProfilePictureUrl || shellAvatarSrc} name={getUserDisplayName(shellAvatarNameUser)} size="lg" />
+          </ProfileUserLink>
           <div>
             <h2 className="text-2xl font-black text-slate-950">Settings</h2>
             <p className="text-sm text-slate-500">{user?.username ? `@${user.username}` : 'Account and profile details'}</p>
@@ -8629,9 +9025,13 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           {!blockedUsers.length ? <EmptyState icon={Ban} title="No Blocked Users" text="People you block will appear here." /> : null}
           {blockedUsers.map((row) => (
             <article key={row.id} className="flex items-center gap-3 rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-              <Avatar src={row.users?.profile_picture} name={row.users?.full_name || row.users?.email} />
+              <ProfileUserLink viewerUserId={user?.id} subjectUserId={row.blocked_id || row.users?.id} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
+                <Avatar src={row.users?.profile_picture} name={row.users?.full_name || row.users?.email} />
+              </ProfileUserLink>
               <div className="min-w-0 flex-1">
-                <p className="truncate font-black text-slate-950">{row.users?.full_name || 'Blocked member'}</p>
+                <ProfileUserLink viewerUserId={user?.id} subjectUserId={row.blocked_id || row.users?.id} className="block min-w-0">
+                  <p className="truncate font-black text-slate-950 hover:underline">{row.users?.full_name || 'Blocked member'}</p>
+                </ProfileUserLink>
                 <p className="truncate text-sm text-slate-500">{row.users?.email}</p>
               </div>
               <button type="button" onClick={() => void unblockUser(row.blocked_id)} className="rounded-full bg-red-50 px-4 py-2 text-sm font-black text-red-600">
@@ -9415,12 +9815,39 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           const canComplete = isProfessionalView && booking.status === 'confirmed' && isUpcoming;
           const canReschedule = isUpcoming && booking.status !== 'cancelled' && booking.status !== 'completed';
           const canCancel = isUpcoming && booking.status !== 'cancelled' && booking.status !== 'completed';
+          const bookingClientId = booking.user_id || booking.user?.id;
+          const professionalUserId = booking.professional?.user_id || booking.professional?.pro_user?.id;
+          const professionalPic = booking.professional?.pro_user?.profile_picture;
+          const professionalLabel =
+            booking.professional?.pro_user?.full_name || booking.professional?.full_name || booking.topic || booking.session_type || 'Professional';
           return (
           <article key={booking.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
             <div className="flex items-start gap-3">
-              {isProfessionalView ? <Avatar src={booking.user?.profile_picture} name={booking.user?.full_name || 'Client'} /> : null}
+              {isProfessionalView && bookingClientId ? (
+                <ProfileUserLink viewerUserId={user?.id} subjectUserId={bookingClientId} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
+                  <Avatar src={booking.user?.profile_picture} name={booking.user?.full_name || 'Client'} />
+                </ProfileUserLink>
+              ) : isProfessionalView ? (
+                <Avatar src={booking.user?.profile_picture} name={booking.user?.full_name || 'Client'} />
+              ) : professionalUserId ? (
+                <ProfileUserLink viewerUserId={user?.id} subjectUserId={professionalUserId} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
+                  <Avatar src={professionalPic} name={professionalLabel} />
+                </ProfileUserLink>
+              ) : !isProfessionalView ? (
+                <Avatar src={professionalPic} name={professionalLabel} />
+              ) : null}
               <div className="min-w-0 flex-1">
-                <p className="text-lg font-black text-slate-950">{isProfessionalView ? (booking.user?.full_name || 'Client') : (booking.professional?.full_name || booking.topic || booking.session_type || 'Professional session')}</p>
+                {isProfessionalView && bookingClientId ? (
+                  <ProfileUserLink viewerUserId={user?.id} subjectUserId={bookingClientId} className="inline-block min-w-0">
+                    <p className="truncate text-lg font-black text-slate-950 hover:underline">{booking.user?.full_name || 'Client'}</p>
+                  </ProfileUserLink>
+                ) : !isProfessionalView && professionalUserId ? (
+                  <ProfileUserLink viewerUserId={user?.id} subjectUserId={professionalUserId} className="inline-block min-w-0">
+                    <p className="truncate text-lg font-black text-slate-950 hover:underline">{professionalLabel}</p>
+                  </ProfileUserLink>
+                ) : (
+                  <p className="text-lg font-black text-slate-950">{isProfessionalView ? (booking.user?.full_name || 'Client') : (booking.professional?.full_name || booking.topic || booking.session_type || 'Professional session')}</p>
+                )}
                 <p className="mt-1 text-sm font-semibold text-slate-500">{booking.role?.name || booking.session_type || 'Professional session'}</p>
               </div>
             </div>
@@ -9476,13 +9903,27 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             </section>
           ) : null}
           {!professionalReviews.length ? <EmptyState icon={Star} title="No Reviews Yet" text="Reviews from completed sessions will appear here." /> : null}
-          {professionalReviews.map((review) => (
+          {professionalReviews.map((review) => {
+            const clientId = !review.is_anonymous ? review.client_id || review.client?.id : null;
+            return (
             <article key={review.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
-                <Avatar src={review.is_anonymous ? null : review.client?.profile_picture} name={review.is_anonymous ? 'Anonymous' : review.client?.full_name} />
+                {clientId ? (
+                  <ProfileUserLink viewerUserId={user?.id} subjectUserId={clientId} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
+                    <Avatar src={review.client?.profile_picture} name={review.client?.full_name} />
+                  </ProfileUserLink>
+                ) : (
+                  <Avatar src={review.is_anonymous ? null : review.client?.profile_picture} name={review.is_anonymous ? 'Anonymous' : review.client?.full_name} />
+                )}
                 <div>
-                  <p className="font-black text-slate-950">{review.is_anonymous ? 'Anonymous client' : review.client?.full_name || 'Client'}</p>
+                  {clientId ? (
+                    <ProfileUserLink viewerUserId={user?.id} subjectUserId={clientId} className="block min-w-0">
+                      <p className="truncate font-black text-slate-950 hover:underline">{review.client?.full_name || 'Client'}</p>
+                    </ProfileUserLink>
+                  ) : (
+                    <p className="font-black text-slate-950">{review.is_anonymous ? 'Anonymous client' : review.client?.full_name || 'Client'}</p>
+                  )}
                   <p className="text-xs font-semibold text-slate-400">{review.session?.created_at ? new Date(review.session.created_at).toLocaleDateString() : timeAgo(review.created_at)}</p>
                 </div>
                 </div>
@@ -9494,7 +9935,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               </div>
               <p className="mt-3 text-sm leading-6 text-slate-600">{review.review_text || 'No written review.'}</p>
             </article>
-          ))}
+            );
+          })}
         </div>
       );
     }
@@ -9508,12 +9950,26 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           </section>
           {!professionalProfile ? <EmptyState icon={Briefcase} title="Not a Professional" text="You need an approved professional profile to receive session requests." action="Apply" onAction={() => router.push('/app/settings/become-professional')} /> : null}
           {professionalProfile && !professionalSessionRequests.length ? <EmptyState icon={MessageCircle} title="No Pending Requests" text="New session requests will appear here." /> : null}
-          {professionalSessionRequests.map((request) => (
+          {professionalSessionRequests.map((request) => {
+            const requesterId = request.user_id || request.user?.id;
+            return (
             <article key={request.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <div className="flex items-center gap-3">
-                <Avatar src={request.user?.profile_picture} name={request.user?.full_name || 'Member'} />
+                {requesterId ? (
+                  <ProfileUserLink viewerUserId={user?.id} subjectUserId={requesterId} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
+                    <Avatar src={request.user?.profile_picture} name={request.user?.full_name || 'Member'} />
+                  </ProfileUserLink>
+                ) : (
+                  <Avatar src={request.user?.profile_picture} name={request.user?.full_name || 'Member'} />
+                )}
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-black text-slate-950">{request.user?.full_name || 'New session request'}</p>
+                  {requesterId ? (
+                    <ProfileUserLink viewerUserId={user?.id} subjectUserId={requesterId} className="block min-w-0">
+                      <p className="truncate font-black text-slate-950 hover:underline">{request.user?.full_name || 'New session request'}</p>
+                    </ProfileUserLink>
+                  ) : (
+                    <p className="truncate font-black text-slate-950">{request.user?.full_name || 'New session request'}</p>
+                  )}
                   <p className="text-sm font-semibold text-slate-500">{request.role?.name || 'Professional help'} - {request.created_at ? timeAgo(request.created_at) : 'recent'}</p>
                 </div>
                 <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-black uppercase text-amber-700">Pending</span>
@@ -9524,7 +9980,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                 <button type="button" onClick={() => void updateProfessionalSessionRequest(request, 'accept')} disabled={saving} className="rounded-[16px] bg-emerald-500 py-3 text-sm font-black text-white disabled:opacity-50">Accept</button>
               </div>
             </article>
-          ))}
+            );
+          })}
         </div>
       );
     }
@@ -9612,15 +10069,33 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     return (
       <div className="space-y-4 px-4 py-4">
         <section className="rounded-[28px] bg-white p-6 text-center shadow-sm ring-1 ring-slate-200">
-          <Avatar src={related.profile_picture} name={getUserDisplayName(related)} size="lg" />
-          <h2 className="mt-4 text-3xl font-black text-slate-950">{getUserDisplayName(related)}</h2>
+          <div className="mx-auto w-fit">
+            <ProfileUserLink viewerUserId={user?.id} subjectUserId={userId} className="inline-block rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
+              <Avatar src={related.profile_picture} name={getUserDisplayName(related)} size="lg" />
+            </ProfileUserLink>
+          </div>
+          <ProfileUserLink viewerUserId={user?.id} subjectUserId={userId} className="mt-4 inline-block">
+            <h2 className="text-3xl font-black text-slate-950 hover:underline">{getUserDisplayName(related)}</h2>
+          </ProfileUserLink>
           <p className="text-sm text-slate-500">{related.username ? `@${related.username}` : related.email}</p>
           <div className="mt-4 flex justify-center gap-2">
             {related.verified ? <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700">Verified</span> : null}
             <span className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-black text-blue-700">{related.role || 'user'}</span>
           </div>
         </section>
-        <Link href="/app/messages" className="block rounded-[20px] bg-blue-600 py-4 text-center font-black text-white">Message</Link>
+        {user && userId === user.id ? (
+          <Link href="/app/messages" className="block rounded-[20px] bg-blue-600 py-4 text-center font-black text-white">
+            Messages
+          </Link>
+        ) : user && userId ? (
+          <button
+            type="button"
+            onClick={() => void openConversationWithUser(userId)}
+            className="block w-full rounded-[20px] bg-blue-600 py-4 text-center font-black text-white"
+          >
+            Message
+          </button>
+        ) : null}
         <section className="space-y-3">
           <h3 className="px-1 text-lg font-black text-slate-950">Posts</h3>
           {!relatedPosts.length ? (
@@ -9647,12 +10122,29 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             <h2 className="mt-4 text-3xl font-black">Manage Relationships</h2>
             <p className="mt-2 text-sm text-slate-300">Verify, end, or remove records. User reports do not hide relationships automatically.</p>
           </section>
-          {adminRelationships.map((rel) => (
+          {adminRelationships.map((rel) => {
+            const relOwnerId = rel.user_id || rel.users?.id;
+            return (
             <article key={rel.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-lg font-black text-slate-950">{rel.users?.full_name || 'Member'}</p>
-                  <p className="text-sm text-slate-500">with {rel.partner_name || rel.partner_phone || 'Partner'}</p>
+                  {relOwnerId ? (
+                    <ProfileUserLink viewerUserId={user?.id} subjectUserId={relOwnerId} className="inline-block min-w-0">
+                      <p className="truncate text-lg font-black text-slate-950 hover:underline">{rel.users?.full_name || 'Member'}</p>
+                    </ProfileUserLink>
+                  ) : (
+                    <p className="text-lg font-black text-slate-950">{rel.users?.full_name || 'Member'}</p>
+                  )}
+                  <p className="text-sm text-slate-500">
+                    with{' '}
+                    {rel.partner_user_id ? (
+                      <ProfileUserLink viewerUserId={user?.id} subjectUserId={rel.partner_user_id} className="inline font-semibold text-slate-700 hover:underline">
+                        {rel.partner_name || rel.partner_phone || 'Partner'}
+                      </ProfileUserLink>
+                    ) : (
+                      <span>{rel.partner_name || rel.partner_phone || 'Partner'}</span>
+                    )}
+                  </p>
                   <p className="mt-2 text-sm font-semibold capitalize text-slate-600">{rel.type || 'relationship'} - {rel.privacy_level || 'private'}</p>
                 </div>
                 <span className={`rounded-full px-3 py-1 text-xs font-black uppercase ${rel.status === 'verified' ? 'bg-emerald-50 text-emerald-700' : rel.status === 'ended' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-700'}`}>{rel.status || 'pending'}</span>
@@ -9664,7 +10156,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                 <button type="button" onClick={() => void updateAdminRelationship(rel.id, 'delete')} disabled={saving} className="rounded-[16px] bg-red-800 py-3 text-sm font-black text-white disabled:opacity-40">Delete</button>
               </div>
             </article>
-          ))}
+            );
+          })}
         </div>
       );
     }
@@ -9679,9 +10172,13 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           {adminUsers.map((member) => (
             <article key={member.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <div className="flex gap-3">
-                <Avatar src={member.profile_picture} name={member.full_name || member.email} />
+                <ProfileUserLink viewerUserId={user?.id} subjectUserId={member.id} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
+                  <Avatar src={member.profile_picture} name={member.full_name || member.email} />
+                </ProfileUserLink>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-black text-slate-950">{member.full_name || 'Member'}</p>
+                  <ProfileUserLink viewerUserId={user?.id} subjectUserId={member.id} className="block min-w-0">
+                    <p className="truncate font-black text-slate-950 hover:underline">{member.full_name || 'Member'}</p>
+                  </ProfileUserLink>
                   <p className="truncate text-sm text-slate-500">{member.email}</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <span className="rounded-full bg-pink-50 px-2 py-1 text-xs font-black text-pink-700">{member.role || 'user'}</span>
@@ -9712,7 +10209,12 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                     <option value="super_admin">Super Admin</option>
                   </select>
                 ) : (
-                  <Link href={`/app/profile/${member.id}`} className="rounded-[16px] bg-blue-50 py-3 text-center text-sm font-black text-blue-700">View</Link>
+                  <Link
+                    href={webAppProfileHref(user?.id, member.id) ?? `/app/profile/${encodeURIComponent(member.id)}`}
+                    className="rounded-[16px] bg-blue-50 py-3 text-center text-sm font-black text-blue-700"
+                  >
+                    View
+                  </Link>
                 )}
               </div>
             </article>
@@ -9730,12 +10232,26 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             <h2 className="mt-4 text-3xl font-black">{isPosts ? 'Posts Review' : 'Reels Review'}</h2>
             <p className="mt-2 text-sm text-slate-300">Approve or reject content moderation items.</p>
           </section>
-          {rows.map((row) => (
+          {rows.map((row) => {
+            const authorId = row.user_id || row.users?.id;
+            return (
             <article key={row.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <div className="flex items-center gap-3">
-                <Avatar src={row.users?.profile_picture} name={row.users?.full_name} />
+                {authorId ? (
+                  <ProfileUserLink viewerUserId={user?.id} subjectUserId={authorId} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
+                    <Avatar src={row.users?.profile_picture} name={row.users?.full_name} />
+                  </ProfileUserLink>
+                ) : (
+                  <Avatar src={row.users?.profile_picture} name={row.users?.full_name} />
+                )}
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-black text-slate-950">{row.users?.full_name || 'Member'}</p>
+                  {authorId ? (
+                    <ProfileUserLink viewerUserId={user?.id} subjectUserId={authorId} className="block min-w-0">
+                      <p className="truncate font-black text-slate-950 hover:underline">{row.users?.full_name || 'Member'}</p>
+                    </ProfileUserLink>
+                  ) : (
+                    <p className="truncate font-black text-slate-950">{row.users?.full_name || 'Member'}</p>
+                  )}
                   <p className="truncate text-sm text-slate-600">{isPosts ? row.content : row.caption}</p>
                 </div>
                 <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-black uppercase text-amber-700">{row.moderation_status || 'pending'}</span>
@@ -9746,7 +10262,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                 <button type="button" onClick={() => void updateModeration(isPosts ? 'posts' : 'reels', row.id, 'rejected')} disabled={saving || row.moderation_status === 'rejected'} className="rounded-[16px] bg-red-500 py-3 text-sm font-black text-white disabled:opacity-50">Reject</button>
               </div>
             </article>
-          ))}
+            );
+          })}
         </div>
       );
     }
@@ -9758,12 +10275,26 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             <h2 className="mt-4 text-3xl font-black">Professional Applications</h2>
             <p className="mt-2 text-sm text-slate-300">Approve or reject professional requests.</p>
           </section>
-          {professionalApplications.map((app) => (
+          {professionalApplications.map((app) => {
+            const applicantId = app.user_id || app.user?.id;
+            return (
             <article key={app.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <div className="flex items-start gap-3">
-                <Avatar src={app.user?.profile_picture} name={app.user?.full_name} />
+                {applicantId ? (
+                  <ProfileUserLink viewerUserId={user?.id} subjectUserId={applicantId} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
+                    <Avatar src={app.user?.profile_picture} name={app.user?.full_name} />
+                  </ProfileUserLink>
+                ) : (
+                  <Avatar src={app.user?.profile_picture} name={app.user?.full_name} />
+                )}
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-lg font-black text-slate-950">{app.user?.full_name || 'Applicant'}</p>
+                  {applicantId ? (
+                    <ProfileUserLink viewerUserId={user?.id} subjectUserId={applicantId} className="block min-w-0">
+                      <p className="truncate text-lg font-black text-slate-950 hover:underline">{app.user?.full_name || 'Applicant'}</p>
+                    </ProfileUserLink>
+                  ) : (
+                    <p className="truncate text-lg font-black text-slate-950">{app.user?.full_name || 'Applicant'}</p>
+                  )}
                   <p className="truncate text-sm text-slate-500">{app.user?.email}</p>
                   <p className="mt-2 text-sm font-semibold text-slate-600">{app.role?.name || app.application_data?.role || 'Professional'}</p>
                 </div>
@@ -9774,7 +10305,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                 <button type="button" onClick={() => void updateProfessionalApplication(app.id, 'rejected')} className="rounded-[16px] bg-red-500 py-3 text-sm font-black text-white">Reject</button>
               </div>
             </article>
-          ))}
+            );
+          })}
         </div>
       );
     }
@@ -10010,10 +10542,29 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             <h2 className="mt-4 text-3xl font-black">Payment Verifications</h2>
             <p className="mt-2 text-sm text-slate-300">Payment proof queue.</p>
           </section>
-          {paymentSubmissions.map((payment) => (
+          {paymentSubmissions.map((payment) => {
+            const payerId = payment.user_id || payment.user?.id;
+            return (
             <article key={payment.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-              <p className="text-lg font-black text-slate-950">{payment.user?.full_name || payment.user?.email || 'Payment'}</p>
-              <p className="mt-1 text-sm text-slate-500">{payment.transaction_reference || payment.reference || payment.method || 'No reference'} - {payment.amount || ''}</p>
+              <div className="flex items-start gap-3">
+                {payerId ? (
+                  <ProfileUserLink viewerUserId={user?.id} subjectUserId={payerId} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
+                    <Avatar src={payment.user?.profile_picture} name={payment.user?.full_name || payment.user?.email || 'Member'} />
+                  </ProfileUserLink>
+                ) : (
+                  <Avatar src={payment.user?.profile_picture} name={payment.user?.full_name || payment.user?.email || 'Member'} />
+                )}
+                <div className="min-w-0 flex-1">
+                  {payerId ? (
+                    <ProfileUserLink viewerUserId={user?.id} subjectUserId={payerId} className="block min-w-0">
+                      <p className="truncate text-lg font-black text-slate-950 hover:underline">{payment.user?.full_name || payment.user?.email || 'Payment'}</p>
+                    </ProfileUserLink>
+                  ) : (
+                    <p className="truncate text-lg font-black text-slate-950">{payment.user?.full_name || payment.user?.email || 'Payment'}</p>
+                  )}
+                  <p className="mt-1 text-sm text-slate-500">{payment.transaction_reference || payment.reference || payment.method || 'No reference'} - {payment.amount || ''}</p>
+                </div>
+              </div>
               {payment.proof_url || payment.payment_proof_url ? <Link href={`/app/admin/payment-proof-viewer?imageUrl=${encodeURIComponent(payment.proof_url || payment.payment_proof_url)}`} className="mt-3 inline-flex rounded-[14px] bg-blue-50 px-4 py-2 text-sm font-black text-blue-700">View proof</Link> : null}
               <span className="mt-3 block rounded-full bg-amber-50 px-3 py-1 text-center text-xs font-black uppercase text-amber-700">{payment.status || 'pending'}</span>
               {payment.status === 'pending' ? (
@@ -10023,7 +10574,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                 </div>
               ) : null}
             </article>
-          ))}
+            );
+          })}
         </div>
       );
     }
@@ -10104,7 +10656,15 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="font-black capitalize text-slate-950">{String(appeal.appeal_type || 'appeal').replace(/_/g, ' ')}</p>
-                  <p className="mt-1 truncate text-sm text-slate-500">User ID: {String(appeal.user_id || '').slice(0, 8) || 'Unknown'}</p>
+                  <p className="mt-1 truncate text-sm text-slate-500">
+                    {appeal.user_id ? (
+                      <ProfileUserLink viewerUserId={user?.id} subjectUserId={appeal.user_id} className="font-semibold text-blue-700 hover:underline">
+                        <span title={String(appeal.user_id)}>User {String(appeal.user_id).slice(0, 8)}…</span>
+                      </ProfileUserLink>
+                    ) : (
+                      <span>User unknown</span>
+                    )}
+                  </p>
                 </div>
                 <span className={`rounded-full px-3 py-1 text-xs font-black uppercase ${appeal.status === 'approved' ? 'bg-emerald-50 text-emerald-700' : appeal.status === 'rejected' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>{appeal.status || 'pending'}</span>
               </div>
@@ -10136,12 +10696,26 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           </section>
           {routeRowsLoading ? <ScreenSkeleton /> : null}
           {!routeRowsLoading && !routeRows.length ? <EmptyState icon={Heart} title="No Dating Profiles" text={routeRowsError || 'No dating profiles are available.'} /> : null}
-          {routeRows.map((profile) => (
+          {routeRows.map((profile) => {
+            const memberId = profile.user_id || profile.users?.id;
+            return (
             <article key={profile.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <div className="flex gap-3">
-                <Avatar src={profile.users?.profile_picture} name={profile.users?.full_name || profile.users?.email || 'Member'} />
+                {memberId ? (
+                  <ProfileUserLink viewerUserId={user?.id} subjectUserId={memberId} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
+                    <Avatar src={profile.users?.profile_picture} name={profile.users?.full_name || profile.users?.email || 'Member'} />
+                  </ProfileUserLink>
+                ) : (
+                  <Avatar src={profile.users?.profile_picture} name={profile.users?.full_name || profile.users?.email || 'Member'} />
+                )}
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-black text-slate-950">{profile.users?.full_name || profile.users?.email || 'Dating member'}</p>
+                  {memberId ? (
+                    <ProfileUserLink viewerUserId={user?.id} subjectUserId={memberId} className="block min-w-0">
+                      <p className="truncate font-black text-slate-950 hover:underline">{profile.users?.full_name || profile.users?.email || 'Dating member'}</p>
+                    </ProfileUserLink>
+                  ) : (
+                    <p className="truncate font-black text-slate-950">{profile.users?.full_name || profile.users?.email || 'Dating member'}</p>
+                  )}
                   <p className="truncate text-sm text-slate-500">{[profile.age, profile.location_city, profile.location_country].filter(Boolean).join(' - ') || profile.user_id}</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <span className={`rounded-full px-2 py-1 text-xs font-black ${profile.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{profile.is_active ? 'active' : 'inactive'}</span>
@@ -10164,7 +10738,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                 <button type="button" onClick={() => void updateAdminDatingProfile(profile, 'delete')} disabled={saving} className="rounded-[16px] bg-red-800 py-3 text-sm font-black text-white disabled:opacity-50">Delete</button>
               </div>
             </article>
-          ))}
+            );
+          })}
         </div>
       );
     }
@@ -10402,13 +10977,39 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             </div>
           </section>
           {!filteredSessions.length ? <EmptyState icon={Calendar} title="No Sessions Loaded" text="No professional sessions match this filter." /> : null}
-          {filteredSessions.map((session) => (
+          {filteredSessions.map((session) => {
+            const sessionUserId = session.user_id || session.user?.id;
+            const adminSessionProfessionalId = session.professional?.user_id || session.professional?.pro_user?.id;
+            const adminSessionProfessionalLabel =
+              session.professional?.pro_user?.full_name || session.professional?.full_name || 'professional';
+            return (
             <article key={session.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <div className="flex items-start gap-3">
-                <Avatar src={session.user?.profile_picture} name={session.user?.full_name || session.user?.email || 'Client'} />
+                {sessionUserId ? (
+                  <ProfileUserLink viewerUserId={user?.id} subjectUserId={sessionUserId} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
+                    <Avatar src={session.user?.profile_picture} name={session.user?.full_name || session.user?.email || 'Client'} />
+                  </ProfileUserLink>
+                ) : (
+                  <Avatar src={session.user?.profile_picture} name={session.user?.full_name || session.user?.email || 'Client'} />
+                )}
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-black text-slate-950">{session.user?.full_name || session.user?.email || 'Client'}</p>
-                  <p className="mt-1 text-sm text-slate-500">with {session.professional?.full_name || 'professional'}</p>
+                  {sessionUserId ? (
+                    <ProfileUserLink viewerUserId={user?.id} subjectUserId={sessionUserId} className="block min-w-0">
+                      <p className="truncate font-black text-slate-950 hover:underline">{session.user?.full_name || session.user?.email || 'Client'}</p>
+                    </ProfileUserLink>
+                  ) : (
+                    <p className="truncate font-black text-slate-950">{session.user?.full_name || session.user?.email || 'Client'}</p>
+                  )}
+                  <p className="mt-1 text-sm text-slate-500">
+                    with{' '}
+                    {adminSessionProfessionalId ? (
+                      <ProfileUserLink viewerUserId={user?.id} subjectUserId={adminSessionProfessionalId} className="inline font-semibold text-slate-600 hover:underline">
+                        {adminSessionProfessionalLabel}
+                      </ProfileUserLink>
+                    ) : (
+                      <span>{session.professional?.full_name || 'professional'}</span>
+                    )}
+                  </p>
                 </div>
                 <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black uppercase text-blue-700">{session.status || 'pending'}</span>
               </div>
@@ -10419,7 +11020,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                 {session.booking_notes ? <p className="rounded-[14px] bg-slate-50 p-3">{session.booking_notes}</p> : null}
               </div>
             </article>
-          ))}
+            );
+          })}
         </div>
       );
     }
@@ -10432,10 +11034,29 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             <p className="mt-2 text-sm text-slate-300">Ratings and feedback moderation.</p>
           </section>
           {!adminProfessionalReviews.length ? <EmptyState icon={Star} title="No Reviews Loaded" text="No professional reviews are available in the admin queue." /> : null}
-          {adminProfessionalReviews.map((review) => (
+          {adminProfessionalReviews.map((review) => {
+            const adminReviewClientId = !review.is_anonymous ? review.client_id || review.client?.id : null;
+            const adminReviewProUserId = review.professional?.user_id || review.professional?.pro_user?.id;
+            const adminReviewProLabel = review.professional?.pro_user?.full_name || review.professional?.full_name || 'professional';
+            return (
             <article key={review.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-              <p className="font-black text-slate-950">{review.client?.full_name || review.client?.email || 'Client'}</p>
-              <p className="mt-1 text-sm text-slate-500">for {review.professional?.full_name || 'professional'}</p>
+              {adminReviewClientId ? (
+                <ProfileUserLink viewerUserId={user?.id} subjectUserId={adminReviewClientId} className="inline-block min-w-0">
+                  <p className="truncate font-black text-slate-950 hover:underline">{review.client?.full_name || review.client?.email || 'Client'}</p>
+                </ProfileUserLink>
+              ) : (
+                <p className="font-black text-slate-950">{review.client?.full_name || review.client?.email || 'Client'}</p>
+              )}
+              <p className="mt-1 text-sm text-slate-500">
+                for{' '}
+                {adminReviewProUserId ? (
+                  <ProfileUserLink viewerUserId={user?.id} subjectUserId={adminReviewProUserId} className="inline font-semibold text-slate-600 hover:underline">
+                    {adminReviewProLabel}
+                  </ProfileUserLink>
+                ) : (
+                  <span>{review.professional?.full_name || 'professional'}</span>
+                )}
+              </p>
               <p className="mt-1 text-sm font-semibold text-amber-500">{`${Math.max(1, Number(review.rating || 0))}/5 stars`}</p>
               <p className="mt-2 text-sm text-slate-600">{review.review_text || 'No written review.'}</p>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -10450,7 +11071,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                 <button type="button" onClick={() => void updateProfessionalReviewModeration(review, 'rejected')} disabled={saving || review.moderation_status === 'rejected'} className="rounded-[16px] bg-red-500 py-3 text-xs font-black text-white disabled:opacity-50">Reject</button>
               </div>
             </article>
-          ))}
+            );
+          })}
         </div>
       );
     }
@@ -10491,9 +11113,13 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           {routeRows.map((member) => (
             <article key={member.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <div className="flex items-center gap-3">
-                <Avatar src={member.profile_picture} name={member.full_name || member.email} />
+                <ProfileUserLink viewerUserId={user?.id} subjectUserId={member.id} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
+                  <Avatar src={member.profile_picture} name={member.full_name || member.email} />
+                </ProfileUserLink>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-black text-slate-950">{member.full_name || member.email || 'Member'}</p>
+                  <ProfileUserLink viewerUserId={user?.id} subjectUserId={member.id} className="block min-w-0">
+                    <p className="truncate font-black text-slate-950 hover:underline">{member.full_name || member.email || 'Member'}</p>
+                  </ProfileUserLink>
                   <p className="truncate text-sm text-slate-500">{member.email}</p>
                 </div>
                 <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black uppercase text-blue-700">{member.role || 'user'}</span>
@@ -10914,6 +11540,67 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             </div>
           </div>
         ) : null}
+        {datingDiscoveryMatchModal ? (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dating-match-title"
+            className="fixed inset-0 z-[60] mx-auto flex max-w-[430px] items-center justify-center bg-black/60 px-5 backdrop-blur-[2px]"
+            onClick={() => setDatingDiscoveryMatchModal(null)}
+          >
+            <div
+              className="w-full max-w-[340px] rounded-[28px] bg-gradient-to-br from-pink-500 via-rose-500 to-indigo-600 p-6 text-center shadow-2xl ring-4 ring-white/25"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Sparkles className="mx-auto h-11 w-11 text-white drop-shadow-md" />
+              <h2 id="dating-match-title" className="mt-3 text-3xl font-black tracking-tight text-white">
+                {"It's a match!"}
+              </h2>
+              <p className="mt-2 text-sm font-semibold leading-snug text-white/90">
+                You and {datingDiscoveryMatchModal.name} liked each other.
+              </p>
+              <div className="mt-5 flex justify-center">
+                <div className="rounded-full bg-white/20 p-1 ring-4 ring-white/40">
+                  <Link
+                    href={`/app/dating/user-profile?userId=${encodeURIComponent(datingDiscoveryMatchModal.otherUserId)}`}
+                    className="block rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-white"
+                    onClick={() => setDatingDiscoveryMatchModal(null)}
+                  >
+                    <Avatar src={datingDiscoveryMatchModal.photoUrl} name={datingDiscoveryMatchModal.name} size="lg" />
+                  </Link>
+                </div>
+              </div>
+              <div className="mt-6 flex flex-col gap-2.5">
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-center gap-2 rounded-[18px] bg-white py-3.5 text-sm font-black text-slate-900 shadow-lg active:scale-[0.99]"
+                  onClick={() => {
+                    const id = datingDiscoveryMatchModal.otherUserId;
+                    setDatingDiscoveryMatchModal(null);
+                    void openConversationWithUser(id);
+                  }}
+                >
+                  <MessageCircle className="h-5 w-5 text-blue-600" strokeWidth={2.4} />
+                  Send a message
+                </button>
+                <Link
+                  href={`/app/dating/user-profile?userId=${encodeURIComponent(datingDiscoveryMatchModal.otherUserId)}`}
+                  className="block w-full rounded-[18px] bg-white/15 py-3.5 text-center text-sm font-black text-white ring-1 ring-white/35 active:bg-white/25"
+                  onClick={() => setDatingDiscoveryMatchModal(null)}
+                >
+                  View profile
+                </Link>
+                <button
+                  type="button"
+                  className="w-full rounded-[18px] py-3 text-sm font-black text-white/95 underline-offset-4 hover:underline"
+                  onClick={() => setDatingDiscoveryMatchModal(null)}
+                >
+                  Keep swiping
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </WebShellSupabaseContext.Provider>
   );
@@ -11107,11 +11794,19 @@ function CommentItem({
   return (
     <div className="space-y-2">
       <div className="flex gap-3">
-        <Avatar src={comment.userAvatar} name={comment.userName} size="sm" />
+        <ProfileUserLink
+          viewerUserId={currentUserId}
+          subjectUserId={comment.userId}
+          className="shrink-0 self-start rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500"
+        >
+          <Avatar src={comment.userAvatar} name={comment.userName} size="sm" />
+        </ProfileUserLink>
         <div className="min-w-0 flex-1">
           <div className="rounded-[18px] bg-slate-100 px-4 py-3">
             <div className="flex items-start gap-2">
-              <p className="min-w-0 flex-1 truncate font-black text-slate-950">{comment.userName}</p>
+              <ProfileUserLink viewerUserId={currentUserId} subjectUserId={comment.userId} className="min-w-0 flex-1">
+                <p className="truncate font-black text-slate-950 hover:underline">{comment.userName}</p>
+              </ProfileUserLink>
               {isOwner && !editing ? (
                 <div className="flex shrink-0 items-center gap-1">
                   {comment.messageType !== 'sticker' ? (
@@ -11237,9 +11932,17 @@ function PostCard({
   return (
     <article className="rounded-[22px] border border-slate-200 bg-white shadow-sm">
       <div className="flex items-center gap-3 p-4">
-        <Avatar src={post.users?.profile_picture} name={getUserDisplayName(post.users)} />
+        <ProfileUserLink
+          viewerUserId={user?.id}
+          subjectUserId={post.user_id}
+          className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500"
+        >
+          <Avatar src={post.users?.profile_picture} name={getUserDisplayName(post.users)} />
+        </ProfileUserLink>
         <div className="min-w-0 flex-1">
-          <p className="truncate font-black text-slate-950">{getUserDisplayName(post.users)}</p>
+          <ProfileUserLink viewerUserId={user?.id} subjectUserId={post.user_id} className="block min-w-0">
+            <p className="truncate font-black text-slate-950 hover:underline">{getUserDisplayName(post.users)}</p>
+          </ProfileUserLink>
           <p className="text-xs font-semibold text-slate-400">{timeAgo(post.created_at)}</p>
         </div>
         <MoreHorizontal className="h-5 w-5 text-slate-400" />

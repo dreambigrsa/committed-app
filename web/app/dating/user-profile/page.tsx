@@ -64,6 +64,8 @@ function DatingProfileBridge() {
           deepLinkUrl={deepLinkUrl}
           title="View dating profile in app"
           description="Tap below to open this profile in Committed, or download the app if you don't have it yet."
+          webShellHref={`/app/dating/user-profile?userId=${encodeURIComponent(userId)}`}
+          webShellLabel="Open dating profile on web"
         />
       )}
     </div>

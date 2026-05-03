@@ -14,6 +14,20 @@ const VERIFY_EXPIRY_HOURS = 24;
 const RATE_LIMIT_PER_EMAIL_MINUTES = 5;
 const RATE_LIMIT_MAX_PER_EMAIL = 3;
 
+async function resolveUserIdByEmail(supabase: ReturnType<typeof createSupabaseAdmin>, email: string) {
+  const { data: userRow } = await supabase
+    .from('users')
+    .select('id')
+    .ilike('email', email)
+    .limit(1)
+    .maybeSingle();
+  if (userRow?.id) return userRow.id as string;
+
+  const { data: listData } = await supabase.auth.admin.listUsers({ page: 1, perPage: 500 });
+  const authUser = listData?.users?.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+  return authUser?.id ?? null;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = createSupabaseAdmin();
@@ -53,14 +67,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let uid: string | null = null;
-    const { data: profileRow } = await supabase.from('profiles').select('id').eq('email', email).limit(1).maybeSingle();
-    if (profileRow?.id) uid = profileRow.id;
-    if (!uid) {
-      const { data: listData } = await supabase.auth.admin.listUsers({ page: 1, perPage: 500 });
-      const authUser = listData?.users?.find((u) => u.email?.toLowerCase() === email.toLowerCase());
-      if (authUser?.id) uid = authUser.id;
-    }
+    const uid = await resolveUserIdByEmail(supabase, email);
 
     const rawToken = randomToken(32);
     const tokenHash = await hashToken(rawToken);

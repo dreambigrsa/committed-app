@@ -16,7 +16,6 @@ import { CheckCircle2, ArrowRight, Sparkles, Users, Shield, MapPin, X } from 'lu
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { COMMITTED_AI_ONBOARDING_VERSION } from '@committed/shared';
 import { supabase } from '@/lib/supabase';
 /** User id to use for onboarding: currentUser (AppContext) or auth user (AuthContext) when coming from verification. */
 function useOnboardingUserId(): { userId: string | null; isSessionReady: boolean } {
@@ -26,6 +25,8 @@ function useOnboardingUserId(): { userId: string | null; isSessionReady: boolean
   const isSessionReady = !authLoading;
   return { userId, isSessionReady };
 }
+
+const ONBOARDING_VERSION = '1.0.0';
 
 export default function OnboardingScreen() {
   const router = useRouter();
@@ -211,7 +212,7 @@ export default function OnboardingScreen() {
         .upsert({
           user_id: userId,
           has_completed_onboarding: true,
-          onboarding_version: COMMITTED_AI_ONBOARDING_VERSION,
+          onboarding_version: ONBOARDING_VERSION,
           ai_explanation_viewed: true,
           consent_given: true,
           consent_given_at: new Date().toISOString(),

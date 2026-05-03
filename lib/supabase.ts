@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { COMMITTED_SUPABASE_PROD_ANON_KEY, COMMITTED_SUPABASE_PROD_URL } from '@committed/shared';
 
 /**
  * IMPORTANT (Production):
@@ -9,11 +8,13 @@ import { COMMITTED_SUPABASE_PROD_ANON_KEY, COMMITTED_SUPABASE_PROD_URL } from '@
  * - EXPO_PUBLIC_SUPABASE_URL
  * - EXPO_PUBLIC_SUPABASE_ANON_KEY
  */
-const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || COMMITTED_SUPABASE_PROD_URL;
+const SUPABASE_URL =
+  process.env.EXPO_PUBLIC_SUPABASE_URL ||
+  'https://dizcuexznganwgddsrfo.supabase.co';
 const SUPABASE_ANON_KEY =
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
   (typeof globalThis !== 'undefined' && (globalThis as any).EXPO_PUBLIC_SUPABASE_ANON_KEY) ||
-  COMMITTED_SUPABASE_PROD_ANON_KEY;
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRpemN1ZXh6bmdhbndnZGRzcmZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUyNjcxODcsImV4cCI6MjA4MDg0MzE4N30.cvnt9KN4rz2u9yQbDQjFcA_Q7WDz2M_lGln3RCJ-hJQ';
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.length < 20) {
   console.error(

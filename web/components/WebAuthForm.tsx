@@ -4,7 +4,6 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AlertCircle, CheckCircle2, Eye, EyeOff, Loader2, Mail, UserRound } from 'lucide-react';
-import { normalizePhoneWithCountryCode } from '@committed/shared';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import OpenAppButton from '@/components/OpenAppButton';
 
@@ -33,36 +32,38 @@ const countryCodes = [
   { code: '+258', label: 'MZ' },
 ];
 
+function normalizePhone(countryCode: string, rawPhone: string) {
+  const trimmed = rawPhone.trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('+')) return trimmed.replace(/\s+/g, '');
+  const digits = trimmed.replace(/\D/g, '').replace(/^0+/, '');
+  return `${countryCode}${digits}`;
+}
+
 async function sendVerification(email: string, accessToken?: string) {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-  const controller = new AbortController();
-  const kill = window.setTimeout(() => controller.abort(), 20_000);
-  try {
-    const res = await fetch('/api/auth/send-verification', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ email }),
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      throw new Error(body || `Verification request failed (${res.status})`);
-    }
-  } finally {
-    window.clearTimeout(kill);
-  }
+  await fetch('/api/auth/send-verification', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ email }),
+  });
 }
 
-function raceWithTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  let timeoutId: ReturnType<typeof setTimeout>;
-  const timeout = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(
-      () => reject(new Error(`${label} is taking too long. Check your connection and try again.`)),
-      ms
-    );
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => reject(new Error(`${label} timed out. Please try again.`)), timeoutMs);
+    promise
+      .then(resolve)
+      .catch(reject)
+      .finally(() => window.clearTimeout(timeout));
   });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
+}
+
+function debugAuth(label: string, payload: Record<string, unknown>) {
+  if (process.env.NODE_ENV !== 'production') {
+    console.debug(label, payload);
+  }
 }
 
 export default function WebAuthForm({ mode }: { mode: Mode }) {
@@ -188,7 +189,7 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
         if (missingRequired.length) {
           throw new Error('Please accept all required legal documents to continue.');
         }
-        const normalizedPhone = normalizePhoneWithCountryCode(countryCode, phone);
+        const normalizedPhone = normalizePhone(countryCode, phone);
         const redirectTo =
           typeof window !== 'undefined'
             ? `${window.location.origin}/auth-callback`
@@ -216,70 +217,27 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
         return;
       }
 
-      // Clear any stale local session quickly; sign-in below replaces it.
-      try {
-        await Promise.race([
-          supabaseBrowser.auth.signOut({ scope: 'local' }),
-          new Promise<void>((resolve) => setTimeout(resolve, 2000)),
-        ]);
-      } catch {
-        /* non-fatal */
-      }
-
-      // Same-origin sign-in: server calls Supabase (works when the browser cannot reach *.supabase.co).
-      type SignInApiOk = {
-        access_token: string;
-        refresh_token: string;
-        user: { id: string | null; email: string | null };
-        profile?: { is_verified: boolean | null } | null;
-      };
-      const signInPayload = await raceWithTimeout(
-        fetch('/api/auth/sign-in', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: normalizedEmail, password }),
-        }).then(async (res) => {
-          const payload = (await res.json().catch(() => ({}))) as SignInApiOk & { error?: string };
-          if (!res.ok) {
-            throw new Error(
-              typeof payload.error === 'string' && payload.error ? payload.error : 'Sign in failed.'
-            );
-          }
-          return payload;
+      await withTimeout(supabaseBrowser.auth.signOut({ scope: 'local' }), 6000, 'Clearing old web session');
+      const { data, error: signInError } = await withTimeout(
+        supabaseBrowser.auth.signInWithPassword({
+          email: normalizedEmail,
+          password,
         }),
-        60_000,
+        12000,
         'Sign in'
       );
+      if (signInError) throw signInError;
 
-      const { access_token: accessToken, refresh_token: refreshToken, user: apiUser } = signInPayload;
-      if (!accessToken || !refreshToken) {
-        throw new Error('Sign-in returned no tokens. Please try again.');
-      }
-
-      const { error: setSessionError } = await supabaseBrowser.auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken,
+      const {
+        data: { user: authenticatedUser },
+        error: authenticatedUserError,
+      } = await withTimeout(supabaseBrowser.auth.getUser(), 8000, 'Loading authenticated user');
+      debugAuth('[WebAuthForm] Authenticated user object', {
+        id: authenticatedUser?.id ?? data.user?.id ?? null,
+        email: authenticatedUser?.email ?? data.user?.email ?? null,
+        signInUserId: data.user?.id ?? null,
+        error: authenticatedUserError?.message ?? null,
       });
-      if (setSessionError) throw setSessionError;
-
-      const signedInUser = apiUser;
-      if (!signedInUser?.id) {
-        throw new Error('Sign-in succeeded but no user was returned. Please try again.');
-      }
-
-      console.debug('[WebAuthForm] Authenticated user object', {
-        id: signedInUser.id,
-        email: signedInUser.email ?? null,
-        signInUserId: signedInUser.id,
-      });
-
-      const prof = signInPayload.profile;
-      console.debug('[WebAuthForm] Profile from sign-in API', { userId: signedInUser.id, profile: prof });
-      if (prof && prof.is_verified === false) {
-        await sendVerification(normalizedEmail, accessToken);
-        router.replace(`/verify-email?email=${encodeURIComponent(normalizedEmail)}`);
-        return;
-      }
 
       const redirectParam =
         typeof window !== 'undefined'

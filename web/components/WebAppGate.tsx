@@ -4,7 +4,6 @@ import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Bot, CheckCircle2, FileText, Loader2, Mail, ShieldCheck, Sparkles } from 'lucide-react';
-import { COMMITTED_AI_ONBOARDING_VERSION } from '@committed/shared';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 
 type LegalDoc = {
@@ -16,6 +15,8 @@ type LegalDoc = {
 };
 
 type GateStep = 'loading' | 'verify-email' | 'legal' | 'ai-consent' | 'ready' | 'error';
+
+const AI_ONBOARDING_VERSION = '1.0.0';
 
 const aiSteps = [
   {
@@ -34,6 +35,22 @@ const aiSteps = [
     text: 'When a deeper concern appears, AI may suggest verified professionals. You stay in control.',
   },
 ];
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => reject(new Error(`${label} timed out. Please try again.`)), timeoutMs);
+    promise
+      .then(resolve)
+      .catch(reject)
+      .finally(() => window.clearTimeout(timeout));
+  });
+}
+
+function debugAuth(label: string, payload: Record<string, unknown>) {
+  if (process.env.NODE_ENV !== 'production') {
+    console.debug(label, payload);
+  }
+}
 
 export default function WebAppGate({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -85,9 +102,9 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
     setStep('loading');
     try {
       const supabase = getSupabaseBrowser() as any;
-      const { authUser, session, userError } = await resolveAuthSnapshot();
+      const { authUser, session, userError } = await withTimeout(resolveAuthSnapshot(), 10000, 'Loading web auth session');
 
-      console.debug('[WebAppGate] Authenticated user object', {
+      debugAuth('[WebAppGate] Authenticated user object', {
         id: authUser?.id ?? null,
         email: authUser?.email ?? null,
         sessionUserId: session?.user?.id ?? null,
@@ -108,26 +125,42 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
       setUserId(currentUserId);
       setEmail(currentEmail);
 
-      const [{ data: profile }, { data: docs }, { data: acceptances }, { data: onboarding }] = await Promise.all([
-        supabase.from('profiles').select('is_verified').eq('id', currentUserId).maybeSingle(),
-        supabase
-          .from('legal_documents')
-          .select('id,title,slug,content,version')
-          .eq('is_active', true)
-          .eq('is_required', true)
-          .order('created_at', { ascending: true }),
-        supabase
-          .from('user_legal_acceptances')
-          .select('document_id,document_version')
-          .eq('user_id', currentUserId),
-        supabase
-          .from('user_onboarding_data')
-          .select('has_completed_onboarding,consent_given')
-          .eq('user_id', currentUserId)
-          .maybeSingle(),
-      ]);
+      const [{ data: profile }, { data: docs }, { data: acceptances }, { data: onboarding }] = await withTimeout(
+        Promise.all([
+          supabase
+            .from('users')
+            .select('id,email,email_verified,verified')
+            .eq('id', currentUserId)
+            .maybeSingle(),
+          supabase
+            .from('legal_documents')
+            .select('id,title,slug,content,version')
+            .eq('is_active', true)
+            .eq('is_required', true)
+            .order('created_at', { ascending: true }),
+          supabase
+            .from('user_legal_acceptances')
+            .select('document_id,document_version')
+            .eq('user_id', currentUserId),
+          supabase
+            .from('user_onboarding_data')
+            .select('has_completed_onboarding,consent_given')
+            .eq('user_id', currentUserId)
+            .maybeSingle(),
+        ]),
+        12000,
+        'Loading web onboarding state'
+      );
 
-      if (profile?.is_verified === false) {
+      debugAuth('[WebAppGate] Profile fetch response', {
+        requestedUserId: currentUserId,
+        profileUserId: profile?.id ?? null,
+        email: profile?.email ?? currentEmail,
+        emailVerified: profile?.email_verified ?? !!authUser.email_confirmed_at,
+      });
+
+      const isEmailVerified = (profile?.email_verified ?? false) || !!authUser.email_confirmed_at;
+      if (!isEmailVerified) {
         setStep('verify-email');
         return;
       }
@@ -242,7 +275,7 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
           {
             user_id: userId,
             has_completed_onboarding: true,
-            onboarding_version: COMMITTED_AI_ONBOARDING_VERSION,
+            onboarding_version: AI_ONBOARDING_VERSION,
             ai_explanation_viewed: true,
             consent_given: true,
             consent_given_at: now,

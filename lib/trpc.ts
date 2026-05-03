@@ -2,23 +2,32 @@ import { createTRPCReact } from "@trpc/react-query";
 import { httpLink } from "@trpc/client";
 import type { AppRouter } from "@/backend/trpc/app-router";
 import superjson from "superjson";
-import { getCommittedApiBaseUrl } from "@committed/shared";
 import { supabase } from "./supabase";
 
 export const trpc = createTRPCReact<AppRouter>();
 
 const getBaseUrl = () => {
+  // Try to get from environment variable first (highest priority)
+  // You can set this to:
+  // 1. Production server: https://committed-5mxf.onrender.com (always works, no local server needed)
+  // 2. Local server on physical device: http://YOUR_COMPUTER_IP:3000 (requires local server running)
+  // 3. Local server on emulator: http://localhost:3000 (requires local server running)
   const envUrl = process.env.EXPO_PUBLIC_COMMITTED_API_BASE_URL;
   if (envUrl) {
     console.log('[tRPC] Using API URL from environment:', envUrl);
-    return envUrl.replace(/\/$/, '');
+    return envUrl;
   }
 
-  const defaultUrl = getCommittedApiBaseUrl({ useLocalhostWhenDevAndUnset: true });
-
+  // Fallback options:
+  // - In development: use localhost (only works in emulator/simulator)
+  // - In production: use production server
+  const defaultUrl = __DEV__ 
+    ? "http://localhost:3000" // Only works in emulator/simulator
+    : "https://committed-5mxf.onrender.com"; // Production server
+  
   console.log('[tRPC] Using default API URL:', defaultUrl);
   console.log('[tRPC] Environment variable EXPO_PUBLIC_COMMITTED_API_BASE_URL:', process.env.EXPO_PUBLIC_COMMITTED_API_BASE_URL || 'NOT SET');
-
+  
   if (__DEV__) {
     console.warn(
       `⚠️ EXPO_PUBLIC_COMMITTED_API_BASE_URL not set!\n\n` +
@@ -33,7 +42,7 @@ const getBaseUrl = () => {
       `Currently using: ${defaultUrl} (only works in emulator)`
     );
   }
-
+  
   return defaultUrl;
 };
 

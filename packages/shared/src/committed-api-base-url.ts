@@ -23,10 +23,9 @@ export function getCommittedApiBaseUrl(options: GetCommittedApiBaseUrlOptions = 
       : undefined;
   if (envRaw) return stripTrailingSlash(envRaw);
 
-  const rnDev =
-    typeof globalThis !== 'undefined' && (globalThis as { __DEV__?: boolean }).__DEV__ === true;
   const isDev =
-    rnDev || (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development');
+    (typeof __DEV__ !== 'undefined' && __DEV__) ||
+    (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development');
 
   if (useLocalhostWhenDevAndUnset && isDev) {
     return 'http://localhost:3000';

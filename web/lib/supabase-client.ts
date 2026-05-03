@@ -1,15 +1,11 @@
 'use client';
 
 import { createClient } from '@supabase/supabase-js';
-import {
-  COMMITTED_SUPABASE_PROD_ANON_KEY,
-  COMMITTED_SUPABASE_PROD_PROJECT_REF,
-  COMMITTED_SUPABASE_PROD_URL,
-} from '@committed/shared';
 
-const PROD_SUPABASE_URL = COMMITTED_SUPABASE_PROD_URL;
-const PROD_PROJECT_REF = COMMITTED_SUPABASE_PROD_PROJECT_REF;
-const PROD_SUPABASE_ANON_KEY = COMMITTED_SUPABASE_PROD_ANON_KEY;
+const PROD_SUPABASE_URL = 'https://dizcuexznganwgddsrfo.supabase.co';
+const PROD_PROJECT_REF = 'dizcuexznganwgddsrfo';
+const PROD_SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRpemN1ZXh6bmdhbndnZGRzcmZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUyNjcxODcsImV4cCI6MjA4MDg0MzE4N30.cvnt9KN4rz2u9yQbDQjFcA_Q7WDz2M_lGln3RCJ-hJQ';
 
 const allowAlternateProject = process.env.NEXT_PUBLIC_ALLOW_ALT_SUPABASE === 'true';
 const envSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';

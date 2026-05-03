@@ -14,10 +14,10 @@ import { usePathname } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useApp } from '@/contexts/AppContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { COMMITTED_AI_ONBOARDING_VERSION } from '@committed/shared';
 import { supabase } from '@/lib/supabase';
 
 const AI_CONSENT_REMINDER_MS = 5 * 60 * 1000;
+const ONBOARDING_VERSION = '1.0.0';
 
 type ConsentSurface = 'sheet' | 'reminder';
 
@@ -137,7 +137,7 @@ export default function CommittedAIConsentEnforcer() {
         .upsert({
           user_id: userId,
           has_completed_onboarding: true,
-          onboarding_version: COMMITTED_AI_ONBOARDING_VERSION,
+          onboarding_version: ONBOARDING_VERSION,
           ai_explanation_viewed: true,
           consent_given: true,
           consent_given_at: new Date().toISOString(),

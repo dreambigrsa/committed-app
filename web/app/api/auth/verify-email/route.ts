@@ -1,12 +1,28 @@
 /**
  * GET /api/auth/verify-email?token=...
- * Validates token, marks used, sets profiles.is_verified = true.
+ * Validates token, marks used, and syncs the app users.email_verified flag.
  */
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 import { createSupabaseAdmin } from '@/lib/supabase-server';
 import { hashToken } from '@/lib/auth-tokens';
+
+async function resolveUserIdByEmail(supabase: ReturnType<typeof createSupabaseAdmin>, email: string | null) {
+  if (!email) return null;
+  const normalizedEmail = email.toLowerCase();
+  const { data: userRow } = await supabase
+    .from('users')
+    .select('id')
+    .ilike('email', normalizedEmail)
+    .limit(1)
+    .maybeSingle();
+  if (userRow?.id) return userRow.id as string;
+
+  const { data: listData } = await supabase.auth.admin.listUsers({ page: 1, perPage: 500 });
+  const authUser = listData?.users?.find((u) => u.email?.toLowerCase() === normalizedEmail);
+  return authUser?.id ?? null;
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -40,21 +56,15 @@ export async function GET(req: NextRequest) {
 
     let userId = row.user_id;
     if (!userId) {
-      const { data: byEmail } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('email', row.email)
-        .limit(1)
-        .maybeSingle();
-      userId = byEmail?.id ?? null;
+      userId = await resolveUserIdByEmail(supabase, row.email);
     }
 
     if (userId) {
       await supabase
-        .from('profiles')
+        .from('users')
         .update({
-          is_verified: true,
-          verified_at: new Date().toISOString(),
+          email_verified: true,
+          verified: true,
           updated_at: new Date().toISOString(),
         })
         .eq('id', userId);

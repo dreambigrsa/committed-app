@@ -82,12 +82,10 @@ export function mergeUsersProfileForWebShell(profile: UsersRow | null, authUser:
   const dbLooksLikeEmailPlaceholder = !!dbFull && (dbFullLower === email || dbFull.includes('@'));
 
   const saneDbFull = dbFull && !dbLooksLikeEmailPlaceholder ? dbFull : '';
-  const dbUsername = (profile?.username || '').trim();
   const hasUsersRow = !!profile?.id;
 
-  const full_name = (
-    hasUsersRow ? saneDbFull || dbUsername || meta.fullName : meta.fullName || saneDbFull || dbUsername
-  ).trim();
+  /** Never fold `username` into `full_name` — mobile uses `users.full_name` only; mixing breaks getDisplayName vs posts join. */
+  const full_name = (hasUsersRow ? saneDbFull || meta.fullName : meta.fullName || saneDbFull).trim();
 
   const phone_number =
     (profile?.phone_number || '').trim() || meta.phoneNumber || (authUser.phone || '').trim() || null;

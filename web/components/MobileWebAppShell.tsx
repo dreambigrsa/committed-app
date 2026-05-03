@@ -717,16 +717,17 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     [user?.profile_picture, shellAvatarFromFeed.picture]
   );
 
-  const shellAvatarNameUser = useMemo(
-    () =>
-      user
-        ? {
-            ...user,
-            full_name: (user.full_name && user.full_name.trim()) || shellAvatarFromFeed.fullName || user.full_name,
-          }
-        : null,
-    [user, shellAvatarFromFeed.fullName]
-  );
+  /** Prefer joined `users.full_name` when shell state wrongly used username as display name (see mergeUsersProfileForWebShell). */
+  const shellAvatarNameUser = useMemo(() => {
+    if (!user) return null;
+    const fn = (user.full_name || '').trim();
+    const un = (user.username || '').trim();
+    const feedFn = (shellAvatarFromFeed.fullName || '').trim();
+    if (feedFn && (!fn || fn === un)) {
+      return { ...user, full_name: feedFn };
+    }
+    return { ...user, full_name: fn || feedFn || user.full_name };
+  }, [user, shellAvatarFromFeed.fullName]);
 
   const [routePost, setRoutePost] = useState<FeedPost | null>(null);
   const [routePostLoading, setRoutePostLoading] = useState(false);
@@ -1592,7 +1593,11 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           if (fromFeedProfilePicture && !(prev.profile_picture || '').trim()) {
             next.profile_picture = resolveProfilePictureUrl(fromFeedProfilePicture) || fromFeedProfilePicture;
           }
-          if (fromFeedFullName && !(prev.full_name || '').trim()) {
+          if (
+            fromFeedFullName &&
+            (!(prev.full_name || '').trim() ||
+              (prev.full_name || '').trim() === (prev.username || '').trim())
+          ) {
             next.full_name = fromFeedFullName;
           }
           if (next.profile_picture === prev.profile_picture && next.full_name === prev.full_name) return prev;
@@ -1602,10 +1607,12 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           setSettingsProfilePictureUrl((prev) => ((prev || '').trim() ? prev : fromFeedProfilePicture));
         }
         if (fromFeedFullName) {
-          setSettingsForm((prev) => ({
-            ...prev,
-            fullName: (prev.fullName || '').trim() ? prev.fullName : fromFeedFullName,
-          }));
+          setSettingsForm((prev) => {
+            const p = (prev.fullName || '').trim();
+            const handle = (currentUser.username || '').trim();
+            const useFeed = !p || p === handle;
+            return { ...prev, fullName: useFeed ? fromFeedFullName : prev.fullName };
+          });
         }
       }
 

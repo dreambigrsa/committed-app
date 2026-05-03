@@ -464,6 +464,105 @@ const verificationRouteCards = [
   ['couple-selfie', 'Couple Selfie', 'Relationship proof photo'],
 ] as const;
 
+const USERS_SELECT_WITH_OPTIONAL_COLUMNS =
+  'id, full_name, username, email, phone_number, profile_picture, role, verified, email_verified, phone_verified, id_verified, banned_at, banned_by, ban_reason' as const;
+const USERS_SELECT_BASE =
+  'id, full_name, email, phone_number, profile_picture, role, email_verified, phone_verified, id_verified' as const;
+const POST_SELECT_WITH_OPTIONAL_USER_COLUMNS =
+  'id,user_id,content,media_urls,media_type,comment_count,created_at,users!posts_user_id_fkey(full_name,username,profile_picture)' as const;
+const POST_SELECT_BASE =
+  'id,user_id,content,media_urls,media_type,comment_count,created_at,users!posts_user_id_fkey(full_name,profile_picture)' as const;
+const REEL_SELECT_WITH_OPTIONAL_USER_COLUMNS =
+  'id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(full_name,username,profile_picture)' as const;
+const REEL_SELECT_BASE =
+  'id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(full_name,profile_picture)' as const;
+
+function isMissingColumnError(error: any): boolean {
+  const message = String(error?.message || '').toLowerCase();
+  const code = String(error?.code || '');
+  return code === '42703' || message.includes('column') || message.includes('schema cache');
+}
+
+async function fetchUsersRowById(supabase: SupabaseClient, userId: string) {
+  const full = await (supabase as any).from('users').select(USERS_SELECT_WITH_OPTIONAL_COLUMNS).eq('id', userId).maybeSingle();
+  if (!full.error || !isMissingColumnError(full.error)) return full;
+  const base = await (supabase as any).from('users').select(USERS_SELECT_BASE).eq('id', userId).maybeSingle();
+  return base.error ? base : { ...base, data: base.data ? { ...base.data, username: null, verified: null } : base.data };
+}
+
+async function fetchUsersRowByIdentifier(supabase: SupabaseClient, identifier: string) {
+  const clean = identifier.replace(/^@/, '').trim();
+  if (looksLikeUuid(identifier)) return fetchUsersRowById(supabase, identifier);
+
+  const full = await (supabase as any)
+    .from('users')
+    .select(USERS_SELECT_WITH_OPTIONAL_COLUMNS)
+    .eq('username', clean)
+    .maybeSingle();
+  if (!full.error || !isMissingColumnError(full.error)) return full;
+
+  const base = await (supabase as any).from('users').select(USERS_SELECT_BASE).eq('email', clean).maybeSingle();
+  return base.error ? base : { ...base, data: base.data ? { ...base.data, username: null, verified: null } : base.data };
+}
+
+function applyPostVisibility(query: any, userId: string) {
+  return query.or(getPostVisibilityOrFilter(userId)).order('created_at', { ascending: false });
+}
+
+function applyReelVisibility(query: any, userId: string) {
+  return query.or(getReelVisibilityOrFilter(userId)).order('created_at', { ascending: false });
+}
+
+async function fetchVisiblePosts(supabase: SupabaseClient, userId: string, limit: number) {
+  const full = await applyPostVisibility(
+    (supabase as any).from('posts').select(POST_SELECT_WITH_OPTIONAL_USER_COLUMNS),
+    userId
+  ).limit(limit);
+  if (!full.error || !isMissingColumnError(full.error)) return full;
+  return applyPostVisibility((supabase as any).from('posts').select(POST_SELECT_BASE), userId).limit(limit);
+}
+
+async function fetchVisibleReels(supabase: SupabaseClient, userId: string, limit: number) {
+  const full = await applyReelVisibility(
+    (supabase as any).from('reels').select(REEL_SELECT_WITH_OPTIONAL_USER_COLUMNS),
+    userId
+  ).limit(limit);
+  if (!full.error || !isMissingColumnError(full.error)) return full;
+  return applyReelVisibility((supabase as any).from('reels').select(REEL_SELECT_BASE), userId).limit(limit);
+}
+
+async function fetchProfilePosts(supabase: SupabaseClient, userId: string, limit: number) {
+  const full = await (supabase as any)
+    .from('posts')
+    .select(POST_SELECT_WITH_OPTIONAL_USER_COLUMNS)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (!full.error || !isMissingColumnError(full.error)) return full;
+  return (supabase as any)
+    .from('posts')
+    .select(POST_SELECT_BASE)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+}
+
+async function fetchProfileReels(supabase: SupabaseClient, userId: string, limit: number) {
+  const full = await (supabase as any)
+    .from('reels')
+    .select(REEL_SELECT_WITH_OPTIONAL_USER_COLUMNS)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (!full.error || !isMissingColumnError(full.error)) return full;
+  return (supabase as any)
+    .from('reels')
+    .select(REEL_SELECT_BASE)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+}
+
 const adminGenericRoutes: Record<string, { title: string; table: string; select: string; order?: string; description: string }> = {
   analytics: { title: 'Analytics', table: 'analytics_events', select: 'id,event_name,user_id,created_at', order: 'created_at', description: 'Recent product and safety analytics events.' },
   'ban-appeals': { title: 'Ban Appeals', table: 'ban_appeals', select: 'id,user_id,restriction_id,appeal_type,restricted_feature,reason,status,admin_response,reviewed_by,reviewed_at,created_at', order: 'created_at', description: 'Member appeal queue.' },
@@ -1669,11 +1768,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       /** Ensures REST calls use the refreshed JWT (avoids first `users` read returning an incomplete row). */
       await supabase.auth.getSession().catch(() => undefined);
 
-      const usersSelect =
-        'id, full_name, username, email, phone_number, profile_picture, role, verified, email_verified, phone_verified, id_verified, banned_at, banned_by, ban_reason' as const;
-
-      const fetchUsersRow = async () =>
-        supabase.from('users').select(usersSelect).eq('id', authUser.id).maybeSingle();
+      const fetchUsersRow = async () => fetchUsersRowById(supabase, authUser.id);
 
       let { data: profile, error: profileError } = await fetchUsersRow();
 
@@ -1845,18 +1940,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       });
 
       const [postsResult, reelsResult, relationshipResult, myDatingResult, datingResult, notificationsResult, conversationsResult, likesResult, matchesResult] = await withClientTimeout(Promise.all([
-        supabase
-          .from('posts')
-          .select('id,user_id,content,media_urls,media_type,comment_count,created_at,users!posts_user_id_fkey(full_name,username,profile_picture)')
-          .or(getPostVisibilityOrFilter(authUser.id))
-          .order('created_at', { ascending: false })
-          .limit(30),
-        supabase
-          .from('reels')
-          .select('id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(full_name,username,profile_picture)')
-          .or(getReelVisibilityOrFilter(authUser.id))
-          .order('created_at', { ascending: false })
-          .limit(20),
+        fetchVisiblePosts(supabase, authUser.id, 30),
+        fetchVisibleReels(supabase, authUser.id, 20),
         supabase
           .from('relationships')
           .select('id,user_id,partner_user_id,partner_name,partner_phone,type,status,start_date,privacy_level')
@@ -2689,12 +2774,10 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       setRouteProfileTab('posts');
       try {
         const identifier = decodeURIComponent(appPath[1]);
-        const userQuery = supabase
-          .from('users')
-          .select('id,full_name,username,email,phone_number,profile_picture,role,verified,email_verified,phone_verified,id_verified');
-        const { data } = looksLikeUuid(identifier)
-          ? await userQuery.eq('id', identifier).maybeSingle()
-          : await userQuery.eq('username', identifier.replace(/^@/, '')).maybeSingle();
+        const { data, error: profileUserError } = await fetchUsersRowByIdentifier(supabase, identifier);
+        if (profileUserError && process.env.NODE_ENV !== 'production') {
+          console.warn('[Web profile] user query', profileUserError.message);
+        }
         const profileUser = (data || null) as WebUser | null;
         if (!cancelled) setRouteProfileUser(profileUser);
         if (!profileUser?.id) {
@@ -2720,24 +2803,14 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
         /** Scoped to `profileUser.id` — visibility is enforced by RLS (`status` / own rows). Client `.or(moderation_status…)` breaks on schemas that only have `status`. */
         const baseQueries: Promise<any>[] = [
-          supabase
-            .from('posts')
-            .select('id,user_id,content,media_urls,media_type,comment_count,created_at,users!posts_user_id_fkey(full_name,username,profile_picture)')
-            .eq('user_id', profileUser.id)
-            .order('created_at', { ascending: false })
-            .limit(60),
+          fetchProfilePosts(supabase, profileUser.id, 60),
           supabase.from('post_likes').select('post_id,user_id').limit(500),
-          supabase
-            .from('reels')
-            .select('id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(full_name,username,profile_picture)')
-            .eq('user_id', profileUser.id)
-            .order('created_at', { ascending: false })
-            .limit(60),
+          fetchProfileReels(supabase, profileUser.id, 60),
           supabase.from('user_status').select('status_type,last_active_at').eq('user_id', profileUser.id).maybeSingle(),
           supabase
             .from('relationships')
             .select('id,type,status,partner_name,start_date,verified_date')
-            .eq('user_id', profileUser.id)
+            .or(`user_id.eq.${profileUser.id},partner_user_id.eq.${profileUser.id}`)
             .in('status', ['pending', 'verified'])
             .order('created_at', { ascending: false })
             .limit(1)
@@ -10498,11 +10571,12 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const renderUserProfileRoute = () => {
     const rawSegment = appPath[1];
     if (!rawSegment) return renderProfile();
-    const profileSubjectId = decodeURIComponent(rawSegment);
+    const routeIdentifier = decodeURIComponent(rawSegment);
     if (routeProfileLoading) return <ScreenSkeleton />;
     /** Prefer `routeProfileUser` whenever it matches the URL — it has full `users` flags (phone/email/id verified). Shell `user` can be incomplete after auth merge. */
+    const profileSubjectId = routeProfileUser?.id || routeIdentifier;
     const related =
-      (routeProfileUser && routeProfileUser.id === profileSubjectId ? routeProfileUser : null) ||
+      (routeProfileUser && (routeProfileUser.id === profileSubjectId || routeProfileUser.username === routeIdentifier.replace(/^@/, '')) ? routeProfileUser : null) ||
       (profileSubjectId === user?.id ? user : null) ||
       datingLikes.find((item) => item.user?.id === profileSubjectId)?.user ||
       datingMatches.find((item) => item.user?.id === profileSubjectId)?.user ||

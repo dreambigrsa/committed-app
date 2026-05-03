@@ -45,7 +45,11 @@ import {
 } from 'lucide-react';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { getDisplayName as getUserDisplayName } from '@/lib/identity';
-import { resolveProfilePictureUrl, resolveProfilePictureUrlWithSupabase } from '@/lib/profile-media-url';
+import {
+  profilePictureStorageKeyToBucketAndPath,
+  resolveProfilePictureUrl,
+  resolveProfilePictureUrlWithSupabase,
+} from '@/lib/profile-media-url';
 import { mergeUsersProfileForWebShell, usersRowBootstrapFromAuth } from '@/lib/web-user-profile';
 import { buildPostWebUrl, buildReelWebUrl } from '@/lib/appLinks';
 import { getPostVisibilityOrFilter, getReelVisibilityOrFilter } from '@/lib/content-visibility';
@@ -56,6 +60,14 @@ type TabKey = 'home' | 'feed' | 'reels' | 'dating' | 'search' | 'notifications' 
 
 /** Lets Avatar use `storage.getPublicUrl` for path-only `users.profile_picture` values (same as mobile). */
 const WebShellSupabaseContext = createContext<SupabaseClient | null>(null);
+
+/** Verbose avatar pipeline logs + Settings/Profile debug panel (set NEXT_PUBLIC_DEBUG_AVATAR=1 on staging/prod builds). */
+function isAvatarHardDebugEnabled(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    (process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_DEBUG_AVATAR === '1')
+  );
+}
 
 type WebUser = {
   id: string;
@@ -567,16 +579,30 @@ function Avatar({ src, name, size = 'md' }: { src?: string | null; name?: string
   useEffect(() => {
     setFailed(false);
   }, [src]);
+  useEffect(() => {
+    if (!isAvatarHardDebugEnabled() || !src) return;
+    console.log('[HARD DEBUG Avatar]', {
+      incomingSrc: src,
+      resolvedSrc,
+      hasShellSupabaseClient: Boolean(shellSupabase),
+      staticResolve: resolveProfilePictureUrl(src),
+    });
+  }, [src, resolvedSrc, shellSupabase]);
   if (resolvedSrc && !failed) {
     return (
       <img
         src={resolvedSrc}
         alt=""
         onError={() => {
-          if (process.env.NODE_ENV === 'development') {
-            console.warn('[Web Avatar] image failed to load:', resolvedSrc);
+          if (isAvatarHardDebugEnabled()) {
+            console.warn('[HARD DEBUG Avatar] <img> onError (check Network tab for status):', resolvedSrc);
           }
           setFailed(true);
+        }}
+        onLoad={() => {
+          if (isAvatarHardDebugEnabled()) {
+            console.log('[HARD DEBUG Avatar] <img> onLoad OK:', resolvedSrc);
+          }
         }}
         className={`${sizeClass} rounded-full object-cover`}
       />
@@ -814,6 +840,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const [relationshipPhotoUrl, setRelationshipPhotoUrl] = useState('');
   const [statusMediaUrl, setStatusMediaUrl] = useState('');
   const [settingsProfilePictureUrl, setSettingsProfilePictureUrl] = useState('');
+  /** Last `users.profile_picture` returned from Supabase (before merge); for hard-debug panel only. */
+  const [debugUsersRowProfilePicture, setDebugUsersRowProfilePicture] = useState<string | null>(null);
   const [uploadingLabel, setUploadingLabel] = useState<string | null>(null);
   const [adForm, setAdForm] = useState({
     title: '',
@@ -996,6 +1024,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
   const resetUserScopedState = useCallback(() => {
     setUser(null);
+    setDebugUsersRowProfilePicture(null);
     setPosts([]);
     setReels([]);
     setRoutePost(null);
@@ -1345,13 +1374,43 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         hadProfileError: !!profileError,
       });
 
-      if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
-        const rawPic = profile?.profile_picture ?? null;
-        console.log('[Web profile] users.profile_picture (avatar URL from DB, raw):', rawPic);
-        console.log('[Web profile] resolved for display:', resolveProfilePictureUrl(rawPic));
-      }
+      setDebugUsersRowProfilePicture(
+        profile != null &&
+          profile.profile_picture != null &&
+          String(profile.profile_picture).trim() !== ''
+          ? String(profile.profile_picture).trim()
+          : null
+      );
 
       const resolvedProfile = mergeUsersProfileForWebShell(profile, authUser);
+
+      if (isAvatarHardDebugEnabled()) {
+        console.log('[HARD DEBUG] AUTH USER:', {
+          id: authUser.id,
+          email: authUser.email,
+          phone: authUser.phone,
+          user_metadata: authUser.user_metadata,
+        });
+        console.log('[HARD DEBUG] PROFILE OBJECT:', profile);
+        console.log('[HARD DEBUG] RAW profile_picture (users table column):', profile?.profile_picture ?? null);
+        console.log(
+          '[HARD DEBUG] RAW profile.avatar_url:',
+          profile != null && 'avatar_url' in profile ? (profile as { avatar_url?: unknown }).avatar_url : '(not in select / schema uses profile_picture)'
+        );
+
+        const rawTrim = profile?.profile_picture != null ? String(profile.profile_picture).trim() : '';
+        if (rawTrim && supabase && !/^https?:\/\//i.test(rawTrim)) {
+          const { bucket, objectPath } = profilePictureStorageKeyToBucketAndPath(rawTrim);
+          const { data } = supabase.storage.from(bucket).getPublicUrl(objectPath);
+          console.log('[HARD DEBUG] Path→bucket/objectPath:', { bucket, objectPath });
+          console.log('[HARD DEBUG] TRANSFORMED URL (getPublicUrl):', data.publicUrl);
+        } else if (rawTrim) {
+          console.log('[HARD DEBUG] DB value looks like full URL; rewrite pass only:', rawTrim);
+        } else {
+          console.log('[HARD DEBUG] No profile_picture on users row (null/empty).');
+        }
+        console.log('[HARD DEBUG] MERGED profile_picture (what shell state uses):', resolvedProfile.profile_picture);
+      }
 
       const currentUser: WebUser = {
         id: authUser.id,
@@ -8106,6 +8165,94 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     );
   };
 
+  /** Visible + console proof of avatar pipeline (dev or NEXT_PUBLIC_DEBUG_AVATAR=1). */
+  const renderAvatarHardDebugPanel = () => {
+    if (!isAvatarHardDebugEnabled()) return null;
+    const rawDb = debugUsersRowProfilePicture;
+    const merged = user?.profile_picture ?? null;
+    const staged = settingsProfilePictureUrl.trim() || null;
+    const pipelineLabel = staged
+      ? 'settings local (staged)'
+      : merged
+        ? 'merged user.profile_picture'
+        : rawDb
+          ? 'last users row only'
+          : '(none)';
+    const pickRaw = (staged || merged || rawDb || '').trim();
+    const staticResolved = pickRaw ? resolveProfilePictureUrl(pickRaw) : null;
+    const clientResolved = supabase && pickRaw ? resolveProfilePictureUrlWithSupabase(supabase, pickRaw) : null;
+    const forcedSrc = (clientResolved || staticResolved || pickRaw || '').trim();
+
+    let getPublicLine = '';
+    if (supabase && pickRaw && !/^https?:\/\//i.test(pickRaw)) {
+      const { bucket, objectPath } = profilePictureStorageKeyToBucketAndPath(pickRaw);
+      const { data } = supabase.storage.from(bucket).getPublicUrl(objectPath);
+      getPublicLine = `storage.from("${bucket}").getPublicUrl("${objectPath}") → ${data.publicUrl}`;
+    } else {
+      getPublicLine = pickRaw
+        ? /^https?:\/\//i.test(pickRaw)
+          ? 'Skipped getPublicUrl (value already looks like absolute URL)'
+          : 'Skipped getPublicUrl (no supabase client)'
+        : 'No raw value to transform';
+    }
+
+    return (
+      <section className="rounded-[22px] border-2 border-amber-400 bg-amber-50 p-4 text-left text-xs text-amber-950">
+        <p className="mb-2 font-black uppercase tracking-wide text-amber-900">Avatar hard debug</p>
+        <p className="mb-1 break-all">
+          <span className="font-black">Pipeline source:</span> {pipelineLabel}
+        </p>
+        <p className="mb-1 break-all">
+          <span className="font-black">1. RAW users.profile_picture (last fetch):</span> {JSON.stringify(rawDb)}
+        </p>
+        <p className="mb-1 break-all">
+          <span className="font-black">2. RAW profile.avatar_url:</span> not selected — DB column is{' '}
+          <code className="rounded bg-amber-200 px-1">profile_picture</code> (see PROFILE OBJECT log)
+        </p>
+        <p className="mb-1 break-all">
+          <span className="font-black">3. Merged shell user.profile_picture:</span> {JSON.stringify(merged)}
+        </p>
+        <p className="mb-1 break-all">
+          <span className="font-black">4. resolveProfilePictureUrl (static):</span> {JSON.stringify(staticResolved)}
+        </p>
+        <p className="mb-1 break-all">
+          <span className="font-black">5. resolveProfilePictureUrlWithSupabase:</span> {JSON.stringify(clientResolved)}
+        </p>
+        <p className="mb-2 break-all font-mono text-[11px]">{getPublicLine}</p>
+        <p className="mb-1 font-black">6. Forced plain &lt;img&gt; (100×100, no Avatar / no next/image):</p>
+        {forcedSrc ? (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={forcedSrc}
+              alt="hard-debug"
+              width={100}
+              height={100}
+              style={{ width: 100, height: 100 }}
+              className="rounded border border-amber-800 object-cover"
+              onLoad={() => console.log('[HARD DEBUG] forced img onLoad:', forcedSrc)}
+              onError={() =>
+                console.warn('[HARD DEBUG] forced img onError — check Network tab for HTTP status:', forcedSrc)
+              }
+            />
+            <p className="mt-2 break-all">
+              <span className="font-black">Final URL string:</span> {forcedSrc}
+            </p>
+            <a href={forcedSrc} target="_blank" rel="noreferrer" className="mt-1 inline-block font-black text-blue-800 underline">
+              Open final URL in new tab
+            </a>
+          </>
+        ) : (
+          <p className="font-black text-rose-800">No URL to render — DB and merged avatar fields are empty.</p>
+        )}
+        <p className="mt-3 text-[11px] leading-snug text-amber-900">
+          Enable on staging: set <code className="rounded bg-amber-200 px-1">NEXT_PUBLIC_DEBUG_AVATAR=1</code> and redeploy. Compare with
+          mobile console for the same user id.
+        </p>
+      </section>
+    );
+  };
+
   const renderProfile = () => (
     <div className="px-4 py-4">
       <section className="rounded-[28px] bg-white p-5 text-center shadow-sm ring-1 ring-slate-200">
@@ -8119,6 +8266,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           {user?.verified ? <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700">Verified</span> : null}
         </div>
       </section>
+      {renderAvatarHardDebugPanel()}
       <div className="mt-4 space-y-3">
         {[
           { href: '/app/settings', title: 'Settings', text: 'Account, privacy, and app preferences' },
@@ -8142,6 +8290,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
   const renderSettings = () => (
     <div className="space-y-4 px-4 py-4">
+      {renderAvatarHardDebugPanel()}
       <section className="rounded-[26px] bg-white p-5 shadow-sm ring-1 ring-slate-200">
         <div className="flex items-center gap-3">
           <Avatar src={settingsProfilePictureUrl || user?.profile_picture} name={getUserDisplayName(user)} size="lg" />

@@ -38,6 +38,11 @@ if (!allowAlternateProject) {
   }
 }
 
+/** Same origin the browser Supabase client uses (env + prod fallbacks). Use for storage public URLs. */
+export function getWebSupabaseUrl(): string {
+  return supabaseUrl;
+}
+
 let browserClient: ReturnType<typeof createClient> | null = null;
 
 function clearLegacyWebAuthStorage() {

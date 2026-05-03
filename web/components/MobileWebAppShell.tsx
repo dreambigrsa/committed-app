@@ -561,13 +561,7 @@ function Avatar({ src, name, size = 'md' }: { src?: string | null; name?: string
   }, [src]);
   if (resolvedSrc && !failed) {
     return (
-      <img
-        src={resolvedSrc}
-        alt=""
-        referrerPolicy="no-referrer"
-        onError={() => setFailed(true)}
-        className={`${sizeClass} rounded-full object-cover`}
-      />
+      <img src={resolvedSrc} alt="" onError={() => setFailed(true)} className={`${sizeClass} rounded-full object-cover`} />
     );
   }
   return (
@@ -8088,7 +8082,6 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         <img
           src={resolveProfilePictureUrl(settingsProfilePictureUrl) || settingsProfilePictureUrl}
           alt="Profile photo preview"
-          referrerPolicy="no-referrer"
           className="max-h-[220px] w-full rounded-[18px] object-cover"
         />
       ) : null}

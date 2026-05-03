@@ -7676,7 +7676,17 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white">
         <div className="flex h-[58px] items-center gap-3 px-4">
           {!isRoot ? (
-            <button type="button" onClick={() => router.back()} className="grid h-10 w-10 place-items-center rounded-full active:bg-slate-100">
+            <button
+              type="button"
+              onClick={() => {
+                if (activeTab === 'dating' && subPath === 'user-profile') {
+                  router.push('/app/dating');
+                } else {
+                  router.back();
+                }
+              }}
+              className="grid h-10 w-10 place-items-center rounded-full active:bg-slate-100"
+            >
               <span className="text-3xl leading-none">‹</span>
             </button>
           ) : (
@@ -9097,9 +9107,6 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       !!profile.pets ||
       !!profile.smoke ||
       !!profile.drink;
-    const canMessage = isOwnProfile || routeDatingReaction.matched;
-    const showBasicInfo =
-      (profile.age != null && profile.age !== '') || !!profile.location_city || relationshipGoals.length > 0;
     const photosForGallery = photos.map((p: any) => ({
       ...p,
       photo_url: resolveDatingMediaUrl(p.photo_url) || p.photo_url,
@@ -9113,11 +9120,17 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       const raw = badge.badge_name || badge.badge_type || badge.name || 'Badge';
       return String(raw).replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
     };
+    const heroDisplayName = profileUser?.full_name?.trim() || 'Unknown';
+    const heroAgeLabel =
+      profile.age != null && profile.age !== '' && !Number.isNaN(Number(profile.age)) ? String(profile.age) : '?';
     const heroLocationCity = profile.location_city?.trim();
     const showHeroLocation = !!heroLocationCity;
+    const datingProfileSection = 'border-t border-slate-200 px-5 py-6';
+    const datingProfileSectionTitle = 'mb-4 text-xl font-bold text-slate-950';
+    const datingProfileBody = 'text-base leading-6 text-slate-800';
     return (
       <div className="space-y-0 bg-white pb-4">
-        {/* Parity with `app/dating/user-profile.tsx`: full-bleed hero, gradient, name row + map row */}
+        {/* Parity with `app/dating/user-profile.tsx` heroSection + heroGradient + heroInfo */}
         <section className="relative -mx-4 aspect-[5/6] w-[calc(100%+2rem)] max-w-none overflow-hidden bg-slate-200 text-white">
           <button
             type="button"
@@ -9128,9 +9141,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             {photo ? (
               <img src={photo} alt="" className="h-full w-full object-cover" />
             ) : (
-              <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-slate-200 text-slate-500">
-                <ImageIcon className="h-16 w-16" />
-                {initials(name) ? <span className="text-6xl font-black text-slate-400">{initials(name)}</span> : null}
+              <div className="flex h-full w-full items-center justify-center bg-slate-200 text-slate-400">
+                <ImageIcon className="h-16 w-16" aria-hidden />
               </div>
             )}
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/70 to-transparent" />
@@ -9143,10 +9155,11 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             <div className="pointer-events-none absolute inset-x-0 bottom-0 p-6">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-[28px] font-bold leading-tight sm:text-[32px]">
-                  {name}
-                  {profile.age != null && profile.age !== '' ? `, ${profile.age}` : ''}
+                  {heroDisplayName}, {heroAgeLabel}
                 </h2>
-                {profileUser?.verified ? <CheckCircle2 className="h-6 w-6 shrink-0 text-blue-400" aria-label="Verified" /> : null}
+                {profileUser?.verified ? (
+                  <CheckCircle2 className="h-6 w-6 shrink-0 fill-blue-600 text-blue-600" aria-label="Verified" />
+                ) : null}
               </div>
               {showHeroLocation ? (
                 <p className="mt-2 flex items-center gap-1.5 text-base font-medium text-white/90">
@@ -9158,17 +9171,11 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           </button>
         </section>
 
-        {profile.headline ? (
-          <div className="border-b border-slate-100 px-4 py-4">
-            <p className="text-center text-sm font-semibold italic text-slate-600">&ldquo;{profile.headline}&rdquo;</p>
-          </div>
-        ) : null}
-
         {!isOwnProfile ? (
           <div className="flex items-center justify-center gap-5 px-5 py-6">
             <button
               type="button"
-              onClick={() => void reactToRouteDatingProfile(profile.user_id, 'pass')}
+              onClick={() => router.push('/app/dating')}
               className="grid h-[60px] w-[60px] place-items-center rounded-full bg-rose-600 text-[32px] font-bold text-white shadow-lg"
               aria-label="Pass"
             >
@@ -9195,80 +9202,89 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           </div>
         ) : null}
 
-        <div className="space-y-4 px-4 pb-2">
-        {routeDatingReaction.matched ? (
-          <section className="rounded-[24px] bg-gradient-to-br from-pink-500 to-blue-600 p-5 text-white shadow-xl shadow-pink-500/20">
-            <Sparkles className="h-9 w-9" />
-            <h3 className="mt-3 text-2xl font-black">It&apos;s a match</h3>
-            <p className="mt-2 text-sm leading-6 text-white/85">You both liked each other. Start the conversation while the spark is fresh.</p>
-            <button type="button" onClick={() => void openConversationWithUser(profile.user_id)} className="mt-4 w-full rounded-[18px] bg-white py-3 font-black text-pink-600">
-              Message {name.split(' ')[0] || 'match'}
-            </button>
-          </section>
-        ) : null}
-
-        {!isOwnProfile && (routeDatingReaction.liked || routeDatingReaction.superLiked) && !routeDatingReaction.matched ? (
-          <section className="flex items-center gap-3 rounded-[22px] border border-blue-100 bg-blue-50/80 p-4">
-            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-blue-600 text-white">
-              {routeDatingReaction.superLiked ? <Star className="h-5 w-5 fill-white" /> : <Heart className="h-5 w-5 fill-white" />}
+        <div className="space-y-0 px-0 pb-2">
+        {!isOwnProfile && (routeDatingReaction.liked || routeDatingReaction.matched || routeDatingReaction.superLiked) ? (
+          <div className="mx-5 mb-1 mt-1 flex flex-row items-center gap-3 rounded-[20px] border border-blue-200/80 bg-blue-50/90 px-4 py-4">
+            <div className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-full bg-blue-600 text-white">
+              {routeDatingReaction.matched ? (
+                <MessageCircle className="h-5 w-5" />
+              ) : routeDatingReaction.superLiked ? (
+                <Star className="h-5 w-5 fill-white" />
+              ) : (
+                <Heart className="h-5 w-5 fill-white" />
+              )}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-black text-slate-950">{routeDatingReaction.superLiked ? 'Super like sent' : 'You liked this profile'}</p>
-              <p className="mt-0.5 text-xs font-semibold leading-snug text-slate-600">
-                {routeDatingReaction.superLiked ? 'They will see that you are extra interested.' : 'If they like you back, you will become a match.'}
+              <p className="text-[15px] font-extrabold text-slate-950">
+                {routeDatingReaction.matched
+                  ? "It's a match"
+                  : routeDatingReaction.superLiked
+                    ? 'Super like sent'
+                    : 'You liked this profile'}
+              </p>
+              <p className="mt-0.5 text-[13px] leading-snug text-slate-600">
+                {routeDatingReaction.matched
+                  ? 'You can start a conversation whenever you are ready.'
+                  : routeDatingReaction.superLiked
+                    ? 'They will see that you are extra interested.'
+                    : 'If they like you back, you will become a match.'}
               </p>
             </div>
-          </section>
+            {routeDatingReaction.matched ? (
+              <button
+                type="button"
+                onClick={() => void openConversationWithUser(profile.user_id)}
+                className="shrink-0 rounded-[14px] bg-blue-600 px-3.5 py-2.5 text-[13px] font-extrabold text-white"
+              >
+                Message
+              </button>
+            ) : null}
+          </div>
         ) : null}
 
         {!isOwnProfile && routeConversationStarters.length ? (
-          <section className="border-t border-slate-100 py-6">
-            <p className="text-xl font-bold text-slate-950">Conversation Starters 💬</p>
-            <div className="mt-4 flex flex-col gap-3">
+          <section className={datingProfileSection}>
+            <p className={datingProfileSectionTitle}>Conversation Starters 💬</p>
+            <div className="flex flex-col gap-3">
               {routeConversationStarters.map((starter) => (
                 <button
                   key={starter}
                   type="button"
                   onClick={() => void openConversationWithUser(profile.user_id, starter)}
-                  className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-[15px] font-medium text-slate-900"
+                  className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-slate-100 px-4 py-4 text-left text-[15px] font-medium text-slate-900"
                 >
                   <MessageCircle className="h-4 w-4 shrink-0 text-blue-600" />
                   <span>{starter}</span>
                 </button>
               ))}
             </div>
-            {!isOwnProfile ? (
-              <p className="mt-4 text-center text-xs text-slate-500">
-                Want unlimited openers and boosts?{' '}
-                <Link href="/app/dating/premium" className="font-black text-blue-600">
-                  Go Premium
-                </Link>
-              </p>
-            ) : null}
           </section>
         ) : null}
 
         {profile.bio ? (
-          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-            <p className="text-xl font-bold text-slate-950">About</p>
-            <p className="mt-4 text-base leading-6 text-slate-800">{profile.bio}</p>
+          <section className={datingProfileSection}>
+            <p className={datingProfileSectionTitle}>About</p>
+            <p className={datingProfileBody}>{profile.bio}</p>
           </section>
         ) : null}
 
         {profile.what_makes_me_different ? (
-          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-            <p className="text-xl font-bold text-slate-950">What Makes Me Different 🔥</p>
-            <p className="mt-4 text-base leading-6 text-slate-800">{profile.what_makes_me_different}</p>
+          <section className={datingProfileSection}>
+            <p className={datingProfileSectionTitle}>What Makes Me Different 🔥</p>
+            <p className={datingProfileBody}>{profile.what_makes_me_different}</p>
           </section>
         ) : null}
 
         {valuesList.length > 0 ? (
-          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-            <p className="text-xl font-bold text-slate-950">Values ❤️</p>
-            <div className="mt-4 flex flex-wrap gap-2">
+          <section className={datingProfileSection}>
+            <p className={datingProfileSectionTitle}>Values ❤️</p>
+            <div className="flex flex-wrap gap-2">
               {valuesList.map((value: string, index: number) => (
-                <span key={`${value}-${index}`} className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-4 py-2.5 text-sm font-semibold text-slate-900">
-                  <Heart className="h-3.5 w-3.5 text-violet-600" />
+                <span
+                  key={`${value}-${index}`}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-slate-900"
+                >
+                  <Heart className="h-3.5 w-3.5 text-blue-600" />
                   {value}
                 </span>
               ))}
@@ -9277,8 +9293,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         ) : null}
 
         {(profile.mood || weekendStyle) ? (
-          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-            <p className="text-lg font-black text-slate-950">Vibe &amp; Lifestyle</p>
+          <section className={datingProfileSection}>
+            <p className={datingProfileSectionTitle}>Vibe &amp; Lifestyle</p>
             <div className="mt-3 grid grid-cols-2 gap-2">
               {profile.mood ? (
                 <div className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-100">
@@ -9304,20 +9320,20 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         ) : null}
 
         {profile.daily_question_answer ? (
-          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-            <p className="text-xl font-bold text-slate-950">Daily Question ✍🏽</p>
-            <p className="mt-4 text-base leading-6 text-slate-800">{profile.daily_question_answer}</p>
+          <section className={datingProfileSection}>
+            <p className={datingProfileSectionTitle}>Daily Question ✍🏽</p>
+            <p className={datingProfileBody}>{profile.daily_question_answer}</p>
           </section>
         ) : null}
 
         {profilePrompts.length > 0 ? (
-          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-            <p className="text-xl font-bold text-slate-950">Prompts / Short Questions ✍🏽</p>
-            <div className="mt-3 space-y-3">
+          <section className={datingProfileSection}>
+            <p className={datingProfileSectionTitle}>Prompts / Short Questions ✍🏽</p>
+            <div className="flex flex-col gap-3">
               {profilePrompts.map((prompt: any, index: number) => (
-                <div key={index} className="rounded-[18px] border border-slate-100 bg-slate-50 p-4">
-                  {prompt.question ? <p className="text-sm font-black text-slate-950">{prompt.question}</p> : null}
-                  {prompt.answer ? <p className="mt-2 text-sm leading-6 text-slate-600">{prompt.answer}</p> : null}
+                <div key={index} className="rounded-xl border border-slate-200 bg-slate-100 p-4">
+                  {prompt.question ? <p className="text-sm font-bold text-slate-950">{prompt.question}</p> : null}
+                  {prompt.answer ? <p className="mt-2 text-sm leading-6 text-slate-700">{prompt.answer}</p> : null}
                 </div>
               ))}
             </div>
@@ -9325,15 +9341,15 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         ) : null}
 
         {profile.what_im_looking_for ? (
-          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-            <p className="text-lg font-black text-slate-950">What I&apos;m Looking For</p>
-            <p className="mt-2 text-sm leading-6 text-slate-800">{profile.what_im_looking_for}</p>
+          <section className={datingProfileSection}>
+            <p className={datingProfileSectionTitle}>What I&apos;m Looking For 💬</p>
+            <p className={datingProfileBody}>{profile.what_im_looking_for}</p>
           </section>
         ) : null}
 
         {profile.intention_tag ? (
-          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-            <p className="text-lg font-black text-slate-950">Intention</p>
+          <section className={datingProfileSection}>
+            <p className={datingProfileSectionTitle}>Intention 🔒</p>
             <div className="mt-2 inline-block rounded-[14px] border border-blue-200 bg-blue-50 px-4 py-2">
               <p className="text-sm font-black text-blue-800">
                 Here for: {String(profile.intention_tag).charAt(0).toUpperCase() + String(profile.intention_tag).slice(1)}
@@ -9343,8 +9359,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         ) : null}
 
         {(profile.local_food || profile.local_slang || profile.local_spot) ? (
-          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-            <p className="text-lg font-black text-slate-950">Local Flavor</p>
+          <section className={datingProfileSection}>
+            <p className={datingProfileSectionTitle}>Local Flavor 🌍</p>
             <div className="mt-3 space-y-3">
               {profile.local_food ? (
                 <div className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-100">
@@ -9369,8 +9385,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         ) : null}
 
         {lifestyleHas ? (
-          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-            <p className="text-lg font-black text-slate-950">Lifestyle</p>
+          <section className={datingProfileSection}>
+            <p className={datingProfileSectionTitle}>Lifestyle</p>
             <div className="mt-3 grid grid-cols-2 gap-2">
               {profile.kids ? (
                 <div className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-100">
@@ -9439,16 +9455,19 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         ) : null}
 
         {routeDatingBadges.length ? (
-          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-            <p className="text-lg font-black text-slate-950">Badges</p>
-            <div className="mt-3 flex flex-wrap gap-2">
+          <section className={datingProfileSection}>
+            <p className={datingProfileSectionTitle}>Badges 🏆</p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               {routeDatingBadges.map((badge) => (
                 <span
                   key={badge.id || badge.badge_type || badge.name}
-                  className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-2 text-xs font-black text-blue-700 ring-1 ring-blue-100"
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-800"
                 >
-                  {badge.badge_type === 'premium' ? <Crown className="h-4 w-4 text-amber-500" /> : null}
-                  {badge.badge_type === 'verified' ? <CheckCircle2 className="h-4 w-4 text-blue-600" /> : null}
+                  {badge.badge_type === 'verified' ? <CheckCircle2 className="h-5 w-5 text-blue-600" /> : null}
+                  {badge.badge_type === 'good_conversationalist' ? <MessageCircle className="h-5 w-5 text-blue-600" /> : null}
+                  {badge.badge_type === 'replies_fast' ? <Clock className="h-5 w-5 text-blue-600" /> : null}
+                  {badge.badge_type === 'respectful_member' ? <Shield className="h-5 w-5 text-blue-600" /> : null}
+                  {badge.badge_type === 'premium' ? <Crown className="h-5 w-5 text-amber-500" /> : null}
                   {badgeLabel(badge)}
                 </span>
               ))}
@@ -9456,41 +9475,39 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           </section>
         ) : null}
 
-        {showBasicInfo ? (
-          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-            <p className="text-lg font-black text-slate-950">Basic Info</p>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              {profile.age != null && profile.age !== '' ? (
-                <div className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-100">
-                  <Calendar className="h-5 w-5 text-blue-600" />
-                  <p className="mt-2 text-xs font-black uppercase text-slate-400">Age</p>
-                  <p className="mt-1 text-sm font-black text-slate-800">{profile.age}</p>
-                </div>
-              ) : null}
-              {profile.location_city ? (
-                <div className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-100">
-                  <MapPin className="h-5 w-5 text-blue-600" />
-                  <p className="mt-2 text-xs font-black uppercase text-slate-400">Location</p>
-                  <p className="mt-1 text-sm font-black text-slate-800">{profile.location_city}</p>
-                </div>
-              ) : null}
-              {relationshipGoals.length > 0 ? (
-                <div className="col-span-2 rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-100">
-                  <Heart className="h-5 w-5 text-blue-600" />
-                  <p className="mt-2 text-xs font-black uppercase text-slate-400">Looking for</p>
-                  <p className="mt-1 text-sm font-black text-slate-800">{relationshipGoals.join(', ')}</p>
-                </div>
-              ) : null}
-            </div>
-          </section>
-        ) : null}
+        <section className={datingProfileSection}>
+          <p className={datingProfileSectionTitle}>Basic Info</p>
+          <div className="grid grid-cols-2 gap-4">
+            {profile.age != null && profile.age !== '' && !Number.isNaN(Number(profile.age)) ? (
+              <div className="min-w-0 flex-1 rounded-xl bg-slate-100 p-4">
+                <Calendar className="h-5 w-5 text-blue-600" />
+                <p className="mt-2 text-xs font-bold uppercase text-slate-500">Age</p>
+                <p className="mt-1 text-base font-semibold text-slate-900">{profile.age}</p>
+              </div>
+            ) : null}
+            {profile.location_city ? (
+              <div className="min-w-0 flex-1 rounded-xl bg-slate-100 p-4">
+                <MapPin className="h-5 w-5 text-blue-600" />
+                <p className="mt-2 text-xs font-bold uppercase text-slate-500">Location</p>
+                <p className="mt-1 text-base font-semibold text-slate-900">{profile.location_city}</p>
+              </div>
+            ) : null}
+            {relationshipGoals.length > 0 ? (
+              <div className="col-span-2 rounded-xl bg-slate-100 p-4">
+                <Heart className="h-5 w-5 text-blue-600" />
+                <p className="mt-2 text-xs font-bold uppercase text-slate-500">Looking for</p>
+                <p className="mt-1 text-base font-semibold text-slate-900">{relationshipGoals.join(', ')}</p>
+              </div>
+            ) : null}
+          </div>
+        </section>
 
         {interestsList.length > 0 ? (
-          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-            <p className="text-lg font-black text-slate-950">Interests</p>
-            <div className="mt-3 flex flex-wrap gap-2">
+          <section className={datingProfileSection}>
+            <p className={datingProfileSectionTitle}>Interests</p>
+            <div className="flex flex-wrap gap-2">
               {interestsList.map((interest: string, index: number) => (
-                <span key={`${interest}-${index}`} className="rounded-full border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-black text-blue-800">
+                <span key={`${interest}-${index}`} className="rounded-full bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-800">
                   {interest}
                 </span>
               ))}
@@ -9499,7 +9516,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         ) : null}
 
         {photos.length > 0 || videos.length > 0 ? (
-          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+          <section className={datingProfileSection}>
             <div className="flex gap-2">
               <button
                 type="button"
@@ -9574,11 +9591,6 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           </section>
         ) : null}
 
-        {!isOwnProfile && !canMessage && routeDatingReaction.liked ? (
-          <section className="rounded-[22px] bg-amber-50 p-4 text-sm font-bold text-amber-800 ring-1 ring-amber-100">
-            You liked this profile. Messaging opens when you match or send an allowed conversation starter.
-          </section>
-        ) : null}
         </div>
       </div>
     );

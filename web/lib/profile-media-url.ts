@@ -91,6 +91,9 @@ export function resolveReelThumbnailUrl(raw: string | null | undefined): string 
   return resolveProfilePictureUrl(s) || s;
 }
 
+/** Same rules as {@link resolveReelThumbnailUrl}; use for `reels.video_url` in `<video src>` (mobile profile grid falls back to video when no thumb). */
+export const resolveReelVideoUrl = resolveReelThumbnailUrl;
+
 /** Same as {@link resolveProfilePictureUrl} but uses the Supabase client for path-only keys (identical to mobile `getPublicUrl`). */
 export function resolveProfilePictureUrlWithSupabase(
   supabase: SupabaseClient,

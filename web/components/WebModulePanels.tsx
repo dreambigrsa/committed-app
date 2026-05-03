@@ -7,7 +7,7 @@ import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { getDisplayName } from '@/lib/identity';
 import { profileBrowseHref } from '@/lib/web-app-profile-href';
 import { getPostVisibilityOrFilter, getReelVisibilityOrFilter } from '@/lib/content-visibility';
-import { resolveReelThumbnailUrl } from '@/lib/profile-media-url';
+import { resolveReelThumbnailUrl, resolveReelVideoUrl } from '@/lib/profile-media-url';
 import { excludeDatingProfilesForUser, filterVisibleMessagesForUser } from '@/lib/parity-helpers';
 
 type PanelProps = {
@@ -1760,12 +1760,22 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
         <div className="mt-5 grid gap-3">
           {visibleReels.map((reel) => {
             const reelThumb = resolveReelThumbnailUrl(reel.thumbnail_url);
+            const reelVideo = resolveReelVideoUrl(reel.video_url);
             return (
             <article key={reel.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
               <div className="aspect-video bg-slate-200">
                 {reelThumb ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={reelThumb} alt={reel.caption || 'Reel thumbnail'} loading="lazy" className="h-full w-full object-cover" />
+                ) : reelVideo ? (
+                  <video
+                    src={reelVideo}
+                    className="h-full w-full object-cover"
+                    muted
+                    playsInline
+                    preload="metadata"
+                    aria-hidden
+                  />
                 ) : (
                   <div className="flex h-full items-center justify-center text-slate-400"><Film className="h-8 w-8" /></div>
                 )}

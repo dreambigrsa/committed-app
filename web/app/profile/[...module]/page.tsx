@@ -18,7 +18,7 @@ import { APP_SCHEME, buildWebAppUrl } from '@/lib/appLinks';
 import OpenAppFallback from '@/components/OpenAppFallback';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { getDisplayName } from '@/lib/identity';
-import { resolveProfilePictureUrl, resolveReelThumbnailUrl } from '@/lib/profile-media-url';
+import { resolveProfilePictureUrl, resolveReelThumbnailUrl, resolveReelVideoUrl } from '@/lib/profile-media-url';
 import { countRowsByColumn } from '@/lib/supabase-count';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -410,6 +410,7 @@ export default function PublicProfilePage() {
               <div className="grid grid-cols-3 gap-1.5">
                 {reels.map((reel) => {
                   const thumb = resolveReelThumbnailUrl(reel.thumbnail_url);
+                  const videoSrc = resolveReelVideoUrl(reel.video_url);
                   return (
                   <Link
                     key={reel.id}
@@ -419,6 +420,15 @@ export default function PublicProfilePage() {
                     {thumb ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={thumb} alt="" className="h-full w-full object-cover" />
+                    ) : videoSrc ? (
+                      <video
+                        src={videoSrc}
+                        className="pointer-events-none h-full w-full object-cover"
+                        muted
+                        playsInline
+                        preload="metadata"
+                        aria-hidden
+                      />
                     ) : (
                       <div className="grid h-full w-full place-items-center text-[10px] font-black text-white">Reel</div>
                     )}

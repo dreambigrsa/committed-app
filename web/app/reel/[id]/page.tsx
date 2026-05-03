@@ -8,7 +8,7 @@ import OpenAppFallback from '@/components/OpenAppFallback';
 import ExpoMirrorRoute from '@/components/ExpoMirrorRoute';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { getDisplayName } from '@/lib/identity';
-import { resolveProfilePictureUrl, resolveReelThumbnailUrl } from '@/lib/profile-media-url';
+import { resolveProfilePictureUrl, resolveReelThumbnailUrl, resolveReelVideoUrl } from '@/lib/profile-media-url';
 import { profileBrowseHref } from '@/lib/web-app-profile-href';
 
 const FALLBACK_DELAY_MS = 1200;
@@ -179,6 +179,7 @@ export default function ReelPage() {
   }
 
   const reelThumb = reel ? resolveReelThumbnailUrl(reel.thumbnail_url) : '';
+  const reelStream = reel ? resolveReelVideoUrl(reel.video_url) : '';
 
   return (
     <div className="min-h-screen bg-black px-3 py-4 text-white md:px-4 md:py-6">
@@ -186,10 +187,10 @@ export default function ReelPage() {
         <div className="overflow-hidden rounded-2xl border border-white/15 bg-neutral-950 shadow-2xl">
           {loadingReel ? (
             <div className="aspect-[9/16] animate-pulse bg-neutral-800 lg:aspect-video" />
-          ) : reel?.video_url ? (
+          ) : reelStream ? (
             <video
               className="aspect-[9/16] w-full bg-black lg:aspect-video"
-              src={reel.video_url}
+              src={reelStream}
               poster={reelThumb || undefined}
               controls
               preload="metadata"

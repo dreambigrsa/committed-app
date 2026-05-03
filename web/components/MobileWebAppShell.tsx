@@ -54,6 +54,7 @@ import {
   resolveProfilePictureUrl,
   resolveProfilePictureUrlWithSupabase,
   resolveReelThumbnailUrl,
+  resolveReelVideoUrl,
 } from '@/lib/profile-media-url';
 import { mergeUsersProfileForWebShell, usersRowBootstrapFromAuth } from '@/lib/web-user-profile';
 import { countRowsByColumn } from '@/lib/supabase-count';
@@ -7372,10 +7373,11 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       <div className="snap-y snap-mandatory overflow-y-auto bg-slate-950">
         {reels.map((reel) => {
           const thumb = resolveReelThumbnailUrl(reel.thumbnail_url);
+          const stream = resolveReelVideoUrl(reel.video_url);
           return (
           <article key={reel.id} className="relative min-h-[calc(100vh-122px)] snap-start overflow-hidden bg-slate-900">
-            {reel.video_url ? (
-              <video src={reel.video_url} poster={thumb || undefined} controls className="h-full min-h-[calc(100vh-122px)] w-full object-cover" />
+            {stream ? (
+              <video src={stream} poster={thumb || undefined} controls className="h-full min-h-[calc(100vh-122px)] w-full object-cover" />
             ) : thumb ? (
               <img src={thumb} alt="" className="h-full min-h-[calc(100vh-122px)] w-full object-cover" />
             ) : (
@@ -7463,11 +7465,12 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     if (routeReelLoading) return <ScreenSkeleton />;
     if (!reel) return <EmptyState icon={Film} title="Reel Not Found" text="This reel is not loaded or is no longer available." action="Back to Reels" onAction={() => router.push('/app/reels')} />;
     const reelPoster = resolveReelThumbnailUrl(reel.thumbnail_url);
+    const reelStream = resolveReelVideoUrl(reel.video_url);
     return (
       <div className="space-y-3 bg-slate-950 pb-3">
         <article className="relative min-h-[calc(100vh-122px)] overflow-hidden bg-slate-900">
-          {reel.video_url ? (
-            <video src={reel.video_url} poster={reelPoster || undefined} controls className="h-full min-h-[calc(100vh-122px)] w-full object-cover" />
+          {reelStream ? (
+            <video src={reelStream} poster={reelPoster || undefined} controls className="h-full min-h-[calc(100vh-122px)] w-full object-cover" />
           ) : reelPoster ? (
             <img src={reelPoster} alt="" className="h-full min-h-[calc(100vh-122px)] w-full object-cover" />
           ) : null}
@@ -10844,11 +10847,21 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               <div className="grid grid-cols-3 gap-1.5">
                 {relatedReels.map((reel) => {
                   const thumbUrl = resolveReelThumbnailUrl(reel.thumbnail_url);
+                  const videoSrc = resolveReelVideoUrl(reel.video_url);
                   return (
                   <Link key={reel.id} href={`/app/reel/${reel.id}`} className="relative aspect-[9/16] overflow-hidden rounded-lg bg-slate-900 ring-1 ring-slate-200">
                     {thumbUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={thumbUrl} alt="" className="h-full w-full object-cover" />
+                    ) : videoSrc ? (
+                      <video
+                        src={videoSrc}
+                        className="pointer-events-none h-full w-full object-cover"
+                        muted
+                        playsInline
+                        preload="metadata"
+                        aria-hidden
+                      />
                     ) : (
                       <div className="grid h-full w-full place-items-center text-[10px] font-black text-white">Reel</div>
                     )}

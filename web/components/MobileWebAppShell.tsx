@@ -56,6 +56,7 @@ import {
 } from '@/lib/profile-media-url';
 import { mergeUsersProfileForWebShell, usersRowBootstrapFromAuth } from '@/lib/web-user-profile';
 import { webAppProfileHref } from '@/lib/web-app-profile-href';
+import ReportUserModal from '@/components/ReportUserModal';
 import { buildPostWebUrl, buildReelWebUrl } from '@/lib/appLinks';
 import { getPostVisibilityOrFilter, getReelVisibilityOrFilter } from '@/lib/content-visibility';
 import { filterVisibleMessagesForUser } from '@/lib/parity-helpers';
@@ -92,6 +93,15 @@ type WebUser = {
   banned_at?: string | null;
   banned_by?: string | null;
   ban_reason?: string | null;
+};
+
+type RouteProfileRelationshipRow = {
+  id: string;
+  type?: string | null;
+  status?: string | null;
+  partner_name?: string | null;
+  start_date?: string | null;
+  verified_date?: string | null;
 };
 
 type FeedPost = {
@@ -498,6 +508,17 @@ function looksLikeUuid(value?: string | null) {
   return !!value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+function relationshipTypeLabel(type?: string | null) {
+  if (!type) return 'relationship';
+  const map: Record<string, string> = {
+    married: 'Married',
+    engaged: 'Engaged',
+    serious: 'Serious relationship',
+    dating: 'Dating',
+  };
+  return map[type] || type.replace(/_/g, ' ');
+}
+
 function nestSocialComments(rows: any[], likesRows: any[], targetColumn: 'post_id' | 'reel_id') {
   const likesByComment = new Map<string, string[]>();
   (likesRows || []).forEach((like: any) => {
@@ -900,6 +921,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const [routeProfileIsBlocked, setRouteProfileIsBlocked] = useState(false);
   const [routeProfileFollowBusy, setRouteProfileFollowBusy] = useState(false);
   const [routeProfileTab, setRouteProfileTab] = useState<'posts' | 'reels'>('posts');
+  const [reportProfileTarget, setReportProfileTarget] = useState<{ id: string; name: string } | null>(null);
+  const [routeProfileRelationship, setRouteProfileRelationship] = useState<RouteProfileRelationshipRow | null>(null);
+  const [routeProfileStatusType, setRouteProfileStatusType] = useState<string | null>(null);
   const [routeStatusItem, setRouteStatusItem] = useState<StatusFeedItem | null>(null);
   const [routeStatusLoading, setRouteStatusLoading] = useState(false);
   const [routeRows, setRouteRows] = useState<any[]>([]);
@@ -1264,6 +1288,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     setRouteProfileIsBlocked(false);
     setRouteProfileFollowBusy(false);
     setRouteProfileTab('posts');
+    setReportProfileTarget(null);
+    setRouteProfileRelationship(null);
+    setRouteProfileStatusType(null);
     setRouteStatusItem(null);
     setRouteStatusLoading(false);
     setRouteRows([]);
@@ -2509,6 +2536,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       setRouteProfileIsFollowing(false);
       setRouteProfileIsBlocked(false);
       setRouteProfileLoading(false);
+      setReportProfileTarget(null);
+      setRouteProfileRelationship(null);
+      setRouteProfileStatusType(null);
       return;
     }
     let cancelled = false;
@@ -2533,6 +2563,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             setRouteProfileFollowingCount(0);
             setRouteProfileIsFollowing(false);
             setRouteProfileIsBlocked(false);
+            setRouteProfileRelationship(null);
+            setRouteProfileStatusType(null);
           }
           return;
         }
@@ -2546,7 +2578,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             .eq('user_id', profileUser.id)
             .or(getPostVisibilityOrFilter(viewerId || profileUser.id))
             .order('created_at', { ascending: false })
-            .limit(24),
+            .limit(60),
           supabase.from('post_likes').select('post_id,user_id').limit(500),
           supabase
             .from('reels')
@@ -2554,7 +2586,16 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             .eq('user_id', profileUser.id)
             .or(getReelVisibilityOrFilter(viewerId || profileUser.id))
             .order('created_at', { ascending: false })
-            .limit(24),
+            .limit(60),
+          supabase.from('user_status').select('status_type').eq('user_id', profileUser.id).maybeSingle(),
+          supabase
+            .from('relationships')
+            .select('id,type,status,partner_name,start_date,verified_date')
+            .eq('user_id', profileUser.id)
+            .in('status', ['pending', 'verified'])
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
           supabase.from('follows').select('id', { count: 'exact', head: true }).eq('following_id', profileUser.id),
           supabase.from('follows').select('id', { count: 'exact', head: true }).eq('follower_id', profileUser.id),
         ];
@@ -2574,10 +2615,12 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         const profilePostsResult = results[0];
         const profilePostLikesResult = results[1];
         const profileReelsResult = results[2];
-        const followersCountRes = results[3];
-        const followingCountRes = results[4];
-        const followRowRes = isOther ? results[5] : null;
-        const blockRowRes = isOther ? results[6] : null;
+        const statusRes = results[3];
+        const relRes = results[4];
+        const followersCountRes = results[5];
+        const followingCountRes = results[6];
+        const followRowRes = isOther ? results[7] : null;
+        const blockRowRes = isOther ? results[8] : null;
 
         const likesByPost = new Map<string, string[]>();
         ((profilePostLikesResult.data || []) as any[]).forEach((like) => {
@@ -2590,6 +2633,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
         setRouteProfileFollowers(typeof followersCountRes.count === 'number' ? followersCountRes.count : 0);
         setRouteProfileFollowingCount(typeof followingCountRes.count === 'number' ? followingCountRes.count : 0);
+        setRouteProfileStatusType((statusRes.data as { status_type?: string } | null)?.status_type ?? null);
+        setRouteProfileRelationship((relRes.data as RouteProfileRelationshipRow | null) ?? null);
         if (isOther) {
           setRouteProfileIsFollowing(!!followRowRes?.data?.id);
           setRouteProfileIsBlocked(!!blockRowRes?.data?.id);
@@ -3519,6 +3564,22 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       setReactionNotice('Could not block user');
       window.setTimeout(() => setReactionNotice(null), 2200);
     }
+  };
+
+  const submitReportProfile = async (reason: string, description: string) => {
+    if (!supabase || !user || !reportProfileTarget) throw new Error('Not signed in.');
+    const { error } = await supabase.from('reported_content').insert({
+      reporter_id: user.id,
+      reported_user_id: reportProfileTarget.id,
+      content_type: 'profile',
+      content_id: null,
+      reason,
+      description: description || null,
+      status: 'pending',
+    });
+    if (error) throw new Error(error.message || 'Report failed');
+    setReactionNotice('Report submitted for review');
+    window.setTimeout(() => setReactionNotice(null), 2200);
   };
 
   const resetDatingPasses = async () => {
@@ -10215,35 +10276,60 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           null;
     if (!related) return <EmptyState icon={User} title="Profile Not Found" text="This profile is not loaded yet." action="Back" onAction={() => router.back()} />;
     const isSelf = profileSubjectId === user?.id;
-    const relatedPosts = isSelf && user ? posts.filter((post) => post.user_id === user.id).slice(0, 24) : routeProfilePosts;
-    const relatedReels = isSelf && user ? reels.filter((reel) => reel.user_id === user.id).slice(0, 24) : routeProfileReels;
+    const relatedPosts = isSelf && user ? posts.filter((post) => post.user_id === user.id).slice(0, 60) : routeProfilePosts;
+    const relatedReels = isSelf && user ? reels.filter((reel) => reel.user_id === user.id).slice(0, 60) : routeProfileReels;
     const showSocial = !!user && !isSelf;
+    const postsCount = relatedPosts.length;
+    const online = routeProfileStatusType === 'online';
+    const rel = routeProfileRelationship;
+    const relVerified = rel?.status === 'verified';
 
     return (
       <div className="space-y-4 px-4 py-4">
         <section className="rounded-[28px] bg-white p-6 text-center shadow-sm ring-1 ring-slate-200">
-          <div className="mx-auto w-fit">
+          <div className="relative mx-auto w-fit">
             <ProfileUserLink viewerUserId={user?.id} subjectUserId={profileSubjectId} className="inline-block rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
               <Avatar src={related.profile_picture} name={getUserDisplayName(related)} size="lg" />
             </ProfileUserLink>
+            <span
+              className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white ${online ? 'bg-emerald-500' : 'bg-slate-300'}`}
+              title={online ? 'Online' : 'Offline'}
+              aria-hidden
+            />
           </div>
-          <ProfileUserLink viewerUserId={user?.id} subjectUserId={profileSubjectId} className="mt-4 inline-block">
-            <h2 className="text-3xl font-black text-slate-950 hover:underline">{getUserDisplayName(related)}</h2>
-          </ProfileUserLink>
-          <p className="text-sm text-slate-500">{related.username ? `@${related.username}` : related.email}</p>
-          <div className="mt-4 flex justify-center gap-2">
-            {related.verified ? <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700">Verified</span> : null}
-            <span className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-black text-blue-700">{related.role || 'user'}</span>
+          <div className="mt-4 flex items-center justify-center gap-2">
+            <ProfileUserLink viewerUserId={user?.id} subjectUserId={profileSubjectId} className="inline-block">
+              <h2 className="text-3xl font-black text-slate-950 hover:underline">{getUserDisplayName(related)}</h2>
+            </ProfileUserLink>
+            {related.phone_verified ? <CheckCircle2 className="h-6 w-6 shrink-0 text-blue-500" aria-label="Phone verified" /> : null}
           </div>
-          <div className="mt-5 grid grid-cols-2 gap-3 text-center">
+          {related.username ? <p className="mt-1 text-sm text-slate-500">@{related.username}</p> : null}
+
+          <div className="mt-5 grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-[18px] bg-slate-50 py-3 ring-1 ring-slate-100">
+              <p className="text-xl font-black text-slate-950">{postsCount}</p>
+              <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Posts</p>
+            </div>
             <div className="rounded-[18px] bg-slate-50 py-3 ring-1 ring-slate-100">
               <p className="text-xl font-black text-slate-950">{routeProfileFollowers}</p>
-              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Followers</p>
+              <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Followers</p>
             </div>
             <div className="rounded-[18px] bg-slate-50 py-3 ring-1 ring-slate-100">
               <p className="text-xl font-black text-slate-950">{routeProfileFollowingCount}</p>
-              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Following</p>
+              <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Following</p>
             </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            {related.phone_verified ? (
+              <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-800">Phone Verified</span>
+            ) : null}
+            {related.email_verified ? (
+              <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-800">Email Verified</span>
+            ) : null}
+            {related.id_verified ? (
+              <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-800">ID Verified</span>
+            ) : null}
           </div>
         </section>
 
@@ -10252,85 +10338,183 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             Messages
           </Link>
         ) : showSocial ? (
-          <div className="grid grid-cols-2 gap-3">
+          routeProfileIsBlocked ? (
+            <div className="rounded-[20px] bg-slate-100 px-4 py-3 text-center text-sm font-black text-slate-700 ring-1 ring-slate-200">You have blocked this user</div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                disabled={routeProfileFollowBusy}
+                onClick={() => void toggleProfileRouteFollow(profileSubjectId)}
+                className={`flex items-center justify-center gap-2 rounded-[20px] py-4 text-center text-sm font-black ${
+                  routeProfileIsFollowing ? 'bg-slate-200 text-slate-800' : 'bg-blue-600 text-white'
+                } disabled:opacity-60`}
+              >
+                {routeProfileIsFollowing ? <UserMinus className="h-5 w-5" /> : <UserPlus className="h-5 w-5" />}
+                {routeProfileIsFollowing ? 'Unfollow' : 'Follow'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void openConversationWithUser(profileSubjectId)}
+                className="flex items-center justify-center gap-2 rounded-[20px] border border-blue-200 bg-white py-4 text-center text-sm font-black text-blue-600"
+              >
+                <MessageCircle className="h-5 w-5" />
+                Message
+              </button>
+            </div>
+          )
+        ) : null}
+
+        {showSocial ? (
+          <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
-              disabled={routeProfileFollowBusy}
-              onClick={() => void toggleProfileRouteFollow(profileSubjectId)}
-              className={`flex items-center justify-center gap-2 rounded-[20px] py-4 text-center text-sm font-black ${
-                routeProfileIsFollowing ? 'bg-slate-200 text-slate-800' : 'bg-blue-600 text-white'
-              } disabled:opacity-60`}
+              onClick={() => void toggleProfileRouteBlock(profileSubjectId)}
+              className={`rounded-[18px] py-3 text-sm font-black ${routeProfileIsBlocked ? 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200' : 'bg-red-50 text-red-700 ring-1 ring-red-100'}`}
             >
-              {routeProfileIsFollowing ? <UserMinus className="h-5 w-5" /> : <UserPlus className="h-5 w-5" />}
-              {routeProfileIsFollowing ? 'Unfollow' : 'Follow'}
+              {routeProfileIsBlocked ? 'Unblock' : 'Block'}
             </button>
             <button
               type="button"
-              onClick={() => void openConversationWithUser(profileSubjectId)}
-              className="flex items-center justify-center gap-2 rounded-[20px] bg-slate-900 py-4 text-center text-sm font-black text-white"
+              onClick={() => setReportProfileTarget({ id: profileSubjectId, name: getUserDisplayName(related) })}
+              className="inline-flex items-center justify-center gap-2 rounded-[18px] border border-slate-200 bg-white py-3 text-sm font-black text-slate-800 ring-1 ring-slate-200"
             >
-              <MessageCircle className="h-5 w-5" />
-              Message
+              <Flag className="h-4 w-4" />
+              Report
             </button>
           </div>
         ) : null}
 
-        {showSocial ? (
-          <button
-            type="button"
-            onClick={() => void toggleProfileRouteBlock(profileSubjectId)}
-            className={`w-full rounded-[18px] py-3 text-sm font-black ${routeProfileIsBlocked ? 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200' : 'bg-red-50 text-red-700 ring-1 ring-red-100'}`}
-          >
-            {routeProfileIsBlocked ? 'Unblock user' : 'Block user'}
-          </button>
+        <section className="rounded-[24px] bg-white p-5 shadow-sm ring-1 ring-slate-200">
+          <div className="flex items-center gap-2">
+            <Heart className="h-5 w-5 fill-rose-500 text-rose-500" />
+            <h3 className="text-base font-black text-slate-950">Relationship Status</h3>
+          </div>
+          {rel ? (
+            <div className="mt-4 space-y-3 text-left">
+              <div
+                className={`flex items-center gap-2 rounded-[14px] px-3 py-2 ${
+                  relVerified ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-900'
+                }`}
+              >
+                <Shield className={`h-5 w-5 shrink-0 ${relVerified ? 'text-emerald-600' : 'text-amber-600'}`} />
+                <span className="text-sm font-black">{relVerified ? 'Verified Relationship' : 'Pending Verification'}</span>
+              </div>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between gap-3 border-b border-slate-100 py-2">
+                  <span className="font-bold text-slate-500">Status</span>
+                  <span className="font-semibold text-slate-900">In a {relationshipTypeLabel(rel.type)}</span>
+                </div>
+                <div className="flex justify-between gap-3 border-b border-slate-100 py-2">
+                  <span className="font-bold text-slate-500">Partner</span>
+                  <span className="truncate font-semibold text-slate-900">{rel.partner_name || '—'}</span>
+                </div>
+                <div className="flex justify-between gap-3 border-b border-slate-100 py-2">
+                  <span className="font-bold text-slate-500">Since</span>
+                  <span className="font-semibold text-slate-900">
+                    {rel.start_date ? new Date(rel.start_date).toLocaleDateString() : '—'}
+                  </span>
+                </div>
+                {relVerified && rel.verified_date ? (
+                  <div className="flex justify-between gap-3 py-2">
+                    <span className="font-bold text-slate-500">Verified On</span>
+                    <span className="font-semibold text-slate-900">{new Date(rel.verified_date).toLocaleDateString()}</span>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : (
+            <div className="mt-6 flex flex-col items-center py-2 text-slate-400">
+              <Heart className="h-12 w-12" strokeWidth={1.25} />
+              <p className="mt-3 text-sm font-bold text-slate-500">No registered relationship</p>
+            </div>
+          )}
+        </section>
+
+        {rel && relVerified ? (
+          <section className="flex gap-3 rounded-[20px] bg-emerald-50/80 p-4 ring-1 ring-emerald-100">
+            <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-600" />
+            <p className="text-xs font-semibold leading-relaxed text-emerald-900">
+              This relationship has been verified by both partners. The information shown is accurate as of the verification date.
+            </p>
+          </section>
         ) : null}
 
-        <div className="grid grid-cols-2 gap-2 rounded-[20px] bg-slate-100 p-1">
+        <div className="flex border-b border-slate-200">
           <button
             type="button"
             onClick={() => setRouteProfileTab('posts')}
-            className={`rounded-[16px] py-3 text-sm font-black ${routeProfileTab === 'posts' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
+            className={`flex flex-1 flex-col items-center gap-1 border-b-2 py-3 text-sm font-black ${
+              routeProfileTab === 'posts' ? 'border-rose-500 text-rose-600' : 'border-transparent text-slate-400'
+            }`}
           >
-            <span className="inline-flex items-center justify-center gap-2">
-              <Grid className="h-4 w-4" />
-              Posts
-            </span>
+            <Grid className="h-5 w-5" />
+            Posts
           </button>
           <button
             type="button"
             onClick={() => setRouteProfileTab('reels')}
-            className={`rounded-[16px] py-3 text-sm font-black ${routeProfileTab === 'reels' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
+            className={`flex flex-1 flex-col items-center gap-1 border-b-2 py-3 text-sm font-black ${
+              routeProfileTab === 'reels' ? 'border-rose-500 text-rose-600' : 'border-transparent text-slate-400'
+            }`}
           >
-            <span className="inline-flex items-center justify-center gap-2">
-              <Film className="h-4 w-4" />
-              Reels
-            </span>
+            <Film className="h-5 w-5" />
+            Reels
           </button>
         </div>
 
         {routeProfileTab === 'posts' ? (
-          <section className="space-y-3">
+          <section>
             {!relatedPosts.length ? (
-              <div className="rounded-[22px] bg-white p-5 text-center text-sm font-semibold text-slate-500 shadow-sm ring-1 ring-slate-200">No visible posts yet.</div>
+              <div className="flex flex-col items-center rounded-[22px] bg-white py-12 text-slate-400 shadow-sm ring-1 ring-slate-200">
+                <Grid className="h-12 w-12" strokeWidth={1.25} />
+                <p className="mt-3 text-sm font-bold text-slate-500">No posts yet</p>
+              </div>
             ) : (
-              relatedPosts.map((post) => <PostCard key={post.id} post={post} user={user} onLike={togglePostLike} onShare={shareText} />)
+              <div className="grid grid-cols-3 gap-1.5">
+                {relatedPosts.map((post) => {
+                  const raw = Array.isArray(post.media_urls) && post.media_urls[0] ? String(post.media_urls[0]) : '';
+                  const thumb = raw ? resolveProfilePictureUrl(raw) || raw : '';
+                  return (
+                    <Link
+                      key={post.id}
+                      href={`/app/post/${post.id}`}
+                      className="aspect-square overflow-hidden rounded-lg bg-slate-100 ring-1 ring-slate-200"
+                    >
+                      {thumb ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={thumb} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center p-1 text-center text-[10px] font-semibold leading-snug text-slate-600 line-clamp-4">
+                          {post.content || 'Post'}
+                        </div>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
             )}
           </section>
         ) : (
-          <section className="space-y-3">
+          <section>
             {!relatedReels.length ? (
-              <div className="rounded-[22px] bg-white p-5 text-center text-sm font-semibold text-slate-500 shadow-sm ring-1 ring-slate-200">No reels to show yet.</div>
+              <div className="flex flex-col items-center rounded-[22px] bg-white py-12 text-slate-400 shadow-sm ring-1 ring-slate-200">
+                <Film className="h-12 w-12" strokeWidth={1.25} />
+                <p className="mt-3 text-sm font-bold text-slate-500">No reels yet</p>
+              </div>
             ) : (
               <div className="grid grid-cols-3 gap-1.5">
                 {relatedReels.map((reel) => (
-                  <Link key={reel.id} href={`/app/reel/${reel.id}`} className="relative aspect-[9/16] overflow-hidden rounded-xl bg-slate-900 ring-1 ring-slate-200">
+                  <Link key={reel.id} href={`/app/reel/${reel.id}`} className="relative aspect-[9/16] overflow-hidden rounded-lg bg-slate-900 ring-1 ring-slate-200">
                     {reel.thumbnail_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={reel.thumbnail_url} alt="" className="h-full w-full object-cover" />
                     ) : (
                       <div className="grid h-full w-full place-items-center text-[10px] font-black text-white">Reel</div>
                     )}
-                    {reel.caption ? <p className="absolute inset-x-0 bottom-0 line-clamp-2 bg-black/55 px-1 py-1 text-[9px] font-semibold text-white">{reel.caption}</p> : null}
+                    {reel.caption ? (
+                      <p className="absolute inset-x-0 bottom-0 line-clamp-2 bg-black/55 px-1 py-1 text-[9px] font-semibold text-white">{reel.caption}</p>
+                    ) : null}
                   </Link>
                 ))}
               </div>
@@ -11771,6 +11955,12 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             </div>
           </div>
         ) : null}
+        <ReportUserModal
+          open={!!reportProfileTarget}
+          reportedName={reportProfileTarget?.name || 'Member'}
+          onClose={() => setReportProfileTarget(null)}
+          onSubmit={submitReportProfile}
+        />
         {datingDiscoveryMatchModal ? (
           <div
             role="dialog"

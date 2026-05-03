@@ -10,7 +10,7 @@ import ExpoMirrorRoute from '@/components/ExpoMirrorRoute';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { getDisplayName } from '@/lib/identity';
 import { resolveProfilePictureUrl } from '@/lib/profile-media-url';
-import { webAppProfileHref } from '@/lib/web-app-profile-href';
+import { profileBrowseHref } from '@/lib/web-app-profile-href';
 
 const FALLBACK_DELAY_MS = 1200;
 
@@ -173,7 +173,7 @@ export default function PostPage() {
               <div className="flex items-center gap-3 p-4">
                 {post?.user_id ? (
                   <Link
-                    href={webAppProfileHref(sessionUserId, post.user_id) ?? `/app/profile/${encodeURIComponent(post.user_id)}`}
+                    href={profileBrowseHref(sessionUserId, post.user_id, post.users?.username) ?? '#'}
                     className="flex shrink-0 items-center gap-3 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500"
                   >
                     {post?.users?.profile_picture ? (
@@ -260,7 +260,7 @@ export default function PostPage() {
           <div className="mt-4 max-h-[420px] space-y-2 overflow-auto pr-1">
             {comments.map((comment) => {
               const commentProfileHref = comment.user_id
-                ? webAppProfileHref(sessionUserId, comment.user_id) ?? `/app/profile/${encodeURIComponent(comment.user_id)}`
+                ? profileBrowseHref(sessionUserId, comment.user_id, comment.users?.username) ?? '#'
                 : '';
               const commentPic = comment.users?.profile_picture
                 ? resolveProfilePictureUrl(comment.users.profile_picture) || comment.users.profile_picture

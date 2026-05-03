@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { AlertTriangle, Bell, CheckCircle2, Film, Loader2, MessageCircle, ShieldCheck, ThumbsUp, UploadCloud, UserCircle2 } from 'lucide-react';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { getDisplayName } from '@/lib/identity';
-import { webAppProfileHref } from '@/lib/web-app-profile-href';
+import { profileBrowseHref } from '@/lib/web-app-profile-href';
 import { getPostVisibilityOrFilter, getReelVisibilityOrFilter } from '@/lib/content-visibility';
 import { excludeDatingProfilesForUser, filterVisibleMessagesForUser } from '@/lib/parity-helpers';
 
@@ -1662,7 +1662,7 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
                 <article key={post.id} className="rounded-xl border border-slate-200 bg-white p-4">
                   <div className="flex items-center justify-between gap-3">
                     <Link
-                      href={post.user_id ? (webAppProfileHref(currentUserId, post.user_id) ?? `/app/profile/${encodeURIComponent(post.user_id)}`) : '#'}
+                      href={post.user_id ? (profileBrowseHref(currentUserId, post.user_id, post.users?.username) ?? '#') : '#'}
                       className="font-bold text-slate-950 hover:text-violet-700 hover:underline"
                     >
                       {getDisplayName(post.users)}
@@ -1712,7 +1712,7 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
                         <div key={comment.id} className="rounded-xl border border-slate-200 bg-white p-3">
                           <p className="text-sm">
                             <Link
-                              href={comment.user_id ? (webAppProfileHref(currentUserId, comment.user_id) ?? `/app/profile/${encodeURIComponent(comment.user_id)}`) : '#'}
+                              href={comment.user_id ? (profileBrowseHref(currentUserId, comment.user_id, comment.users?.username) ?? '#') : '#'}
                               className="font-bold hover:underline"
                             >
                               {getDisplayName(comment.users)}:
@@ -1723,7 +1723,7 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
                             {(repliesByParent[comment.id] || []).slice(0, 2).map((reply: any) => (
                               <p key={reply.id} className="mt-1 text-sm text-slate-600">
                                 <Link
-                                  href={reply.user_id ? (webAppProfileHref(currentUserId, reply.user_id) ?? `/app/profile/${encodeURIComponent(reply.user_id)}`) : '#'}
+                                  href={reply.user_id ? (profileBrowseHref(currentUserId, reply.user_id, reply.users?.username) ?? '#') : '#'}
                                   className="font-semibold hover:underline"
                                 >
                                   {getDisplayName(reply.users)}:
@@ -1769,7 +1769,7 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
               </div>
               <div className="p-4">
                 <Link
-                  href={reel.user_id ? (webAppProfileHref(currentUserId, reel.user_id) ?? `/app/profile/${encodeURIComponent(reel.user_id)}`) : '#'}
+                  href={reel.user_id ? (profileBrowseHref(currentUserId, reel.user_id, reel.users?.username) ?? '#') : '#'}
                   className="block font-bold text-slate-950 hover:underline"
                 >
                   {getDisplayName(reel.users)}

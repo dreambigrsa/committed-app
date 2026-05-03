@@ -132,6 +132,8 @@ type SocialComment = {
   targetId: string;
   userId: string;
   userName: string;
+  /** For public `/profile/{username}` links when the viewer is not signed in. */
+  userUsername?: string | null;
   userAvatar?: string | null;
   content: string;
   stickerImageUrl?: string | null;
@@ -532,6 +534,7 @@ function nestSocialComments(rows: any[], likesRows: any[], targetColumn: 'post_i
     targetId: comment[targetColumn],
     userId: comment.user_id,
     userName: comment.users?.full_name || comment.users?.email || 'Committed member',
+    userUsername: (comment.users?.username && String(comment.users.username).trim()) || null,
     userAvatar: comment.users?.profile_picture || null,
     content: comment.content || '',
     stickerImageUrl: comment.stickers?.image_url || null,
@@ -2954,7 +2957,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     try {
       const commentsResult = await supabase
         .from('comments')
-        .select('id,post_id,user_id,content,message_type,parent_comment_id,created_at,users!comments_user_id_fkey(full_name,email,profile_picture),stickers!comments_sticker_id_fkey(image_url,is_animated)')
+        .select('id,post_id,user_id,content,message_type,parent_comment_id,created_at,users!comments_user_id_fkey(full_name,username,email,profile_picture),stickers!comments_sticker_id_fkey(image_url,is_animated)')
         .eq('post_id', postId)
         .order('created_at', { ascending: true });
       const commentIds = ((commentsResult.data || []) as any[]).map((comment) => comment.id).filter(Boolean);
@@ -2976,7 +2979,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     try {
       const commentsResult = await supabase
         .from('reel_comments')
-        .select('id,reel_id,user_id,content,message_type,parent_comment_id,created_at,users!reel_comments_user_id_fkey(full_name,email,profile_picture),stickers!reel_comments_sticker_id_fkey(image_url,is_animated)')
+        .select('id,reel_id,user_id,content,message_type,parent_comment_id,created_at,users!reel_comments_user_id_fkey(full_name,username,email,profile_picture),stickers!reel_comments_sticker_id_fkey(image_url,is_animated)')
         .eq('reel_id', reelId)
         .order('created_at', { ascending: true });
       const commentIds = ((commentsResult.data || []) as any[]).map((comment) => comment.id).filter(Boolean);
@@ -3139,6 +3142,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       targetId: postId,
       userId: user.id,
       userName: getUserDisplayName(user),
+      userUsername: user.username?.trim() || null,
       userAvatar: user.profile_picture,
       content,
       messageType: 'text',
@@ -3192,6 +3196,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       targetId: reelId,
       userId: user.id,
       userName: getUserDisplayName(user),
+      userUsername: user.username?.trim() || null,
       userAvatar: user.profile_picture,
       content,
       messageType: 'text',
@@ -12226,6 +12231,7 @@ function CommentItem({
         <ProfileUserLink
           viewerUserId={currentUserId}
           subjectUserId={comment.userId}
+          subjectUsername={comment.userUsername}
           className="shrink-0 self-start rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500"
         >
           <Avatar src={comment.userAvatar} name={comment.userName} size="sm" />
@@ -12233,7 +12239,7 @@ function CommentItem({
         <div className="min-w-0 flex-1">
           <div className="rounded-[18px] bg-slate-100 px-4 py-3">
             <div className="flex items-start gap-2">
-              <ProfileUserLink viewerUserId={currentUserId} subjectUserId={comment.userId} className="min-w-0 flex-1">
+              <ProfileUserLink viewerUserId={currentUserId} subjectUserId={comment.userId} subjectUsername={comment.userUsername} className="min-w-0 flex-1">
                 <p className="truncate font-black text-slate-950 hover:underline">{comment.userName}</p>
               </ProfileUserLink>
               {isOwner && !editing ? (

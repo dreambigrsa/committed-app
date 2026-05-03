@@ -49,6 +49,7 @@ import {
 } from 'lucide-react';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { useWebViewerPresence } from '@/lib/use-web-viewer-presence';
+import { fetchBootstrapPostsForWebFeed, fetchBootstrapReelsForWebFeed } from '@/lib/resilient-social-queries';
 import { syncWebViewerOffline, syncWebViewerOnline } from '@/lib/web-user-status-presence';
 import { getDisplayName as getUserDisplayName } from '@/lib/identity';
 import {
@@ -512,6 +513,17 @@ function mediaImage(url?: string | null) {
 
 function looksLikeUuid(value?: string | null) {
   return !!value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+/** URL segment may be UUID or `@username` — must not compare only to `users.id` or own-profile logic breaks on web. */
+function profileSegmentMatchesUser(segment: string, u: WebUser | null | undefined) {
+  if (!u?.id) return false;
+  const raw = (segment || '').trim();
+  if (!raw) return false;
+  if (u.id === raw) return true;
+  const un = (u.username || '').trim().toLowerCase().replace(/^@/, '');
+  const seg = raw.replace(/^@/, '').toLowerCase();
+  return !!un && un === seg;
 }
 
 function relationshipTypeLabel(type?: string | null) {
@@ -1742,19 +1754,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         email: authUser.email ?? null,
       });
 
-      const [postsResult, reelsResult, relationshipResult, myDatingResult, datingResult, notificationsResult, conversationsResult, likesResult, matchesResult] = await withClientTimeout(Promise.all([
-        supabase
-          .from('posts')
-          .select('id,user_id,content,media_urls,media_type,comment_count,created_at,users!posts_user_id_fkey(full_name,username,profile_picture)')
-          .or(getPostVisibilityOrFilter(authUser.id))
-          .order('created_at', { ascending: false })
-          .limit(30),
-        supabase
-          .from('reels')
-          .select('id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(full_name,username,profile_picture)')
-          .or(getReelVisibilityOrFilter(authUser.id))
-          .order('created_at', { ascending: false })
-          .limit(20),
+      const [postsPack, reelsPack, relationshipResult, myDatingResult, datingResult, notificationsResult, conversationsResult, likesResult, matchesResult] = await withClientTimeout(Promise.all([
+        fetchBootstrapPostsForWebFeed(supabase, authUser.id, 30),
+        fetchBootstrapReelsForWebFeed(supabase, authUser.id, 20),
         supabase
           .from('relationships')
           .select('id,user_id,partner_user_id,partner_name,partner_phone,type,status,start_date,privacy_level')
@@ -1806,6 +1808,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           .limit(30),
       ]), 20000, 'Loading core web app data');
 
+      const postsResult = { data: postsPack.data, error: null as any };
+      const reelsResult = { data: reelsPack.data, error: null as any };
       const fetchedPosts = ((postsResult.data || []) as FeedPost[]).filter(Boolean);
       const postIds = fetchedPosts.map((post) => post.id);
       const postLikes = postIds.length
@@ -2609,17 +2613,17 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         const viewerId = user?.id || '';
         const isOther = !!viewerId && viewerId !== profileUser.id;
 
-        /** Profile grid is already scoped with `.eq('user_id', profileUser.id)`. Do not chain feed-style `.or(moderation_status…)` here: that breaks when those columns are absent or misconfigured, and RLS still governs access. */
+        /** Profile grid: scope by `user_id` only (no feed OR). Omit FK embed on first pass — bad/missing FK names return empty rows with no thrown error. */
         const baseQueries: Promise<any>[] = [
           supabase
             .from('posts')
-            .select('id,user_id,content,media_urls,media_type,comment_count,created_at,users!posts_user_id_fkey(full_name,username,profile_picture)')
+            .select('id,user_id,content,media_urls,media_type,comment_count,created_at')
             .eq('user_id', profileUser.id)
             .order('created_at', { ascending: false })
             .limit(60),
           supabase
             .from('reels')
-            .select('id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(full_name,username,profile_picture)')
+            .select('id,user_id,caption,video_url,thumbnail_url,created_at')
             .eq('user_id', profileUser.id)
             .order('created_at', { ascending: false })
             .limit(60),
@@ -2659,20 +2663,20 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         const blockRowRes = isOther ? results[7] : null;
 
         let postRows = (profilePostsResult.data || []) as FeedPost[];
-        if (!postRows.length) {
+        if (profilePostsResult.error || !postRows.length) {
           const fb = await supabase
             .from('posts')
-            .select('id,user_id,content,media_urls,media_type,comment_count,created_at')
+            .select('id,user_id,content,media_urls,media_type,comment_count,created_at,users!posts_user_id_fkey(full_name,username,profile_picture)')
             .eq('user_id', profileUser.id)
             .order('created_at', { ascending: false })
             .limit(60);
           if (!fb.error && (fb.data || []).length) postRows = (fb.data || []) as FeedPost[];
         }
         let reelRows = (profileReelsResult.data || []) as Reel[];
-        if (!reelRows.length) {
+        if (profileReelsResult.error || !reelRows.length) {
           const fbR = await supabase
             .from('reels')
-            .select('id,user_id,caption,video_url,thumbnail_url,created_at')
+            .select('id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(full_name,username,profile_picture)')
             .eq('user_id', profileUser.id)
             .order('created_at', { ascending: false })
             .limit(60);
@@ -10377,14 +10381,17 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     const profileSubjectId = decodeURIComponent(rawSegment);
     if (routeProfileLoading) return <ScreenSkeleton />;
     /** Prefer `routeProfileUser` whenever it matches the URL — it has full `users` flags (phone/email/id verified). Shell `user` can be incomplete after auth merge. */
+    const routeUserMatchesSegment =
+      !!routeProfileUser &&
+      (routeProfileUser.id === profileSubjectId || profileSegmentMatchesUser(profileSubjectId, routeProfileUser));
     const related =
-      (routeProfileUser && routeProfileUser.id === profileSubjectId ? routeProfileUser : null) ||
-      (profileSubjectId === user?.id ? user : null) ||
+      (routeUserMatchesSegment ? routeProfileUser : null) ||
+      (user && profileSegmentMatchesUser(profileSubjectId, user) ? user : null) ||
       datingLikes.find((item) => item.user?.id === profileSubjectId)?.user ||
       datingMatches.find((item) => item.user?.id === profileSubjectId)?.user ||
       null;
     if (!related) return <EmptyState icon={User} title="Profile Not Found" text="This profile is not loaded yet." action="Back" onAction={() => router.back()} />;
-    const isSelf = profileSubjectId === user?.id;
+    const isSelf = !!(user?.id && (routeProfileUser?.id === user.id || profileSegmentMatchesUser(profileSubjectId, user)));
     /** Always use profile-route fetch (same as mobile): feed `posts`/`reels` are capped and can omit reel `thumbnail_url` shapes the grid expects. */
     const relatedPosts = routeProfilePosts;
     const relatedReels = routeProfileReels;

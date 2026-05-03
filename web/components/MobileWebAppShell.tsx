@@ -169,6 +169,8 @@ type DatingDiscoveryUser = {
   username?: string | null;
   email?: string | null;
   profile_picture?: string | null;
+  /** Aggregate trust flag from `users` row (native `profile.user?.verified`). */
+  verified?: boolean | null;
   id_verified?: boolean | null;
   email_verified?: boolean | null;
   phone_verified?: boolean | null;
@@ -205,6 +207,8 @@ type DatingProfile = {
   distance_km?: number;
   users?: DatingDiscoveryUser | null;
   dating_photos?: { photo_url: string; is_primary?: boolean | null }[] | null;
+  /** Alternate shape from loaders mirroring native `profile.photos`. */
+  photos?: { photo_url?: string | null; photoUrl?: string | null; is_primary?: boolean | null }[] | null;
 };
 
 type DatingDiscoveryFilters = {
@@ -8257,7 +8261,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     };
 
     return (
-      <div className="flex min-h-[calc(100vh-122px)] flex-col px-4 pb-4 pt-3">
+      <div className="flex min-h-[calc(100vh-122px)] flex-col px-4 pb-10 pt-3">
         <div className="relative flex min-h-[470px] flex-1 flex-col">
           <DatingDiscoverSwipeDeck
             profileKey={profile.user_id}
@@ -8314,9 +8318,17 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           <Crown className="h-4 w-4 fill-current" />
           Go Premium
         </Link>
-        <div className="mt-3 rounded-[18px] bg-white px-3 py-3 ring-1 ring-slate-200" data-swipe-ignore>
-          <p className="text-center text-xs font-black text-slate-900">Date plans</p>
-          <p className="mt-1 text-center text-[11px] font-semibold leading-relaxed text-slate-500">
+        <div className="mt-3 overflow-hidden rounded-[18px] bg-white ring-1 ring-slate-200" data-swipe-ignore>
+          <Link
+            href="/app/dating/date-requests"
+            className="flex min-h-[52px] w-full items-center justify-center gap-2 bg-white px-3 py-3 text-xs font-black text-blue-700 active:bg-slate-50"
+            aria-label="Open date plans and requests"
+          >
+            <Calendar className="h-4 w-4 shrink-0" aria-hidden />
+            <span>Date plans</span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-blue-500/80" aria-hidden />
+          </Link>
+          <p className="border-t border-slate-100 px-3 pb-1 pt-2 text-center text-[11px] font-semibold leading-relaxed text-slate-500">
             When you and someone else match, you can propose a time from{' '}
             <Link href="/app/dating/matches" className="font-black text-blue-600 underline decoration-blue-200 underline-offset-2">
               Matches
@@ -8327,7 +8339,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             </Link>{' '}
             to accept or decline invites.
           </p>
-          <div className="mt-2 flex flex-wrap justify-center gap-2">
+          <div className="flex flex-wrap justify-center gap-2 px-3 pb-3 pt-1">
             <Link
               href="/app/dating/matches"
               className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-800 ring-1 ring-slate-200"
@@ -9101,50 +9113,63 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       const raw = badge.badge_name || badge.badge_type || badge.name || 'Badge';
       return String(raw).replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
     };
+    const heroLocationCity = profile.location_city?.trim();
+    const showHeroLocation = !!heroLocationCity;
     return (
-      <div className="space-y-4 px-4 py-4">
-        <section className="overflow-hidden rounded-[28px] bg-slate-950 text-white shadow-xl">
-          <div className="relative min-h-[280px] w-full sm:min-h-[360px]">
-            {photo ? <img src={photo} alt="" className="h-full min-h-[280px] w-full object-cover sm:min-h-[360px]" /> : <div className="grid min-h-[280px] place-items-center bg-gradient-to-br from-pink-500 to-blue-700 text-[120px] font-black sm:min-h-[360px]">{initials(name)}</div>}
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/80 to-transparent" />
+      <div className="space-y-0 bg-white pb-4">
+        {/* Parity with `app/dating/user-profile.tsx`: full-bleed hero, gradient, name row + map row */}
+        <section className="relative -mx-4 aspect-[5/6] w-[calc(100%+2rem)] max-w-none overflow-hidden bg-slate-200 text-white">
+          <button
+            type="button"
+            onClick={() => photosForGallery.length && openPhotoGallery(0)}
+            className="relative block h-full w-full min-h-0 border-0 bg-transparent p-0 text-left"
+            disabled={!photosForGallery.length}
+          >
+            {photo ? (
+              <img src={photo} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-slate-200 text-slate-500">
+                <ImageIcon className="h-16 w-16" />
+                {initials(name) ? <span className="text-6xl font-black text-slate-400">{initials(name)}</span> : null}
+              </div>
+            )}
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/70 to-transparent" />
             {photos.length > 0 ? (
-              <div className="absolute right-4 top-4 flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 text-sm font-black text-white">
+              <div className="pointer-events-none absolute right-5 top-5 flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-2 text-sm font-semibold">
                 <ImageIcon className="h-4 w-4" />
                 {photos.length}
               </div>
             ) : null}
-            <div className="absolute inset-x-0 bottom-0 p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-3xl font-black">
-                    {name}
-                    {profile.age != null && profile.age !== '' ? `, ${profile.age}` : ''}
-                  </h2>
-                  {profile.headline ? <p className="mt-2 text-sm font-semibold italic text-white/90">&ldquo;{profile.headline}&rdquo;</p> : null}
-                  <p className="mt-1 flex items-center gap-1 text-sm font-semibold text-white/75">
-                    <MapPin className="h-4 w-4 shrink-0" />
-                    {[profile.location_city, profile.location_country].filter(Boolean).join(', ') || 'Location not set'}
-                  </p>
-                </div>
-                <div className="flex shrink-0 flex-col items-end gap-2">
-                  {(profileUser?.verified || profileUser?.id_verified || profileUser?.email_verified || profileUser?.phone_verified) ? (
-                    <span className="flex items-center gap-1 rounded-full bg-white/15 px-3 py-1 text-xs font-black text-white">
-                      <CheckCircle2 className="h-3.5 w-3.5" />
-                      Verified
-                    </span>
-                  ) : null}
-                </div>
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 p-6">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-[28px] font-bold leading-tight sm:text-[32px]">
+                  {name}
+                  {profile.age != null && profile.age !== '' ? `, ${profile.age}` : ''}
+                </h2>
+                {profileUser?.verified ? <CheckCircle2 className="h-6 w-6 shrink-0 text-blue-400" aria-label="Verified" /> : null}
               </div>
+              {showHeroLocation ? (
+                <p className="mt-2 flex items-center gap-1.5 text-base font-medium text-white/90">
+                  <MapPin className="h-4 w-4 shrink-0" />
+                  {heroLocationCity}
+                </p>
+              ) : null}
             </div>
-          </div>
+          </button>
         </section>
 
+        {profile.headline ? (
+          <div className="border-b border-slate-100 px-4 py-4">
+            <p className="text-center text-sm font-semibold italic text-slate-600">&ldquo;{profile.headline}&rdquo;</p>
+          </div>
+        ) : null}
+
         {!isOwnProfile ? (
-          <div className="flex items-center justify-center gap-5 rounded-[24px] bg-white py-5 shadow-sm ring-1 ring-slate-200">
+          <div className="flex items-center justify-center gap-5 px-5 py-6">
             <button
               type="button"
               onClick={() => void reactToRouteDatingProfile(profile.user_id, 'pass')}
-              className="grid h-[60px] w-[60px] place-items-center rounded-full bg-rose-600 text-2xl font-black text-white shadow-lg"
+              className="grid h-[60px] w-[60px] place-items-center rounded-full bg-rose-600 text-[32px] font-bold text-white shadow-lg"
               aria-label="Pass"
             >
               ✕
@@ -9153,7 +9178,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               type="button"
               onClick={() => void reactToRouteDatingProfile(profile.user_id, 'super')}
               disabled={routeDatingReaction.superLiked || routeDatingReaction.matched}
-              className="grid h-14 w-14 place-items-center rounded-full bg-blue-600 text-white shadow-lg disabled:opacity-55"
+              className="grid h-14 w-14 place-items-center rounded-full bg-pink-600 text-white shadow-lg disabled:opacity-55"
               aria-label="Super like"
             >
               {routeDatingReaction.superLiked ? <CheckCircle2 className="h-7 w-7" /> : <Star className="h-7 w-7 fill-white" />}
@@ -9170,6 +9195,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           </div>
         ) : null}
 
+        <div className="space-y-4 px-4 pb-2">
         {routeDatingReaction.matched ? (
           <section className="rounded-[24px] bg-gradient-to-br from-pink-500 to-blue-600 p-5 text-white shadow-xl shadow-pink-500/20">
             <Sparkles className="h-9 w-9" />
@@ -9196,18 +9222,17 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         ) : null}
 
         {!isOwnProfile && routeConversationStarters.length ? (
-          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-            <p className="text-lg font-black text-slate-950">Conversation Starters</p>
-            <p className="mt-1 text-sm text-slate-500">Send one opener to start naturally.</p>
-            <div className="mt-3 space-y-2">
+          <section className="border-t border-slate-100 py-6">
+            <p className="text-xl font-bold text-slate-950">Conversation Starters 💬</p>
+            <div className="mt-4 flex flex-col gap-3">
               {routeConversationStarters.map((starter) => (
                 <button
                   key={starter}
                   type="button"
                   onClick={() => void openConversationWithUser(profile.user_id, starter)}
-                  className="flex w-full items-start gap-3 rounded-[18px] bg-pink-50 px-4 py-3 text-left text-sm font-black text-pink-700 ring-1 ring-pink-100"
+                  className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-[15px] font-medium text-slate-900"
                 >
-                  <MessageCircle className="mt-0.5 h-4 w-4 shrink-0 text-pink-600" />
+                  <MessageCircle className="h-4 w-4 shrink-0 text-blue-600" />
                   <span>{starter}</span>
                 </button>
               ))}
@@ -9225,25 +9250,25 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
         {profile.bio ? (
           <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-            <p className="text-lg font-black text-slate-950">About</p>
-            <p className="mt-2 text-sm leading-6 text-slate-800">{profile.bio}</p>
+            <p className="text-xl font-bold text-slate-950">About</p>
+            <p className="mt-4 text-base leading-6 text-slate-800">{profile.bio}</p>
           </section>
         ) : null}
 
         {profile.what_makes_me_different ? (
           <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-            <p className="text-lg font-black text-slate-950">What Makes Me Different</p>
-            <p className="mt-2 text-sm leading-6 text-slate-800">{profile.what_makes_me_different}</p>
+            <p className="text-xl font-bold text-slate-950">What Makes Me Different 🔥</p>
+            <p className="mt-4 text-base leading-6 text-slate-800">{profile.what_makes_me_different}</p>
           </section>
         ) : null}
 
         {valuesList.length > 0 ? (
           <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-            <p className="text-lg font-black text-slate-950">Values</p>
-            <div className="mt-3 flex flex-wrap gap-2">
+            <p className="text-xl font-bold text-slate-950">Values ❤️</p>
+            <div className="mt-4 flex flex-wrap gap-2">
               {valuesList.map((value: string, index: number) => (
-                <span key={`${value}-${index}`} className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-black text-blue-800">
-                  <Heart className="h-3.5 w-3.5 text-blue-600" />
+                <span key={`${value}-${index}`} className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-4 py-2.5 text-sm font-semibold text-slate-900">
+                  <Heart className="h-3.5 w-3.5 text-violet-600" />
                   {value}
                 </span>
               ))}
@@ -9280,14 +9305,14 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
         {profile.daily_question_answer ? (
           <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-            <p className="text-lg font-black text-slate-950">Daily Question</p>
-            <p className="mt-2 text-sm leading-6 text-slate-800">{profile.daily_question_answer}</p>
+            <p className="text-xl font-bold text-slate-950">Daily Question ✍🏽</p>
+            <p className="mt-4 text-base leading-6 text-slate-800">{profile.daily_question_answer}</p>
           </section>
         ) : null}
 
         {profilePrompts.length > 0 ? (
           <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-            <p className="text-lg font-black text-slate-950">Prompts</p>
+            <p className="text-xl font-bold text-slate-950">Prompts / Short Questions ✍🏽</p>
             <div className="mt-3 space-y-3">
               {profilePrompts.map((prompt: any, index: number) => (
                 <div key={index} className="rounded-[18px] border border-slate-100 bg-slate-50 p-4">
@@ -9554,6 +9579,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             You liked this profile. Messaging opens when you match or send an allowed conversation starter.
           </section>
         ) : null}
+        </div>
       </div>
     );
   };

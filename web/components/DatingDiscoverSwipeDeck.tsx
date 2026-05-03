@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { CheckCircle2, ChevronLeft, ChevronRight, Heart, MapPin, Shield, X } from 'lucide-react';
+import { CheckCircle2, Heart, Image as ImageIcon, MapPin, Shield, X } from 'lucide-react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getDisplayName as getUserDisplayName } from '@/lib/identity';
 import { resolveProfilePictureUrl, resolveProfilePictureUrlWithSupabase } from '@/lib/profile-media-url';
@@ -34,6 +34,8 @@ export type DatingDiscoveryCardProfile = {
   /** Expo/mobile discovery uses `user` singular — accept both. */
   user?: DatingDiscoveryCardProfile['users'];
   dating_photos?: { photo_url: string; is_primary?: boolean | null }[] | null;
+  /** Same shape as native discovery `profile.photos` from `DatingService.getDatingDiscovery`. */
+  photos?: { photo_url?: string | null; photoUrl?: string | null; is_primary?: boolean | null }[] | null;
 };
 
 function datingInterestLabel(interest: unknown): string {
@@ -65,16 +67,28 @@ export function DatingDiscoveryCardFace({ profile, supabase }: DatingDiscoveryCa
     setPhotoIndex(0);
   }, [profile.user_id]);
 
-  const photoRows = [...(profile.dating_photos || [])].sort((a, b) => {
-    const pa = a.is_primary ? 1 : 0;
-    const pb = b.is_primary ? 1 : 0;
-    return pb - pa;
-  });
+  const mergeDiscoveryPhotos = (): { photo_url: string; is_primary?: boolean | null }[] => {
+    const out: { photo_url: string; is_primary?: boolean | null }[] = [];
+    const seen = new Set<string>();
+    const add = (url: unknown, isPrimary?: boolean | null) => {
+      const u = String(url ?? '').trim();
+      if (!u || seen.has(u)) return;
+      seen.add(u);
+      out.push({ photo_url: u, is_primary: isPrimary });
+    };
+    const dating = [...(profile.dating_photos || [])];
+    dating.sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0));
+    dating.forEach((p) => add(p.photo_url, p.is_primary));
+    const legacy = profile.photos;
+    if (Array.isArray(legacy)) {
+      legacy.forEach((p) => add(p.photo_url ?? (p as { photoUrl?: string }).photoUrl, p.is_primary));
+    }
+    const uPic = (profile.users ?? profile.user)?.profile_picture;
+    if (uPic) add(uPic, false);
+    return out;
+  };
+  const photoRows = mergeDiscoveryPhotos();
   const photoUrlsRaw: string[] = photoRows.map((p) => String(p.photo_url || '').trim()).filter(Boolean);
-  const avatarFallback = (profile.users?.profile_picture || '').trim();
-  if (avatarFallback && !photoUrlsRaw.includes(avatarFallback)) {
-    photoUrlsRaw.push(avatarFallback);
-  }
 
   const resolveDatingPhoto = (raw: string) => {
     const r = raw.trim();
@@ -86,7 +100,7 @@ export function DatingDiscoveryCardFace({ profile, supabase }: DatingDiscoveryCa
 
   const photoCount = photoUrlsRaw.length;
   const safeIdx = photoCount ? Math.min(photoIndex, photoCount - 1) : 0;
-  const currentPhotoRaw = photoCount ? photoUrlsRaw[safeIdx] : avatarFallback;
+  const currentPhotoRaw = photoCount ? photoUrlsRaw[safeIdx] : '';
   const currentPhoto = currentPhotoRaw ? resolveDatingPhoto(String(currentPhotoRaw)) : '';
 
   const u = profile.users ?? profile.user ?? null;
@@ -101,112 +115,109 @@ export function DatingDiscoveryCardFace({ profile, supabase }: DatingDiscoveryCa
   const interests = (profile.interests || []).map((x) => datingInterestLabel(x)).filter(Boolean);
   const interestChips = interests.slice(0, 4);
   const interestOverflow = interests.length > 4 ? interests.length - 4 : 0;
-  const formatTag = (t: string) => t.replace(/_/g, ' ');
 
-  const locationCity = profile.location_city?.trim();
+  const locationCity =
+    profile.location_city?.trim() || String((profile as { locationCity?: string }).locationCity || '').trim();
   const locationCountry = profile.location_country?.trim();
-  let locationText = [locationCity, locationCountry].filter(Boolean).join(', ') || '';
+  let locationLine = [locationCity, locationCountry].filter(Boolean).join(', ');
   if (typeof profile.distance_km === 'number' && !Number.isNaN(profile.distance_km)) {
-    locationText = locationText
-      ? `${locationText} · ${Math.round(profile.distance_km)} km`
-      : `${Math.round(profile.distance_km)} km`;
+    const km = `${Math.round(profile.distance_km)} km`;
+    locationLine = locationLine ? `${locationLine} • ${km}` : km;
   }
-  if (!locationText) locationText = 'Location not set';
 
   const phoneVerified = !!u?.phone_verified;
   const emailVerified = !!u?.email_verified;
   const idVerified = !!u?.id_verified;
 
   return (
-    <div className="relative h-full min-h-[470px] overflow-hidden rounded-[26px] bg-slate-900 text-left shadow-2xl shadow-slate-950/20">
+    <div className="relative h-full min-h-[470px] overflow-hidden rounded-[24px] bg-slate-900 text-left shadow-2xl shadow-slate-950/30">
       {currentPhoto ? (
         <img src={currentPhoto} alt="" className="h-full min-h-[470px] w-full object-cover" />
       ) : (
-        <div className="grid h-full min-h-[470px] place-items-center bg-gradient-to-br from-orange-500 to-slate-900 text-[150px] font-black text-white">
-          {cardInitials(name)}
+        <div className="grid h-full min-h-[470px] place-items-center bg-violet-600">
+          {cardInitials(name) ? (
+            <span className="select-none text-8xl font-black tracking-tight text-white drop-shadow-md sm:text-9xl">{cardInitials(name)}</span>
+          ) : (
+            <ImageIcon className="h-16 w-16 text-white/90" aria-hidden />
+          )}
         </div>
       )}
 
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/50 to-transparent" aria-hidden />
+      {/* Match native `DatingSwipeCard`: bottom-half gradient + readable overlay */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/80 to-transparent" aria-hidden />
 
-      <div className="absolute right-3 top-3 z-20 flex gap-1.5">
+      {photoCount > 1 ? (
+        <div className="absolute left-0 right-0 top-4 z-20 flex justify-center gap-1.5 px-4" data-swipe-ignore>
+          {photoUrlsRaw.map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => setPhotoIndex(i)}
+              className={`pointer-events-auto h-1.5 rounded-full transition-all ${i === safeIdx ? 'w-6 bg-white' : 'w-1.5 bg-white/50'}`}
+              aria-label={`Photo ${i + 1}`}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {photoCount > 0 ? (
+        <div className="absolute right-4 top-4 z-20 flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 text-sm font-bold text-white backdrop-blur-sm" data-swipe-ignore>
+          <ImageIcon className="h-4 w-4" aria-hidden />
+          {photoCount}
+        </div>
+      ) : null}
+
+      <div className="absolute right-3 top-12 z-20 flex flex-wrap justify-end gap-1.5 sm:top-14">
         {phoneVerified ? (
-          <span className="pointer-events-auto grid h-9 w-9 place-items-center rounded-full bg-black/45 backdrop-blur-sm" title="Phone verified">
-            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+          <span className="grid h-9 w-9 place-items-center rounded-full bg-white/90 text-emerald-600 shadow-md" title="Phone verified">
+            <CheckCircle2 className="h-4 w-4" />
           </span>
         ) : null}
         {emailVerified ? (
-          <span className="pointer-events-auto grid h-9 w-9 place-items-center rounded-full bg-black/45 backdrop-blur-sm" title="Email verified">
-            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+          <span className="grid h-9 w-9 place-items-center rounded-full bg-white/90 text-emerald-600 shadow-md" title="Email verified">
+            <CheckCircle2 className="h-4 w-4" />
           </span>
         ) : null}
         {idVerified ? (
-          <span className="pointer-events-auto grid h-9 w-9 place-items-center rounded-full bg-black/45 backdrop-blur-sm" title="ID verified">
-            <Shield className="h-4 w-4 text-blue-300" />
+          <span className="grid h-9 w-9 place-items-center rounded-full bg-white/90 text-violet-600 shadow-md" title="ID verified">
+            <Shield className="h-4 w-4" />
           </span>
         ) : null}
       </div>
 
-      {photoCount > 1 ? (
-        <div className="absolute bottom-[7.5rem] left-2 right-2 z-20 flex items-center justify-between gap-2" data-swipe-ignore>
-          <button
-            type="button"
-            onClick={() => setPhotoIndex((i) => (i - 1 + photoCount) % photoCount)}
-            className="pointer-events-auto grid h-10 w-10 shrink-0 place-items-center rounded-full bg-black/50 text-white shadow-lg backdrop-blur-sm active:scale-95"
-            aria-label="Previous photo"
-          >
-            <ChevronLeft className="h-6 w-6" />
-          </button>
-          <div className="flex flex-1 justify-center gap-1.5">
-            {photoUrlsRaw.map((_, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setPhotoIndex(i)}
-                className={`pointer-events-auto h-1.5 rounded-full transition-all ${i === safeIdx ? 'w-6 bg-white' : 'w-1.5 bg-white/45'}`}
-                aria-label={`Photo ${i + 1}`}
-              />
+      <div className="absolute inset-x-0 bottom-0 bg-black/40 px-4 pb-5 pt-6 text-white sm:px-[18px]">
+        <div className="flex flex-wrap items-baseline gap-2">
+          <h2 className="max-w-[85%] text-2xl font-bold leading-tight drop-shadow sm:text-[28px]">{name}</h2>
+          {profile.age != null && !Number.isNaN(Number(profile.age)) ? (
+            <span className="text-xl font-semibold text-white/90 sm:text-[26px]">{profile.age}</span>
+          ) : null}
+        </div>
+        {locationLine ? (
+          <p className="mt-2 flex items-center gap-1 text-sm font-medium text-white/90">
+            <MapPin className="h-3.5 w-3.5 shrink-0" />
+            <span>{locationLine}</span>
+          </p>
+        ) : null}
+        {profile.bio?.trim() ? (
+          <p className="mt-3 line-clamp-2 text-sm leading-snug text-white drop-shadow-sm sm:text-[15px]">{profile.bio.trim()}</p>
+        ) : null}
+        {interestChips.length > 0 ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {interestChips.map((tag) => (
+              <span
+                key={tag}
+                className="rounded-full border border-white/30 bg-white/25 px-3 py-1.5 text-[10px] font-semibold text-white sm:text-xs"
+              >
+                {tag}
+              </span>
             ))}
+            {interestOverflow > 0 ? (
+              <span className="rounded-full border border-white/30 bg-white/25 px-3 py-1.5 text-[10px] font-semibold text-white sm:text-xs">
+                +{interestOverflow}
+              </span>
+            ) : null}
           </div>
-          <button
-            type="button"
-            onClick={() => setPhotoIndex((i) => (i + 1) % photoCount)}
-            className="pointer-events-auto grid h-10 w-10 shrink-0 place-items-center rounded-full bg-black/50 text-white shadow-lg backdrop-blur-sm active:scale-95"
-            aria-label="Next photo"
-          >
-            <ChevronRight className="h-6 w-6" />
-          </button>
-        </div>
-      ) : null}
-
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/65 to-transparent p-5 text-white">
-        <h2 className="text-3xl font-black">
-          {name}
-          {profile.age != null ? <span className="ml-2 align-middle text-2xl font-bold">{profile.age}</span> : null}
-        </h2>
-        <p className="mt-1 flex items-center gap-1 text-sm font-semibold">
-          <MapPin className="h-4 w-4 shrink-0" />
-          <span>{locationText}</span>
-        </p>
-        {profile.bio?.trim() ? <p className="mt-3 line-clamp-2 text-sm leading-5">{profile.bio.trim()}</p> : null}
-        <div className="mt-4 flex flex-wrap gap-2">
-          {interestChips.map((tag) => (
-            <span key={tag} className="rounded-full bg-white/18 px-3 py-1.5 text-xs font-black backdrop-blur">
-              {tag}
-            </span>
-          ))}
-          {interestOverflow > 0 ? (
-            <span className="rounded-full bg-white/18 px-3 py-1.5 text-xs font-black backdrop-blur">+{interestOverflow}</span>
-          ) : null}
-          {profile.intention_tag ? (
-            <span className="rounded-full bg-white/18 px-3 py-1.5 text-xs font-black capitalize backdrop-blur">
-              {formatTag(String(profile.intention_tag))}
-            </span>
-          ) : null}
-          {profile.religion ? (
-            <span className="rounded-full bg-white/18 px-3 py-1.5 text-xs font-black backdrop-blur">{profile.religion}</span>
-          ) : null}
-        </div>
+        ) : null}
       </div>
     </div>
   );

@@ -7,6 +7,7 @@ import { APP_SCHEME, buildWebAppUrl } from '@/lib/appLinks';
 import OpenAppFallback from '@/components/OpenAppFallback';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { getDisplayName } from '@/lib/identity';
+import { resolveProfilePictureUrl } from '@/lib/profile-media-url';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -121,7 +122,11 @@ export default function PublicProfilePage() {
         <div className="bg-gradient-to-br from-blue-600 via-blue-700 to-slate-950 px-5 pb-8 pt-10 text-white">
           <div className="flex items-center gap-4">
             {profile.profile_picture ? (
-              <img src={profile.profile_picture} alt="" className="h-20 w-20 rounded-full object-cover ring-4 ring-white/25" />
+              <img
+                src={resolveProfilePictureUrl(profile.profile_picture) || profile.profile_picture}
+                alt=""
+                className="h-20 w-20 rounded-full object-cover ring-4 ring-white/25"
+              />
             ) : (
               <div className="grid h-20 w-20 place-items-center rounded-full bg-white/20 text-2xl font-black ring-4 ring-white/25">
                 {initials(name)}

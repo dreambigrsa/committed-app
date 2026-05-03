@@ -8,6 +8,7 @@ import OpenAppFallback from '@/components/OpenAppFallback';
 import ExpoMirrorRoute from '@/components/ExpoMirrorRoute';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { getDisplayName } from '@/lib/identity';
+import { resolveProfilePictureUrl } from '@/lib/profile-media-url';
 
 const FALLBACK_DELAY_MS = 1200;
 
@@ -170,7 +171,11 @@ export default function PostPage() {
               <div className="flex items-center gap-3 p-4">
                 {post?.users?.profile_picture ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={post.users.profile_picture} alt="" className="h-11 w-11 rounded-full object-cover" />
+                  <img
+                    src={resolveProfilePictureUrl(post.users.profile_picture) || post.users.profile_picture}
+                    alt=""
+                    className="h-11 w-11 rounded-full object-cover"
+                  />
                 ) : (
                   <div className="grid h-11 w-11 place-items-center rounded-full bg-blue-600 font-black text-white">
                     {getDisplayName(post?.users).charAt(0)}

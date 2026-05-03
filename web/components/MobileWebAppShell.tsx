@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { HTMLAttributes } from 'react';
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import {
   Bell,
   Ban,
@@ -45,13 +45,17 @@ import {
 } from 'lucide-react';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { getDisplayName as getUserDisplayName } from '@/lib/identity';
-import { resolveProfilePictureUrl } from '@/lib/profile-media-url';
+import { resolveProfilePictureUrl, resolveProfilePictureUrlWithSupabase } from '@/lib/profile-media-url';
 import { mergeUsersProfileForWebShell, usersRowBootstrapFromAuth } from '@/lib/web-user-profile';
 import { buildPostWebUrl, buildReelWebUrl } from '@/lib/appLinks';
 import { getPostVisibilityOrFilter, getReelVisibilityOrFilter } from '@/lib/content-visibility';
 import { filterVisibleMessagesForUser } from '@/lib/parity-helpers';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 type TabKey = 'home' | 'feed' | 'reels' | 'dating' | 'search' | 'notifications' | 'messages' | 'profile';
+
+/** Lets Avatar use `storage.getPublicUrl` for path-only `users.profile_picture` values (same as mobile). */
+const WebShellSupabaseContext = createContext<SupabaseClient | null>(null);
 
 type WebUser = {
   id: string;
@@ -553,15 +557,29 @@ function getCommittedAIReply(
 }
 
 function Avatar({ src, name, size = 'md' }: { src?: string | null; name?: string | null; size?: 'sm' | 'md' | 'lg' }) {
+  const shellSupabase = useContext(WebShellSupabaseContext);
   const sizeClass = size === 'lg' ? 'h-14 w-14 text-lg' : size === 'sm' ? 'h-9 w-9 text-xs' : 'h-11 w-11 text-sm';
   const [failed, setFailed] = useState(false);
-  const resolvedSrc = src ? resolveProfilePictureUrl(src) : null;
+  const resolvedSrc = useMemo(() => {
+    if (!src) return null;
+    return shellSupabase ? resolveProfilePictureUrlWithSupabase(shellSupabase, src) : resolveProfilePictureUrl(src);
+  }, [src, shellSupabase]);
   useEffect(() => {
     setFailed(false);
   }, [src]);
   if (resolvedSrc && !failed) {
     return (
-      <img src={resolvedSrc} alt="" onError={() => setFailed(true)} className={`${sizeClass} rounded-full object-cover`} />
+      <img
+        src={resolvedSrc}
+        alt=""
+        onError={() => {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('[Web Avatar] image failed to load:', resolvedSrc);
+          }
+          setFailed(true);
+        }}
+        className={`${sizeClass} rounded-full object-cover`}
+      />
     );
   }
   return (
@@ -1326,6 +1344,12 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         hasProfilePicture: !!profile?.profile_picture,
         hadProfileError: !!profileError,
       });
+
+      if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
+        const rawPic = profile?.profile_picture ?? null;
+        console.log('[Web profile] users.profile_picture (avatar URL from DB, raw):', rawPic);
+        console.log('[Web profile] resolved for display:', resolveProfilePictureUrl(rawPic));
+      }
 
       const resolvedProfile = mergeUsersProfileForWebShell(profile, authUser);
 
@@ -6125,6 +6149,21 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     return publicData.publicUrl;
   }, [supabase, user]);
 
+  /** Same bucket/path as `app/settings.tsx` so public URLs and RLS match the native app. */
+  const uploadProfilePictureToAvatars = useCallback(async (file: File) => {
+    if (!supabase || !user) throw new Error('Please sign in again before uploading.');
+    const extension = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const fileName = `${user.id}-${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`;
+    const filePath = `profile-pictures/${fileName}`;
+    const { data, error } = await supabase.storage.from('avatars').upload(filePath, file, {
+      contentType: file.type || 'image/jpeg',
+      upsert: false,
+    });
+    if (error) throw error;
+    const { data: publicData } = supabase.storage.from('avatars').getPublicUrl(data.path);
+    return publicData.publicUrl;
+  }, [supabase, user]);
+
   const handleFileUpload = useCallback(async (
     event: any,
     folder: string,
@@ -6155,7 +6194,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       if (!file || !supabase || !user) return;
       setUploadingLabel('Profile photo');
       try {
-        const url = await uploadMediaFile(file, 'avatars');
+        const url = await uploadProfilePictureToAvatars(file);
         setSettingsProfilePictureUrl(url);
         const { error } = await supabase.from('users').update({ profile_picture: url }).eq('id', user.id);
         if (error) throw error;
@@ -6170,7 +6209,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         if (event.target) event.target.value = '';
       }
     },
-    [supabase, user, uploadMediaFile]
+    [supabase, user, uploadProfilePictureToAvatars]
   );
 
   const renderHeader = () => {
@@ -8124,7 +8163,13 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       </label>
       {settingsProfilePictureUrl ? (
         <img
-          src={resolveProfilePictureUrl(settingsProfilePictureUrl) || settingsProfilePictureUrl}
+          src={
+            supabase
+              ? resolveProfilePictureUrlWithSupabase(supabase, settingsProfilePictureUrl) ||
+                resolveProfilePictureUrl(settingsProfilePictureUrl) ||
+                settingsProfilePictureUrl
+              : resolveProfilePictureUrl(settingsProfilePictureUrl) || settingsProfilePictureUrl
+          }
           alt="Profile photo preview"
           className="max-h-[220px] w-full rounded-[18px] object-cover"
         />
@@ -10526,31 +10571,33 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   };
 
   return (
-    <div className="min-h-screen bg-slate-200 text-slate-950">
-      <div className="mx-auto min-h-screen max-w-[430px] bg-slate-50 shadow-2xl md:my-4 md:min-h-[calc(100vh-2rem)] md:overflow-hidden md:rounded-[28px]">
-        {renderHeader()}
-        <main className="pb-[76px]">{renderContent()}</main>
-        <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto grid h-[64px] max-w-[430px] grid-cols-8 border-t border-slate-200 bg-white">
-          {tabs.map(({ key, label, href, icon: Icon }) => {
-            const active = key === activeTab;
-            return (
-              <Link key={key} href={href} className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-semibold ${active ? 'text-blue-600' : 'text-slate-400'}`}>
-                <Icon className={`h-5 w-5 ${active && key === 'feed' ? 'fill-current' : ''}`} strokeWidth={active ? 2.6 : 2} />
-                <span>{label}</span>
-              </Link>
-            );
-          })}
-        </nav>
-      </div>
-      {reactionNotice ? (
-        <div className="fixed inset-x-0 bottom-24 z-50 mx-auto max-w-[430px] px-6">
-          <div className="flex items-center gap-3 rounded-[22px] bg-slate-950 px-4 py-3 text-sm font-black text-white shadow-2xl">
-            <CheckCircle2 className="h-5 w-5 text-blue-300" />
-            {reactionNotice}
-          </div>
+    <WebShellSupabaseContext.Provider value={supabase}>
+      <div className="min-h-screen bg-slate-200 text-slate-950">
+        <div className="mx-auto min-h-screen max-w-[430px] bg-slate-50 shadow-2xl md:my-4 md:min-h-[calc(100vh-2rem)] md:overflow-hidden md:rounded-[28px]">
+          {renderHeader()}
+          <main className="pb-[76px]">{renderContent()}</main>
+          <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto grid h-[64px] max-w-[430px] grid-cols-8 border-t border-slate-200 bg-white">
+            {tabs.map(({ key, label, href, icon: Icon }) => {
+              const active = key === activeTab;
+              return (
+                <Link key={key} href={href} className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-semibold ${active ? 'text-blue-600' : 'text-slate-400'}`}>
+                  <Icon className={`h-5 w-5 ${active && key === 'feed' ? 'fill-current' : ''}`} strokeWidth={active ? 2.6 : 2} />
+                  <span>{label}</span>
+                </Link>
+              );
+            })}
+          </nav>
         </div>
-      ) : null}
-    </div>
+        {reactionNotice ? (
+          <div className="fixed inset-x-0 bottom-24 z-50 mx-auto max-w-[430px] px-6">
+            <div className="flex items-center gap-3 rounded-[22px] bg-slate-950 px-4 py-3 text-sm font-black text-white shadow-2xl">
+              <CheckCircle2 className="h-5 w-5 text-blue-300" />
+              {reactionNotice}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </WebShellSupabaseContext.Provider>
   );
 }
 

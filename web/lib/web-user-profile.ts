@@ -38,6 +38,7 @@ export function usersRowBootstrapFromAuth(authUser: AuthUserLike) {
   const meta = authMetadataStrings(authUser);
   const metadataRole =
     typeof authUser.user_metadata?.role === 'string' ? authUser.user_metadata.role.trim() : '';
+  const profilePicture = resolveProfilePictureUrl(meta.profilePicture || null);
   return {
     id: authUser.id,
     full_name: meta.fullName || null,
@@ -45,7 +46,8 @@ export function usersRowBootstrapFromAuth(authUser: AuthUserLike) {
     email: authUser.email || null,
     phone_number: meta.phoneNumber || (authUser.phone || null) || null,
     role: metadataRole || 'user',
-    profile_picture: resolveProfilePictureUrl(meta.profilePicture || null),
+    /** Omit when empty so `upsert` does not overwrite an existing DB photo with null. */
+    ...(profilePicture ? { profile_picture: profilePicture } : {}),
     email_verified: !!authUser.email_confirmed_at,
     phone_verified: !!authUser.phone_confirmed_at,
   };

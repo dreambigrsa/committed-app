@@ -173,8 +173,8 @@ export default function PublicProfilePage() {
             .order('created_at', { ascending: false })
             .limit(60),
           supabase.from('posts').select('*', { count: 'exact', head: true }).eq('user_id', userRow.id),
-          supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', userRow.id),
-          supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userRow.id),
+          supabase.from('follows').select('id', { count: 'exact', head: true }).eq('following_id', userRow.id),
+          supabase.from('follows').select('id', { count: 'exact', head: true }).eq('follower_id', userRow.id),
           supabase.from('user_status').select('status_type').eq('user_id', userRow.id).maybeSingle(),
           supabase
             .from('relationships')

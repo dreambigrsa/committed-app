@@ -812,6 +812,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const [loading, setLoading] = useState(true);
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [reels, setReels] = useState<Reel[]>([]);
+  /** Latest shell feed for profile-route merge (native `app/profile/[userId].tsx` uses `allPosts`/`allReels` filters, not only a direct query). */
+  const feedPostsMergeRef = useRef<FeedPost[]>([]);
+  const feedReelsMergeRef = useRef<Reel[]>([]);
 
   /** Joined `users` on own posts/reels can expose name/photo when the direct `users` row merge missed them (RLS/timing). */
   const shellAvatarFromFeed = useMemo(() => {
@@ -835,6 +838,13 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     }
     return { picture, fullName };
   }, [user?.id, posts, reels]);
+
+  useEffect(() => {
+    feedPostsMergeRef.current = posts;
+  }, [posts]);
+  useEffect(() => {
+    feedReelsMergeRef.current = reels;
+  }, [reels]);
 
   const shellAvatarSrc = useMemo(
     () => (user?.profile_picture && user.profile_picture.trim()) || shellAvatarFromFeed.picture || undefined,
@@ -2622,8 +2632,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle(),
-          supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', profileUser.id),
-          supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', profileUser.id),
+          /** Match native `app/profile/[userId].tsx` `loadFollowCounts` — `id` + exact count (not `*` head) for reliable PostgREST count. */
+          supabase.from('follows').select('id', { count: 'exact', head: true }).eq('following_id', profileUser.id),
+          supabase.from('follows').select('id', { count: 'exact', head: true }).eq('follower_id', profileUser.id),
         ];
 
         if (isOther) {
@@ -2647,7 +2658,37 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         const followRowRes = isOther ? results[6] : null;
         const blockRowRes = isOther ? results[7] : null;
 
-        const postRows = (profilePostsResult.data || []) as FeedPost[];
+        let postRows = (profilePostsResult.data || []) as FeedPost[];
+        if (!postRows.length) {
+          const fb = await supabase
+            .from('posts')
+            .select('id,user_id,content,media_urls,media_type,comment_count,created_at')
+            .eq('user_id', profileUser.id)
+            .order('created_at', { ascending: false })
+            .limit(60);
+          if (!fb.error && (fb.data || []).length) postRows = (fb.data || []) as FeedPost[];
+        }
+        let reelRows = (profileReelsResult.data || []) as Reel[];
+        if (!reelRows.length) {
+          const fbR = await supabase
+            .from('reels')
+            .select('id,user_id,caption,video_url,thumbnail_url,created_at')
+            .eq('user_id', profileUser.id)
+            .order('created_at', { ascending: false })
+            .limit(60);
+          if (!fbR.error && (fbR.data || []).length) reelRows = (fbR.data || []) as Reel[];
+        }
+        /** Native profile screen uses `allPosts.filter(p => p.userId === userId)` — prefer shell feed when it has more rows for your own profile. */
+        if (profileUser.id === (user?.id || '').trim()) {
+          const shellP = feedPostsMergeRef.current.filter((p) => p.user_id === profileUser.id);
+          if (shellP.length > postRows.length) {
+            postRows = shellP.map((p) => ({ ...p, likes: p.likes || [] })) as FeedPost[];
+          }
+          const shellR = feedReelsMergeRef.current.filter((r) => r.user_id === profileUser.id);
+          if (shellR.length > reelRows.length) {
+            reelRows = shellR.map((r) => ({ ...r, likes: r.likes || [] })) as Reel[];
+          }
+        }
         const postIds = postRows.map((p) => p.id).filter(Boolean);
         const profilePostLikesResult =
           postIds.length > 0
@@ -2660,7 +2701,6 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         });
         setRouteProfilePosts(postRows.map((post) => ({ ...post, likes: likesByPost.get(post.id) || [] })));
 
-        const reelRows = (profileReelsResult.data || []) as Reel[];
         setRouteProfileReels(reelRows.map((r) => ({ ...r, likes: r.likes || [] })));
 
         setRouteProfileFollowers(parseSupabaseCount(followersCountRes));
@@ -2690,6 +2730,26 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       cancelled = true;
     };
   }, [appPath, supabase, user?.id]);
+
+  /** When shell feed finishes loading after an empty profile-route fetch, repopulate like native `loadUserContent` on `[allPosts, userId]`. */
+  useEffect(() => {
+    if (appPath[0] !== 'profile' || !appPath[1] || !routeProfileUser?.id || !user?.id) return;
+    if (routeProfileUser.id !== user.id) return;
+    const shellP = posts.filter((p) => p.user_id === user.id);
+    if (shellP.length > 0) {
+      setRouteProfilePosts((prev) => {
+        if (prev.length >= shellP.length) return prev;
+        return shellP.map((p) => ({ ...p, likes: p.likes || [] }));
+      });
+    }
+    const shellR = reels.filter((r) => r.user_id === user.id);
+    if (shellR.length > 0) {
+      setRouteProfileReels((prev) => {
+        if (prev.length >= shellR.length) return prev;
+        return shellR.map((r) => ({ ...r, likes: r.likes || [] }));
+      });
+    }
+  }, [appPath, routeProfileUser?.id, user?.id, posts, reels]);
 
   useEffect(() => {
     const targetUserId = appPath[0] === 'dating' && subPath === 'user-profile'

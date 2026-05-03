@@ -254,7 +254,9 @@ function passesDatingMutualGenderFilter(
   const profileGender = String(profile.gender || '').trim().toLowerCase();
   const profileLookingFor = String(profile.looking_for || 'everyone').toLowerCase();
 
-  if (!profileGender || profileGender === 'prefer_not_to_say') return false;
+  // Profiles with no gender on file cannot be checked for "men/women" preference; include them so
+  // discovery does not go empty when legacy rows omit `gender` (user can pass).
+  if (!profileGender || profileGender === 'prefer_not_to_say') return true;
 
   if (lf === 'men') {
     if (profileGender !== 'male') return false;
@@ -2400,17 +2402,17 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           if (ownCity && item.location_city && !item.location_city.toLowerCase().includes(ownCity.toLowerCase())) return false;
           if (ownCountry && item.location_country && !item.location_country.toLowerCase().includes(ownCountry.toLowerCase())) return false;
           if (!passesDatingMutualGenderFilter(ownLookingFor, ownDating?.gender, item)) return false;
-          if (intentionTags.length && (!item.intention_tag || !intentionTags.includes(item.intention_tag))) return false;
-          if (religions.length && (!item.religion || !religions.includes(item.religion))) return false;
-          if (educationLevels.length && (!item.education || !educationLevels.includes(item.education))) return false;
-          if (kidsFilter.length && (!item.kids || !kidsFilter.includes(item.kids))) return false;
-          if (smokeFilter.length && (!item.smoke || !smokeFilter.includes(item.smoke))) return false;
-          if (drinkFilter.length && (!item.drink || !drinkFilter.includes(item.drink))) return false;
-          if (exerciseFilter.length && (!item.exercise || !exerciseFilter.includes(item.exercise))) return false;
-          if (petsFilter.length && (!item.pets || !petsFilter.includes(item.pets))) return false;
+          if (intentionTags.length && item.intention_tag && !intentionTags.includes(item.intention_tag)) return false;
+          if (religions.length && item.religion && !religions.includes(item.religion)) return false;
+          if (educationLevels.length && item.education && !educationLevels.includes(item.education)) return false;
+          if (kidsFilter.length && item.kids && !kidsFilter.includes(item.kids)) return false;
+          if (smokeFilter.length && item.smoke && !smokeFilter.includes(item.smoke)) return false;
+          if (drinkFilter.length && item.drink && !drinkFilter.includes(item.drink)) return false;
+          if (exerciseFilter.length && item.exercise && !exerciseFilter.includes(item.exercise)) return false;
+          if (petsFilter.length && item.pets && !petsFilter.includes(item.pets)) return false;
           if (interestsFilter.length) {
-            const itemInterests = item.interests || [];
-            if (!interestsFilter.some((interest) => itemInterests.includes(interest))) return false;
+            const itemInterests = Array.isArray(item.interests) ? item.interests : [];
+            if (itemInterests.length && !interestsFilter.some((interest) => itemInterests.includes(interest))) return false;
           }
           if (typeof minHeightCm === 'number' && typeof item.height_cm === 'number' && item.height_cm < minHeightCm) return false;
           if (typeof maxHeightCm === 'number' && typeof item.height_cm === 'number' && item.height_cm > maxHeightCm) return false;
@@ -2527,12 +2529,16 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       }
       const maxDistanceKm = Number(savedDiscoveryFilters.maxDistance ?? ownDating?.max_distance_km ?? 50);
       if (Number.isFinite(maxDistanceKm) && maxDistanceKm > 0 && viewerLat != null && viewerLon != null) {
+        const beforeDistanceFilter = discoverProfiles;
         discoverProfiles = discoverProfiles.filter((item) => {
           const lat = typeof item.location_latitude === 'number' ? item.location_latitude : null;
           const lon = typeof item.location_longitude === 'number' ? item.location_longitude : null;
           if (lat == null || lon == null) return true;
           return haversineKm(viewerLat, viewerLon, lat, lon) <= maxDistanceKm;
         });
+        if (!discoverProfiles.length && beforeDistanceFilter.length) {
+          discoverProfiles = beforeDistanceFilter;
+        }
       }
       if (hasPhotos) {
         discoverProfiles = discoverProfiles.filter((item) => (item.dating_photos || []).length > 0);
@@ -8151,12 +8157,21 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const renderDating = () => {
     const profile = datingProfiles[datingIndex];
     if (!profile) {
+      const showDatingDebug =
+        typeof window !== 'undefined' &&
+        (process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_DEBUG_DATING === '1');
       return (
         <div>
-          <div className="mx-4 mt-4 rounded-[16px] border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-900">
-            <p>Dating debug: initial {datingDebug.initial}, filtered {datingDebug.afterInitialFilters}, likes excluded {datingDebug.likedExcluded}, passes excluded {datingDebug.passedExcluded}, fallbacks {datingDebug.fallbackRuns}, final {datingDebug.final}</p>
-            {datingDebug.lastError ? <p className="mt-1">Query error: {datingDebug.lastError}</p> : null}
-          </div>
+          {showDatingDebug ? (
+            <div className="mx-4 mt-4 rounded-[16px] border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-900">
+              <p>
+                Dating debug: initial {datingDebug.initial}, filtered {datingDebug.afterInitialFilters}, likes excluded{' '}
+                {datingDebug.likedExcluded}, passes excluded {datingDebug.passedExcluded}, fallbacks {datingDebug.fallbackRuns}, final{' '}
+                {datingDebug.final}
+              </p>
+              {datingDebug.lastError ? <p className="mt-1">Query error: {datingDebug.lastError}</p> : null}
+            </div>
+          ) : null}
           <EmptyState
             icon={Sparkles}
             title="No More Profiles"

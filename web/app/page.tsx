@@ -8,12 +8,16 @@ import {
   BriefcaseBusiness,
   CalendarHeart,
   CheckCircle2,
+  ClipboardCheck,
   HeartHandshake,
+  IdCard,
   LockKeyhole,
   MessageCircleHeart,
+  MessagesSquare,
   Radar,
   ShieldCheck,
   Sparkles,
+  UserRoundCheck,
   UsersRound,
 } from 'lucide-react';
 import Navbar from '@/components/Navbar';
@@ -50,6 +54,37 @@ const productMoments = [
     icon: BriefcaseBusiness,
     title: 'Get support',
     text: 'Book approved professionals and mentors when a relationship needs guidance or repair.',
+  },
+];
+
+const appPreviews = [
+  {
+    icon: MessageCircleHeart,
+    title: 'Dating profile',
+    eyebrow: 'Intentions first',
+    lines: ['Verified profile signals', 'Relationship goals', 'Conversation starters'],
+    accent: 'bg-rose-500',
+  },
+  {
+    icon: ClipboardCheck,
+    title: 'Relationship record',
+    eyebrow: 'Consent and review',
+    lines: ['Partner confirmation', 'Privacy level', 'Admin review path'],
+    accent: 'bg-teal-500',
+  },
+  {
+    icon: IdCard,
+    title: 'Verification',
+    eyebrow: 'Trust signals',
+    lines: ['Phone verified', 'Email verified', 'ID review status'],
+    accent: 'bg-blue-500',
+  },
+  {
+    icon: MessagesSquare,
+    title: 'Support',
+    eyebrow: 'Help when needed',
+    lines: ['Professional bookings', 'Guided conversations', 'Safety alerts'],
+    accent: 'bg-slate-900',
   },
 ];
 
@@ -163,6 +198,49 @@ export default function HomePage() {
 
         <PublicRelationshipSearch />
 
+        <section className="bg-white py-16">
+          <div className="mx-auto max-w-7xl px-5 md:px-8">
+            <div className="grid gap-10 lg:grid-cols-[0.85fr_1.15fr] lg:items-center">
+              <div>
+                <p className="text-sm font-black uppercase text-teal-700">Inside the app</p>
+                <h2 className="mt-3 text-4xl font-black tracking-normal md:text-5xl">
+                  The app feels clear because every step has a purpose.
+                </h2>
+                <p className="mt-5 text-lg leading-8 text-slate-600">
+                  Every major path points back to trust: who someone is, what they want, what has been verified, and what can remain private.
+                </p>
+                <div className="mt-7 flex flex-wrap gap-3">
+                  <span className="rounded-md bg-slate-950 px-3 py-2 text-sm font-black text-white">Dating</span>
+                  <span className="rounded-md bg-teal-50 px-3 py-2 text-sm font-black text-teal-800">Verification</span>
+                  <span className="rounded-md bg-rose-50 px-3 py-2 text-sm font-black text-rose-800">Relationship records</span>
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                {appPreviews.map(({ icon: Icon, title, eyebrow, lines, accent }) => (
+                  <article key={title} className="overflow-hidden rounded-lg border border-slate-200 bg-[#fbfbf6] shadow-sm">
+                    <div className={`${accent} p-5 text-white`}>
+                      <div className="flex items-center justify-between gap-4">
+                        <p className="text-xs font-black uppercase text-white/80">{eyebrow}</p>
+                        <Icon className="h-7 w-7" />
+                      </div>
+                      <h3 className="mt-7 text-2xl font-black">{title}</h3>
+                    </div>
+                    <div className="space-y-3 p-5">
+                      {lines.map((line) => (
+                        <div key={line} className="flex items-center gap-3 rounded-md bg-white px-3 py-3 text-sm font-bold text-slate-700 ring-1 ring-slate-200">
+                          <CheckCircle2 className="h-4 w-4 shrink-0 text-teal-600" />
+                          {line}
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section id="singles" className="bg-white py-16">
           <div className="mx-auto max-w-7xl px-5 md:px-8">
             <div className="grid gap-5 lg:grid-cols-2">
@@ -192,7 +270,7 @@ export default function HomePage() {
                 Safety should feel present, not performative.
               </h2>
               <p className="mt-5 text-lg leading-8 text-slate-300">
-                The product promise is serious: help people connect with more care and less ambiguity. The design now leads with warmth, evidence, and calm confidence.
+                Committed helps people connect with more care and less ambiguity, while making privacy and verification visible at the moments they matter.
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -212,9 +290,9 @@ export default function HomePage() {
             <div className="grid gap-5 lg:grid-cols-[1.05fr_0.95fr] lg:items-stretch">
               <div className="rounded-lg border border-slate-200 bg-white p-6 md:p-8">
                 <UsersRound className="h-10 w-10 text-teal-700" />
-                <h2 className="mt-6 text-4xl font-black tracking-normal">A public site that earns the click.</h2>
+                <h2 className="mt-6 text-4xl font-black tracking-normal">One place for the whole relationship journey.</h2>
                 <p className="mt-4 text-base leading-7 text-slate-600">
-                  The new homepage gives users a clear emotional reason to trust Committed, then shows practical paths: open the app, date, verify, search, download, or get support.
+                  Start by meeting intentionally, continue with private or public relationship records, and bring in support when a connection needs guidance.
                 </p>
                 <div className="mt-7 flex flex-col gap-3 sm:flex-row">
                   <Link href="/auth" className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-slate-950 px-5 font-black text-white">
@@ -240,6 +318,34 @@ export default function HomePage() {
                     <p className="font-black text-slate-900">{String(text)}</p>
                   </div>
                 ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-white px-5 py-16 md:px-8">
+          <div className="mx-auto max-w-7xl overflow-hidden rounded-lg bg-slate-950 text-white">
+            <div className="grid gap-8 p-6 md:p-8 lg:grid-cols-[1fr_auto] lg:items-center">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-md bg-white/10 px-3 py-2 text-sm font-black text-teal-200">
+                  <UserRoundCheck className="h-4 w-4" />
+                  Trust before connection
+                </div>
+                <h2 className="mt-5 max-w-3xl text-4xl font-black tracking-normal md:text-5xl">
+                  Meet, verify, protect, and get support in one place.
+                </h2>
+                <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
+                  Committed gives singles and couples a practical way to move with more clarity, privacy, and accountability.
+                </p>
+              </div>
+              <div className="flex flex-col gap-3 sm:flex-row lg:flex-col">
+                <Link href="/auth" className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-teal-400 px-5 font-black text-slate-950">
+                  Open web app
+                  <ArrowRight className="h-5 w-5" />
+                </Link>
+                <Link href={downloadHref} className="inline-flex h-12 items-center justify-center rounded-md border border-white/20 px-5 font-black text-white">
+                  Download app
+                </Link>
               </div>
             </div>
           </div>

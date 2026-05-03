@@ -113,29 +113,44 @@ export default function PublicRelationshipSearch() {
   };
 
   return (
-    <section id="trust-safety" className="bg-slate-50 py-14">
-      <div className="mx-auto max-w-6xl px-5 md:px-8">
-        <div className="grid gap-5 lg:grid-cols-[0.82fr_1.18fr] lg:items-start">
-          <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-slate-200">
-            <span className="inline-flex items-center gap-2 rounded-md bg-teal-50 px-3 py-1.5 text-xs font-black uppercase text-teal-800">
-              <ShieldCheck className="h-4 w-4" />
-              Public registry
-            </span>
-            <h2 className="mt-5 text-3xl font-black tracking-tight">Check verified public relationships.</h2>
-            <p className="mt-3 text-sm leading-6 text-slate-600">
-              Search by a public name or phone number. Committed only shows relationships that are verified and marked public.
-              Private records, pending records, and ended records stay hidden.
-            </p>
-            <div className="mt-5 rounded-lg bg-teal-50 p-4 text-sm leading-6 text-teal-950">
-              <p className="font-black">Privacy-first by design</p>
-              <p className="mt-1 text-teal-800">
-                A report does not automatically remove a relationship from search. Only admin actions can end or remove a verified record.
+    <section id="trust-safety" className="bg-[#f8faf7] py-16">
+      <div className="mx-auto max-w-7xl px-5 md:px-8">
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div className="grid lg:grid-cols-[0.95fr_1.05fr]">
+            <div className="bg-slate-950 p-6 text-white md:p-8">
+              <span className="inline-flex items-center gap-2 rounded-md bg-teal-400 px-3 py-1.5 text-xs font-black uppercase text-slate-950">
+                <ShieldCheck className="h-4 w-4" />
+                Public trust check
+              </span>
+              <h2 className="mt-6 max-w-xl text-4xl font-black leading-tight tracking-normal md:text-5xl">
+                Search only what people chose to make public.
+              </h2>
+              <p className="mt-5 max-w-lg text-base leading-7 text-slate-300">
+                Committed only shows relationship records that are verified and marked public. Private, pending, and ended records stay hidden.
               </p>
+              <div className="mt-8 grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+                {[
+                  ['Verified', 'Admin or partner-reviewed records'],
+                  ['Public only', 'Visibility remains user-controlled'],
+                  ['Protected', 'Reports go through review'],
+                ].map(([title, text]) => (
+                  <div key={title} className="rounded-md border border-white/12 bg-white/10 p-4">
+                    <p className="font-black text-teal-200">{title}</p>
+                    <p className="mt-1 text-sm leading-5 text-slate-300">{text}</p>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
 
-          <div className="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
-            <form onSubmit={handleSearch} className="flex flex-col gap-3 sm:flex-row">
+            <div className="p-5 md:p-8">
+              <div className="mb-5 flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-black uppercase text-teal-700">Registry search</p>
+                  <p className="mt-1 text-sm text-slate-500">Search by a public name or phone number.</p>
+                </div>
+                <Shield className="h-8 w-8 text-teal-600" />
+              </div>
+              <form onSubmit={handleSearch} className="flex flex-col gap-3 sm:flex-row">
               <label className="sr-only" htmlFor="public-relationship-query">
                 Search public relationships
               </label>
@@ -160,23 +175,29 @@ export default function PublicRelationshipSearch() {
               </button>
             </form>
 
-            <div className="mt-3 flex items-center gap-2 rounded-md bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
-              <Shield className="h-4 w-4 text-emerald-600" />
-              Only verified public relationships appear here.
-            </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="flex items-center gap-2 rounded-md bg-teal-50 px-4 py-3 text-sm font-bold text-teal-900">
+                  <Shield className="h-4 w-4 text-teal-700" />
+                  Verified public records only
+                </div>
+                <div className="flex items-center gap-2 rounded-md bg-rose-50 px-4 py-3 text-sm font-bold text-rose-900">
+                  <Heart className="h-4 w-4 text-rose-600" />
+                  Private records stay private
+                </div>
+              </div>
 
-            {message ? (
-              <p className="mt-4 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
-                {message}
-              </p>
-            ) : null}
+              {message ? (
+                <p className="mt-4 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
+                  {message}
+                </p>
+              ) : null}
 
-            <div className="mt-5 space-y-3">
-              {results.map((item) => {
-                const verifiedDate = formatDate(item.verified_date);
-                const startDate = formatDate(item.start_date);
-                return (
-                  <article key={item.relationship_id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="mt-5 space-y-3">
+                {results.map((item) => {
+                  const verifiedDate = formatDate(item.verified_date);
+                  const startDate = formatDate(item.start_date);
+                  return (
+                    <article key={item.relationship_id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                     <div className="flex items-start gap-4">
                       <div className="relative flex h-16 w-24 shrink-0 items-center">
                         <div className="grid h-14 w-14 place-items-center rounded-full bg-blue-600 text-sm font-black text-white">
@@ -219,20 +240,28 @@ export default function PublicRelationshipSearch() {
                         </span>
                       ) : null}
                     </div>
-                  </article>
-                );
-              })}
-            </div>
+                    </article>
+                  );
+                })}
+              </div>
 
-            {searched && !loading && !message && results.length === 0 ? (
-              <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-5 text-center">
-                <ShieldCheck className="mx-auto h-9 w-9 text-slate-400" />
-                <p className="mt-3 text-lg font-black text-slate-950">No public verified relationship found</p>
-                <p className="mt-1 text-sm leading-6 text-slate-600">
-                  Try another spelling, full name, or phone number.
+              {searched && !loading && !message && results.length === 0 ? (
+                <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-5 text-center">
+                  <ShieldCheck className="mx-auto h-9 w-9 text-slate-400" />
+                  <p className="mt-3 text-lg font-black text-slate-950">No public verified relationship found</p>
+                  <p className="mt-1 text-sm leading-6 text-slate-600">
+                    Try another spelling, full name, or phone number.
+                  </p>
+                </div>
+              ) : null}
+
+              <div className="mt-5 rounded-md bg-slate-50 p-4 text-sm leading-6 text-slate-600">
+                <p className="font-black text-slate-950">Privacy-first by design</p>
+                <p className="mt-1">
+                  A report does not automatically remove a relationship from search. Only admin actions can end or remove a verified record.
                 </p>
               </div>
-            ) : null}
+            </div>
           </div>
         </div>
       </div>

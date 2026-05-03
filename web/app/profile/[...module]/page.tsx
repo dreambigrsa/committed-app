@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import {
   ArrowLeft,
@@ -10,6 +10,7 @@ import {
   Grid,
   Heart,
   Loader2,
+  Plus,
   Shield,
   ShieldCheck,
   UserPlus,
@@ -21,6 +22,8 @@ import { getDisplayName } from '@/lib/identity';
 import { resolveProfilePictureUrl, resolveReelThumbnailUrl } from '@/lib/profile-media-url';
 import { getPostVisibilityOrFilter, getReelVisibilityOrFilter } from '@/lib/content-visibility';
 import { parseSupabaseCount } from '@/lib/supabase-count';
+import { useWebViewerPresence } from '@/lib/use-web-viewer-presence';
+import { syncWebViewerOnline } from '@/lib/web-user-status-presence';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -70,8 +73,45 @@ export default function PublicProfilePage() {
   const [statusType, setStatusType] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ProfileTab>('posts');
   const [error, setError] = useState('');
+  const [viewerUserId, setViewerUserId] = useState<string | null>(null);
+  const profileIdRef = useRef<string | null>(null);
+
+  const supabase = useMemo(() => {
+    try {
+      return getSupabaseBrowser() as any;
+    } catch {
+      return null;
+    }
+  }, []);
 
   const deepLinkUrl = useMemo(() => `${APP_SCHEME}profile/${encodeURIComponent(target)}`, [target]);
+
+  useEffect(() => {
+    profileIdRef.current = profile?.id ?? null;
+  }, [profile?.id]);
+
+  useWebViewerPresence(supabase, viewerUserId, (uid, st) => {
+    if (profileIdRef.current === uid) setStatusType(st);
+  });
+
+  useEffect(() => {
+    if (!supabase) {
+      setViewerUserId(null);
+      return;
+    }
+    let cancelled = false;
+    void supabase.auth.getSession().then((res: { data: { session: { user?: { id?: string } } | null } }) => {
+      if (cancelled) return;
+      setViewerUserId(((res.data.session?.user?.id || '') as string).trim() || null);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event: string, session: { user?: { id?: string } } | null) => {
+      setViewerUserId(((session?.user?.id || '') as string).trim() || null);
+    });
+    return () => {
+      cancelled = true;
+      sub?.subscription?.unsubscribe?.();
+    };
+  }, [supabase]);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,8 +122,13 @@ export default function PublicProfilePage() {
         return;
       }
 
+      if (!supabase) {
+        if (!cancelled) setError('Unable to connect.');
+        if (!cancelled) setLoading(false);
+        return;
+      }
+
       try {
-        const supabase = getSupabaseBrowser() as any;
         const {
           data: { session },
         } = await supabase.auth.getSession();
@@ -164,6 +209,10 @@ export default function PublicProfilePage() {
         setFollowingCount(parseSupabaseCount(followingResult));
         setStatusType((statusResult.data as { status_type?: string } | null)?.status_type ?? null);
         setRelationship((relResult.data as PublicRelationshipRow | null) ?? null);
+        if (viewerId && viewerId === userRow.id) {
+          const t = await syncWebViewerOnline(supabase, viewerId);
+          if (!cancelled && t) setStatusType(t);
+        }
       } catch {
         if (!cancelled) setError('Failed to load this profile.');
       } finally {
@@ -175,7 +224,7 @@ export default function PublicProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, [target]);
+  }, [target, supabase]);
 
   if (loading) {
     return (
@@ -204,8 +253,11 @@ export default function PublicProfilePage() {
   }
 
   const name = getDisplayName(profile);
-  const online = statusType === 'online';
+  const showGreenPresenceDot = statusType === 'online';
+  const presenceTitle =
+    statusType === 'online' ? 'Online' : statusType === 'away' ? 'Away' : statusType === 'busy' ? 'Busy' : 'Offline';
   const relVerified = relationship?.status === 'verified';
+  const isOwnProfile = !!viewerUserId && viewerUserId === profile.id;
 
   return (
     <main className="min-h-screen bg-slate-100 pb-10">
@@ -236,8 +288,8 @@ export default function PublicProfilePage() {
               </div>
             )}
             <span
-              className={`absolute bottom-1 right-1 h-3.5 w-3.5 rounded-full border-2 border-white ${online ? 'bg-emerald-500' : 'bg-slate-300'}`}
-              title={online ? 'Online' : 'Offline'}
+              className={`absolute bottom-1 right-1 h-3.5 w-3.5 rounded-full border-2 border-white ${showGreenPresenceDot ? 'bg-emerald-500' : 'bg-slate-300'}`}
+              title={presenceTitle}
               aria-hidden
             />
           </div>
@@ -318,6 +370,20 @@ export default function PublicProfilePage() {
             <div className="mt-6 flex flex-col items-center py-2 text-slate-400">
               <Heart className="h-12 w-12" strokeWidth={1.25} />
               <p className="mt-3 text-sm font-bold text-slate-500">No registered relationship</p>
+              {isOwnProfile ? (
+                <>
+                  <p className="mt-2 max-w-sm text-center text-xs leading-relaxed text-slate-500">
+                    Registering your relationship creates a foundation of trust and transparency.
+                  </p>
+                  <Link
+                    href={buildWebAppUrl('/app/relationship/register')}
+                    className="mt-4 inline-flex w-full max-w-xs items-center justify-center gap-2 rounded-[18px] bg-blue-600 px-5 py-3 font-black text-white"
+                  >
+                    <Plus className="h-5 w-5" />
+                    Register relationship
+                  </Link>
+                </>
+              ) : null}
             </div>
           )}
         </section>

@@ -48,6 +48,8 @@ import {
   X,
 } from 'lucide-react';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
+import { useWebViewerPresence } from '@/lib/use-web-viewer-presence';
+import { syncWebViewerOffline, syncWebViewerOnline } from '@/lib/web-user-status-presence';
 import { getDisplayName as getUserDisplayName } from '@/lib/identity';
 import {
   profilePictureStorageKeyToBucketAndPath,
@@ -932,6 +934,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const [reportProfileTarget, setReportProfileTarget] = useState<{ id: string; name: string } | null>(null);
   const [routeProfileRelationship, setRouteProfileRelationship] = useState<RouteProfileRelationshipRow | null>(null);
   const [routeProfileStatusType, setRouteProfileStatusType] = useState<string | null>(null);
+  /** Latest resolved profile row id (for presence UI sync after `user_status` writes). */
+  const routeProfileUserIdRef = useRef<string | null>(null);
   const [routeStatusItem, setRouteStatusItem] = useState<StatusFeedItem | null>(null);
   const [routeStatusLoading, setRouteStatusLoading] = useState(false);
   const [routeRows, setRouteRows] = useState<any[]>([]);
@@ -1208,6 +1212,14 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     }
   }, []);
 
+  useEffect(() => {
+    routeProfileUserIdRef.current = routeProfileUser?.id ?? null;
+  }, [routeProfileUser?.id]);
+
+  useWebViewerPresence(supabase, user?.id, (uid, statusType) => {
+    if (routeProfileUserIdRef.current === uid) setRouteProfileStatusType(statusType);
+  });
+
   const resetUserScopedState = useCallback(() => {
     setUser(null);
     setDebugUsersRowProfilePicture(null);
@@ -1348,13 +1360,21 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   }, []);
 
   const signOutWebUser = useCallback(async () => {
+    const uid = user?.id;
+    if (uid && supabase) {
+      try {
+        await syncWebViewerOffline(supabase, uid);
+      } catch {
+        // non-blocking
+      }
+    }
     resetUserScopedState();
     try {
       await supabase?.auth.signOut();
     } finally {
       router.replace('/auth');
     }
-  }, [resetUserScopedState, router, supabase]);
+  }, [resetUserScopedState, router, supabase, user?.id]);
 
   /** If `user.phone_number` arrives after hydrate (e.g. verification) or was missing from initial form sync, fill empty Settings field. */
   useEffect(() => {
@@ -2649,6 +2669,13 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         } else {
           setRouteProfileIsFollowing(false);
           setRouteProfileIsBlocked(false);
+          /** You: align dot with DB immediately (parallel fetch can predate the web presence heartbeat). */
+          if (!cancelled && profileUser.id === user?.id) {
+            const t = await syncWebViewerOnline(supabase, profileUser.id);
+            if (!cancelled && t && routeProfileUserIdRef.current === profileUser.id) {
+              setRouteProfileStatusType(t);
+            }
+          }
         }
       } finally {
         if (!cancelled) setRouteProfileLoading(false);
@@ -10299,7 +10326,10 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     const relatedReels = routeProfileReels;
     const showSocial = !!user && !isSelf;
     const postsCount = relatedPosts.length;
-    const online = routeProfileStatusType === 'online';
+    const statusType = routeProfileStatusType;
+    const showGreenPresenceDot = statusType === 'online';
+    const presenceTitle =
+      statusType === 'online' ? 'Online' : statusType === 'away' ? 'Away' : statusType === 'busy' ? 'Busy' : 'Offline';
     const rel = routeProfileRelationship;
     const relVerified = rel?.status === 'verified';
 
@@ -10316,8 +10346,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               <Avatar src={related.profile_picture} name={getUserDisplayName(related)} size="lg" />
             </ProfileUserLink>
             <span
-              className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white ${online ? 'bg-emerald-500' : 'bg-slate-300'}`}
-              title={online ? 'Online' : 'Offline'}
+              className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white ${showGreenPresenceDot ? 'bg-emerald-500' : 'bg-slate-300'}`}
+              title={presenceTitle}
               aria-hidden
             />
           </div>
@@ -10451,6 +10481,20 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             <div className="mt-6 flex flex-col items-center py-2 text-slate-400">
               <Heart className="h-12 w-12" strokeWidth={1.25} />
               <p className="mt-3 text-sm font-bold text-slate-500">No registered relationship</p>
+              {isSelf ? (
+                <>
+                  <p className="mt-2 max-w-sm text-center text-xs leading-relaxed text-slate-500">
+                    Registering your relationship creates a foundation of trust and transparency.
+                  </p>
+                  <Link
+                    href="/app/relationship/register"
+                    className="mt-4 inline-flex w-full max-w-xs items-center justify-center gap-2 rounded-[18px] bg-blue-600 px-5 py-3 font-black text-white"
+                  >
+                    <Plus className="h-5 w-5" />
+                    Register relationship
+                  </Link>
+                </>
+              ) : null}
             </div>
           )}
         </section>

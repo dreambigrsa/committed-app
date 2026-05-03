@@ -656,7 +656,7 @@ function DatingProfilePanel() {
               const photo = candidate.dating_photos?.find((item) => item.is_primary)?.photo_url || candidate.dating_photos?.[0]?.photo_url || candidate.users?.profile_picture;
               const name = getDisplayName(candidate.users);
               const candidateProfileHref = candidate.user_id
-                ? `/app/dating/user-profile?userId=${encodeURIComponent(candidate.user_id)}`
+                ? `/app/dating/user-profile?userId=${encodeURIComponent(candidate.user_id)}${candidate.id ? `&profileId=${encodeURIComponent(candidate.id)}` : ''}`
                 : null;
               const profilePreview = (
                 <>

@@ -556,6 +556,8 @@ const verificationRouteCards = [
 
 const USERS_SELECT_WITH_OPTIONAL_COLUMNS =
   'id, full_name, username, email, phone_number, gender, date_of_birth, profile_picture, role, verified, email_verified, phone_verified, id_verified, banned_at, banned_by, ban_reason' as const;
+const USERS_SELECT_WITH_PROFILE_FIELDS =
+  'id, full_name, username, email, phone_number, gender, date_of_birth, profile_picture, role, email_verified, phone_verified, id_verified, banned_at, banned_by, ban_reason' as const;
 const USERS_SELECT_BASE =
   'id, full_name, email, phone_number, profile_picture, role, email_verified, phone_verified, id_verified' as const;
 const POST_SELECT_WITH_OPTIONAL_USER_COLUMNS =
@@ -724,6 +726,12 @@ async function fetchAdminPaymentSubmissionsList(
 async function fetchUsersRowById(supabase: SupabaseClient, userId: string) {
   const full = await (supabase as any).from('users').select(USERS_SELECT_WITH_OPTIONAL_COLUMNS).eq('id', userId).maybeSingle();
   if (!full.error || !isMissingColumnError(full.error)) return full;
+  const withProfileFields = await (supabase as any).from('users').select(USERS_SELECT_WITH_PROFILE_FIELDS).eq('id', userId).maybeSingle();
+  if (!withProfileFields.error || !isMissingColumnError(withProfileFields.error)) {
+    return withProfileFields.error
+      ? withProfileFields
+      : { ...withProfileFields, data: withProfileFields.data ? { ...withProfileFields.data, verified: null } : withProfileFields.data };
+  }
   const base = await (supabase as any).from('users').select(USERS_SELECT_BASE).eq('id', userId).maybeSingle();
   return base.error ? base : { ...base, data: base.data ? { ...base.data, username: null, verified: null } : base.data };
 }
@@ -733,6 +741,17 @@ async function fetchUsersRowsByIds(supabase: SupabaseClient, userIds: string[]) 
   if (!ids.length) return { data: [] as any[], error: null };
   const full = await (supabase as any).from('users').select(USERS_SELECT_WITH_OPTIONAL_COLUMNS).in('id', ids);
   if (!full.error || !isMissingColumnError(full.error)) return full;
+  const withProfileFields = await (supabase as any).from('users').select(USERS_SELECT_WITH_PROFILE_FIELDS).in('id', ids);
+  if (!withProfileFields.error || !isMissingColumnError(withProfileFields.error)) {
+    return withProfileFields.error
+      ? withProfileFields
+      : {
+          ...withProfileFields,
+          data: Array.isArray(withProfileFields.data)
+            ? withProfileFields.data.map((row: any) => ({ ...row, verified: null }))
+            : withProfileFields.data,
+        };
+  }
   const base = await (supabase as any).from('users').select(USERS_SELECT_BASE).in('id', ids);
   return base.error
     ? base

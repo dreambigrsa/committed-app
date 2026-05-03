@@ -512,6 +512,112 @@ function looksLikeUuid(value?: string | null) {
   return !!value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+/** Same staleness rules as native `getUserStatus` in `AppContext.tsx` (profile presence). */
+type ProfilePresenceKind = 'online' | 'away' | 'busy' | 'offline';
+
+function getEffectiveProfilePresence(
+  statusType: string | null | undefined,
+  lastActiveAt: string | null | undefined,
+): ProfilePresenceKind {
+  const st = (statusType || 'offline').toLowerCase();
+  if (st === 'busy') return 'busy';
+  if (st === 'offline') return 'offline';
+
+  const lastMs = lastActiveAt ? new Date(lastActiveAt).getTime() : NaN;
+  const diffMins = Number.isFinite(lastMs) ? Math.floor((Date.now() - lastMs) / 60000) : Number.POSITIVE_INFINITY;
+
+  if (st === 'online') {
+    if (diffMins > 5) {
+      if (diffMins < 15) return 'away';
+      return 'offline';
+    }
+    return 'online';
+  }
+  if (st === 'away') {
+    if (diffMins > 20) return 'offline';
+    return 'away';
+  }
+  return 'offline';
+}
+
+const WEB_USER_STATUS_HEARTBEAT_MS = 2 * 60 * 1000;
+
+/** Mirrors native foreground heartbeat / background `away` (see `AppContext` `startStatusTracking`). */
+async function upsertWebUserPresence(supabase: any, userId: string, mode: 'active' | 'away'): Promise<void> {
+  const now = new Date().toISOString();
+  const { data: row, error: fetchErr } = await supabase
+    .from('user_status')
+    .select('status_type,custom_status_text,status_visibility,last_seen_visibility')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (fetchErr && fetchErr.code !== 'PGRST116') return;
+
+  const vis = row?.status_visibility || 'everyone';
+  const lastVis = row?.last_seen_visibility || 'everyone';
+  const custom = row?.custom_status_text ?? null;
+  const currentType = String(row?.status_type || '').toLowerCase();
+
+  if (mode === 'away') {
+    await supabase
+      .from('user_status')
+      .upsert(
+        {
+          user_id: userId,
+          status_type: 'away',
+          last_active_at: now,
+          updated_at: now,
+          custom_status_text: custom,
+          status_visibility: vis,
+          last_seen_visibility: lastVis,
+        },
+        { onConflict: 'user_id' },
+      );
+    return;
+  }
+
+  if (currentType === 'busy') {
+    await supabase
+      .from('user_status')
+      .upsert(
+        {
+          user_id: userId,
+          status_type: 'busy',
+          custom_status_text: custom,
+          last_active_at: now,
+          updated_at: now,
+          status_visibility: vis,
+          last_seen_visibility: lastVis,
+        },
+        { onConflict: 'user_id' },
+      );
+    return;
+  }
+
+  if (!row) {
+    await supabase.from('user_status').insert({
+      user_id: userId,
+      status_type: 'online',
+      last_active_at: now,
+      updated_at: now,
+      status_visibility: 'everyone',
+      last_seen_visibility: 'everyone',
+    });
+    return;
+  }
+
+  const payload: Record<string, unknown> = {
+    user_id: userId,
+    last_active_at: now,
+    updated_at: now,
+    custom_status_text: custom,
+    status_visibility: vis,
+    last_seen_visibility: lastVis,
+  };
+  if (currentType !== 'online') payload.status_type = 'online';
+  await supabase.from('user_status').upsert(payload, { onConflict: 'user_id' });
+}
+
 function relationshipTypeLabel(type?: string | null) {
   if (!type) return 'relationship';
   const map: Record<string, string> = {
@@ -932,6 +1038,10 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const [reportProfileTarget, setReportProfileTarget] = useState<{ id: string; name: string } | null>(null);
   const [routeProfileRelationship, setRouteProfileRelationship] = useState<RouteProfileRelationshipRow | null>(null);
   const [routeProfileStatusType, setRouteProfileStatusType] = useState<string | null>(null);
+  const [routeProfileLastActiveAt, setRouteProfileLastActiveAt] = useState<string | null>(null);
+  /** Re-render profile presence dot as `getEffectiveProfilePresence` ages out stale `online` rows without navigation. */
+  const [profilePresenceTick, setProfilePresenceTick] = useState(0);
+  const webPresenceHeartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [routeStatusItem, setRouteStatusItem] = useState<StatusFeedItem | null>(null);
   const [routeStatusLoading, setRouteStatusLoading] = useState(false);
   const [routeRows, setRouteRows] = useState<any[]>([]);
@@ -1299,6 +1409,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     setReportProfileTarget(null);
     setRouteProfileRelationship(null);
     setRouteProfileStatusType(null);
+    setRouteProfileLastActiveAt(null);
     setRouteStatusItem(null);
     setRouteStatusLoading(false);
     setRouteRows([]);
@@ -1348,13 +1459,31 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   }, []);
 
   const signOutWebUser = useCallback(async () => {
+    const uid = user?.id;
+    if (uid && supabase) {
+      const now = new Date().toISOString();
+      await supabase
+        .from('user_status')
+        .upsert(
+          {
+            user_id: uid,
+            status_type: 'offline',
+            last_active_at: now,
+            updated_at: now,
+            status_visibility: 'everyone',
+            last_seen_visibility: 'everyone',
+          },
+          { onConflict: 'user_id' },
+        )
+        .catch(() => {});
+    }
     resetUserScopedState();
     try {
       await supabase?.auth.signOut();
     } finally {
       router.replace('/auth');
     }
-  }, [resetUserScopedState, router, supabase]);
+  }, [user?.id, resetUserScopedState, router, supabase]);
 
   /** If `user.phone_number` arrives after hydrate (e.g. verification) or was missing from initial form sync, fill empty Settings field. */
   useEffect(() => {
@@ -2547,6 +2676,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       setReportProfileTarget(null);
       setRouteProfileRelationship(null);
       setRouteProfileStatusType(null);
+      setRouteProfileLastActiveAt(null);
       return;
     }
     let cancelled = false;
@@ -2573,6 +2703,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             setRouteProfileIsBlocked(false);
             setRouteProfileRelationship(null);
             setRouteProfileStatusType(null);
+            setRouteProfileLastActiveAt(null);
           }
           return;
         }
@@ -2595,7 +2726,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             .or(getReelVisibilityOrFilter(viewerId || profileUser.id))
             .order('created_at', { ascending: false })
             .limit(60),
-          supabase.from('user_status').select('status_type').eq('user_id', profileUser.id).maybeSingle(),
+          supabase.from('user_status').select('status_type,last_active_at').eq('user_id', profileUser.id).maybeSingle(),
           supabase
             .from('relationships')
             .select('id,type,status,partner_name,start_date,verified_date')
@@ -2641,7 +2772,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
         setRouteProfileFollowers(parseSupabaseCount(followersCountRes));
         setRouteProfileFollowingCount(parseSupabaseCount(followingCountRes));
-        setRouteProfileStatusType((statusRes.data as { status_type?: string } | null)?.status_type ?? null);
+        const statusRow = statusRes.data as { status_type?: string; last_active_at?: string } | null;
+        setRouteProfileStatusType(statusRow?.status_type ?? null);
+        setRouteProfileLastActiveAt(statusRow?.last_active_at ?? null);
         setRouteProfileRelationship((relRes.data as RouteProfileRelationshipRow | null) ?? null);
         if (isOther) {
           setRouteProfileIsFollowing(!!followRowRes?.data?.id);
@@ -2659,6 +2792,67 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       cancelled = true;
     };
   }, [appPath, supabase, user?.id]);
+
+  useEffect(() => {
+    if (appPath[0] !== 'profile' || !appPath[1]) return;
+    const id = setInterval(() => setProfilePresenceTick((n) => n + 1), 60_000);
+    return () => clearInterval(id);
+  }, [appPath[0], appPath[1]]);
+
+  useEffect(() => {
+    if (!supabase || appPath[0] !== 'profile' || !routeProfileUser?.id) return;
+    const uid = routeProfileUser.id;
+    let cancelled = false;
+    const channel = supabase
+      .channel(`web_profile_user_status:${uid}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'user_status', filter: `user_id=eq.${uid}` },
+        async () => {
+          const { data } = await supabase.from('user_status').select('status_type,last_active_at').eq('user_id', uid).maybeSingle();
+          if (cancelled || !data) return;
+          setRouteProfileStatusType((data as { status_type?: string }).status_type ?? null);
+          setRouteProfileLastActiveAt((data as { last_active_at?: string }).last_active_at ?? null);
+        },
+      )
+      .subscribe();
+    return () => {
+      cancelled = true;
+      void supabase.removeChannel(channel);
+    };
+  }, [supabase, appPath[0], routeProfileUser?.id]);
+
+  const pingWebUserPresenceActive = useCallback(async () => {
+    if (!supabase || !user?.id) return;
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+    await upsertWebUserPresence(supabase, user.id, 'active');
+  }, [supabase, user?.id]);
+
+  useEffect(() => {
+    if (!supabase || !user?.id) {
+      if (webPresenceHeartbeatRef.current) {
+        clearInterval(webPresenceHeartbeatRef.current);
+        webPresenceHeartbeatRef.current = null;
+      }
+      return;
+    }
+    void pingWebUserPresenceActive();
+    webPresenceHeartbeatRef.current = setInterval(() => void pingWebUserPresenceActive(), WEB_USER_STATUS_HEARTBEAT_MS);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void pingWebUserPresenceActive();
+      else void upsertWebUserPresence(supabase, user.id, 'away');
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('focus', pingWebUserPresenceActive);
+    return () => {
+      if (webPresenceHeartbeatRef.current) {
+        clearInterval(webPresenceHeartbeatRef.current);
+        webPresenceHeartbeatRef.current = null;
+      }
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', pingWebUserPresenceActive);
+    };
+  }, [supabase, user?.id, pingWebUserPresenceActive]);
 
   useEffect(() => {
     const targetUserId = appPath[0] === 'dating' && subPath === 'user-profile'
@@ -10299,10 +10493,18 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     const relatedReels = routeProfileReels;
     const showSocial = !!user && !isSelf;
     const postsCount = relatedPosts.length;
-    /** `user_status` can lag or be absent for the signed-in viewer; on your own profile, show active like mobile. */
-    const remoteOnline = routeProfileStatusType === 'online';
-    const showGreenPresenceDot = isSelf || remoteOnline;
-    const presenceTitle = isSelf ? "You're active" : remoteOnline ? 'Online' : 'Offline';
+    void profilePresenceTick;
+    const presence = getEffectiveProfilePresence(routeProfileStatusType, routeProfileLastActiveAt);
+    const presenceDotClass =
+      presence === 'online'
+        ? 'bg-emerald-500'
+        : presence === 'away'
+          ? 'bg-amber-400'
+          : presence === 'busy'
+            ? 'bg-rose-500'
+            : 'bg-slate-300';
+    const presenceTitle =
+      presence === 'online' ? 'Online' : presence === 'away' ? 'Away' : presence === 'busy' ? 'Busy' : 'Offline';
     const rel = routeProfileRelationship;
     const relVerified = rel?.status === 'verified';
 
@@ -10319,7 +10521,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               <Avatar src={related.profile_picture} name={getUserDisplayName(related)} size="lg" />
             </ProfileUserLink>
             <span
-              className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white ${showGreenPresenceDot ? 'bg-emerald-500' : 'bg-slate-300'}`}
+              className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white ${presenceDotClass}`}
               title={presenceTitle}
               aria-hidden
             />

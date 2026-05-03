@@ -1410,11 +1410,12 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           console.log('[HARD DEBUG] No profile_picture on users row (null/empty).');
         }
         console.log('[HARD DEBUG] MERGED profile_picture (what shell state uses):', resolvedProfile.profile_picture);
+        console.log('[HARD DEBUG] MERGED full_name (must match public.users when row loaded):', resolvedProfile.full_name);
       }
 
       const currentUser: WebUser = {
         id: authUser.id,
-        full_name: resolvedProfile.full_name ?? 'Committed member',
+        full_name: resolvedProfile.full_name?.trim() || null,
         email: resolvedProfile.email || authUser.email,
         phone_number: resolvedProfile.phone_number,
         profile_picture: resolvedProfile.profile_picture,

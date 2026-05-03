@@ -71,7 +71,8 @@ type UsersRow = {
 };
 
 /**
- * Merge `public.users` (may be null if RLS/timing) with `auth.users` metadata — same priority as mobile hydrate.
+ * Merge `public.users` (may be null if RLS/timing) with `auth.users` metadata.
+ * When a `users` row exists, prefer DB fields first — matches `AuthContext` hydrate (`userData.full_name`).
  */
 export function mergeUsersProfileForWebShell(profile: UsersRow | null, authUser: AuthUserLike): UsersRow & { id: string } {
   const meta = authMetadataStrings(authUser);
@@ -80,16 +81,22 @@ export function mergeUsersProfileForWebShell(profile: UsersRow | null, authUser:
   const dbFullLower = dbFull.toLowerCase();
   const dbLooksLikeEmailPlaceholder = !!dbFull && (dbFullLower === email || dbFull.includes('@'));
 
-  const full_name =
-    (meta.fullName) ||
-    (dbFull && !dbLooksLikeEmailPlaceholder ? dbFull : '') ||
-    (profile?.username?.trim() || '') ||
-    'Committed member';
+  const saneDbFull = dbFull && !dbLooksLikeEmailPlaceholder ? dbFull : '';
+  const dbUsername = (profile?.username || '').trim();
+  const hasUsersRow = !!profile?.id;
+
+  const full_name = (
+    hasUsersRow ? saneDbFull || dbUsername || meta.fullName : meta.fullName || saneDbFull || dbUsername
+  ).trim();
 
   const phone_number =
     (profile?.phone_number || '').trim() || meta.phoneNumber || (authUser.phone || '').trim() || null;
 
-  const rawPicture = (profile?.profile_picture || '').trim() || meta.profilePicture || null;
+  const rawPicture = (
+    hasUsersRow
+      ? (profile?.profile_picture || '').trim() || meta.profilePicture || null
+      : meta.profilePicture || (profile?.profile_picture || '').trim() || null
+  );
   const profile_picture = resolveProfilePictureUrl(rawPicture);
 
   const metadataRole =

@@ -1,5 +1,5 @@
 export function getDisplayName(user?: { full_name?: string | null; username?: string | null; email?: string | null } | null) {
-  if (!user) return 'Committed member';
+  if (!user) return '';
   const email = (user.email || '').trim().toLowerCase();
   const fn = (user.full_name || '').trim();
   if (fn) {
@@ -13,6 +13,6 @@ export function getDisplayName(user?: { full_name?: string | null; username?: st
     }
   }
   if (user.username?.trim()) return user.username.trim();
-  if (user.email?.includes('@')) return user.email.split('@')[0] || 'Committed member';
-  return user.email || 'Committed member';
+  if (user.email?.includes('@')) return user.email.split('@')[0] || '';
+  return (user.email || '').trim() || '';
 }

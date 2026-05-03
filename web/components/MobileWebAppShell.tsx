@@ -662,6 +662,22 @@ async function fetchUsersRowById(supabase: SupabaseClient, userId: string) {
   return base.error ? base : { ...base, data: base.data ? { ...base.data, username: null, verified: null } : base.data };
 }
 
+async function fetchUsersRowsByIds(supabase: SupabaseClient, userIds: string[]) {
+  const ids = Array.from(new Set(userIds.filter(Boolean)));
+  if (!ids.length) return { data: [] as any[], error: null };
+  const full = await (supabase as any).from('users').select(USERS_SELECT_WITH_OPTIONAL_COLUMNS).in('id', ids);
+  if (!full.error || !isMissingColumnError(full.error)) return full;
+  const base = await (supabase as any).from('users').select(USERS_SELECT_BASE).in('id', ids);
+  return base.error
+    ? base
+    : {
+        ...base,
+        data: Array.isArray(base.data)
+          ? base.data.map((row: any) => ({ ...row, username: null, verified: null }))
+          : base.data,
+      };
+}
+
 async function fetchUsersRowByIdentifier(supabase: SupabaseClient, identifier: string) {
   const clean = identifier.replace(/^@/, '').trim();
   if (looksLikeUuid(identifier)) return fetchUsersRowById(supabase, identifier);
@@ -2541,10 +2557,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       const profilesMissingUsers = discoverProfiles.filter((p) => !p.users && p.user_id);
       if (profilesMissingUsers.length) {
         const missingUserIds = Array.from(new Set(profilesMissingUsers.map((p) => p.user_id).filter(Boolean) as string[]));
-        const { data: userRows } = await supabase
-          .from('users')
-          .select('id,full_name,username,email,profile_picture,id_verified,email_verified,phone_verified')
-          .in('id', missingUserIds);
+        const { data: userRows } = await fetchUsersRowsByIds(supabase, missingUserIds);
         const userMap = new Map<string, DatingDiscoveryUser>(
           ((userRows || []) as DatingDiscoveryUser[]).filter((r) => r.id).map((row) => [row.id as string, row])
         );
@@ -3401,10 +3414,12 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   }, [supabase, user?.id, pingWebUserPresenceActive]);
 
   useEffect(() => {
-    const targetUserId = appPath[0] === 'dating' && subPath === 'user-profile'
-      ? (searchParams?.get('userId') || searchParams?.get('id') || '')
-      : '';
-    if (!supabase || !targetUserId) {
+    const isDatingProfileRoute = appPath[0] === 'dating' && subPath === 'user-profile';
+    const explicitUserId = isDatingProfileRoute ? (searchParams?.get('userId') || searchParams?.get('user_id') || '') : '';
+    const explicitProfileId = isDatingProfileRoute ? (searchParams?.get('profileId') || searchParams?.get('profile_id') || '') : '';
+    const legacyId = isDatingProfileRoute ? (searchParams?.get('id') || appPath[2] || '') : '';
+    const hasRouteIdentifier = !!(explicitUserId || explicitProfileId || legacyId);
+    if (!supabase || !hasRouteIdentifier) {
       setRouteDatingProfile(null);
       setRouteDatingProfileLoading(false);
       setRouteDatingReaction({ liked: false, superLiked: false, matched: false });
@@ -3418,12 +3433,39 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     const loadRouteDatingProfile = async () => {
       setRouteDatingProfileLoading(true);
       try {
-        const { data: profileRow } = await supabase
-          .from('dating_profiles')
-          .select('*')
-          .eq('user_id', targetUserId)
-          .maybeSingle();
+        const fetchProfileByUserId = (userId: string) =>
+          supabase.from('dating_profiles').select('*').eq('user_id', userId).maybeSingle();
+        const fetchProfileByProfileId = (profileId: string) =>
+          supabase.from('dating_profiles').select('*').eq('id', profileId).maybeSingle();
+
+        let profileRow: any = null;
+        if (explicitUserId) {
+          const { data } = await fetchProfileByUserId(explicitUserId);
+          profileRow = data || null;
+        }
+        if (!profileRow?.id && explicitProfileId) {
+          const { data } = await fetchProfileByProfileId(explicitProfileId);
+          profileRow = data || null;
+        }
+        if (!profileRow?.id && legacyId) {
+          const { data: byUserId } = await fetchProfileByUserId(legacyId);
+          profileRow = byUserId || null;
+          if (!profileRow?.id) {
+            const { data: byProfileId } = await fetchProfileByProfileId(legacyId);
+            profileRow = byProfileId || null;
+          }
+        }
         if (!profileRow?.id) {
+          if (!cancelled) {
+            setRouteDatingProfile(null);
+            setRouteDatingReaction({ liked: false, superLiked: false, matched: false });
+            setRouteDatingBadges([]);
+            setRouteConversationStarters([]);
+          }
+          return;
+        }
+        const targetUserId = String(profileRow.user_id || explicitUserId || '');
+        if (!targetUserId) {
           if (!cancelled) {
             setRouteDatingProfile(null);
             setRouteDatingReaction({ liked: false, superLiked: false, matched: false });
@@ -3451,11 +3493,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             .select('*')
             .eq('dating_profile_id', profileRow.id)
             .order('display_order', { ascending: true }),
-          supabase
-            .from('users')
-            .select('id,full_name,username,email,profile_picture,id_verified,email_verified,phone_verified,verified')
-            .eq('id', targetUserId)
-            .maybeSingle(),
+          fetchUsersRowById(supabase, targetUserId),
           supabase
             .from('user_dating_badges')
             .select('*')
@@ -3516,6 +3554,16 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             superLiked: !!(likeResult.data as any)?.is_super_like,
             matched: !!matchResult.data || (!!likeResult.data && !!reciprocalLikeResult.data),
           });
+        }
+      } catch (error: any) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn('[Web dating profile] load failed', error?.message || error);
+        }
+        if (!cancelled) {
+          setRouteDatingProfile(null);
+          setRouteDatingReaction({ liked: false, superLiked: false, matched: false });
+          setRouteDatingBadges([]);
+          setRouteConversationStarters([]);
         }
       } finally {
         if (!cancelled) setRouteDatingProfileLoading(false);
@@ -8262,7 +8310,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     const openDatingProfile = () => {
       if (!profile.user_id) return;
       // Same route family as Expo `dating/user-profile` — loads `dating_profiles`, photos, badges, starters (not generic `/app/profile`).
-      router.push(`/app/dating/user-profile?userId=${encodeURIComponent(profile.user_id)}`);
+      const profileIdParam = profile.id ? `&profileId=${encodeURIComponent(profile.id)}` : '';
+      router.push(`/app/dating/user-profile?userId=${encodeURIComponent(profile.user_id)}${profileIdParam}`);
     };
 
     const rewindLastDatingSwipe = () => {
@@ -9042,8 +9091,18 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   );
 
   const renderDatingUserProfile = () => {
-    const targetUserId = searchParams?.get('userId') || searchParams?.get('id') || appPath[2] || '';
-    const profile = routeDatingProfile || datingProfiles.find((item) => item.user_id === targetUserId) || (!targetUserId ? myDatingProfile : null);
+    const targetUserId = searchParams?.get('userId') || searchParams?.get('user_id') || '';
+    const targetProfileId = searchParams?.get('profileId') || searchParams?.get('profile_id') || '';
+    const legacyId = searchParams?.get('id') || appPath[2] || '';
+    const profile =
+      routeDatingProfile ||
+      datingProfiles.find(
+        (item) =>
+          (!!targetUserId && item.user_id === targetUserId) ||
+          (!!targetProfileId && item.id === targetProfileId) ||
+          (!!legacyId && (item.user_id === legacyId || item.id === legacyId))
+      ) ||
+      (!targetUserId && !targetProfileId && !legacyId ? myDatingProfile : null);
     if (routeDatingProfileLoading) {
       return (
         <div className="space-y-4 px-4 py-4">
@@ -9120,7 +9179,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       const raw = badge.badge_name || badge.badge_type || badge.name || 'Badge';
       return String(raw).replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
     };
-    const heroDisplayName = profileUser?.full_name?.trim() || 'Unknown';
+    const heroDisplayName = profileUser?.full_name?.trim() || profileUser?.username?.trim() || name;
     const heroAgeLabel =
       profile.age != null && profile.age !== '' && !Number.isNaN(Number(profile.age)) ? String(profile.age) : '?';
     const heroLocationCity = profile.location_city?.trim();
@@ -9157,7 +9216,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                 <h2 className="text-[28px] font-bold leading-tight sm:text-[32px]">
                   {heroDisplayName}, {heroAgeLabel}
                 </h2>
-                {profileUser?.verified ? (
+                {profileUser?.verified || profileUser?.id_verified || profileUser?.email_verified || profileUser?.phone_verified ? (
                   <CheckCircle2 className="h-6 w-6 shrink-0 fill-blue-600 text-blue-600" aria-label="Verified" />
                 ) : null}
               </div>

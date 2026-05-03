@@ -1028,6 +1028,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const [routeProfileUser, setRouteProfileUser] = useState<WebUser | null>(null);
   const [routeProfileLoading, setRouteProfileLoading] = useState(false);
   const [routeProfilePosts, setRouteProfilePosts] = useState<FeedPost[]>([]);
+  /** Total posts for profile subject (RLS-scoped count), not capped by grid fetch limit. */
+  const [routeProfilePostsTotal, setRouteProfilePostsTotal] = useState(0);
   const [routeProfileReels, setRouteProfileReels] = useState<Reel[]>([]);
   const [routeProfileFollowers, setRouteProfileFollowers] = useState(0);
   const [routeProfileFollowingCount, setRouteProfileFollowingCount] = useState(0);
@@ -1399,6 +1401,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     setRouteProfileUser(null);
     setRouteProfileLoading(false);
     setRouteProfilePosts([]);
+    setRouteProfilePostsTotal(0);
     setRouteProfileReels([]);
     setRouteProfileFollowers(0);
     setRouteProfileFollowingCount(0);
@@ -2667,6 +2670,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     if (!supabase || appPath[0] !== 'profile' || !appPath[1]) {
       setRouteProfileUser(null);
       setRouteProfilePosts([]);
+      setRouteProfilePostsTotal(0);
       setRouteProfileReels([]);
       setRouteProfileFollowers(0);
       setRouteProfileFollowingCount(0);
@@ -2696,6 +2700,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         if (!profileUser?.id) {
           if (!cancelled) {
             setRouteProfilePosts([]);
+            setRouteProfilePostsTotal(0);
             setRouteProfileReels([]);
             setRouteProfileFollowers(0);
             setRouteProfileFollowingCount(0);
@@ -2707,15 +2712,18 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           }
           return;
         }
-        const viewerId = user?.id || '';
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        const viewerId = ((session?.user?.id || user?.id || '') as string).trim();
         const isOther = !!viewerId && viewerId !== profileUser.id;
 
+        /** Scoped to `profileUser.id` — visibility is enforced by RLS (`status` / own rows). Client `.or(moderation_status…)` breaks on schemas that only have `status`. */
         const baseQueries: Promise<any>[] = [
           supabase
             .from('posts')
             .select('id,user_id,content,media_urls,media_type,comment_count,created_at,users!posts_user_id_fkey(full_name,username,profile_picture)')
             .eq('user_id', profileUser.id)
-            .or(getPostVisibilityOrFilter(viewerId || profileUser.id))
             .order('created_at', { ascending: false })
             .limit(60),
           supabase.from('post_likes').select('post_id,user_id').limit(500),
@@ -2723,7 +2731,6 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             .from('reels')
             .select('id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(full_name,username,profile_picture)')
             .eq('user_id', profileUser.id)
-            .or(getReelVisibilityOrFilter(viewerId || profileUser.id))
             .order('created_at', { ascending: false })
             .limit(60),
           supabase.from('user_status').select('status_type,last_active_at').eq('user_id', profileUser.id).maybeSingle(),
@@ -2737,6 +2744,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             .maybeSingle(),
           supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', profileUser.id),
           supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', profileUser.id),
+          supabase.from('posts').select('*', { count: 'exact', head: true }).eq('user_id', profileUser.id),
         ];
 
         if (isOther) {
@@ -2758,14 +2766,27 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         const relRes = results[4];
         const followersCountRes = results[5];
         const followingCountRes = results[6];
-        const followRowRes = isOther ? results[7] : null;
-        const blockRowRes = isOther ? results[8] : null;
+        const postsTotalCountRes = results[7];
+        const followRowRes = isOther ? results[8] : null;
+        const blockRowRes = isOther ? results[9] : null;
+
+        if (profilePostsResult.error && process.env.NODE_ENV !== 'production') {
+          console.warn('[Web profile] posts query', profilePostsResult.error.message);
+        }
+        if (profileReelsResult.error && process.env.NODE_ENV !== 'production') {
+          console.warn('[Web profile] reels query', profileReelsResult.error.message);
+        }
 
         const likesByPost = new Map<string, string[]>();
         ((profilePostLikesResult.data || []) as any[]).forEach((like) => {
           likesByPost.set(like.post_id, [...(likesByPost.get(like.post_id) || []), like.user_id].filter(Boolean));
         });
         setRouteProfilePosts(((profilePostsResult.data || []) as FeedPost[]).map((post) => ({ ...post, likes: likesByPost.get(post.id) || [] })));
+        {
+          const loaded = ((profilePostsResult.data || []) as FeedPost[]).length;
+          const c = parseSupabaseCount(postsTotalCountRes);
+          setRouteProfilePostsTotal(postsTotalCountRes.error ? loaded : c > 0 ? c : loaded);
+        }
 
         const reelRows = (profileReelsResult.data || []) as Reel[];
         setRouteProfileReels(reelRows.map((r) => ({ ...r, likes: r.likes || [] })));
@@ -10492,7 +10513,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     const relatedPosts = routeProfilePosts;
     const relatedReels = routeProfileReels;
     const showSocial = !!user && !isSelf;
-    const postsCount = relatedPosts.length;
+    const postsCount = routeProfilePostsTotal;
     void profilePresenceTick;
     /** Own profile while logged in: show online even if `user_status` / last_active is stale (web session is active). */
     const presence = isSelf ? 'online' : getEffectiveProfilePresence(routeProfileStatusType, routeProfileLastActiveAt);

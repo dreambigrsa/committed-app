@@ -19,7 +19,6 @@ import OpenAppFallback from '@/components/OpenAppFallback';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { getDisplayName } from '@/lib/identity';
 import { resolveProfilePictureUrl, resolveReelThumbnailUrl } from '@/lib/profile-media-url';
-import { getPostVisibilityOrFilter, getReelVisibilityOrFilter } from '@/lib/content-visibility';
 import { parseSupabaseCount } from '@/lib/supabase-count';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -110,10 +109,6 @@ export default function PublicProfilePage() {
           return;
         }
 
-        const visibilityUid = viewerId || userRow.id;
-        const postFilter = getPostVisibilityOrFilter(visibilityUid);
-        const reelFilter = getReelVisibilityOrFilter(visibilityUid);
-
         const [
           postsResult,
           reelsResult,
@@ -127,21 +122,15 @@ export default function PublicProfilePage() {
             .from('posts')
             .select('id,content,media_urls,media_type,created_at')
             .eq('user_id', userRow.id)
-            .or(postFilter)
             .order('created_at', { ascending: false })
             .limit(60),
           supabase
             .from('reels')
             .select('id,caption,thumbnail_url,video_url,created_at')
             .eq('user_id', userRow.id)
-            .or(reelFilter)
             .order('created_at', { ascending: false })
             .limit(60),
-          supabase
-            .from('posts')
-            .select('*', { count: 'exact', head: true })
-            .eq('user_id', userRow.id)
-            .or(postFilter),
+          supabase.from('posts').select('*', { count: 'exact', head: true }).eq('user_id', userRow.id),
           supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', userRow.id),
           supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userRow.id),
           supabase.from('user_status').select('status_type').eq('user_id', userRow.id).maybeSingle(),
@@ -156,12 +145,19 @@ export default function PublicProfilePage() {
         ]);
 
         if (cancelled) return;
+        if (postsResult.error && process.env.NODE_ENV !== 'production') {
+          console.warn('[Public profile] posts', postsResult.error.message);
+        }
+        if (reelsResult.error && process.env.NODE_ENV !== 'production') {
+          console.warn('[Public profile] reels', reelsResult.error.message);
+        }
         setProfile(userRow);
         setPosts(postsResult.data || []);
         setReels(reelsResult.data || []);
         {
-          const parsedPostsTotal = parseSupabaseCount(postsCountResult);
-          setPostsTotal(parsedPostsTotal > 0 ? parsedPostsTotal : (postsResult.data || []).length);
+          const loaded = (postsResult.data || []).length;
+          const c = parseSupabaseCount(postsCountResult);
+          setPostsTotal(postsCountResult.error ? loaded : c > 0 ? c : loaded);
         }
         setFollowersCount(parseSupabaseCount(followersResult));
         setFollowingCount(parseSupabaseCount(followingResult));

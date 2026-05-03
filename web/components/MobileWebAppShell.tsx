@@ -10,6 +10,8 @@ import {
   Briefcase,
   Calendar,
   Camera,
+  Church,
+  Coffee,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -25,6 +27,12 @@ import {
   Loader2,
   Mail,
   MapPin,
+  BookOpen,
+  Dumbbell,
+  Mountain,
+  PawPrint,
+  Ruler,
+  Smile,
   MessageCircle,
   MoreHorizontal,
   Phone,
@@ -40,6 +48,10 @@ import {
   UploadCloud,
   Sparkles,
   Star,
+  SlidersHorizontal,
+  Crown,
+  Zap,
+  RotateCcw,
   Trash2,
   User,
   UserMinus,
@@ -97,6 +109,10 @@ type WebUser = {
   banned_by?: string | null;
   ban_reason?: string | null;
 };
+
+function formatDatingProfileValue(value: string) {
+  return value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
 
 type RouteProfileRelationshipRow = {
   id: string;
@@ -530,7 +546,13 @@ async function fetchAdminRelationshipsList(supabase: any, limit: number): Promis
   return [];
 }
 
-async function fetchAdminPostsModerationList(supabase: any, limit: number): Promise<any[]> {
+type AdminContentModerationFilter = 'all' | 'pending' | 'approved' | 'rejected' | 'resubmit';
+
+async function fetchAdminPostsModerationList(
+  supabase: any,
+  limit: number,
+  moderationStatus?: AdminContentModerationFilter | null
+): Promise<any[]> {
   const attempts = [
     'id,user_id,content,media_urls,media_type,comment_count,moderation_status,moderation_reason,moderated_by,moderated_at,rejection_reason,reviewed_by,reviewed_at,created_at,users!posts_user_id_fkey(full_name,username,profile_picture)',
     'id,user_id,content,media_urls,media_type,moderation_status,rejection_reason,reviewed_by,reviewed_at,created_at,users!posts_user_id_fkey(full_name,username,profile_picture)',
@@ -538,7 +560,9 @@ async function fetchAdminPostsModerationList(supabase: any, limit: number): Prom
     'id,user_id,content,media_urls,media_type,created_at,users!posts_user_id_fkey(full_name,profile_picture)',
   ];
   for (const sel of attempts) {
-    const res = await supabase.from('posts').select(sel).order('created_at', { ascending: false }).limit(limit);
+    let q = supabase.from('posts').select(sel).order('created_at', { ascending: false }).limit(limit);
+    if (moderationStatus && moderationStatus !== 'all') q = q.eq('moderation_status', moderationStatus);
+    const res = await q;
     if (!res.error && Array.isArray(res.data)) return res.data;
     if (process.env.NODE_ENV !== 'production' && res.error) {
       console.warn('[WebAppShell admin posts]', res.error.message);
@@ -547,7 +571,11 @@ async function fetchAdminPostsModerationList(supabase: any, limit: number): Prom
   return [];
 }
 
-async function fetchAdminReelsModerationList(supabase: any, limit: number): Promise<any[]> {
+async function fetchAdminReelsModerationList(
+  supabase: any,
+  limit: number,
+  moderationStatus?: AdminContentModerationFilter | null
+): Promise<any[]> {
   const attempts = [
     'id,user_id,caption,video_url,thumbnail_url,moderation_status,moderation_reason,moderated_by,moderated_at,rejection_reason,reviewed_by,reviewed_at,created_at,users!reels_user_id_fkey(full_name,username,profile_picture)',
     'id,user_id,caption,video_url,thumbnail_url,moderation_status,rejection_reason,reviewed_by,reviewed_at,created_at,users!reels_user_id_fkey(full_name,username,profile_picture)',
@@ -555,7 +583,9 @@ async function fetchAdminReelsModerationList(supabase: any, limit: number): Prom
     'id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(full_name,profile_picture)',
   ];
   for (const sel of attempts) {
-    const res = await supabase.from('reels').select(sel).order('created_at', { ascending: false }).limit(limit);
+    let q = supabase.from('reels').select(sel).order('created_at', { ascending: false }).limit(limit);
+    if (moderationStatus && moderationStatus !== 'all') q = q.eq('moderation_status', moderationStatus);
+    const res = await q;
     if (!res.error && Array.isArray(res.data)) return res.data;
     if (process.env.NODE_ENV !== 'production' && res.error) {
       console.warn('[WebAppShell admin reels]', res.error.message);
@@ -564,7 +594,13 @@ async function fetchAdminReelsModerationList(supabase: any, limit: number): Prom
   return [];
 }
 
-async function fetchAdminFalseRelationshipReportsList(supabase: any, limit: number): Promise<any[]> {
+type AdminFalseReportStatusFilter = 'all' | 'pending' | 'reviewing' | 'resolved' | 'dismissed';
+
+async function fetchAdminFalseRelationshipReportsList(
+  supabase: any,
+  limit: number,
+  status?: AdminFalseReportStatusFilter | null
+): Promise<any[]> {
   const attempts = [
     'id,relationship_id,reported_by,reason,evidence_urls,status,resolution,resolved_by,resolved_at,created_at,updated_at,relationship:relationships(id,user_id,partner_user_id,partner_name,partner_phone,type,status,start_date,verified_date,privacy_level,end_date),reporter:users!false_relationship_reports_reported_by_fkey(id,full_name,email,phone_number),resolver:users!false_relationship_reports_resolved_by_fkey(id,full_name)',
     'id,relationship_id,reported_by,reason,evidence_urls,status,resolution,resolved_by,resolved_at,created_at,updated_at,relationship:relationships(id,user_id,partner_user_id,partner_name,partner_phone,type,status,start_date,verified_date,privacy_level,end_date),reporter:users!false_relationship_reports_reported_by_fkey(id,full_name,email)',
@@ -572,7 +608,9 @@ async function fetchAdminFalseRelationshipReportsList(supabase: any, limit: numb
     'id,relationship_id,reported_by,reason,status,resolution,created_at,relationship:relationships(id,user_id,partner_name,type,status),reporter:users!false_relationship_reports_reported_by_fkey(full_name,email)',
   ];
   for (const sel of attempts) {
-    const res = await supabase.from('false_relationship_reports').select(sel).order('created_at', { ascending: false }).limit(limit);
+    let q = supabase.from('false_relationship_reports').select(sel).order('created_at', { ascending: false }).limit(limit);
+    if (status && status !== 'all') q = q.eq('status', status);
+    const res = await q;
     if (!res.error && Array.isArray(res.data)) return res.data;
     if (process.env.NODE_ENV !== 'production' && res.error) {
       console.warn('[WebAppShell admin false reports]', res.error.message);
@@ -581,14 +619,27 @@ async function fetchAdminFalseRelationshipReportsList(supabase: any, limit: numb
   return [];
 }
 
-async function fetchAdminPaymentSubmissionsList(supabase: any, limit: number): Promise<any[]> {
+type AdminPaymentSubmissionType = 'subscriptions' | 'ads' | 'mixed';
+type AdminPaymentStatusFilter = 'all' | 'pending' | 'approved' | 'rejected';
+
+async function fetchAdminPaymentSubmissionsList(
+  supabase: any,
+  limit: number,
+  opts?: { submissionType?: AdminPaymentSubmissionType; status?: AdminPaymentStatusFilter }
+): Promise<any[]> {
+  const submissionType = opts?.submissionType ?? 'mixed';
+  const status = opts?.status;
   const attempts = [
     'id,user_id,advertisement_id,subscription_plan_id,amount,currency,payment_method_id,payment_proof_url,transaction_reference,payment_date,notes,status,verified_by,verified_at,rejection_reason,created_at,updated_at,user:users!payment_submissions_user_id_fkey(full_name,email,profile_picture)',
     'id,user_id,advertisement_id,subscription_plan_id,amount,currency,payment_proof_url,transaction_reference,status,verified_by,verified_at,rejection_reason,created_at,user:users!payment_submissions_user_id_fkey(full_name,email,profile_picture)',
     'id,user_id,amount,status,created_at,user:users!payment_submissions_user_id_fkey(full_name,email,profile_picture)',
   ];
   for (const sel of attempts) {
-    const res = await supabase.from('payment_submissions').select(sel).order('created_at', { ascending: false }).limit(limit);
+    let q = supabase.from('payment_submissions').select(sel).order('created_at', { ascending: false }).limit(limit);
+    if (submissionType === 'subscriptions') q = q.is('advertisement_id', null);
+    if (submissionType === 'ads') q = q.not('advertisement_id', 'is', null);
+    if (status && status !== 'all') q = q.eq('status', status);
+    const res = await q;
     if (!res.error && Array.isArray(res.data)) return res.data;
     if (process.env.NODE_ENV !== 'production' && res.error) {
       console.warn('[WebAppShell admin payments]', res.error.message);
@@ -677,7 +728,17 @@ async function fetchProfileReels(supabase: SupabaseClient, userId: string, limit
     .limit(limit);
 }
 
-const adminGenericRoutes: Record<string, { title: string; table: string; select: string; order?: string; description: string }> = {
+type AdminGenericRouteConfig = {
+  title: string;
+  table: string;
+  select: string;
+  order?: string;
+  description: string;
+  /** Optional PostgREST filter so generic admin lists match mobile (e.g. roles = staff only). */
+  restrictWhere?: { column: string; op: 'in'; values: string[] };
+};
+
+const adminGenericRoutes: Record<string, AdminGenericRouteConfig> = {
   analytics: { title: 'Analytics', table: 'analytics_events', select: 'id,event_name,user_id,created_at', order: 'created_at', description: 'Recent product and safety analytics events.' },
   'ban-appeals': { title: 'Ban Appeals', table: 'ban_appeals', select: 'id,user_id,restriction_id,appeal_type,restricted_feature,reason,status,admin_response,reviewed_by,reviewed_at,created_at', order: 'created_at', description: 'Member appeal queue.' },
   dating: { title: 'Dating Admin', table: 'dating_profiles', select: 'id,user_id,bio,age,location_city,location_country,is_active,show_me,admin_suspended,admin_suspended_reason,admin_limited,admin_limited_reason,premium_trial_ends_at,created_at,users!dating_profiles_user_id_fkey(full_name,email,profile_picture)', order: 'created_at', description: 'Dating profile overview.' },
@@ -693,7 +754,14 @@ const adminGenericRoutes: Record<string, { title: string; table: string; select:
   'professional-roles': { title: 'Professional Roles', table: 'professional_roles', select: 'id,name,category,description,requires_credentials,requires_verification,eligible_for_live_chat,approval_required,disclaimer_text,is_active,display_order,created_at,updated_at', order: 'display_order', description: 'Roles professionals can apply for.' },
   'professional-analytics': { title: 'Professional Analytics', table: 'professional_sessions', select: 'id,user_id,professional_id,status,scheduled_date,booking_fee_amount,payment_status,created_at', order: 'created_at', description: 'Professional sessions used for analytics.' },
   reports: { title: 'Reports', table: 'reported_content', select: 'id,reporter_id,reported_user_id,content_type,content_id,reason,description,status,reviewed_by,reviewed_at,action_taken,created_at', order: 'created_at', description: 'User and content reports.' },
-  roles: { title: 'Roles', table: 'users', select: 'id,full_name,email,profile_picture,role,created_at', order: 'created_at', description: 'User role configuration.' },
+  roles: {
+    title: 'Roles',
+    table: 'users',
+    select: 'id,full_name,email,profile_picture,role,created_at',
+    order: 'created_at',
+    description: 'Moderators, admins, and super admins (same cohort as mobile Roles).',
+    restrictWhere: { column: 'role', op: 'in', values: ['moderator', 'admin', 'super_admin'] },
+  },
   settings: { title: 'Admin Settings', table: 'app_settings', select: 'id,key,value,updated_at', order: 'updated_at', description: 'Operational settings.' },
   stickers: { title: 'Stickers', table: 'sticker_packs', select: 'id,name,description,icon_url,is_active,is_featured,display_order,created_at,updated_at', order: 'display_order', description: 'Sticker packs and chat assets.' },
   'trigger-words': { title: 'Trigger Words', table: 'trigger_words', select: 'id,word_phrase,severity,category,active,created_by,created_at,updated_at', order: 'word_phrase', description: 'Safety trigger words.' },
@@ -1199,6 +1267,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const [routeDatingReaction, setRouteDatingReaction] = useState({ liked: false, superLiked: false, matched: false });
   const [routeDatingBadges, setRouteDatingBadges] = useState<any[]>([]);
   const [routeConversationStarters, setRouteConversationStarters] = useState<string[]>([]);
+  const [datingUserProfileMediaTab, setDatingUserProfileMediaTab] = useState<'photos' | 'videos'>('photos');
   const [datingLikes, setDatingLikes] = useState<DatingLike[]>([]);
   const [datingMatches, setDatingMatches] = useState<DatingMatch[]>([]);
   /** Web discover flow: full-screen celebration when a swipe like creates a mutual match (parity with native dating match modal). */
@@ -1214,6 +1283,31 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const [statusFeed, setStatusFeed] = useState<StatusFeedItem[]>([]);
   const [adminRelationships, setAdminRelationships] = useState<any[]>([]);
   const [adminUsers, setAdminUsers] = useState<WebUser[]>([]);
+  /** Client-side filter on Manage Users (web parity with mobile admin users search). */
+  const [adminUsersSearchQuery, setAdminUsersSearchQuery] = useState('');
+  const [adminPostsReviewFilter, setAdminPostsReviewFilter] = useState<AdminContentModerationFilter>('pending');
+  const [adminReelsReviewFilter, setAdminReelsReviewFilter] = useState<AdminContentModerationFilter>('pending');
+  const [adminPostsReviewSearch, setAdminPostsReviewSearch] = useState('');
+  const [adminReelsReviewSearch, setAdminReelsReviewSearch] = useState('');
+  const [adminPostsReviewLoading, setAdminPostsReviewLoading] = useState(false);
+  const [adminReelsReviewLoading, setAdminReelsReviewLoading] = useState(false);
+  const [adminRelationshipsSearch, setAdminRelationshipsSearch] = useState('');
+  const [adminFalseReportsFilter, setAdminFalseReportsFilter] = useState<AdminFalseReportStatusFilter>('all');
+  const [adminFalseReportsSearch, setAdminFalseReportsSearch] = useState('');
+  const [adminFalseReportsLoading, setAdminFalseReportsLoading] = useState(false);
+  const [adminPaymentVerificationType, setAdminPaymentVerificationType] = useState<AdminPaymentSubmissionType>('subscriptions');
+  const [adminPaymentVerificationStatus, setAdminPaymentVerificationStatus] = useState<AdminPaymentStatusFilter>('pending');
+  const [adminPaymentVerificationSearch, setAdminPaymentVerificationSearch] = useState('');
+  const [adminPaymentQueueLoading, setAdminPaymentQueueLoading] = useState(false);
+  const [adminProfessionalReviewsFilter, setAdminProfessionalReviewsFilter] = useState<
+    'all' | 'pending' | 'approved' | 'rejected' | 'flagged'
+  >('all');
+  const [adminProfessionalReviewsSearch, setAdminProfessionalReviewsSearch] = useState('');
+  const [adminRolesSearchQuery, setAdminRolesSearchQuery] = useState('');
+  const [adminReportsStatusFilter, setAdminReportsStatusFilter] = useState<'all' | 'pending' | 'reviewing' | 'resolved' | 'dismissed'>('all');
+  const [adminReportsSearch, setAdminReportsSearch] = useState('');
+  const [adminBanAppealSearch, setAdminBanAppealSearch] = useState('');
+  const [adminProfessionalApplicationsSearch, setAdminProfessionalApplicationsSearch] = useState('');
   const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
   const [bookings, setBookings] = useState<any[]>([]);
   const [ads, setAds] = useState<any[]>([]);
@@ -1567,6 +1661,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     setRouteDatingReaction({ liked: false, superLiked: false, matched: false });
     setRouteDatingBadges([]);
     setRouteConversationStarters([]);
+    setDatingUserProfileMediaTab('photos');
     setDatingLikes([]);
     setDatingMatches([]);
     setDatingDiscoveryMatchModal(null);
@@ -1577,6 +1672,24 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     setStatusFeed([]);
     setAdminRelationships([]);
     setAdminUsers([]);
+    setAdminUsersSearchQuery('');
+    setAdminPostsReviewFilter('pending');
+    setAdminReelsReviewFilter('pending');
+    setAdminPostsReviewSearch('');
+    setAdminReelsReviewSearch('');
+    setAdminRelationshipsSearch('');
+    setAdminFalseReportsFilter('all');
+    setAdminFalseReportsSearch('');
+    setAdminPaymentVerificationType('subscriptions');
+    setAdminPaymentVerificationStatus('pending');
+    setAdminPaymentVerificationSearch('');
+    setAdminProfessionalReviewsFilter('all');
+    setAdminProfessionalReviewsSearch('');
+    setAdminRolesSearchQuery('');
+    setAdminReportsStatusFilter('all');
+    setAdminReportsSearch('');
+    setAdminBanAppealSearch('');
+    setAdminProfessionalApplicationsSearch('');
     setBlockedUsers([]);
     setBookings([]);
     setAds([]);
@@ -1743,6 +1856,44 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       specialRequests: request.special_requests || '',
     });
   }, [activeTab, dateRequests, searchParams, subPath]);
+
+  /** Pre-fill recipient when opening create flow with `?matchId=<dating_matches.id>` (parity with Expo matches screen). */
+  useEffect(() => {
+    if (activeTab !== 'dating' || subPath !== 'create-date-request') return;
+    const matchId = searchParams.get('matchId') || '';
+    if (!matchId || !datingMatches.length) return;
+    const m = datingMatches.find((row) => row.id === matchId);
+    if (!m) return;
+    const peerId = m.user?.id || (m.user1_id === user?.id ? m.user2_id : m.user1_id) || '';
+    if (!peerId) return;
+    setDateForm((prev) => (prev.recipientId === peerId ? prev : { ...prev, recipientId: peerId }));
+  }, [activeTab, subPath, searchParams, datingMatches, user?.id]);
+
+  useEffect(() => {
+    if (activeTab !== 'dating' || subPath !== 'photo-gallery') return;
+    const raw = searchParams?.get('initialIndex') || '0';
+    const idx = Math.max(0, parseInt(raw, 10) || 0);
+    const timer = window.setTimeout(() => {
+      document.getElementById(`dating-gallery-photo-${idx}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [activeTab, subPath, searchParams]);
+
+  useEffect(() => {
+    if (activeTab !== 'dating' || subPath !== 'date-requests') return;
+    const tab = searchParams.get('tab');
+    if (tab === 'sent' || tab === 'received') setDateRequestTab(tab);
+  }, [activeTab, subPath, searchParams]);
+
+  useEffect(() => {
+    if (activeTab !== 'dating' || subPath !== 'date-requests') return;
+    const focus = (searchParams.get('focus') || '').trim();
+    if (!focus) return;
+    const timer = window.setTimeout(() => {
+      document.getElementById(`date-request-card-${focus}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [activeTab, subPath, searchParams, dateRequestTab, dateRequests]);
 
   useEffect(() => {
     if (appPath[0] !== 'ads' || subPath !== 'promote') return;
@@ -2478,8 +2629,6 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           adminProfessionalReviewsResult,
           adminRelationshipsData,
           adminUsersData,
-          adminPostsData,
-          adminReelsData,
           falseReportsData,
           paymentSubmissionsData,
         ] = await Promise.all([
@@ -2505,16 +2654,12 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             .limit(ADMIN_WEB_LIMIT_MISC),
           fetchAdminRelationshipsList(supabase, ADMIN_WEB_LIMIT_RELATIONSHIPS),
           fetchAdminUsersList(supabase, ADMIN_WEB_LIMIT_USERS),
-          fetchAdminPostsModerationList(supabase, ADMIN_WEB_LIMIT_CONTENT),
-          fetchAdminReelsModerationList(supabase, ADMIN_WEB_LIMIT_CONTENT),
           fetchAdminFalseRelationshipReportsList(supabase, ADMIN_WEB_LIMIT_MISC),
           fetchAdminPaymentSubmissionsList(supabase, ADMIN_WEB_LIMIT_MISC),
         ]);
         setAdminRelationships(adminRelationshipsData);
         setAdminUsers(adminUsersData);
         setAds(await enrichAdsWithMetrics(adsResult.data || []));
-        setAdminPosts(adminPostsData);
-        setAdminReels(adminReelsData);
         setProfessionalApplications(professionalApplicationsResult.data || []);
         setFalseRelationshipReports(falseReportsData);
         setPaymentSubmissions(paymentSubmissionsData);
@@ -2806,6 +2951,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       setRouteRowsError(null);
       try {
         let query = supabase.from(route.table).select(route.select).limit(ADMIN_WEB_GENERIC_TABLE_LIMIT);
+        if (route.restrictWhere?.op === 'in') {
+          query = query.in(route.restrictWhere.column, route.restrictWhere.values);
+        }
         if (route.order) query = query.order(route.order, { ascending: false });
         const { data, error } = await query;
         if (cancelled) return;
@@ -2813,7 +2961,11 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           if (process.env.NODE_ENV !== 'production') {
             console.warn(`[WebAppShell admin route ${subPath}]`, error.message);
           }
-          const minimal = await supabase.from(route.table).select('*').limit(ADMIN_WEB_GENERIC_TABLE_LIMIT);
+          let minimalQuery = supabase.from(route.table).select('*').limit(ADMIN_WEB_GENERIC_TABLE_LIMIT);
+          if (route.restrictWhere?.op === 'in') {
+            minimalQuery = minimalQuery.in(route.restrictWhere.column, route.restrictWhere.values);
+          }
+          const minimal = await minimalQuery;
           if (cancelled) return;
           if (minimal.error) {
             setRouteRows([]);
@@ -2834,6 +2986,131 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       cancelled = true;
     };
   }, [appPath, subPath, supabase, user]);
+
+  useEffect(() => {
+    if (subPath !== 'users') setAdminUsersSearchQuery('');
+    if (subPath !== 'posts-review') {
+      setAdminPostsReviewSearch('');
+      setAdminPostsReviewFilter('pending');
+    }
+    if (subPath !== 'reels-review') {
+      setAdminReelsReviewSearch('');
+      setAdminReelsReviewFilter('pending');
+    }
+    if (subPath !== 'relationships') setAdminRelationshipsSearch('');
+    if (subPath !== 'false-relationship-reports') {
+      setAdminFalseReportsSearch('');
+      setAdminFalseReportsFilter('all');
+    }
+    if (subPath !== 'payment-verifications') {
+      setAdminPaymentVerificationSearch('');
+      setAdminPaymentVerificationType('subscriptions');
+      setAdminPaymentVerificationStatus('pending');
+    }
+    if (subPath !== 'professional-reviews') {
+      setAdminProfessionalReviewsSearch('');
+      setAdminProfessionalReviewsFilter('all');
+    }
+    if (subPath !== 'roles') setAdminRolesSearchQuery('');
+    if (subPath !== 'reports') {
+      setAdminReportsSearch('');
+      setAdminReportsStatusFilter('all');
+    }
+    if (subPath !== 'ban-appeals') setAdminBanAppealSearch('');
+    if (subPath !== 'professional-profiles') setAdminProfessionalApplicationsSearch('');
+  }, [subPath]);
+
+  /** Broad posts/reels samples for admin hub and non-review routes (review screens use filtered loaders below). */
+  useEffect(() => {
+    if (!supabase || !user || !isAdminRole(user.role)) return;
+    if (appPath[0] !== 'admin') return;
+    if (subPath === 'posts-review' || subPath === 'reels-review') return;
+    let cancelled = false;
+    (async () => {
+      const [postsData, reelsData] = await Promise.all([
+        fetchAdminPostsModerationList(supabase, ADMIN_WEB_LIMIT_CONTENT, null),
+        fetchAdminReelsModerationList(supabase, ADMIN_WEB_LIMIT_CONTENT, null),
+      ]);
+      if (!cancelled) {
+        setAdminPosts(postsData);
+        setAdminReels(reelsData);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [appPath, subPath, supabase, user]);
+
+  useEffect(() => {
+    if (!supabase || !user || !isAdminRole(user.role) || appPath[0] !== 'admin' || subPath !== 'posts-review') return;
+    let cancelled = false;
+    (async () => {
+      setAdminPostsReviewLoading(true);
+      try {
+        const rows = await fetchAdminPostsModerationList(supabase, ADMIN_WEB_LIMIT_CONTENT, adminPostsReviewFilter);
+        if (!cancelled) setAdminPosts(rows);
+      } finally {
+        if (!cancelled) setAdminPostsReviewLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [appPath, subPath, supabase, user, adminPostsReviewFilter]);
+
+  useEffect(() => {
+    if (!supabase || !user || !isAdminRole(user.role) || appPath[0] !== 'admin' || subPath !== 'reels-review') return;
+    let cancelled = false;
+    (async () => {
+      setAdminReelsReviewLoading(true);
+      try {
+        const rows = await fetchAdminReelsModerationList(supabase, ADMIN_WEB_LIMIT_CONTENT, adminReelsReviewFilter);
+        if (!cancelled) setAdminReels(rows);
+      } finally {
+        if (!cancelled) setAdminReelsReviewLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [appPath, subPath, supabase, user, adminReelsReviewFilter]);
+
+  useEffect(() => {
+    if (!supabase || !user || !isAdminRole(user.role) || appPath[0] !== 'admin' || subPath !== 'false-relationship-reports') return;
+    let cancelled = false;
+    (async () => {
+      setAdminFalseReportsLoading(true);
+      try {
+        const rows = await fetchAdminFalseRelationshipReportsList(supabase, ADMIN_WEB_LIMIT_MISC, adminFalseReportsFilter);
+        if (!cancelled) setFalseRelationshipReports(rows);
+      } finally {
+        if (!cancelled) setAdminFalseReportsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [appPath, subPath, supabase, user, adminFalseReportsFilter]);
+
+  useEffect(() => {
+    if (!supabase || !user || !isAdminRole(user.role) || appPath[0] !== 'admin' || subPath !== 'payment-verifications') return;
+    let cancelled = false;
+    (async () => {
+      setAdminPaymentQueueLoading(true);
+      try {
+        const rows = await fetchAdminPaymentSubmissionsList(supabase, ADMIN_WEB_LIMIT_MISC, {
+          submissionType: adminPaymentVerificationType,
+          status: adminPaymentVerificationStatus,
+        });
+        if (!cancelled) setPaymentSubmissions(rows);
+      } finally {
+        if (!cancelled) setAdminPaymentQueueLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [appPath, subPath, supabase, user, adminPaymentVerificationType, adminPaymentVerificationStatus]);
 
   useEffect(() => {
     if (appPath[0] !== 'bookings' || subPath !== 'reschedule') return;
@@ -3065,8 +3342,10 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       setRouteDatingReaction({ liked: false, superLiked: false, matched: false });
       setRouteDatingBadges([]);
       setRouteConversationStarters([]);
+      setDatingUserProfileMediaTab('photos');
       return;
     }
+    setDatingUserProfileMediaTab('photos');
     let cancelled = false;
     const loadRouteDatingProfile = async () => {
       setRouteDatingProfileLoading(true);
@@ -3868,6 +4147,26 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     setReactionNotice(matched ? "It's a match" : isSuperLike ? 'Super like sent' : 'Liked');
     window.setTimeout(() => setReactionNotice(null), 1800);
   };
+
+  const shareRouteDatingProfile = useCallback(() => {
+    const uid = searchParams?.get('userId') || searchParams?.get('id') || '';
+    if (!uid || typeof window === 'undefined') return;
+    const url = `${window.location.origin}/app/dating/user-profile?userId=${encodeURIComponent(uid)}`;
+    const payload = { title: 'Committed Dating', text: 'Check out this profile on Committed Dating.', url };
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      void navigator.share(payload).catch(() => {
+        void navigator.clipboard.writeText(url).then(() => {
+          setReactionNotice('Profile link copied');
+          window.setTimeout(() => setReactionNotice(null), 2000);
+        });
+      });
+    } else {
+      void navigator.clipboard.writeText(url).then(() => {
+        setReactionNotice('Profile link copied');
+        window.setTimeout(() => setReactionNotice(null), 2000);
+      });
+    }
+  }, [searchParams]);
 
   const openConversationWithUser = async (targetUserId: string, openingMessage?: string) => {
     if (!supabase || !user || !targetUserId || targetUserId === user.id) return;
@@ -5132,7 +5431,20 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     if (reelId) return `/app/reel/${reelId}`;
     if (statusOwnerId) return `/app/status/${statusOwnerId}`;
     if (statusId) return `/app/status-item/${statusId}`;
-    if (data.dateRequestId || data.date_request_id) return '/app/dating/date-requests';
+    const dateReqIdRaw = data.dateRequestId || data.date_request_id;
+    const dateReqFocus =
+      dateReqIdRaw != null && String(dateReqIdRaw).trim() !== ''
+        ? `&focus=${encodeURIComponent(String(dateReqIdRaw).trim())}`
+        : '';
+    if (notification.type === 'dating_date_request') {
+      return `/app/dating/date-requests?tab=received${dateReqFocus}`;
+    }
+    if (notification.type === 'dating_date_accepted' || notification.type === 'dating_date_declined') {
+      return `/app/dating/date-requests?tab=sent${dateReqFocus}`;
+    }
+    if (dateReqIdRaw != null && String(dateReqIdRaw).trim() !== '') {
+      return `/app/dating/date-requests?tab=received&focus=${encodeURIComponent(String(dateReqIdRaw).trim())}`;
+    }
     if (data.matchId || data.match_id) return '/app/dating/matches';
     if (
       likerId &&
@@ -5649,6 +5961,14 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       if (!data) throw new Error(`${table === 'posts' ? 'Post' : 'Reel'} was not updated. Admin moderation permission may be missing.`);
       if (table === 'posts') setAdminPosts((prev) => prev.map((item) => item.id === id ? { ...item, ...patch } : item));
       if (table === 'reels') setAdminReels((prev) => prev.map((item) => item.id === id ? { ...item, ...patch } : item));
+      if (appPath[0] === 'admin' && subPath === 'posts-review' && table === 'posts') {
+        const rows = await fetchAdminPostsModerationList(supabase, ADMIN_WEB_LIMIT_CONTENT, adminPostsReviewFilter);
+        setAdminPosts(rows);
+      }
+      if (appPath[0] === 'admin' && subPath === 'reels-review' && table === 'reels') {
+        const rows = await fetchAdminReelsModerationList(supabase, ADMIN_WEB_LIMIT_CONTENT, adminReelsReviewFilter);
+        setAdminReels(rows);
+      }
       setReactionNotice(status === 'approved' ? 'Approved' : 'Rejected');
       window.setTimeout(() => setReactionNotice(null), 1800);
     } catch (error: any) {
@@ -5839,6 +6159,13 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       }
 
       setPaymentSubmissions((prev) => prev.map((item) => item.id === payment.id ? { ...item, ...patch, status } : item));
+      if (appPath[0] === 'admin' && subPath === 'payment-verifications') {
+        const rows = await fetchAdminPaymentSubmissionsList(supabase, ADMIN_WEB_LIMIT_MISC, {
+          submissionType: adminPaymentVerificationType,
+          status: adminPaymentVerificationStatus,
+        });
+        setPaymentSubmissions(rows);
+      }
       setReactionNotice(status === 'approved' ? 'Payment approved' : 'Payment rejected');
       window.setTimeout(() => setReactionNotice(null), 1800);
     } finally {
@@ -7290,13 +7617,53 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             </ProfileUserLink>
           )}
           <h1 className="flex-1 text-xl font-black text-slate-950">{current.label === 'Notify' ? 'Notifications' : current.label}</h1>
-          {activeTab === 'dating' ? (
+          {activeTab === 'dating' && appPath[0] === 'dating' && appPath.length === 1 ? (
+            <>
+              <Link href="/app/dating/matches" className="grid h-10 w-10 place-items-center rounded-full bg-slate-50 text-slate-900" aria-label="Matches" title="Matches">
+                <Users className="h-5 w-5" />
+              </Link>
+              <Link href="/app/dating/likes-received" className="grid h-10 w-10 place-items-center rounded-full bg-slate-50 text-red-500" aria-label="Likes" title="Likes">
+                <Heart className="h-5 w-5" />
+              </Link>
+              <Link href="/app/dating/filters" className="grid h-10 w-10 place-items-center rounded-full bg-slate-50 text-slate-900" aria-label="Filters" title="Filters">
+                <SlidersHorizontal className="h-5 w-5" />
+              </Link>
+              <Link href="/app/dating/profile-setup" className="grid h-10 w-10 place-items-center rounded-full bg-slate-50 text-slate-900" aria-label="Dating profile settings" title="Profile">
+                <Settings className="h-5 w-5" />
+              </Link>
+            </>
+          ) : activeTab === 'dating' && subPath === 'user-profile' ? (
+            <>
+              <button type="button" onClick={() => shareRouteDatingProfile()} className="grid h-10 w-10 place-items-center rounded-full bg-slate-50 text-slate-900" aria-label="Share profile" title="Share">
+                <Share2 className="h-5 w-5" />
+              </button>
+              {(() => {
+                const uid = searchParams?.get('userId') || searchParams?.get('id') || '';
+                if (!uid || uid === user?.id) return null;
+                const reportedName =
+                  routeDatingProfile?.users?.full_name ||
+                  routeDatingProfile?.user?.full_name ||
+                  'Member';
+                return (
+                  <button
+                    type="button"
+                    onClick={() => setReportProfileTarget({ id: uid, name: reportedName })}
+                    className="grid h-10 w-10 place-items-center rounded-full bg-slate-50 text-slate-900"
+                    aria-label="Report profile"
+                    title="Report"
+                  >
+                    <Flag className="h-5 w-5 text-rose-600" />
+                  </button>
+                );
+              })()}
+            </>
+          ) : activeTab === 'dating' ? (
             <>
               <Link href="/app/dating/likes-received" className="grid h-10 w-10 place-items-center rounded-full bg-slate-50 text-red-500">
                 <Heart className="h-5 w-5" />
               </Link>
               <Link href="/app/dating/filters" className="grid h-10 w-10 place-items-center rounded-full bg-slate-50 text-slate-900">
-                <Settings className="h-5 w-5" />
+                <SlidersHorizontal className="h-5 w-5" />
               </Link>
             </>
           ) : activeTab === 'feed' ? (
@@ -7811,8 +8178,20 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       router.push(`/app/dating/user-profile?userId=${encodeURIComponent(profile.user_id)}`);
     };
 
+    const rewindLastDatingSwipe = () => {
+      if (datingIndex <= 0) return;
+      setDatingIndex((i) => Math.max(0, i - 1));
+    };
+
     return (
       <div className="flex min-h-[calc(100vh-122px)] flex-col px-4 pb-4 pt-3">
+        <div className="mb-2 flex items-center gap-2 rounded-[18px] bg-slate-100 px-3 py-2 ring-1 ring-slate-200">
+          <Sparkles className="h-4 w-4 shrink-0 text-pink-600" />
+          <div className="min-w-0">
+            <p className="text-xs font-black text-slate-900">Discover</p>
+            <p className="truncate text-[11px] font-semibold text-slate-500">Tap the card to open the full dating profile (same as the native app).</p>
+          </div>
+        </div>
         <div className="relative flex min-h-[470px] flex-1 flex-col">
           <DatingDiscoverSwipeDeck
             profileKey={profile.user_id}
@@ -7820,6 +8199,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             back={nextProfile ? <DatingDiscoveryCardFace profile={nextProfile} supabase={supabase} /> : null}
             onSwipeLeft={() => reactToDatingProfile(profile, 'pass')}
             onSwipeRight={() => reactToDatingProfile(profile, 'like')}
+            onCardTap={openDatingProfile}
           />
         </div>
         <button
@@ -7830,17 +8210,44 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         >
           Open full profile
         </button>
-        <div className="mt-4 flex items-center justify-center gap-4" data-swipe-ignore>
-          <button type="button" onClick={() => void reactToDatingProfile(profile, 'pass')} className="grid h-16 w-16 place-items-center rounded-full bg-red-500 text-white shadow-xl shadow-red-500/25 active:scale-95">
-            <X className="h-8 w-8" />
+        <div className="mt-3 flex items-center justify-center gap-2 sm:gap-3" data-swipe-ignore>
+          <button
+            type="button"
+            onClick={rewindLastDatingSwipe}
+            disabled={datingIndex === 0}
+            className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-slate-200 text-slate-800 shadow-sm ring-1 ring-slate-300 disabled:opacity-40 sm:h-14 sm:w-14"
+            aria-label="Rewind last profile"
+            title="Rewind"
+          >
+            <RotateCcw className="h-5 w-5 sm:h-6 sm:w-6" />
           </button>
-          <button type="button" onClick={() => void reactToDatingProfile(profile, 'super')} className="grid h-[72px] w-[72px] place-items-center rounded-full bg-blue-600 text-white shadow-xl shadow-blue-600/25 active:scale-95">
-            <Star className="h-9 w-9 fill-white" />
+          <button type="button" onClick={() => void reactToDatingProfile(profile, 'pass')} className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-red-500 text-white shadow-xl shadow-red-500/25 active:scale-95 sm:h-16 sm:w-16">
+            <X className="h-7 w-7 sm:h-8 sm:w-8" />
           </button>
-          <button type="button" onClick={() => void reactToDatingProfile(profile, 'like')} className="grid h-16 w-16 place-items-center rounded-full bg-green-500 text-white shadow-xl shadow-green-500/25 active:scale-95">
-            <Heart className="h-8 w-8 fill-white" />
+          <button type="button" onClick={() => void reactToDatingProfile(profile, 'super')} className="grid h-[68px] w-[68px] shrink-0 place-items-center rounded-full bg-blue-600 text-white shadow-xl shadow-blue-600/25 active:scale-95 sm:h-[72px] sm:w-[72px]">
+            <Star className="h-8 w-8 fill-white sm:h-9 sm:w-9" />
+          </button>
+          <button type="button" onClick={() => void reactToDatingProfile(profile, 'like')} className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-green-500 text-white shadow-xl shadow-green-500/25 active:scale-95 sm:h-16 sm:w-16">
+            <Heart className="h-7 w-7 fill-white sm:h-8 sm:w-8" />
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push('/app/dating/premium')}
+            className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-amber-100 text-amber-700 shadow-sm ring-1 ring-amber-200 sm:h-14 sm:w-14"
+            aria-label="Boost profile (Premium)"
+            title="Boost (Premium)"
+          >
+            <Zap className="h-5 w-5 fill-current sm:h-6 sm:w-6" />
           </button>
         </div>
+        <Link
+          href="/app/dating/premium"
+          data-swipe-ignore
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-[18px] bg-gradient-to-r from-amber-500 to-orange-500 py-3 text-sm font-black text-white shadow-md shadow-amber-500/30"
+        >
+          <Crown className="h-4 w-4 fill-current" />
+          Go Premium
+        </Link>
       </div>
     );
   };
@@ -7912,6 +8319,14 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                 <p className="truncate text-lg font-black text-slate-950">{getUserDisplayName(match.user) || 'Matched member'}</p>
                 <p className="text-sm font-semibold text-slate-500">Matched {timeAgo(match.matched_at || match.created_at)}</p>
               </button>
+              <Link
+                href={`/app/dating/create-date-request?matchId=${encodeURIComponent(match.id)}`}
+                className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-amber-50 text-amber-800 ring-1 ring-amber-200"
+                aria-label="Plan a date"
+                title="Plan a date"
+              >
+                <Calendar className="h-5 w-5" />
+              </Link>
               <button
                 type="button"
                 onClick={openMatchChat}
@@ -7986,6 +8401,14 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             <h2 className="mt-4 text-3xl font-black">{subPath === 'edit-date-request' ? 'Edit Date Request' : 'Create Date Request'}</h2>
             <p className="mt-2 text-sm leading-6 text-white/85">{subPath === 'edit-date-request' ? 'Update the plan while it is still pending.' : 'Plan a date with one of your matches.'}</p>
           </section>
+          {subPath === 'create-date-request' && !datingMatches.length ? (
+            <div className="rounded-[20px] bg-amber-50 p-4 text-sm font-semibold text-amber-900 ring-1 ring-amber-100">
+              You need at least one match to send a date request.{' '}
+              <Link href="/app/dating" className="font-black text-amber-950 underline">
+                Go to Discover
+              </Link>
+            </div>
+          ) : null}
           <label className="block">
             <span className="mb-2 block text-sm font-black text-slate-700">Match</span>
             <select disabled={subPath === 'edit-date-request'} value={dateForm.recipientId} onChange={(event) => setDateForm((prev) => ({ ...prev, recipientId: event.target.value }))} className="h-14 w-full rounded-[20px] border border-slate-200 bg-white px-4 text-base font-semibold text-slate-950 outline-none disabled:bg-slate-100">
@@ -8044,16 +8467,22 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         </div>
       );
     }
-    if (!dateRequests.length) {
-      return <EmptyState icon={Calendar} title="No Date Requests" text="Create a date request with one of your matches to plan your first date." action="Go to Matches" onAction={() => router.push('/app/dating/matches')} />;
-    }
-    const filteredRequests = dateRequests.filter((request) => dateRequestTab === 'sent' ? request.from_user_id === user?.id : request.to_user_id === user?.id);
+    const filteredRequests = dateRequests.filter((request) => (dateRequestTab === 'sent' ? request.from_user_id === user?.id : request.to_user_id === user?.id));
+    const receivedCount = dateRequests.filter((r) => r.to_user_id === user?.id).length;
+    const sentCount = dateRequests.filter((r) => r.from_user_id === user?.id).length;
     return (
       <div className="space-y-3 px-4 py-4">
+        <Link
+          href="/app/dating/create-date-request"
+          className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-blue-600 py-3.5 text-sm font-black text-white shadow-sm active:scale-[0.99]"
+        >
+          <Calendar className="h-5 w-5" />
+          Plan a date
+        </Link>
         <div className="grid grid-cols-2 gap-2 rounded-[20px] bg-white p-2 ring-1 ring-slate-200">
           {(['received', 'sent'] as const).map((tab) => (
             <button key={tab} type="button" onClick={() => setDateRequestTab(tab)} className={`rounded-[16px] py-3 text-sm font-black capitalize ${dateRequestTab === tab ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>
-              {tab}
+              {tab === 'received' ? `Received (${receivedCount})` : `Sent (${sentCount})`}
             </button>
           ))}
         </div>
@@ -8071,7 +8500,11 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           const other = incoming ? request.from_user : request.to_user;
           const otherId = other?.id || (incoming ? request.from_user_id : request.to_user_id) || '';
           return (
-            <article key={request.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+            <article
+              key={request.id}
+              id={request.id ? `date-request-card-${request.id}` : undefined}
+              className="scroll-mt-24 rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200"
+            >
               <div className="flex items-start gap-3">
                 <ProfileUserLink viewerUserId={user?.id} subjectUserId={otherId} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
                   <Avatar src={other?.profile_picture} name={getUserDisplayName(other)} />
@@ -8487,7 +8920,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   );
 
   const renderDatingUserProfile = () => {
-    const targetUserId = appPath[2] || searchParams?.get('userId') || searchParams?.get('id') || '';
+    const targetUserId = searchParams?.get('userId') || searchParams?.get('id') || appPath[2] || '';
     const profile = routeDatingProfile || datingProfiles.find((item) => item.user_id === targetUserId) || (!targetUserId ? myDatingProfile : null);
     if (routeDatingProfileLoading) {
       return (
@@ -8498,64 +8931,170 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       );
     }
     if (!profile) return <EmptyState icon={User} title="Profile Not Found" text="This dating profile is not available." action="Back to Dating" onAction={() => router.push('/app/dating')} />;
+    const resolveDatingMediaUrl = (raw: unknown) => {
+      const s = raw == null ? '' : String(raw).trim();
+      if (!s) return '';
+      if (supabase) {
+        return resolveProfilePictureUrlWithSupabase(supabase, s) || resolveProfilePictureUrl(s) || s;
+      }
+      return resolveProfilePictureUrl(s) || s;
+    };
     const photos = profile.dating_photos || profile.photos || [];
     const videos = profile.dating_videos || profile.videos || [];
     const profileUser = profile.users || profile.user || null;
-    const photo = photos.find((item: any) => item.is_primary)?.photo_url || photos[0]?.photo_url || profileUser?.profile_picture;
+    const rawHeroPhoto = photos.find((item: any) => item.is_primary)?.photo_url || photos[0]?.photo_url || profileUser?.profile_picture;
+    const photo =
+      rawHeroPhoto && supabase
+        ? resolveProfilePictureUrlWithSupabase(supabase, String(rawHeroPhoto)) || resolveProfilePictureUrl(String(rawHeroPhoto)) || rawHeroPhoto
+        : rawHeroPhoto
+          ? resolveProfilePictureUrl(String(rawHeroPhoto)) || rawHeroPhoto
+          : null;
     const name = profileUser?.full_name || profileUser?.username || 'Committed dater';
     const isOwnProfile = profile.user_id === user?.id;
-    const details = [
-      ['Faith', profile.religion],
-      ['Education', profile.education],
-      ['Height', profile.height_cm ? `${profile.height_cm} cm` : null],
-      ['Kids', profile.kids],
-      ['Drinks', profile.drink],
-      ['Smokes', profile.smoke],
-      ['Exercise', profile.exercise],
-      ['Pets', profile.pets],
-      ['Work', profile.work],
-    ].filter(([, value]) => !!value);
+    const parseJsonArray = (raw: unknown): any[] => {
+      if (Array.isArray(raw)) return raw;
+      if (typeof raw === 'string') {
+        try {
+          const v = JSON.parse(raw);
+          return Array.isArray(v) ? v : [];
+        } catch {
+          return [];
+        }
+      }
+      return [];
+    };
+    let rawPrompts = profile.prompts;
+    if (typeof rawPrompts === 'string') {
+      try {
+        rawPrompts = JSON.parse(rawPrompts);
+      } catch {
+        rawPrompts = [];
+      }
+    }
+    const profilePrompts = Array.isArray(rawPrompts) ? rawPrompts.filter((p: any) => p && (p.question || p.answer)) : [];
+    const valuesList = parseJsonArray(profile.values);
+    const interestsList = parseJsonArray(profile.interests);
+    const relationshipGoals = parseJsonArray(profile.relationship_goals);
+    const lifestyleHas =
+      !!profile.kids ||
+      !!profile.work ||
+      !!profile.religion ||
+      !!profile.education ||
+      !!profile.height_cm ||
+      !!profile.exercise ||
+      !!profile.pets ||
+      !!profile.smoke ||
+      !!profile.drink;
     const canMessage = isOwnProfile || routeDatingReaction.matched;
+    const showBasicInfo =
+      (profile.age != null && profile.age !== '') || !!profile.location_city || relationshipGoals.length > 0;
+    const photosForGallery = photos.map((p: any) => ({
+      ...p,
+      photo_url: resolveDatingMediaUrl(p.photo_url) || p.photo_url,
+    }));
+    const openPhotoGallery = (initialIndex: number) => {
+      const payload = encodeURIComponent(JSON.stringify(photosForGallery));
+      router.push(`/app/dating/photo-gallery?photos=${payload}&initialIndex=${initialIndex}&userName=${encodeURIComponent(name)}`);
+    };
+    const weekendStyle = profile.weekend_style ? String(profile.weekend_style) : '';
+    const badgeLabel = (badge: any) => {
+      const raw = badge.badge_name || badge.badge_type || badge.name || 'Badge';
+      return String(raw).replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
+    };
     return (
       <div className="space-y-4 px-4 py-4">
         <section className="overflow-hidden rounded-[28px] bg-slate-950 text-white shadow-xl">
-          {photo ? <img src={photo} alt="" className="h-[360px] w-full object-cover" /> : <div className="grid h-[360px] place-items-center bg-gradient-to-br from-pink-500 to-blue-700 text-[120px] font-black">{initials(name)}</div>}
-          <div className="p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-3xl font-black">{name} {profile.age ? profile.age : ''}</h2>
-                <p className="mt-1 flex items-center gap-1 text-sm font-semibold text-white/75"><MapPin className="h-4 w-4" />{[profile.location_city, profile.location_country].filter(Boolean).join(', ') || 'Location not set'}</p>
-              </div>
-              {(profileUser?.verified || profileUser?.id_verified || profileUser?.email_verified || profileUser?.phone_verified) ? (
-                <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-black text-white">Verified</span>
-              ) : null}
-            </div>
-            <p className="mt-4 text-sm leading-6 text-white/85">{profile.bio || 'Looking for meaningful connections.'}</p>
-            {profile.headline ? <p className="mt-3 rounded-[18px] bg-white/10 p-3 text-sm font-bold text-white">{profile.headline}</p> : null}
-            <div className="mt-4 flex flex-wrap gap-2">
-              {[profile.intention_tag, profile.religion, ...(profile.relationship_goals || []), ...(profile.interests || [])].filter(Boolean).slice(0, 8).map((tag) => (
-                <span key={String(tag)} className="rounded-full bg-white/15 px-3 py-1.5 text-xs font-black">{tag}</span>
-              ))}
-            </div>
-            {!isOwnProfile ? (
-              <div className="mt-5 grid grid-cols-3 gap-2">
-                <button type="button" onClick={() => void reactToRouteDatingProfile(profile.user_id, 'pass')} className="rounded-[18px] bg-white/15 py-3 font-black">Pass</button>
-                <button type="button" onClick={() => void reactToRouteDatingProfile(profile.user_id, 'super')} disabled={routeDatingReaction.superLiked} className="rounded-[18px] bg-blue-600 py-3 font-black disabled:opacity-55">{routeDatingReaction.superLiked ? 'Super liked' : 'Super'}</button>
-                <button type="button" onClick={() => void reactToRouteDatingProfile(profile.user_id, 'like')} disabled={routeDatingReaction.liked} className="rounded-[18px] bg-green-500 py-3 font-black disabled:opacity-55">{routeDatingReaction.liked ? 'Liked' : 'Like'}</button>
+          <div className="relative min-h-[280px] w-full sm:min-h-[360px]">
+            {photo ? <img src={photo} alt="" className="h-full min-h-[280px] w-full object-cover sm:min-h-[360px]" /> : <div className="grid min-h-[280px] place-items-center bg-gradient-to-br from-pink-500 to-blue-700 text-[120px] font-black sm:min-h-[360px]">{initials(name)}</div>}
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/80 to-transparent" />
+            {photos.length > 0 ? (
+              <div className="absolute right-4 top-4 flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 text-sm font-black text-white">
+                <ImageIcon className="h-4 w-4" />
+                {photos.length}
               </div>
             ) : null}
+            <div className="absolute inset-x-0 bottom-0 p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-3xl font-black">
+                    {name}
+                    {profile.age != null && profile.age !== '' ? `, ${profile.age}` : ''}
+                  </h2>
+                  {profile.headline ? <p className="mt-2 text-sm font-semibold italic text-white/90">&ldquo;{profile.headline}&rdquo;</p> : null}
+                  <p className="mt-1 flex items-center gap-1 text-sm font-semibold text-white/75">
+                    <MapPin className="h-4 w-4 shrink-0" />
+                    {[profile.location_city, profile.location_country].filter(Boolean).join(', ') || 'Location not set'}
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-2">
+                  {(profileUser?.verified || profileUser?.id_verified || profileUser?.email_verified || profileUser?.phone_verified) ? (
+                    <span className="flex items-center gap-1 rounded-full bg-white/15 px-3 py-1 text-xs font-black text-white">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      Verified
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            </div>
           </div>
         </section>
+
+        {!isOwnProfile ? (
+          <div className="flex items-center justify-center gap-5 rounded-[24px] bg-white py-5 shadow-sm ring-1 ring-slate-200">
+            <button
+              type="button"
+              onClick={() => void reactToRouteDatingProfile(profile.user_id, 'pass')}
+              className="grid h-[60px] w-[60px] place-items-center rounded-full bg-rose-600 text-2xl font-black text-white shadow-lg"
+              aria-label="Pass"
+            >
+              ✕
+            </button>
+            <button
+              type="button"
+              onClick={() => void reactToRouteDatingProfile(profile.user_id, 'super')}
+              disabled={routeDatingReaction.superLiked || routeDatingReaction.matched}
+              className="grid h-14 w-14 place-items-center rounded-full bg-blue-600 text-white shadow-lg disabled:opacity-55"
+              aria-label="Super like"
+            >
+              {routeDatingReaction.superLiked ? <CheckCircle2 className="h-7 w-7" /> : <Star className="h-7 w-7 fill-white" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => void reactToRouteDatingProfile(profile.user_id, 'like')}
+              disabled={routeDatingReaction.liked || routeDatingReaction.matched}
+              className="grid h-[60px] w-[60px] place-items-center rounded-full bg-emerald-500 text-white shadow-lg disabled:opacity-55"
+              aria-label="Like"
+            >
+              {routeDatingReaction.liked ? <CheckCircle2 className="h-7 w-7" /> : <Heart className="h-7 w-7 fill-white" />}
+            </button>
+          </div>
+        ) : null}
+
         {routeDatingReaction.matched ? (
           <section className="rounded-[24px] bg-gradient-to-br from-pink-500 to-blue-600 p-5 text-white shadow-xl shadow-pink-500/20">
             <Sparkles className="h-9 w-9" />
-            <h3 className="mt-3 text-2xl font-black">It's a match</h3>
+            <h3 className="mt-3 text-2xl font-black">It&apos;s a match</h3>
             <p className="mt-2 text-sm leading-6 text-white/85">You both liked each other. Start the conversation while the spark is fresh.</p>
             <button type="button" onClick={() => void openConversationWithUser(profile.user_id)} className="mt-4 w-full rounded-[18px] bg-white py-3 font-black text-pink-600">
               Message {name.split(' ')[0] || 'match'}
             </button>
           </section>
         ) : null}
+
+        {!isOwnProfile && (routeDatingReaction.liked || routeDatingReaction.superLiked) && !routeDatingReaction.matched ? (
+          <section className="flex items-center gap-3 rounded-[22px] border border-blue-100 bg-blue-50/80 p-4">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-blue-600 text-white">
+              {routeDatingReaction.superLiked ? <Star className="h-5 w-5 fill-white" /> : <Heart className="h-5 w-5 fill-white" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-black text-slate-950">{routeDatingReaction.superLiked ? 'Super like sent' : 'You liked this profile'}</p>
+              <p className="mt-0.5 text-xs font-semibold leading-snug text-slate-600">
+                {routeDatingReaction.superLiked ? 'They will see that you are extra interested.' : 'If they like you back, you will become a match.'}
+              </p>
+            </div>
+          </section>
+        ) : null}
+
         {!isOwnProfile && routeConversationStarters.length ? (
           <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
             <p className="text-lg font-black text-slate-950">Conversation Starters</p>
@@ -8566,52 +9105,350 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                   key={starter}
                   type="button"
                   onClick={() => void openConversationWithUser(profile.user_id, starter)}
-                  className="w-full rounded-[18px] bg-pink-50 px-4 py-3 text-left text-sm font-black text-pink-700 ring-1 ring-pink-100"
+                  className="flex w-full items-start gap-3 rounded-[18px] bg-pink-50 px-4 py-3 text-left text-sm font-black text-pink-700 ring-1 ring-pink-100"
                 >
-                  {starter}
+                  <MessageCircle className="mt-0.5 h-4 w-4 shrink-0 text-pink-600" />
+                  <span>{starter}</span>
                 </button>
               ))}
             </div>
+            {!isOwnProfile ? (
+              <p className="mt-4 text-center text-xs text-slate-500">
+                Want unlimited openers and boosts?{' '}
+                <Link href="/app/dating/premium" className="font-black text-blue-600">
+                  Go Premium
+                </Link>
+              </p>
+            ) : null}
           </section>
         ) : null}
-        {details.length ? (
+
+        {profile.bio ? (
           <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-            <p className="text-lg font-black text-slate-950">More About {name.split(' ')[0] || 'Them'}</p>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              {details.map(([label, value]) => (
-                <div key={label} className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-100">
-                  <p className="text-xs font-black uppercase text-slate-400">{label}</p>
-                  <p className="mt-1 text-sm font-black text-slate-800">{String(value).replaceAll('_', ' ')}</p>
-                </div>
-              ))}
-            </div>
+            <p className="text-lg font-black text-slate-950">About</p>
+            <p className="mt-2 text-sm leading-6 text-slate-800">{profile.bio}</p>
           </section>
         ) : null}
-        {routeDatingBadges.length ? (
+
+        {profile.what_makes_me_different ? (
           <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-            <p className="text-lg font-black text-slate-950">Badges</p>
+            <p className="text-lg font-black text-slate-950">What Makes Me Different</p>
+            <p className="mt-2 text-sm leading-6 text-slate-800">{profile.what_makes_me_different}</p>
+          </section>
+        ) : null}
+
+        {valuesList.length > 0 ? (
+          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+            <p className="text-lg font-black text-slate-950">Values</p>
             <div className="mt-3 flex flex-wrap gap-2">
-              {routeDatingBadges.map((badge) => (
-                <span key={badge.id || badge.badge_type || badge.name} className="rounded-full bg-blue-50 px-3 py-2 text-xs font-black text-blue-700">
-                  {badge.badge_name || badge.badge_type || badge.name || 'Badge'}
+              {valuesList.map((value: string, index: number) => (
+                <span key={`${value}-${index}`} className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-black text-blue-800">
+                  <Heart className="h-3.5 w-3.5 text-blue-600" />
+                  {value}
                 </span>
               ))}
             </div>
           </section>
         ) : null}
-        {photos.length > 1 || videos.length ? (
+
+        {(profile.mood || weekendStyle) ? (
           <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-            <p className="text-lg font-black text-slate-950">Photos and Videos</p>
+            <p className="text-lg font-black text-slate-950">Vibe &amp; Lifestyle</p>
             <div className="mt-3 grid grid-cols-2 gap-2">
-              {photos.slice(0, 6).map((item: any, index: number) => (
-                <img key={item.id || item.photo_url || index} src={item.photo_url} alt="" className="aspect-square rounded-[18px] object-cover" />
-              ))}
-              {videos.slice(0, 2).map((item: any, index: number) => (
-                <video key={item.id || item.video_url || index} src={item.video_url} className="aspect-square rounded-[18px] bg-black object-cover" controls />
+              {profile.mood ? (
+                <div className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-100">
+                  <Smile className="h-5 w-5 text-blue-600" />
+                  <p className="mt-2 text-xs font-black uppercase text-slate-400">Mood</p>
+                  <p className="mt-1 text-sm font-black text-slate-800">{String(profile.mood).charAt(0).toUpperCase() + String(profile.mood).slice(1)}</p>
+                </div>
+              ) : null}
+              {weekendStyle ? (
+                <div className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-100">
+                  {weekendStyle === 'homebody' ? <Home className="h-5 w-5 text-blue-600" /> : null}
+                  {weekendStyle === 'out_with_friends' ? <Users className="h-5 w-5 text-blue-600" /> : null}
+                  {weekendStyle === 'church_faith' ? <Church className="h-5 w-5 text-blue-600" /> : null}
+                  {weekendStyle === 'side_hustling' ? <Briefcase className="h-5 w-5 text-blue-600" /> : null}
+                  {weekendStyle === 'exploring' ? <Mountain className="h-5 w-5 text-blue-600" /> : null}
+                  {!['homebody', 'out_with_friends', 'church_faith', 'side_hustling', 'exploring'].includes(weekendStyle) ? <Sparkles className="h-5 w-5 text-blue-600" /> : null}
+                  <p className="mt-2 text-xs font-black uppercase text-slate-400">Weekend</p>
+                  <p className="mt-1 text-sm font-black text-slate-800">{formatDatingProfileValue(weekendStyle.replace(/_/g, ' '))}</p>
+                </div>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+
+        {profile.daily_question_answer ? (
+          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+            <p className="text-lg font-black text-slate-950">Daily Question</p>
+            <p className="mt-2 text-sm leading-6 text-slate-800">{profile.daily_question_answer}</p>
+          </section>
+        ) : null}
+
+        {profilePrompts.length > 0 ? (
+          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+            <p className="text-lg font-black text-slate-950">Prompts</p>
+            <div className="mt-3 space-y-3">
+              {profilePrompts.map((prompt: any, index: number) => (
+                <div key={index} className="rounded-[18px] border border-slate-100 bg-slate-50 p-4">
+                  {prompt.question ? <p className="text-sm font-black text-slate-950">{prompt.question}</p> : null}
+                  {prompt.answer ? <p className="mt-2 text-sm leading-6 text-slate-600">{prompt.answer}</p> : null}
+                </div>
               ))}
             </div>
           </section>
         ) : null}
+
+        {profile.what_im_looking_for ? (
+          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+            <p className="text-lg font-black text-slate-950">What I&apos;m Looking For</p>
+            <p className="mt-2 text-sm leading-6 text-slate-800">{profile.what_im_looking_for}</p>
+          </section>
+        ) : null}
+
+        {profile.intention_tag ? (
+          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+            <p className="text-lg font-black text-slate-950">Intention</p>
+            <div className="mt-2 inline-block rounded-[14px] border border-blue-200 bg-blue-50 px-4 py-2">
+              <p className="text-sm font-black text-blue-800">
+                Here for: {String(profile.intention_tag).charAt(0).toUpperCase() + String(profile.intention_tag).slice(1)}
+              </p>
+            </div>
+          </section>
+        ) : null}
+
+        {(profile.local_food || profile.local_slang || profile.local_spot) ? (
+          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+            <p className="text-lg font-black text-slate-950">Local Flavor</p>
+            <div className="mt-3 space-y-3">
+              {profile.local_food ? (
+                <div className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-100">
+                  <p className="text-xs font-black uppercase text-slate-400">Favorite Food</p>
+                  <p className="mt-1 text-sm font-black text-slate-800">{profile.local_food}</p>
+                </div>
+              ) : null}
+              {profile.local_slang ? (
+                <div className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-100">
+                  <p className="text-xs font-black uppercase text-slate-400">Favorite Slang</p>
+                  <p className="mt-1 text-sm font-black text-slate-800">{profile.local_slang}</p>
+                </div>
+              ) : null}
+              {profile.local_spot ? (
+                <div className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-100">
+                  <p className="text-xs font-black uppercase text-slate-400">Favorite Spot</p>
+                  <p className="mt-1 text-sm font-black text-slate-800">{profile.local_spot}</p>
+                </div>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+
+        {lifestyleHas ? (
+          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+            <p className="text-lg font-black text-slate-950">Lifestyle</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {profile.kids ? (
+                <div className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-100">
+                  <Users className="h-5 w-5 text-blue-600" />
+                  <p className="mt-2 text-xs font-black uppercase text-slate-400">Kids</p>
+                  <p className="mt-1 text-sm font-black text-slate-800">{formatDatingProfileValue(String(profile.kids))}</p>
+                </div>
+              ) : null}
+              {profile.work ? (
+                <div className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-100">
+                  <Briefcase className="h-5 w-5 text-blue-600" />
+                  <p className="mt-2 text-xs font-black uppercase text-slate-400">Work</p>
+                  <p className="mt-1 text-sm font-black text-slate-800">{profile.work}</p>
+                </div>
+              ) : null}
+              {profile.religion ? (
+                <div className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-100">
+                  <Church className="h-5 w-5 text-blue-600" />
+                  <p className="mt-2 text-xs font-black uppercase text-slate-400">Faith</p>
+                  <p className="mt-1 text-sm font-black text-slate-800">{profile.religion}</p>
+                </div>
+              ) : null}
+              {profile.education ? (
+                <div className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-100">
+                  <BookOpen className="h-5 w-5 text-blue-600" />
+                  <p className="mt-2 text-xs font-black uppercase text-slate-400">Education</p>
+                  <p className="mt-1 text-sm font-black text-slate-800">{profile.education}</p>
+                </div>
+              ) : null}
+              {profile.height_cm ? (
+                <div className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-100">
+                  <Ruler className="h-5 w-5 text-blue-600" />
+                  <p className="mt-2 text-xs font-black uppercase text-slate-400">Height</p>
+                  <p className="mt-1 text-sm font-black text-slate-800">{profile.height_cm} cm</p>
+                </div>
+              ) : null}
+              {profile.exercise ? (
+                <div className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-100">
+                  <Dumbbell className="h-5 w-5 text-blue-600" />
+                  <p className="mt-2 text-xs font-black uppercase text-slate-400">Exercise</p>
+                  <p className="mt-1 text-sm font-black text-slate-800">{formatDatingProfileValue(String(profile.exercise))}</p>
+                </div>
+              ) : null}
+              {profile.pets ? (
+                <div className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-100">
+                  <PawPrint className="h-5 w-5 text-blue-600" />
+                  <p className="mt-2 text-xs font-black uppercase text-slate-400">Pets</p>
+                  <p className="mt-1 text-sm font-black text-slate-800">{formatDatingProfileValue(String(profile.pets))}</p>
+                </div>
+              ) : null}
+              {profile.smoke ? (
+                <div className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-100">
+                  <p className="mt-2 text-xs font-black uppercase text-slate-400">Smoke</p>
+                  <p className="mt-1 text-sm font-black text-slate-800">{formatDatingProfileValue(String(profile.smoke))}</p>
+                </div>
+              ) : null}
+              {profile.drink ? (
+                <div className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-100">
+                  <Coffee className="h-5 w-5 text-blue-600" />
+                  <p className="mt-2 text-xs font-black uppercase text-slate-400">Drink</p>
+                  <p className="mt-1 text-sm font-black text-slate-800">{formatDatingProfileValue(String(profile.drink))}</p>
+                </div>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+
+        {routeDatingBadges.length ? (
+          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+            <p className="text-lg font-black text-slate-950">Badges</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {routeDatingBadges.map((badge) => (
+                <span
+                  key={badge.id || badge.badge_type || badge.name}
+                  className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-2 text-xs font-black text-blue-700 ring-1 ring-blue-100"
+                >
+                  {badge.badge_type === 'premium' ? <Crown className="h-4 w-4 text-amber-500" /> : null}
+                  {badge.badge_type === 'verified' ? <CheckCircle2 className="h-4 w-4 text-blue-600" /> : null}
+                  {badgeLabel(badge)}
+                </span>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {showBasicInfo ? (
+          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+            <p className="text-lg font-black text-slate-950">Basic Info</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {profile.age != null && profile.age !== '' ? (
+                <div className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-100">
+                  <Calendar className="h-5 w-5 text-blue-600" />
+                  <p className="mt-2 text-xs font-black uppercase text-slate-400">Age</p>
+                  <p className="mt-1 text-sm font-black text-slate-800">{profile.age}</p>
+                </div>
+              ) : null}
+              {profile.location_city ? (
+                <div className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-100">
+                  <MapPin className="h-5 w-5 text-blue-600" />
+                  <p className="mt-2 text-xs font-black uppercase text-slate-400">Location</p>
+                  <p className="mt-1 text-sm font-black text-slate-800">{profile.location_city}</p>
+                </div>
+              ) : null}
+              {relationshipGoals.length > 0 ? (
+                <div className="col-span-2 rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-100">
+                  <Heart className="h-5 w-5 text-blue-600" />
+                  <p className="mt-2 text-xs font-black uppercase text-slate-400">Looking for</p>
+                  <p className="mt-1 text-sm font-black text-slate-800">{relationshipGoals.join(', ')}</p>
+                </div>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+
+        {interestsList.length > 0 ? (
+          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+            <p className="text-lg font-black text-slate-950">Interests</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {interestsList.map((interest: string, index: number) => (
+                <span key={`${interest}-${index}`} className="rounded-full border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-black text-blue-800">
+                  {interest}
+                </span>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {photos.length > 0 || videos.length > 0 ? (
+          <section className="rounded-[24px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setDatingUserProfileMediaTab('photos')}
+                className={`flex flex-1 items-center justify-center gap-2 rounded-[14px] py-3 text-sm font-black ${datingUserProfileMediaTab === 'photos' ? 'bg-blue-50 text-blue-700 ring-2 ring-blue-500' : 'bg-slate-50 text-slate-600 ring-1 ring-slate-200'}`}
+              >
+                <ImageIcon className="h-5 w-5" />
+                Photos ({photos.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setDatingUserProfileMediaTab('videos')}
+                className={`flex flex-1 items-center justify-center gap-2 rounded-[14px] py-3 text-sm font-black ${datingUserProfileMediaTab === 'videos' ? 'bg-blue-50 text-blue-700 ring-2 ring-blue-500' : 'bg-slate-50 text-slate-600 ring-1 ring-slate-200'}`}
+              >
+                <Film className="h-5 w-5" />
+                Videos ({videos.length})
+              </button>
+            </div>
+            {datingUserProfileMediaTab === 'photos' ? (
+              <div className="mt-4 grid grid-cols-3 gap-2">
+                {photos.length ? (
+                  photos.map((item: any, index: number) => {
+                    const src = resolveDatingMediaUrl(item.photo_url) || item.photo_url;
+                    return (
+                      <button
+                        key={item.id || item.photo_url || index}
+                        type="button"
+                        onClick={() => openPhotoGallery(index)}
+                        className="relative aspect-square overflow-hidden rounded-[14px] ring-1 ring-slate-200"
+                      >
+                        {src ? <img src={src} alt="" className="h-full w-full object-cover" /> : null}
+                        {item.is_primary ? (
+                          <span className="absolute left-2 top-2 rounded-lg bg-blue-600 px-2 py-0.5 text-[10px] font-black text-white">Main</span>
+                        ) : null}
+                      </button>
+                    );
+                  })
+                ) : (
+                  <p className="col-span-3 py-8 text-center text-sm font-semibold text-slate-500">No photos yet</p>
+                )}
+              </div>
+            ) : (
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                {videos.length ? (
+                  videos.map((item: any, index: number) => {
+                    const vSrc = resolveDatingMediaUrl(item.video_url) || item.video_url;
+                    const thumb = item.thumbnail_url ? resolveDatingMediaUrl(item.thumbnail_url) || item.thumbnail_url : null;
+                    return (
+                      <button
+                        key={item.id || item.video_url || index}
+                        type="button"
+                        onClick={() => vSrc && router.push(`/app/dating/video-player?videoUrl=${encodeURIComponent(vSrc)}`)}
+                        className="relative aspect-square overflow-hidden rounded-[18px] bg-slate-900 ring-1 ring-slate-200"
+                      >
+                        {thumb ? <img src={thumb} alt="" className="h-full w-full object-cover opacity-90" /> : <Film className="absolute inset-0 m-auto h-10 w-10 text-white/50" />}
+                        <span className="absolute inset-0 flex items-center justify-center bg-black/35">
+                          <span className="grid h-11 w-11 place-items-center rounded-full bg-white/90 text-blue-600">▶</span>
+                        </span>
+                        {item.duration_seconds ? (
+                          <span className="absolute bottom-2 right-2 rounded bg-black/70 px-1.5 py-0.5 text-[11px] font-black text-white">
+                            {Math.floor(item.duration_seconds / 60)}:{String(item.duration_seconds % 60).padStart(2, '0')}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })
+                ) : (
+                  <p className="col-span-2 py-8 text-center text-sm font-semibold text-slate-500">No videos yet</p>
+                )}
+              </div>
+            )}
+          </section>
+        ) : null}
+
         {!isOwnProfile && !canMessage && routeDatingReaction.liked ? (
           <section className="rounded-[22px] bg-amber-50 p-4 text-sm font-bold text-amber-800 ring-1 ring-amber-100">
             You liked this profile. Messaging opens when you match or send an allowed conversation starter.
@@ -8694,7 +9531,11 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           {photos.map((photo, index) => {
             const url = photo.photo_url || photo.photoUrl || photo.url;
             return (
-              <section key={photo.id || `${url}-${index}`} className="grid min-h-[calc(100vh-170px)] snap-start place-items-center p-3">
+              <section
+                key={photo.id || `${url}-${index}`}
+                id={`dating-gallery-photo-${index}`}
+                className="grid min-h-[calc(100vh-170px)] snap-start place-items-center p-3"
+              >
                 {url ? <img src={url} alt="" className="max-h-[calc(100vh-190px)] w-full rounded-[18px] object-contain" /> : null}
                 <p className="text-xs font-bold text-white/50">{index + 1} / {photos.length}</p>
               </section>
@@ -10991,19 +11832,78 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     );
   };
 
+  const filteredAdminUsers = useMemo(() => {
+    const q = adminUsersSearchQuery.trim().toLowerCase();
+    if (!q) return adminUsers;
+    return adminUsers.filter((member) => {
+      const name = (member.full_name || '').toLowerCase();
+      const email = (member.email || '').toLowerCase();
+      const phone = (member.phone_number || '').toLowerCase();
+      const un = (member.username || '').toLowerCase();
+      const id = (member.id || '').toLowerCase();
+      return name.includes(q) || email.includes(q) || phone.includes(q) || un.includes(q) || id.includes(q);
+    });
+  }, [adminUsers, adminUsersSearchQuery]);
+
+  const filteredAdminRelationships = useMemo(() => {
+    const q = adminRelationshipsSearch.trim().toLowerCase();
+    if (!q) return adminRelationships;
+    return adminRelationships.filter((rel: any) => {
+      const owner = `${rel.users?.full_name || ''} ${rel.users?.email || ''} ${rel.users?.phone_number || ''}`.toLowerCase();
+      const partner = `${rel.partner_name || ''} ${rel.partner_phone || ''}`.toLowerCase();
+      const ids = `${rel.id || ''} ${rel.user_id || ''} ${rel.partner_user_id || ''}`.toLowerCase();
+      return owner.includes(q) || partner.includes(q) || ids.includes(q);
+    });
+  }, [adminRelationships, adminRelationshipsSearch]);
+
+  const filteredAdminProfessionalReviews = useMemo(() => {
+    let rows = adminProfessionalReviews;
+    if (adminProfessionalReviewsFilter !== 'all') {
+      rows = rows.filter((r: any) => (r.moderation_status || 'pending') === adminProfessionalReviewsFilter);
+    }
+    const q = adminProfessionalReviewsSearch.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((review: any) => {
+      const client = `${review.client?.full_name || ''} ${review.client?.email || ''}`.toLowerCase();
+      const pro = `${review.professional?.full_name || ''} ${review.professional?.pro_user?.full_name || ''}`.toLowerCase();
+      const text = `${review.review_text || ''} ${review.id || ''}`.toLowerCase();
+      return client.includes(q) || pro.includes(q) || text.includes(q);
+    });
+  }, [adminProfessionalReviews, adminProfessionalReviewsFilter, adminProfessionalReviewsSearch]);
+
   const renderAdminRoute = () => {
     if (!user || !isAdminRole(user.role)) {
       return <EmptyState icon={Shield} title="Admin Only" text="This area is only visible to admins and moderators." />;
     }
     if (subPath === 'relationships') {
+      const relSearchOn = adminRelationshipsSearch.trim().length > 0;
       return (
         <div className="space-y-4 px-4 py-4">
           <section className="rounded-[28px] bg-slate-950 p-5 text-white">
             <Heart className="h-10 w-10 fill-pink-500 text-pink-500" />
             <h2 className="mt-4 text-3xl font-black">Manage Relationships</h2>
-            <p className="mt-2 text-sm text-slate-300">Verify, end, or remove records. User reports do not hide relationships automatically.</p>
+            <p className="mt-2 text-sm text-slate-300">
+              {relSearchOn
+                ? `${filteredAdminRelationships.length} match${filteredAdminRelationships.length === 1 ? '' : 'es'} · ${adminRelationships.length} loaded (max ${ADMIN_WEB_LIMIT_RELATIONSHIPS})`
+                : `${adminRelationships.length} relationship${adminRelationships.length === 1 ? '' : 's'} loaded (max ${ADMIN_WEB_LIMIT_RELATIONSHIPS})`}
+            </p>
           </section>
-          {adminRelationships.map((rel) => {
+          <div className="flex items-center gap-2 rounded-[22px] border border-slate-200 bg-white px-4 py-1 shadow-sm ring-1 ring-slate-200">
+            <Search className="h-5 w-5 shrink-0 text-slate-400" aria-hidden />
+            <input
+              type="search"
+              value={adminRelationshipsSearch}
+              onChange={(event) => setAdminRelationshipsSearch(event.target.value)}
+              placeholder="Search owner, partner, phone, email, or ids…"
+              className="min-w-0 flex-1 border-0 bg-transparent py-3 text-sm font-semibold text-slate-950 outline-none ring-0 placeholder:text-slate-400"
+              autoComplete="off"
+              aria-label="Search relationships"
+            />
+          </div>
+          {relSearchOn && adminRelationships.length > 0 && filteredAdminRelationships.length === 0 ? (
+            <p className="rounded-[18px] bg-slate-50 px-4 py-6 text-center text-sm font-semibold text-slate-600">No relationships match that search.</p>
+          ) : null}
+          {filteredAdminRelationships.map((rel) => {
             const relOwnerId = rel.user_id || rel.users?.id;
             return (
             <article key={rel.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
@@ -11043,16 +11943,34 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       );
     }
     if (subPath === 'users') {
+      const searchActive = adminUsersSearchQuery.trim().length > 0;
       return (
         <div className="space-y-4 px-4 py-4">
           <section className="rounded-[28px] bg-slate-950 p-5 text-white">
             <User className="h-10 w-10 text-pink-400" />
             <h2 className="mt-4 text-3xl font-black">Manage Users</h2>
             <p className="mt-2 text-sm text-slate-300">
-              {adminUsers.length} user{adminUsers.length === 1 ? '' : 's'} loaded (synced batch, max {ADMIN_WEB_LIMIT_USERS})
+              {searchActive
+                ? `${filteredAdminUsers.length} match${filteredAdminUsers.length === 1 ? '' : 'es'} · ${adminUsers.length} loaded (max ${ADMIN_WEB_LIMIT_USERS})`
+                : `${adminUsers.length} user${adminUsers.length === 1 ? '' : 's'} loaded (synced batch, max ${ADMIN_WEB_LIMIT_USERS})`}
             </p>
           </section>
-          {adminUsers.map((member) => (
+          <div className="flex items-center gap-2 rounded-[22px] border border-slate-200 bg-white px-4 py-1 shadow-sm ring-1 ring-slate-200">
+            <Search className="h-5 w-5 shrink-0 text-slate-400" aria-hidden />
+            <input
+              type="search"
+              value={adminUsersSearchQuery}
+              onChange={(event) => setAdminUsersSearchQuery(event.target.value)}
+              placeholder="Search name, email, @username, phone, or user id…"
+              className="min-w-0 flex-1 border-0 bg-transparent py-3 text-sm font-semibold text-slate-950 outline-none ring-0 placeholder:text-slate-400"
+              autoComplete="off"
+              aria-label="Search users"
+            />
+          </div>
+          {searchActive && adminUsers.length > 0 && filteredAdminUsers.length === 0 ? (
+            <p className="rounded-[18px] bg-slate-50 px-4 py-6 text-center text-sm font-semibold text-slate-600">No users match that search.</p>
+          ) : null}
+          {filteredAdminUsers.map((member) => (
             <article key={member.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <div className="flex gap-3">
                 <ProfileUserLink viewerUserId={user?.id} subjectUserId={member.id} subjectUsername={member.username} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
@@ -11063,6 +11981,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                     <p className="truncate font-black text-slate-950 hover:underline">{member.full_name || 'Member'}</p>
                   </ProfileUserLink>
                   <p className="truncate text-sm text-slate-500">{member.email}</p>
+                  {member.username ? <p className="truncate text-sm text-slate-500">@{member.username}</p> : null}
+                  {member.phone_number ? <p className="truncate text-sm text-slate-500">{member.phone_number}</p> : null}
                   <div className="mt-2 flex flex-wrap gap-2">
                     <span className="rounded-full bg-pink-50 px-2 py-1 text-xs font-black text-pink-700">{member.role || 'user'}</span>
                     {member.banned_at ? <span className="rounded-full bg-red-50 px-2 py-1 text-xs font-black text-red-700">banned</span> : null}
@@ -11107,14 +12027,67 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     }
     if (subPath === 'posts-review' || subPath === 'reels-review') {
       const isPosts = subPath === 'posts-review';
-      const rows = isPosts ? adminPosts : adminReels;
+      const modFilters: AdminContentModerationFilter[] = ['all', 'pending', 'approved', 'rejected', 'resubmit'];
+      const baseRows = isPosts ? adminPosts : adminReels;
+      const searchRaw = (isPosts ? adminPostsReviewSearch : adminReelsReviewSearch).trim().toLowerCase();
+      const rows = !searchRaw
+        ? baseRows
+        : baseRows.filter((row: any) => {
+            const author = `${row.users?.full_name || ''} ${row.users?.username || ''} ${row.user_id || ''}`.toLowerCase();
+            const body = `${row.content || row.caption || ''} ${row.id || ''}`.toLowerCase();
+            return author.includes(searchRaw) || body.includes(searchRaw);
+          });
+      const activeFilter = isPosts ? adminPostsReviewFilter : adminReelsReviewFilter;
+      const setFilter = isPosts ? setAdminPostsReviewFilter : setAdminReelsReviewFilter;
+      const reviewLoading = isPosts ? adminPostsReviewLoading : adminReelsReviewLoading;
       return (
         <div className="space-y-4 px-4 py-4">
           <section className="rounded-[28px] bg-slate-950 p-5 text-white">
             {isPosts ? <Heart className="h-10 w-10 text-pink-400" /> : <Film className="h-10 w-10 text-blue-300" />}
             <h2 className="mt-4 text-3xl font-black">{isPosts ? 'Posts Review' : 'Reels Review'}</h2>
-            <p className="mt-2 text-sm text-slate-300">Approve or reject content moderation items.</p>
+            <p className="mt-2 text-sm text-slate-300">
+              Filter by moderation status (same as mobile). Up to {ADMIN_WEB_LIMIT_CONTENT} newest in the selected status.
+            </p>
+            <div className="mt-4 grid grid-cols-4 gap-2 text-center sm:grid-cols-4">
+              {(['pending', 'approved', 'rejected', 'resubmit'] as const).map((key) => (
+                <div key={key} className="rounded-[16px] bg-white/10 p-2">
+                  <p className="text-lg font-black">{baseRows.filter((r: any) => (r.moderation_status || 'pending') === key).length}</p>
+                  <p className="text-[10px] font-black uppercase text-slate-300">{key}</p>
+                </div>
+              ))}
+            </div>
           </section>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {modFilters.map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setFilter(f)}
+                className={`shrink-0 rounded-full px-4 py-2 text-xs font-black capitalize ring-1 ${activeFilter === f ? 'bg-slate-950 text-white ring-slate-950' : 'bg-white text-slate-600 ring-slate-200'}`}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 rounded-[22px] border border-slate-200 bg-white px-4 py-1 shadow-sm ring-1 ring-slate-200">
+            <Search className="h-5 w-5 shrink-0 text-slate-400" aria-hidden />
+            <input
+              type="search"
+              value={isPosts ? adminPostsReviewSearch : adminReelsReviewSearch}
+              onChange={(event) => (isPosts ? setAdminPostsReviewSearch : setAdminReelsReviewSearch)(event.target.value)}
+              placeholder="Search author name, @username, user id, or caption…"
+              className="min-w-0 flex-1 border-0 bg-transparent py-3 text-sm font-semibold text-slate-950 outline-none ring-0 placeholder:text-slate-400"
+              autoComplete="off"
+              aria-label={isPosts ? 'Search posts queue' : 'Search reels queue'}
+            />
+          </div>
+          {reviewLoading ? <ScreenSkeleton /> : null}
+          {!reviewLoading && searchRaw && baseRows.length > 0 && rows.length === 0 ? (
+            <p className="rounded-[18px] bg-slate-50 px-4 py-6 text-center text-sm font-semibold text-slate-600">No items match that search.</p>
+          ) : null}
+          {!reviewLoading && !rows.length && !searchRaw ? (
+            <EmptyState icon={isPosts ? Heart : Film} title="No Items" text={`No ${isPosts ? 'posts' : 'reels'} in this moderation filter.`} />
+          ) : null}
           {rows.map((row) => {
             const authorId = row.user_id || row.users?.id;
             const reviewReelThumb = resolveReelThumbnailUrl(row.thumbnail_url);
@@ -11176,6 +12149,14 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       );
     }
     if (subPath === 'professional-profiles') {
+      const pq = adminProfessionalApplicationsSearch.trim().toLowerCase();
+      const profApps = !pq
+        ? professionalApplications
+        : professionalApplications.filter((app: any) => {
+            const u = `${app.user?.full_name || ''} ${app.user?.email || ''}`.toLowerCase();
+            const role = `${app.role?.name || ''} ${app.application_data?.role || ''}`.toLowerCase();
+            return u.includes(pq) || role.includes(pq) || String(app.id || '').toLowerCase().includes(pq);
+          });
       return (
         <div className="space-y-4 px-4 py-4">
           <section className="rounded-[28px] bg-slate-950 p-5 text-white">
@@ -11183,7 +12164,22 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             <h2 className="mt-4 text-3xl font-black">Professional Applications</h2>
             <p className="mt-2 text-sm text-slate-300">Approve or reject professional requests.</p>
           </section>
-          {professionalApplications.map((app) => {
+          <div className="flex items-center gap-2 rounded-[22px] border border-slate-200 bg-white px-4 py-1 shadow-sm ring-1 ring-slate-200">
+            <Search className="h-5 w-5 shrink-0 text-slate-400" aria-hidden />
+            <input
+              type="search"
+              value={adminProfessionalApplicationsSearch}
+              onChange={(event) => setAdminProfessionalApplicationsSearch(event.target.value)}
+              placeholder="Search applicant name, email, or role…"
+              className="min-w-0 flex-1 border-0 bg-transparent py-3 text-sm font-semibold text-slate-950 outline-none ring-0 placeholder:text-slate-400"
+              autoComplete="off"
+              aria-label="Search professional applications"
+            />
+          </div>
+          {pq && professionalApplications.length > 0 && profApps.length === 0 ? (
+            <p className="rounded-[18px] bg-slate-50 px-4 py-6 text-center text-sm font-semibold text-slate-600">No applications match that search.</p>
+          ) : null}
+          {profApps.map((app) => {
             const applicantId = app.user_id || app.user?.id;
             return (
             <article key={app.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
@@ -11219,6 +12215,16 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       );
     }
     if (subPath === 'false-relationship-reports') {
+      const falseStatuses: AdminFalseReportStatusFilter[] = ['all', 'pending', 'reviewing', 'resolved', 'dismissed'];
+      const falseSearch = adminFalseReportsSearch.trim().toLowerCase();
+      const falseRows = !falseSearch
+        ? falseRelationshipReports
+        : falseRelationshipReports.filter((report: any) => {
+            const partner = `${report.relationship?.partner_name || ''} ${report.relationship?.partner_phone || ''}`.toLowerCase();
+            const reporter = `${report.reporter?.full_name || ''} ${report.reporter?.email || ''}`.toLowerCase();
+            const text = `${report.reason || ''} ${report.id || ''}`.toLowerCase();
+            return partner.includes(falseSearch) || reporter.includes(falseSearch) || text.includes(falseSearch);
+          });
       return (
         <div className="space-y-4 px-4 py-4">
           <section className="rounded-[28px] bg-slate-950 p-5 text-white">
@@ -11226,7 +12232,38 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             <h2 className="mt-4 text-3xl font-black">False Relationship Reports</h2>
             <p className="mt-2 text-sm text-slate-300">Reports do not hide relationships automatically. Admin decides the final action.</p>
           </section>
-          {falseRelationshipReports.map((report) => (
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {falseStatuses.map((st) => (
+              <button
+                key={st}
+                type="button"
+                onClick={() => setAdminFalseReportsFilter(st)}
+                className={`shrink-0 rounded-full px-4 py-2 text-xs font-black capitalize ring-1 ${adminFalseReportsFilter === st ? 'bg-slate-950 text-white ring-slate-950' : 'bg-white text-slate-600 ring-slate-200'}`}
+              >
+                {st}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 rounded-[22px] border border-slate-200 bg-white px-4 py-1 shadow-sm ring-1 ring-slate-200">
+            <Search className="h-5 w-5 shrink-0 text-slate-400" aria-hidden />
+            <input
+              type="search"
+              value={adminFalseReportsSearch}
+              onChange={(event) => setAdminFalseReportsSearch(event.target.value)}
+              placeholder="Search partner, reporter, reason…"
+              className="min-w-0 flex-1 border-0 bg-transparent py-3 text-sm font-semibold text-slate-950 outline-none ring-0 placeholder:text-slate-400"
+              autoComplete="off"
+              aria-label="Search false relationship reports"
+            />
+          </div>
+          {adminFalseReportsLoading ? <ScreenSkeleton /> : null}
+          {!adminFalseReportsLoading && falseSearch && falseRelationshipReports.length > 0 && falseRows.length === 0 ? (
+            <p className="rounded-[18px] bg-slate-50 px-4 py-6 text-center text-sm font-semibold text-slate-600">No reports match that search.</p>
+          ) : null}
+          {!adminFalseReportsLoading && !falseRows.length && !falseSearch ? (
+            <EmptyState icon={Shield} title="No Reports" text="No false relationship reports in this status." />
+          ) : null}
+          {falseRows.map((report) => (
             <article key={report.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -11446,14 +12483,66 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       );
     }
     if (subPath === 'payment-verifications') {
+      const payStatuses: AdminPaymentStatusFilter[] = ['all', 'pending', 'approved', 'rejected'];
+      const paySearch = adminPaymentVerificationSearch.trim().toLowerCase();
+      const payRows = !paySearch
+        ? paymentSubmissions
+        : paymentSubmissions.filter((payment: any) => {
+            const u = `${payment.user?.full_name || ''} ${payment.user?.email || ''}`.toLowerCase();
+            const meta = `${payment.transaction_reference || ''} ${payment.amount || ''} ${payment.id || ''}`.toLowerCase();
+            return u.includes(paySearch) || meta.includes(paySearch);
+          });
       return (
         <div className="space-y-4 px-4 py-4">
           <section className="rounded-[28px] bg-slate-950 p-5 text-white">
             <CreditCard className="h-10 w-10 text-blue-300" />
             <h2 className="mt-4 text-3xl font-black">Payment Verifications</h2>
-            <p className="mt-2 text-sm text-slate-300">Payment proof queue.</p>
+            <p className="mt-2 text-sm text-slate-300">Subscriptions vs ad payments and status filters match the mobile admin queue.</p>
           </section>
-          {paymentSubmissions.map((payment) => {
+          <div className="grid grid-cols-2 gap-2 rounded-[20px] bg-white p-2 shadow-sm ring-1 ring-slate-200">
+            {(['subscriptions', 'ads'] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setAdminPaymentVerificationType(t)}
+                className={`rounded-[16px] py-3 text-xs font-black capitalize ${adminPaymentVerificationType === t ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-600'}`}
+              >
+                {t === 'subscriptions' ? 'Subscriptions' : 'Ads'}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {payStatuses.map((st) => (
+              <button
+                key={st}
+                type="button"
+                onClick={() => setAdminPaymentVerificationStatus(st)}
+                className={`shrink-0 rounded-full px-4 py-2 text-xs font-black capitalize ring-1 ${adminPaymentVerificationStatus === st ? 'bg-slate-950 text-white ring-slate-950' : 'bg-white text-slate-600 ring-slate-200'}`}
+              >
+                {st}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 rounded-[22px] border border-slate-200 bg-white px-4 py-1 shadow-sm ring-1 ring-slate-200">
+            <Search className="h-5 w-5 shrink-0 text-slate-400" aria-hidden />
+            <input
+              type="search"
+              value={adminPaymentVerificationSearch}
+              onChange={(event) => setAdminPaymentVerificationSearch(event.target.value)}
+              placeholder="Search payer name, email, reference, or amount…"
+              className="min-w-0 flex-1 border-0 bg-transparent py-3 text-sm font-semibold text-slate-950 outline-none ring-0 placeholder:text-slate-400"
+              autoComplete="off"
+              aria-label="Search payment submissions"
+            />
+          </div>
+          {adminPaymentQueueLoading ? <ScreenSkeleton /> : null}
+          {!adminPaymentQueueLoading && paySearch && paymentSubmissions.length > 0 && payRows.length === 0 ? (
+            <p className="rounded-[18px] bg-slate-50 px-4 py-6 text-center text-sm font-semibold text-slate-600">No payments match that search.</p>
+          ) : null}
+          {!adminPaymentQueueLoading && !payRows.length && !paySearch ? (
+            <EmptyState icon={CreditCard} title="No Payments" text="No payment submissions for this type and status." />
+          ) : null}
+          {payRows.map((payment) => {
             const payerId = payment.user_id || payment.user?.id;
             return (
             <article key={payment.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
@@ -11475,6 +12564,11 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                   )}
                   <p className="mt-1 text-sm text-slate-500">
                     {[payment.transaction_reference, payment.currency ? `${payment.amount} ${payment.currency}` : payment.amount].filter(Boolean).join(' · ') || 'Payment'}
+                  </p>
+                  <p className="mt-1">
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${payment.advertisement_id ? 'bg-violet-100 text-violet-800' : 'bg-slate-100 text-slate-600'}`}>
+                      {payment.advertisement_id ? 'Ad payment' : 'Subscription'}
+                    </span>
                   </p>
                 </div>
               </div>
@@ -11512,7 +12606,14 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     }
     if (subPath === 'ban-appeals') {
       const appealStatuses: Array<typeof adminBanAppealFilter> = ['all', 'pending', 'approved', 'rejected', 'under_review'];
-      const filteredAppeals = routeRows.filter((appeal) => adminBanAppealFilter === 'all' || appeal.status === adminBanAppealFilter);
+      const byStatus = routeRows.filter((appeal) => adminBanAppealFilter === 'all' || appeal.status === adminBanAppealFilter);
+      const aq = adminBanAppealSearch.trim().toLowerCase();
+      const filteredAppeals = !aq
+        ? byStatus
+        : byStatus.filter((appeal: any) => {
+            const blob = `${appeal.reason || ''} ${appeal.appeal_type || ''} ${appeal.user_id || ''} ${appeal.admin_response || ''}`.toLowerCase();
+            return blob.includes(aq);
+          });
       const appealStats = {
         total: routeRows.length,
         pending: routeRows.filter((appeal) => appeal.status === 'pending').length,
@@ -11568,6 +12669,18 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                 {status.replace(/_/g, ' ')}
               </button>
             ))}
+          </div>
+          <div className="flex items-center gap-2 rounded-[22px] border border-slate-200 bg-white px-4 py-1 shadow-sm ring-1 ring-slate-200">
+            <Search className="h-5 w-5 shrink-0 text-slate-400" aria-hidden />
+            <input
+              type="search"
+              value={adminBanAppealSearch}
+              onChange={(event) => setAdminBanAppealSearch(event.target.value)}
+              placeholder="Search reason, type, user id, admin response…"
+              className="min-w-0 flex-1 border-0 bg-transparent py-3 text-sm font-semibold text-slate-950 outline-none ring-0 placeholder:text-slate-400"
+              autoComplete="off"
+              aria-label="Search ban appeals"
+            />
           </div>
           {routeRowsLoading ? <ScreenSkeleton /> : null}
           {!routeRowsLoading && !filteredAppeals.length ? <EmptyState icon={Shield} title="No Appeals" text={routeRowsError || 'No ban appeals match this filter.'} /> : null}
@@ -11946,15 +13059,45 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       );
     }
     if (subPath === 'professional-reviews') {
+      const profRevFilters: Array<'all' | 'pending' | 'approved' | 'rejected' | 'flagged'> = ['all', 'pending', 'approved', 'rejected', 'flagged'];
       return (
         <div className="space-y-4 px-4 py-4">
           <section className="rounded-[28px] bg-slate-950 p-5 text-white">
             <Star className="h-10 w-10 fill-amber-300 text-amber-300" />
             <h2 className="mt-4 text-3xl font-black">Professional Reviews</h2>
-            <p className="mt-2 text-sm text-slate-300">Ratings and feedback moderation.</p>
+            <p className="mt-2 text-sm text-slate-300">Filter and search the loaded review batch (same moderation states as mobile).</p>
           </section>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {profRevFilters.map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setAdminProfessionalReviewsFilter(f)}
+                className={`shrink-0 rounded-full px-4 py-2 text-xs font-black capitalize ring-1 ${adminProfessionalReviewsFilter === f ? 'bg-slate-950 text-white ring-slate-950' : 'bg-white text-slate-600 ring-slate-200'}`}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 rounded-[22px] border border-slate-200 bg-white px-4 py-1 shadow-sm ring-1 ring-slate-200">
+            <Search className="h-5 w-5 shrink-0 text-slate-400" aria-hidden />
+            <input
+              type="search"
+              value={adminProfessionalReviewsSearch}
+              onChange={(event) => setAdminProfessionalReviewsSearch(event.target.value)}
+              placeholder="Search client, professional, or review text…"
+              className="min-w-0 flex-1 border-0 bg-transparent py-3 text-sm font-semibold text-slate-950 outline-none ring-0 placeholder:text-slate-400"
+              autoComplete="off"
+              aria-label="Search professional reviews"
+            />
+          </div>
           {!adminProfessionalReviews.length ? <EmptyState icon={Star} title="No Reviews Loaded" text="No professional reviews are available in the admin queue." /> : null}
-          {adminProfessionalReviews.map((review) => {
+          {adminProfessionalReviews.length > 0 && !filteredAdminProfessionalReviews.length ? (
+            <p className="rounded-[18px] bg-slate-50 px-4 py-6 text-center text-sm font-semibold text-slate-600">
+              {adminProfessionalReviewsSearch.trim() ? 'No reviews match that search.' : 'No reviews in this moderation filter.'}
+            </p>
+          ) : null}
+          {filteredAdminProfessionalReviews.map((review) => {
             const adminReviewClientId = !review.is_anonymous ? review.client_id || review.client?.id : null;
             const adminReviewProUserId = review.professional?.user_id || review.professional?.pro_user?.id;
             const adminReviewProLabel = review.professional?.pro_user?.full_name || review.professional?.full_name || 'professional';
@@ -12021,16 +13164,40 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     }
     if (subPath === 'roles') {
       const isSuperAdmin = normalizeRole(user.role) === 'super_admin';
+      const rq = adminRolesSearchQuery.trim().toLowerCase();
+      const roleRows = !rq
+        ? routeRows
+        : routeRows.filter((member: any) => {
+            const name = `${member.full_name || ''}`.toLowerCase();
+            const email = `${member.email || ''}`.toLowerCase();
+            const id = `${member.id || ''}`.toLowerCase();
+            return name.includes(rq) || email.includes(rq) || id.includes(rq);
+          });
       return (
         <div className="space-y-4 px-4 py-4">
           <section className="rounded-[28px] bg-slate-950 p-5 text-white">
             <Shield className="h-10 w-10 text-blue-300" />
             <h2 className="mt-4 text-3xl font-black">Admin Roles</h2>
-            <p className="mt-2 text-sm text-slate-300">Super admins can promote, demote, and review administrators and moderators.</p>
+            <p className="mt-2 text-sm text-slate-300">Staff accounts only (moderator, admin, super admin), matching mobile.</p>
           </section>
           {!isSuperAdmin ? <EmptyState icon={Shield} title="Super Admin Only" text="Only super admins can change admin roles." /> : null}
+          <div className="flex items-center gap-2 rounded-[22px] border border-slate-200 bg-white px-4 py-1 shadow-sm ring-1 ring-slate-200">
+            <Search className="h-5 w-5 shrink-0 text-slate-400" aria-hidden />
+            <input
+              type="search"
+              value={adminRolesSearchQuery}
+              onChange={(event) => setAdminRolesSearchQuery(event.target.value)}
+              placeholder="Search staff by name, email, or id…"
+              className="min-w-0 flex-1 border-0 bg-transparent py-3 text-sm font-semibold text-slate-950 outline-none ring-0 placeholder:text-slate-400"
+              autoComplete="off"
+              aria-label="Search staff roles"
+            />
+          </div>
           {routeRowsLoading ? <ScreenSkeleton /> : null}
-          {routeRows.map((member) => (
+          {rq && routeRows.length > 0 && roleRows.length === 0 ? (
+            <p className="rounded-[18px] bg-slate-50 px-4 py-6 text-center text-sm font-semibold text-slate-600">No staff match that search.</p>
+          ) : null}
+          {roleRows.map((member) => (
             <article key={member.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <div className="flex items-center gap-3">
                 <ProfileUserLink viewerUserId={user?.id} subjectUserId={member.id} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
@@ -12061,16 +13228,65 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       );
     }
     if (subPath === 'reports') {
+      const repStatuses: Array<'all' | 'pending' | 'reviewing' | 'resolved' | 'dismissed'> = ['all', 'pending', 'reviewing', 'resolved', 'dismissed'];
+      const repFiltered = routeRows.filter(
+        (report: any) => adminReportsStatusFilter === 'all' || (report.status || 'pending') === adminReportsStatusFilter
+      );
+      const rs = adminReportsSearch.trim().toLowerCase();
+      const repRows = !rs
+        ? repFiltered
+        : repFiltered.filter((report: any) => {
+            const blob = `${report.content_type || ''} ${report.reason || ''} ${report.description || ''} ${report.reporter_id || ''} ${report.content_id || ''}`.toLowerCase();
+            return blob.includes(rs);
+          });
       return (
         <div className="space-y-4 px-4 py-4">
           <section className="rounded-[28px] bg-slate-950 p-5 text-white">
             <Ban className="h-10 w-10 text-red-300" />
             <h2 className="mt-4 text-3xl font-black">Reports</h2>
             <p className="mt-2 text-sm text-slate-300">Review reported posts, reels, comments, messages, and member issues without silently hiding content.</p>
+            <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+              {(['pending', 'reviewing', 'resolved'] as const).map((key) => (
+                <div key={key} className="rounded-[16px] bg-white/10 p-2">
+                  <p className="text-lg font-black">{routeRows.filter((r: any) => (r.status || 'pending') === key).length}</p>
+                  <p className="text-[10px] font-black uppercase text-slate-300">{key}</p>
+                </div>
+              ))}
+            </div>
           </section>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {repStatuses.map((st) => (
+              <button
+                key={st}
+                type="button"
+                onClick={() => setAdminReportsStatusFilter(st)}
+                className={`shrink-0 rounded-full px-4 py-2 text-xs font-black capitalize ring-1 ${adminReportsStatusFilter === st ? 'bg-slate-950 text-white ring-slate-950' : 'bg-white text-slate-600 ring-slate-200'}`}
+              >
+                {st}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 rounded-[22px] border border-slate-200 bg-white px-4 py-1 shadow-sm ring-1 ring-slate-200">
+            <Search className="h-5 w-5 shrink-0 text-slate-400" aria-hidden />
+            <input
+              type="search"
+              value={adminReportsSearch}
+              onChange={(event) => setAdminReportsSearch(event.target.value)}
+              placeholder="Search type, reason, description, ids…"
+              className="min-w-0 flex-1 border-0 bg-transparent py-3 text-sm font-semibold text-slate-950 outline-none ring-0 placeholder:text-slate-400"
+              autoComplete="off"
+              aria-label="Search reports"
+            />
+          </div>
           {routeRowsLoading ? <ScreenSkeleton /> : null}
           {!routeRowsLoading && !routeRows.length ? <EmptyState icon={Ban} title="No Reports" text={routeRowsError || 'There are no reports waiting for review.'} /> : null}
-          {routeRows.map((report) => (
+          {!routeRowsLoading && rs && repFiltered.length > 0 && repRows.length === 0 ? (
+            <p className="rounded-[18px] bg-slate-50 px-4 py-6 text-center text-sm font-semibold text-slate-600">No reports match that search.</p>
+          ) : null}
+          {!routeRowsLoading && !repRows.length && routeRows.length > 0 && !rs ? (
+            <EmptyState icon={Ban} title="No Reports" text="No reports in this status filter." />
+          ) : null}
+          {repRows.map((report) => (
             <article key={report.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <div className="flex items-start justify-between gap-3">
                 <div>

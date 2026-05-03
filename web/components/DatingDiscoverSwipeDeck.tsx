@@ -213,9 +213,11 @@ type DatingDiscoverSwipeDeckProps = {
   disabled?: boolean;
   onSwipeLeft: () => Promise<void>;
   onSwipeRight: () => Promise<void>;
+  /** Fired on a light tap (no swipe), same as native `DatingSwipeCard` `onTap` → full dating profile. */
+  onCardTap?: () => void;
 };
 
-export function DatingDiscoverSwipeDeck({ profileKey, front, back, disabled, onSwipeLeft, onSwipeRight }: DatingDiscoverSwipeDeckProps) {
+export function DatingDiscoverSwipeDeck({ profileKey, front, back, disabled, onSwipeLeft, onSwipeRight, onCardTap }: DatingDiscoverSwipeDeckProps) {
   const layerRef = useRef<HTMLDivElement>(null);
   const drag = useRef({
     active: false,
@@ -333,6 +335,7 @@ export function DatingDiscoverSwipeDeck({ profileKey, front, back, disabled, onS
     if (absDx < 12 && absDy < 12) {
       endDrag();
       resetCenter();
+      onCardTap?.();
       return;
     }
 

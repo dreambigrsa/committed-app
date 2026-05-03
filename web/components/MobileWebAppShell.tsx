@@ -10285,13 +10285,13 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     if (!rawSegment) return renderProfile();
     const profileSubjectId = decodeURIComponent(rawSegment);
     if (routeProfileLoading) return <ScreenSkeleton />;
+    /** Prefer `routeProfileUser` whenever it matches the URL — it has full `users` flags (phone/email/id verified). Shell `user` can be incomplete after auth merge. */
     const related =
-      profileSubjectId === user?.id
-        ? user
-        : routeProfileUser ||
-          datingLikes.find((item) => item.user?.id === profileSubjectId)?.user ||
-          datingMatches.find((item) => item.user?.id === profileSubjectId)?.user ||
-          null;
+      (routeProfileUser && routeProfileUser.id === profileSubjectId ? routeProfileUser : null) ||
+      (profileSubjectId === user?.id ? user : null) ||
+      datingLikes.find((item) => item.user?.id === profileSubjectId)?.user ||
+      datingMatches.find((item) => item.user?.id === profileSubjectId)?.user ||
+      null;
     if (!related) return <EmptyState icon={User} title="Profile Not Found" text="This profile is not loaded yet." action="Back" onAction={() => router.back()} />;
     const isSelf = profileSubjectId === user?.id;
     /** Always use profile-route fetch (same as mobile): feed `posts`/`reels` are capped and can omit reel `thumbnail_url` shapes the grid expects. */

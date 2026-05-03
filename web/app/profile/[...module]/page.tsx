@@ -20,7 +20,6 @@ import OpenAppFallback from '@/components/OpenAppFallback';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { getDisplayName } from '@/lib/identity';
 import { resolveProfilePictureUrl, resolveReelThumbnailUrl } from '@/lib/profile-media-url';
-import { getPostVisibilityOrFilter, getReelVisibilityOrFilter } from '@/lib/content-visibility';
 import { parseSupabaseCount } from '@/lib/supabase-count';
 import { useWebViewerPresence } from '@/lib/use-web-viewer-presence';
 import { syncWebViewerOnline } from '@/lib/web-user-status-presence';
@@ -152,10 +151,6 @@ export default function PublicProfilePage() {
           return;
         }
 
-        const visibilityUid = viewerId || userRow.id;
-        const postFilter = getPostVisibilityOrFilter(visibilityUid);
-        const reelFilter = getReelVisibilityOrFilter(visibilityUid);
-
         const [
           postsResult,
           reelsResult,
@@ -169,21 +164,15 @@ export default function PublicProfilePage() {
             .from('posts')
             .select('id,content,media_urls,media_type,created_at')
             .eq('user_id', userRow.id)
-            .or(postFilter)
             .order('created_at', { ascending: false })
             .limit(60),
           supabase
             .from('reels')
             .select('id,caption,thumbnail_url,video_url,created_at')
             .eq('user_id', userRow.id)
-            .or(reelFilter)
             .order('created_at', { ascending: false })
             .limit(60),
-          supabase
-            .from('posts')
-            .select('*', { count: 'exact', head: true })
-            .eq('user_id', userRow.id)
-            .or(postFilter),
+          supabase.from('posts').select('*', { count: 'exact', head: true }).eq('user_id', userRow.id),
           supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', userRow.id),
           supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userRow.id),
           supabase.from('user_status').select('status_type').eq('user_id', userRow.id).maybeSingle(),

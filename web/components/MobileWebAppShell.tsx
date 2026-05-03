@@ -2599,20 +2599,18 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         const viewerId = user?.id || '';
         const isOther = !!viewerId && viewerId !== profileUser.id;
 
+        /** Profile grid is already scoped with `.eq('user_id', profileUser.id)`. Do not chain feed-style `.or(moderation_status…)` here: that breaks when those columns are absent or misconfigured, and RLS still governs access. */
         const baseQueries: Promise<any>[] = [
           supabase
             .from('posts')
             .select('id,user_id,content,media_urls,media_type,comment_count,created_at,users!posts_user_id_fkey(full_name,username,profile_picture)')
             .eq('user_id', profileUser.id)
-            .or(getPostVisibilityOrFilter(viewerId || profileUser.id))
             .order('created_at', { ascending: false })
             .limit(60),
-          supabase.from('post_likes').select('post_id,user_id').limit(500),
           supabase
             .from('reels')
             .select('id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(full_name,username,profile_picture)')
             .eq('user_id', profileUser.id)
-            .or(getReelVisibilityOrFilter(viewerId || profileUser.id))
             .order('created_at', { ascending: false })
             .limit(60),
           supabase.from('user_status').select('status_type').eq('user_id', profileUser.id).maybeSingle(),
@@ -2641,20 +2639,26 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         if (cancelled) return;
 
         const profilePostsResult = results[0];
-        const profilePostLikesResult = results[1];
-        const profileReelsResult = results[2];
-        const statusRes = results[3];
-        const relRes = results[4];
-        const followersCountRes = results[5];
-        const followingCountRes = results[6];
-        const followRowRes = isOther ? results[7] : null;
-        const blockRowRes = isOther ? results[8] : null;
+        const profileReelsResult = results[1];
+        const statusRes = results[2];
+        const relRes = results[3];
+        const followersCountRes = results[4];
+        const followingCountRes = results[5];
+        const followRowRes = isOther ? results[6] : null;
+        const blockRowRes = isOther ? results[7] : null;
+
+        const postRows = (profilePostsResult.data || []) as FeedPost[];
+        const postIds = postRows.map((p) => p.id).filter(Boolean);
+        const profilePostLikesResult =
+          postIds.length > 0
+            ? await supabase.from('post_likes').select('post_id,user_id').in('post_id', postIds)
+            : { data: [] as any[] };
 
         const likesByPost = new Map<string, string[]>();
         ((profilePostLikesResult.data || []) as any[]).forEach((like) => {
           likesByPost.set(like.post_id, [...(likesByPost.get(like.post_id) || []), like.user_id].filter(Boolean));
         });
-        setRouteProfilePosts(((profilePostsResult.data || []) as FeedPost[]).map((post) => ({ ...post, likes: likesByPost.get(post.id) || [] })));
+        setRouteProfilePosts(postRows.map((post) => ({ ...post, likes: likesByPost.get(post.id) || [] })));
 
         const reelRows = (profileReelsResult.data || []) as Reel[];
         setRouteProfileReels(reelRows.map((r) => ({ ...r, likes: r.likes || [] })));

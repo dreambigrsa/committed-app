@@ -84,6 +84,13 @@ export function resolveProfilePictureUrl(raw: string | null | undefined): string
   return publicObjectUrl(base, bucket, objectPath);
 }
 
+/** Reel `thumbnail_url` values are stored like profile/post media (paths or full URLs). */
+export function resolveReelThumbnailUrl(raw: string | null | undefined): string {
+  const s = typeof raw === 'string' ? raw.trim() : '';
+  if (!s) return '';
+  return resolveProfilePictureUrl(s) || s;
+}
+
 /** Same as {@link resolveProfilePictureUrl} but uses the Supabase client for path-only keys (identical to mobile `getPublicUrl`). */
 export function resolveProfilePictureUrlWithSupabase(
   supabase: SupabaseClient,

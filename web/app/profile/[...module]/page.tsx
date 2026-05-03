@@ -18,7 +18,7 @@ import { APP_SCHEME, buildWebAppUrl } from '@/lib/appLinks';
 import OpenAppFallback from '@/components/OpenAppFallback';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { getDisplayName } from '@/lib/identity';
-import { resolveProfilePictureUrl } from '@/lib/profile-media-url';
+import { resolveProfilePictureUrl, resolveReelThumbnailUrl } from '@/lib/profile-media-url';
 import { getPostVisibilityOrFilter, getReelVisibilityOrFilter } from '@/lib/content-visibility';
 import { parseSupabaseCount } from '@/lib/supabase-count';
 
@@ -410,8 +410,7 @@ export default function PublicProfilePage() {
             ) : (
               <div className="grid grid-cols-3 gap-1.5">
                 {reels.map((reel) => {
-                  const raw = (reel.thumbnail_url || '').trim();
-                  const thumb = raw ? resolveProfilePictureUrl(raw) || raw : '';
+                  const thumb = resolveReelThumbnailUrl(reel.thumbnail_url);
                   return (
                   <Link
                     key={reel.id}

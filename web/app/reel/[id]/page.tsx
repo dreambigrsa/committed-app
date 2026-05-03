@@ -8,7 +8,7 @@ import OpenAppFallback from '@/components/OpenAppFallback';
 import ExpoMirrorRoute from '@/components/ExpoMirrorRoute';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { getDisplayName } from '@/lib/identity';
-import { resolveProfilePictureUrl } from '@/lib/profile-media-url';
+import { resolveProfilePictureUrl, resolveReelThumbnailUrl } from '@/lib/profile-media-url';
 import { profileBrowseHref } from '@/lib/web-app-profile-href';
 
 const FALLBACK_DELAY_MS = 1200;
@@ -178,6 +178,8 @@ export default function ReelPage() {
     );
   }
 
+  const reelThumb = reel ? resolveReelThumbnailUrl(reel.thumbnail_url) : '';
+
   return (
     <div className="min-h-screen bg-black px-3 py-4 text-white md:px-4 md:py-6">
       <div className="mx-auto grid w-full max-w-5xl gap-4 lg:grid-cols-[1fr_0.9fr]">
@@ -188,14 +190,14 @@ export default function ReelPage() {
             <video
               className="aspect-[9/16] w-full bg-black lg:aspect-video"
               src={reel.video_url}
-              poster={reel.thumbnail_url || undefined}
+              poster={reelThumb || undefined}
               controls
               preload="metadata"
               playsInline
             />
-          ) : reel?.thumbnail_url ? (
+          ) : reelThumb ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={reel.thumbnail_url} alt={reel.caption || 'Reel'} className="aspect-[9/16] w-full object-cover lg:aspect-video" />
+            <img src={reelThumb} alt={reel.caption || 'Reel'} className="aspect-[9/16] w-full object-cover lg:aspect-video" />
           ) : (
             <div className="flex aspect-[9/16] items-center justify-center bg-neutral-900 text-neutral-400 lg:aspect-video">Reel preview unavailable</div>
           )}

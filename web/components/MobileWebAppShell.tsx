@@ -53,6 +53,7 @@ import {
   profilePictureStorageKeyToBucketAndPath,
   resolveProfilePictureUrl,
   resolveProfilePictureUrlWithSupabase,
+  resolveReelThumbnailUrl,
 } from '@/lib/profile-media-url';
 import { mergeUsersProfileForWebShell, usersRowBootstrapFromAuth } from '@/lib/web-user-profile';
 import { parseSupabaseCount } from '@/lib/supabase-count';
@@ -7082,12 +7083,14 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     if (!reels.length) return <EmptyState icon={Film} title="No Reels Yet" text="Short videos from the community will appear here." />;
     return (
       <div className="snap-y snap-mandatory overflow-y-auto bg-slate-950">
-        {reels.map((reel) => (
+        {reels.map((reel) => {
+          const thumb = resolveReelThumbnailUrl(reel.thumbnail_url);
+          return (
           <article key={reel.id} className="relative min-h-[calc(100vh-122px)] snap-start overflow-hidden bg-slate-900">
             {reel.video_url ? (
-              <video src={reel.video_url} poster={reel.thumbnail_url || undefined} controls className="h-full min-h-[calc(100vh-122px)] w-full object-cover" />
-            ) : reel.thumbnail_url ? (
-              <img src={reel.thumbnail_url} alt="" className="h-full min-h-[calc(100vh-122px)] w-full object-cover" />
+              <video src={reel.video_url} poster={thumb || undefined} controls className="h-full min-h-[calc(100vh-122px)] w-full object-cover" />
+            ) : thumb ? (
+              <img src={thumb} alt="" className="h-full min-h-[calc(100vh-122px)] w-full object-cover" />
             ) : (
               <div className="grid min-h-[calc(100vh-122px)] place-items-center bg-gradient-to-br from-slate-900 to-blue-950 text-white">
                 <Film className="h-20 w-20" />
@@ -7126,7 +7129,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               </div>
             </div>
           </article>
-        ))}
+        );
+        })}
       </div>
     );
   };
@@ -7171,10 +7175,15 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     const draftKey = `reel:${reelId}`;
     if (routeReelLoading) return <ScreenSkeleton />;
     if (!reel) return <EmptyState icon={Film} title="Reel Not Found" text="This reel is not loaded or is no longer available." action="Back to Reels" onAction={() => router.push('/app/reels')} />;
+    const reelPoster = resolveReelThumbnailUrl(reel.thumbnail_url);
     return (
       <div className="space-y-3 bg-slate-950 pb-3">
         <article className="relative min-h-[calc(100vh-122px)] overflow-hidden bg-slate-900">
-          {reel.video_url ? <video src={reel.video_url} poster={reel.thumbnail_url || undefined} controls className="h-full min-h-[calc(100vh-122px)] w-full object-cover" /> : reel.thumbnail_url ? <img src={reel.thumbnail_url} alt="" className="h-full min-h-[calc(100vh-122px)] w-full object-cover" /> : null}
+          {reel.video_url ? (
+            <video src={reel.video_url} poster={reelPoster || undefined} controls className="h-full min-h-[calc(100vh-122px)] w-full object-cover" />
+          ) : reelPoster ? (
+            <img src={reelPoster} alt="" className="h-full min-h-[calc(100vh-122px)] w-full object-cover" />
+          ) : null}
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-4 text-white">
             <div className="flex items-center gap-3">
               <ProfileUserLink viewerUserId={user?.id} subjectUserId={reel.user_id} subjectUsername={reel.users?.username} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-white">
@@ -10520,8 +10529,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             ) : (
               <div className="grid grid-cols-3 gap-1.5">
                 {relatedReels.map((reel) => {
-                  const rawThumb = reel.thumbnail_url?.trim() || '';
-                  const thumbUrl = rawThumb ? resolveProfilePictureUrl(rawThumb) || rawThumb : '';
+                  const thumbUrl = resolveReelThumbnailUrl(reel.thumbnail_url);
                   return (
                   <Link key={reel.id} href={`/app/reel/${reel.id}`} className="relative aspect-[9/16] overflow-hidden rounded-lg bg-slate-900 ring-1 ring-slate-200">
                     {thumbUrl ? (
@@ -10668,6 +10676,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           </section>
           {rows.map((row) => {
             const authorId = row.user_id || row.users?.id;
+            const reviewReelThumb = resolveReelThumbnailUrl(row.thumbnail_url);
             return (
             <article key={row.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <div className="flex items-center gap-3">
@@ -10690,7 +10699,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                 </div>
                 <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-black uppercase text-amber-700">{row.moderation_status || 'pending'}</span>
               </div>
-              {row.thumbnail_url ? <img src={row.thumbnail_url} alt="" className="mt-3 max-h-56 w-full rounded-[18px] object-cover" /> : null}
+              {reviewReelThumb ? <img src={reviewReelThumb} alt="" className="mt-3 max-h-56 w-full rounded-[18px] object-cover" /> : null}
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => void updateModeration(isPosts ? 'posts' : 'reels', row.id, 'approved')} disabled={saving || row.moderation_status === 'approved'} className="rounded-[16px] bg-emerald-500 py-3 text-sm font-black text-white disabled:opacity-50">Approve</button>
                 <button type="button" onClick={() => void updateModeration(isPosts ? 'posts' : 'reels', row.id, 'rejected')} disabled={saving || row.moderation_status === 'rejected'} className="rounded-[16px] bg-red-500 py-3 text-sm font-black text-white disabled:opacity-50">Reject</button>

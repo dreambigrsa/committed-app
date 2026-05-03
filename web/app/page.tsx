@@ -114,6 +114,47 @@ const journeys = [
   },
 ];
 
+function ProductScreenPreview({ preview }: { preview: (typeof appPreviews)[number] }) {
+  const Icon = preview.icon;
+  return (
+    <article className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+      <div className="overflow-hidden rounded-md border border-slate-200 bg-[#f7f8f3]">
+        <div className={`${preview.accent} px-4 py-4 text-white`}>
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-black uppercase text-white/80">{preview.eyebrow}</p>
+            <Icon className="h-6 w-6" />
+          </div>
+          <h3 className="mt-8 text-2xl font-black">{preview.title}</h3>
+        </div>
+        <div className="space-y-3 p-4">
+          {preview.lines.map((line, index) => (
+            <div key={line} className="rounded-md bg-white p-3 ring-1 ring-slate-200">
+              <div className="flex items-center gap-3">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-teal-50 text-xs font-black text-teal-700">
+                  {index + 1}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-black text-slate-900">{line}</p>
+                  <div className="mt-2 h-1.5 rounded-full bg-slate-100">
+                    <div className="h-full rounded-full bg-teal-400" style={{ width: `${72 - index * 12}%` }} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+          <div className="grid grid-cols-3 gap-2 pt-1">
+            {['Trust', 'Privacy', 'Care'].map((item) => (
+              <span key={item} className="rounded-md bg-slate-100 px-2 py-2 text-center text-[11px] font-black text-slate-600">
+                {item}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 export default function HomePage() {
   const downloadHref = PLAY_STORE_URL && PLAY_STORE_URL !== '#' ? PLAY_STORE_URL : APK_DOWNLOAD_URL;
 
@@ -180,7 +221,7 @@ export default function HomePage() {
                 </h2>
               </div>
               <p className="text-lg leading-8 text-slate-600">
-                Committed connects dating, public relationship checks, verification, support, and privacy controls into one human system. The site should feel like a trusted front door, not a generic app billboard.
+                Committed connects dating, public relationship checks, verification, support, and privacy controls into one human system.
               </p>
             </div>
 
@@ -217,24 +258,8 @@ export default function HomePage() {
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                {appPreviews.map(({ icon: Icon, title, eyebrow, lines, accent }) => (
-                  <article key={title} className="overflow-hidden rounded-lg border border-slate-200 bg-[#fbfbf6] shadow-sm">
-                    <div className={`${accent} p-5 text-white`}>
-                      <div className="flex items-center justify-between gap-4">
-                        <p className="text-xs font-black uppercase text-white/80">{eyebrow}</p>
-                        <Icon className="h-7 w-7" />
-                      </div>
-                      <h3 className="mt-7 text-2xl font-black">{title}</h3>
-                    </div>
-                    <div className="space-y-3 p-5">
-                      {lines.map((line) => (
-                        <div key={line} className="flex items-center gap-3 rounded-md bg-white px-3 py-3 text-sm font-bold text-slate-700 ring-1 ring-slate-200">
-                          <CheckCircle2 className="h-4 w-4 shrink-0 text-teal-600" />
-                          {line}
-                        </div>
-                      ))}
-                    </div>
-                  </article>
+                {appPreviews.map((preview) => (
+                  <ProductScreenPreview key={preview.title} preview={preview} />
                 ))}
               </div>
             </div>

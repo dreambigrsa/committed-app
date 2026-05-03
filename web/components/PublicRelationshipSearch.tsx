@@ -116,8 +116,8 @@ export default function PublicRelationshipSearch() {
     <section id="trust-safety" className="bg-slate-50 py-14">
       <div className="mx-auto max-w-6xl px-5 md:px-8">
         <div className="grid gap-5 lg:grid-cols-[0.82fr_1.18fr] lg:items-start">
-          <div className="rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200">
-            <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-black uppercase text-blue-700">
+          <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-slate-200">
+            <span className="inline-flex items-center gap-2 rounded-md bg-teal-50 px-3 py-1.5 text-xs font-black uppercase text-teal-800">
               <ShieldCheck className="h-4 w-4" />
               Public registry
             </span>
@@ -126,15 +126,15 @@ export default function PublicRelationshipSearch() {
               Search by a public name or phone number. Committed only shows relationships that are verified and marked public.
               Private records, pending records, and ended records stay hidden.
             </p>
-            <div className="mt-5 rounded-[20px] bg-blue-50 p-4 text-sm leading-6 text-blue-950">
+            <div className="mt-5 rounded-lg bg-teal-50 p-4 text-sm leading-6 text-teal-950">
               <p className="font-black">Privacy-first by design</p>
-              <p className="mt-1 text-blue-800">
+              <p className="mt-1 text-teal-800">
                 A report does not automatically remove a relationship from search. Only admin actions can end or remove a verified record.
               </p>
             </div>
           </div>
 
-          <div className="rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-slate-200">
+          <div className="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
             <form onSubmit={handleSearch} className="flex flex-col gap-3 sm:flex-row">
               <label className="sr-only" htmlFor="public-relationship-query">
                 Search public relationships
@@ -146,27 +146,27 @@ export default function PublicRelationshipSearch() {
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="Name or phone number"
-                  className="min-h-[54px] w-full rounded-[18px] border border-slate-200 bg-slate-50 pl-12 pr-4 font-semibold outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                  className="min-h-[54px] w-full rounded-md border border-slate-200 bg-slate-50 pl-12 pr-4 font-semibold outline-none transition focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-100"
                   autoComplete="off"
                 />
               </div>
               <button
                 type="submit"
                 disabled={query.trim().length < 2 || loading}
-                className="inline-flex min-h-[54px] items-center justify-center gap-2 rounded-[18px] bg-blue-600 px-6 font-black text-white shadow-lg shadow-blue-200 disabled:opacity-60"
+                className="inline-flex min-h-[54px] items-center justify-center gap-2 rounded-md bg-teal-500 px-6 font-black text-slate-950 shadow-lg shadow-teal-100 disabled:opacity-60"
               >
                 {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
                 Search
               </button>
             </form>
 
-            <div className="mt-3 flex items-center gap-2 rounded-[16px] bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
+            <div className="mt-3 flex items-center gap-2 rounded-md bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
               <Shield className="h-4 w-4 text-emerald-600" />
               Only verified public relationships appear here.
             </div>
 
             {message ? (
-              <p className="mt-4 rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
+              <p className="mt-4 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
                 {message}
               </p>
             ) : null}
@@ -176,7 +176,7 @@ export default function PublicRelationshipSearch() {
                 const verifiedDate = formatDate(item.verified_date);
                 const startDate = formatDate(item.start_date);
                 return (
-                  <article key={item.relationship_id} className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
+                  <article key={item.relationship_id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                     <div className="flex items-start gap-4">
                       <div className="relative flex h-16 w-24 shrink-0 items-center">
                         <div className="grid h-14 w-14 place-items-center rounded-full bg-blue-600 text-sm font-black text-white">
@@ -225,7 +225,7 @@ export default function PublicRelationshipSearch() {
             </div>
 
             {searched && !loading && !message && results.length === 0 ? (
-              <div className="mt-5 rounded-[22px] border border-slate-200 bg-slate-50 p-5 text-center">
+              <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-5 text-center">
                 <ShieldCheck className="mx-auto h-9 w-9 text-slate-400" />
                 <p className="mt-3 text-lg font-black text-slate-950">No public verified relationship found</p>
                 <p className="mt-1 text-sm leading-6 text-slate-600">

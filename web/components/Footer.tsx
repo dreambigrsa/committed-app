@@ -1,121 +1,75 @@
-import Link from 'next/link';
 import Image from 'next/image';
+import Link from 'next/link';
+import { Mail, ShieldCheck } from 'lucide-react';
 import { SUPPORT_EMAIL, APP_STORE_URL, PLAY_STORE_URL } from '@/lib/env';
 import { APK_DOWNLOAD_URL } from '@/lib/appLinks';
 
+const footerLinks = [
+  { href: '/privacy', label: 'Privacy' },
+  { href: '/terms', label: 'Terms' },
+  { href: '/download', label: 'Download' },
+  { href: '/auth', label: 'Open app' },
+];
+
 export default function Footer() {
   return (
-    <footer
-      className="border-t border-slate-200/80 py-14 md:py-16"
-      style={{
-        background: 'linear-gradient(180deg, rgba(250, 245, 255, 0.98) 0%, rgba(250, 249, 255, 1) 50%, rgba(253, 244, 255, 0.95) 100%)',
-      }}
-    >
-      <div className="mx-auto max-w-6xl px-6 md:px-10">
-        <div className="grid gap-12 md:grid-cols-2 md:gap-16 lg:gap-20">
-          {/* Left: Brand + nav */}
+    <footer className="border-t border-slate-800 bg-slate-950 text-white">
+      <div className="mx-auto max-w-7xl px-5 py-12 md:px-8">
+        <div className="grid gap-10 md:grid-cols-[1.2fr_0.8fr_0.8fr]">
           <div>
-            <Link href="/" className="inline-flex transition-opacity hover:opacity-90">
-              <Image
-                src="/brand/logo.png"
-                alt="Committed"
-                width={180}
-                height={45}
-                className="h-12 w-auto md:h-11"
-              />
+            <Link href="/" className="inline-flex items-center gap-3 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-teal-300">
+              <span className="grid h-11 w-11 place-items-center rounded-md bg-white">
+                <Image src="/brand/icon.png" alt="" width={34} height={34} className="h-8 w-8" />
+              </span>
+              <Image src="/brand/committed-wordmark.svg" alt="Committed" width={150} height={32} className="h-8 w-auto brightness-0 invert" />
             </Link>
-            <p className="mt-3 text-base text-slate-600">
-              Verified relationships. Real connections.
+            <p className="mt-5 max-w-sm text-sm leading-6 text-slate-300">
+              Verified relationships, intentional dating, public trust checks, and safer support for meaningful connections.
             </p>
-            <nav
-              className="mt-8 flex flex-wrap gap-x-6 gap-y-1 border-t border-slate-200/60 pt-6"
-              aria-label="Footer navigation"
-            >
-              <Link
-                href="/privacy"
-                className="text-base font-medium text-slate-600 transition hover:text-violet-600"
-              >
-                Privacy
-              </Link>
-              <Link
-                href="/terms"
-                className="text-base font-medium text-slate-600 transition hover:text-violet-600"
-              >
-                Terms
-              </Link>
-              <Link
-                href="/download"
-                className="text-base font-medium text-slate-600 transition hover:text-violet-600"
-              >
-                Safety
-              </Link>
-              <a
-                href={`mailto:${SUPPORT_EMAIL}`}
-                className="text-base font-medium text-slate-600 transition hover:text-violet-600"
-              >
-                Support
-              </a>
-              <Link
-                href="/download"
-                className="text-base font-medium text-slate-600 transition hover:text-violet-600"
-              >
-                Contact
-              </Link>
-            </nav>
           </div>
 
-          {/* Right: Get the app + Need help */}
-          <div className="flex flex-col gap-8 md:items-end md:text-right">
-            <div>
-              <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-500">
-                Get the app
-              </h3>
-              <div className="mt-4 flex flex-wrap gap-3 md:justify-end">
-                {APP_STORE_URL && APP_STORE_URL !== '#' && (
-                  <a
-                    href={APP_STORE_URL}
-                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:border-violet-200 hover:bg-violet-50/80 hover:text-violet-700"
-                  >
-                    App Store
-                  </a>
-                )}
-                {PLAY_STORE_URL && PLAY_STORE_URL !== '#' && (
-                  <a
-                    href={PLAY_STORE_URL}
-                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:border-violet-200 hover:bg-violet-50/80 hover:text-violet-700"
-                  >
-                    Google Play
-                  </a>
-                )}
-                <a
-                  href={APK_DOWNLOAD_URL}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:border-violet-200 hover:bg-violet-50/80 hover:text-violet-700"
-                >
-                  Direct APK
+          <div>
+            <h3 className="text-sm font-black uppercase text-slate-400">Explore</h3>
+            <div className="mt-4 grid gap-3">
+              {footerLinks.map((link) => (
+                <Link key={link.href} href={link.href} className="text-sm font-bold text-slate-200 hover:text-teal-300">
+                  {link.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-black uppercase text-slate-400">Get the app</h3>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {APP_STORE_URL && APP_STORE_URL !== '#' ? (
+                <a href={APP_STORE_URL} className="rounded-md border border-white/14 px-3 py-2 text-sm font-bold text-slate-200 hover:bg-white/10">
+                  App Store
                 </a>
-              </div>
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-500">
-                Need help?
-              </h3>
-              <a
-                href={`mailto:${SUPPORT_EMAIL}`}
-                className="mt-2 inline-block text-base font-medium text-violet-600 transition hover:text-violet-700"
-              >
-                {SUPPORT_EMAIL}
+              ) : null}
+              {PLAY_STORE_URL && PLAY_STORE_URL !== '#' ? (
+                <a href={PLAY_STORE_URL} className="rounded-md border border-white/14 px-3 py-2 text-sm font-bold text-slate-200 hover:bg-white/10">
+                  Google Play
+                </a>
+              ) : null}
+              <a href={APK_DOWNLOAD_URL} className="rounded-md border border-white/14 px-3 py-2 text-sm font-bold text-slate-200 hover:bg-white/10">
+                APK
               </a>
-              <p className="mt-1 text-sm text-slate-500">
-                We&apos;re here for you.
-              </p>
             </div>
+            <a href={`mailto:${SUPPORT_EMAIL}`} className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-teal-300">
+              <Mail className="h-4 w-4" />
+              {SUPPORT_EMAIL}
+            </a>
           </div>
         </div>
 
-        {/* Copyright */}
-        <p className="mt-14 border-t border-slate-200/80 pt-6 text-center text-sm text-slate-500">
-          © {new Date().getFullYear()} Committed. Verified relationships, real connections.
-        </p>
+        <div className="mt-10 flex flex-col gap-4 border-t border-white/10 pt-6 text-sm text-slate-400 md:flex-row md:items-center md:justify-between">
+          <p>© {new Date().getFullYear()} Committed. Built for trust before connection.</p>
+          <p className="inline-flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-teal-300" />
+            Privacy-first public records
+          </p>
+        </div>
       </div>
     </footer>
   );

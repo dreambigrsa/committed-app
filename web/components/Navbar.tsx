@@ -1,20 +1,27 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Menu, X } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowRight, Menu, X } from 'lucide-react';
 import { buildWebAppUrl } from '@/lib/appLinks';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 
-const navLinks = [
-  { href: '#how-it-works', label: 'How It Works' },
+const publicLinks = [
+  { href: '#experience', label: 'Experience' },
+  { href: '#trust-safety', label: 'Trust check' },
   { href: '#singles', label: 'Singles' },
   { href: '#couples', label: 'Couples' },
-  { href: '#trust-safety', label: 'Trust & Safety' },
   { href: '#support', label: 'Support' },
+];
+
+const appLinks = [
+  { href: '/app/feed', label: 'Feed' },
+  { href: '/app/reels', label: 'Reels' },
+  { href: '/app/dating', label: 'Dating' },
+  { href: '/app/messages', label: 'Messages' },
+  { href: '/app/profile', label: 'Profile' },
 ];
 
 export default function Navbar() {
@@ -23,10 +30,13 @@ export default function Navbar() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const inApp = pathname.startsWith('/app');
+  const links = inApp ? appLinks : publicLinks;
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener('scroll', onScroll);
+    const onScroll = () => setScrolled(window.scrollY > 12);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
@@ -37,21 +47,11 @@ export default function Navbar() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (!mounted) return;
-      setIsAuthenticated(Boolean(user));
+      if (mounted) setIsAuthenticated(Boolean(user));
     };
     void check();
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event: string, session: any) => {
-      if (!mounted) return;
-      if (!session?.user) {
-        setIsAuthenticated(false);
-        return;
-      }
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!mounted) return;
-      setIsAuthenticated(Boolean(user));
+    const { data: sub } = supabase.auth.onAuthStateChange((_event: string, session: any) => {
+      if (mounted) setIsAuthenticated(Boolean(session?.user));
     });
     return () => {
       mounted = false;
@@ -59,198 +59,117 @@ export default function Navbar() {
     };
   }, []);
 
-  const isDark = !scrolled;
-  const inApp = pathname.startsWith('/app');
-  const appLinks = [
-    { href: '/app/feed', label: 'Feed' },
-    { href: '/app/reels', label: 'Reels' },
-    { href: '/app/dating', label: 'Dating' },
-    { href: '/app/messages', label: 'Messages' },
-    { href: '/app/profile', label: 'Profile' },
-  ];
-
   const onSignOut = async () => {
     const supabase = getSupabaseBrowser() as any;
     await supabase.auth.signOut();
     router.replace('/sign-in');
   };
 
+  const appHref = isAuthenticated ? buildWebAppUrl('/app') : buildWebAppUrl('/auth');
+
   return (
-    <header
-      className={`sticky z-50 w-full transition-all duration-300 ${
-        isDark
-          ? 'top-0 border-b border-white/10 bg-slate-900/90 py-3 shadow-lg backdrop-blur-xl md:py-4'
-          : 'top-4 left-6 right-6 mx-auto mt-4 max-w-6xl rounded-2xl border border-slate-200/60 bg-white/95 py-3 shadow-xl shadow-slate-900/5 backdrop-blur-xl md:left-10 md:right-10 md:mt-6'
-      }`}
-    >
-      <div className="mx-auto max-w-6xl px-6 md:px-10">
-      <nav className="flex w-full items-center justify-between py-1" aria-label="Main navigation">
-        <Link
-          href="/"
-          className="flex shrink-0 items-center gap-2 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 rounded-lg"
-        >
-          <Image
-            src="/brand/logo.png"
-            alt="Committed"
-            width={180}
-            height={45}
-            className="h-11 w-auto transition-all sm:h-12 md:h-10"
-            priority
-          />
+    <header className="fixed inset-x-0 top-0 z-50 px-3 pt-3 md:px-6">
+      <nav
+        aria-label="Main navigation"
+        className={`mx-auto flex max-w-7xl items-center justify-between border px-4 py-3 backdrop-blur-2xl transition ${
+          scrolled
+            ? 'rounded-lg border-slate-200/80 bg-white/90 shadow-lg shadow-slate-950/10'
+            : 'rounded-lg border-white/20 bg-slate-950/25 text-white shadow-lg shadow-slate-950/10'
+        }`}
+      >
+        <Link href="/" className="flex items-center gap-3 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-teal-300">
+          <span className="grid h-10 w-10 place-items-center rounded-md bg-white shadow-sm">
+            <Image src="/brand/icon.png" alt="" width={32} height={32} className="h-8 w-8" priority />
+          </span>
+          <Image src="/brand/committed-wordmark.svg" alt="Committed" width={132} height={28} className={scrolled ? 'h-7 w-auto' : 'h-7 w-auto brightness-0 invert'} priority />
         </Link>
 
-        <ul className="hidden lg:flex items-center gap-1">
-          {(inApp ? appLinks : navLinks).map(({ href, label }) => (
-            <li key={href}>
-              <Link
-                href={href}
-                className={`group relative rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
-                  isDark ? 'text-white/95 hover:text-white' : 'text-slate-600 hover:text-violet-600'
-                }`}
-              >
-                {label}
-                <span
-                  className={`absolute bottom-1 left-1/2 h-0.5 w-0 -translate-x-1/2 transition-all duration-200 group-hover:w-3/4 ${
-                    isDark ? 'bg-white' : 'bg-violet-500'
-                  }`}
-                />
-              </Link>
-            </li>
+        <div className="hidden items-center gap-1 lg:flex">
+          {links.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={`rounded-md px-3 py-2 text-sm font-bold transition ${
+                scrolled ? 'text-slate-600 hover:bg-slate-100 hover:text-slate-950' : 'text-white/90 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              {link.label}
+            </Link>
           ))}
-        </ul>
+        </div>
 
-        <div className="hidden lg:flex items-center gap-3">
+        <div className="hidden items-center gap-2 lg:flex">
           <Link
-            href={isAuthenticated ? buildWebAppUrl('/app') : buildWebAppUrl('/auth')}
-            className={`rounded-xl border-2 px-5 py-2.5 text-sm font-semibold transition-colors ${
-              isDark
-                ? 'border-white/40 text-white hover:bg-white/15'
-                : 'border-violet-600 text-violet-600 hover:bg-violet-50'
+            href={appHref}
+            className={`inline-flex h-11 items-center gap-2 rounded-md border px-4 text-sm font-black transition ${
+              scrolled
+                ? 'border-slate-200 bg-white text-slate-950 hover:border-teal-500'
+                : 'border-white/28 bg-white/10 text-white hover:bg-white/18'
             }`}
           >
-            {isAuthenticated ? 'Open App' : 'Open Web App'}
+            Open app
+            <ArrowRight className="h-4 w-4" />
           </Link>
-          <Link
-            href="/download"
-            className={`rounded-xl border-2 px-5 py-2.5 text-sm font-semibold transition-colors ${
-              isDark
-                ? 'border-white/40 text-white hover:bg-white/15'
-                : 'border-violet-600 text-violet-600 hover:bg-violet-50'
-            }`}
-          >
+          <Link href="/download" className="inline-flex h-11 items-center rounded-md bg-teal-500 px-4 text-sm font-black text-slate-950 transition hover:bg-teal-300">
             Download
           </Link>
           {isAuthenticated ? (
-            <button
-              type="button"
-              onClick={() => void onSignOut()}
-              className="rounded-xl border-2 border-rose-300 px-5 py-2.5 text-sm font-semibold text-rose-600 transition-colors hover:bg-rose-50"
-            >
-              Sign Out
+            <button type="button" onClick={() => void onSignOut()} className="h-11 rounded-md px-4 text-sm font-black text-rose-500 hover:bg-rose-50">
+              Sign out
             </button>
           ) : (
-            <Link
-              href="/sign-up"
-              className="btn-glow rounded-xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-rose-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/25 transition-all hover:shadow-violet-500/35"
-            >
-              Sign Up
+            <Link href="/sign-up" className="h-11 rounded-md bg-rose-500 px-4 pt-3 text-sm font-black text-white transition hover:bg-rose-400">
+              Sign up
             </Link>
           )}
         </div>
 
         <button
           type="button"
-          className={`lg:hidden rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-violet-500 ${
-            isDark ? 'text-white hover:bg-white/15' : 'text-slate-600 hover:bg-slate-100'
-          }`}
-          onClick={() => setOpen((o) => !o)}
-          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
           aria-label="Toggle menu"
+          aria-expanded={open}
+          className={`grid h-11 w-11 place-items-center rounded-md lg:hidden ${scrolled ? 'bg-slate-100 text-slate-950' : 'bg-white/12 text-white'}`}
         >
-          {open ? <X className="h-8 w-8" /> : <Menu className="h-8 w-8" />}
+          {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
       </nav>
-      </div>
 
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.25, ease: 'easeOut' }}
-            className="overflow-hidden lg:hidden"
-          >
-            <div
-              className={`border-t px-6 py-6 backdrop-blur-xl md:px-10 ${
-                isDark ? 'border-white/20 bg-slate-900/95' : 'border-slate-200/80 bg-white/95'
-              }`}
-            >
-              <ul className="flex flex-col gap-1">
-                {(inApp ? appLinks : navLinks).map(({ href, label }) => (
-                  <li key={href}>
-                    <Link
-                      href={href}
-                      className={`block rounded-xl px-4 py-3 text-base font-medium ${
-                        isDark
-                          ? 'text-white hover:bg-white/15 hover:text-white'
-                          : 'text-slate-700 hover:bg-violet-50 hover:text-violet-700'
-                      }`}
-                      onClick={() => setOpen(false)}
-                    >
-                      {label}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-4 flex flex-col gap-3">
-                <Link
-                  href={isAuthenticated ? buildWebAppUrl('/app') : buildWebAppUrl('/auth')}
-                  className={`block rounded-xl border-2 py-3 text-center font-semibold ${
-                    isDark
-                      ? 'border-white/40 text-white hover:bg-white/15'
-                      : 'border-violet-600 text-violet-600'
-                  }`}
-                  onClick={() => setOpen(false)}
-                >
-                  {isAuthenticated ? 'Open App' : 'Open Web App'}
-                </Link>
-                <Link
-                  href="/download"
-                  className={`block rounded-xl border-2 py-3 text-center font-semibold ${
-                    isDark
-                      ? 'border-white/40 text-white hover:bg-white/15'
-                      : 'border-violet-600 text-violet-600'
-                  }`}
-                  onClick={() => setOpen(false)}
-                >
-                  Download
-                </Link>
-                {isAuthenticated ? (
-                  <button
-                    type="button"
-                    className="rounded-xl border-2 border-rose-300 py-3 text-center font-semibold text-rose-600"
-                    onClick={() => {
-                      setOpen(false);
-                      void onSignOut();
-                    }}
-                  >
-                    Sign Out
-                  </button>
-                ) : (
-                  <Link
-                    href="/sign-up"
-                    className="btn-glow block rounded-xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-rose-500 py-3 text-center font-semibold text-white shadow-lg"
-                    onClick={() => setOpen(false)}
-                  >
-                    Sign Up
-                  </Link>
-                )}
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {open ? (
+        <div className="mx-auto mt-2 max-w-7xl rounded-lg border border-slate-200 bg-white p-3 shadow-xl shadow-slate-950/10 lg:hidden">
+          <div className="grid gap-1">
+            {links.map((link) => (
+              <Link key={link.href} href={link.href} onClick={() => setOpen(false)} className="rounded-md px-3 py-3 text-sm font-black text-slate-700 hover:bg-slate-100">
+                {link.label}
+              </Link>
+            ))}
+          </div>
+          <div className="mt-3 grid gap-2 border-t border-slate-200 pt-3">
+            <Link href={appHref} onClick={() => setOpen(false)} className="rounded-md border border-slate-200 px-3 py-3 text-center text-sm font-black text-slate-950">
+              Open app
+            </Link>
+            <Link href="/download" onClick={() => setOpen(false)} className="rounded-md bg-teal-500 px-3 py-3 text-center text-sm font-black text-slate-950">
+              Download
+            </Link>
+            {isAuthenticated ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  void onSignOut();
+                }}
+                className="rounded-md px-3 py-3 text-sm font-black text-rose-600"
+              >
+                Sign out
+              </button>
+            ) : (
+              <Link href="/sign-up" onClick={() => setOpen(false)} className="rounded-md bg-rose-500 px-3 py-3 text-center text-sm font-black text-white">
+                Sign up
+              </Link>
+            )}
+          </div>
+        </div>
+      ) : null}
     </header>
   );
 }

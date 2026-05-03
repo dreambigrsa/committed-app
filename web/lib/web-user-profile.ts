@@ -23,7 +23,8 @@ export function authMetadataStrings(auth: AuthUserLike) {
   const m = auth.user_metadata || {};
   return {
     fullName: metaStr(m, 'full_name'),
-    phoneNumber: metaStr(m, 'phone_number'),
+    /** Match AppContext / some providers: `phone_number`, `phone`, or camelCase. */
+    phoneNumber: metaStr(m, 'phone_number') || metaStr(m, 'phone') || metaStr(m, 'phoneNumber'),
     profilePicture:
       metaStr(m, 'profile_picture') ||
       metaStr(m, 'avatar_url') ||
@@ -87,8 +88,13 @@ export function mergeUsersProfileForWebShell(profile: UsersRow | null, authUser:
   /** Never fold `username` into `full_name` — mobile uses `users.full_name` only; mixing breaks getDisplayName vs posts join. */
   const full_name = (hasUsersRow ? saneDbFull || meta.fullName : meta.fullName || saneDbFull).trim();
 
-  const phone_number =
-    (profile?.phone_number || '').trim() || meta.phoneNumber || (authUser.phone || '').trim() || null;
+  const dbPhoneRaw = profile?.phone_number;
+  const dbPhone =
+    dbPhoneRaw != null && String(dbPhoneRaw).trim() !== '' ? String(dbPhoneRaw).trim() : '';
+  const authPhoneRaw = (authUser as { phone?: string | null }).phone;
+  const authPhone =
+    typeof authPhoneRaw === 'string' && authPhoneRaw.trim() !== '' ? authPhoneRaw.trim() : '';
+  const phone_number = dbPhone || meta.phoneNumber || authPhone || null;
 
   const rawPicture = (
     hasUsersRow

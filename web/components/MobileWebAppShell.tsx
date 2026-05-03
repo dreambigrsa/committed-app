@@ -1200,6 +1200,16 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     }
   }, [resetUserScopedState, router, supabase]);
 
+  /** If `user.phone_number` arrives after hydrate (e.g. verification) or was missing from initial form sync, fill empty Settings field. */
+  useEffect(() => {
+    const fromUser = (user?.phone_number || '').trim();
+    if (!fromUser) return;
+    setSettingsForm((prev) => {
+      if ((prev.phoneNumber || '').trim()) return prev;
+      return { ...prev, phoneNumber: fromUser };
+    });
+  }, [user?.id, user?.phone_number]);
+
   useEffect(() => {
     if (activeTab !== 'dating' || subPath !== 'edit-date-request') return;
     const requestId = searchParams.get('dateRequestId') || searchParams.get('id') || '';
@@ -4429,6 +4439,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       : { phone_number: target, phone_verified: true }
     ).eq('id', user.id);
     setUser((prev) => prev ? { ...prev, [type === 'email' ? 'email_verified' : 'phone_verified']: true, [type === 'email' ? 'email' : 'phone_number']: target } : prev);
+    if (type === 'phone') {
+      setSettingsForm((prev) => ({ ...prev, phoneNumber: target }));
+    }
     setReactionNotice(type === 'email' ? 'Email verified' : 'Phone verified');
     window.setTimeout(() => setReactionNotice(null), 1800);
   };

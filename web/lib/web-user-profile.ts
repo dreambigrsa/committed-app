@@ -19,6 +19,13 @@ function metaStr(meta: Record<string, unknown> | null | undefined, key: string):
   return typeof v === 'string' ? v.trim() : '';
 }
 
+/** Same shape as `handle_new_user` when metadata has no phone — satisfies NOT NULL on bootstrap INSERT. */
+export function placeholderPhoneFromUserId(userId: string): string {
+  const uuidStr = userId.replace(/-/g, '');
+  const suffix = uuidStr.slice(-4).padStart(4, '0');
+  return `+0000000${suffix}`;
+}
+
 export function authMetadataStrings(auth: AuthUserLike) {
   const m = auth.user_metadata || {};
   return {
@@ -40,12 +47,17 @@ export function usersRowBootstrapFromAuth(authUser: AuthUserLike) {
   const metadataRole =
     typeof authUser.user_metadata?.role === 'string' ? authUser.user_metadata.role.trim() : '';
   const profilePicture = resolveProfilePictureUrl(meta.profilePicture || null);
+  const authPhone =
+    typeof authUser.phone === 'string' && authUser.phone.trim() ? authUser.phone.trim() : '';
+  const explicitPhone = meta.phoneNumber || authPhone;
+  /** Never null — avoids failed INSERT on NOT NULL; caller should use `ignoreDuplicates` so existing rows are not overwritten. */
+  const phone_number = explicitPhone || placeholderPhoneFromUserId(authUser.id);
   return {
     id: authUser.id,
     full_name: meta.fullName || null,
     username: null as string | null,
     email: authUser.email || null,
-    phone_number: meta.phoneNumber || (authUser.phone || null) || null,
+    phone_number,
     role: metadataRole || 'user',
     /** Omit when empty so `upsert` does not overwrite an existing DB photo with null. */
     ...(profilePicture ? { profile_picture: profilePicture } : {}),

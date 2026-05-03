@@ -1288,8 +1288,16 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           data: { session },
         },
       ] = await Promise.all([supabase.auth.getUser(), supabase.auth.getSession()]);
-      const authUser = auth.user || session?.user || null;
-      if (authUser) {
+      const base = auth.user || session?.user || null;
+      if (base) {
+        const pickPhone = (...candidates: Array<string | null | undefined>) => {
+          for (const c of candidates) {
+            if (typeof c === 'string' && c.trim()) return c.trim();
+          }
+          return '';
+        };
+        const phone = pickPhone(auth.user?.phone, session?.user?.phone, base.phone);
+        const authUser = phone ? { ...base, phone } : base;
         return { authUser, authError: null };
       }
       if (attempt < 2) {
@@ -1370,6 +1378,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       }
       lastAuthUserIdRef.current = authUser.id;
 
+      /** Ensures REST calls use the refreshed JWT (avoids first `users` read returning an incomplete row). */
+      await supabase.auth.getSession().catch(() => undefined);
+
       const usersSelect =
         'id, full_name, username, email, phone_number, profile_picture, role, verified, email_verified, phone_verified, id_verified, banned_at, banned_by, ban_reason' as const;
 
@@ -1401,9 +1412,10 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       }
 
       if (!profile && !profileError) {
+        /** `ignoreDuplicates: true` → on conflict do not merge-update; prevents nulling `phone_number` on an existing row. */
         const { error: upsertError } = await supabase
           .from('users')
-          .upsert(usersRowBootstrapFromAuth(authUser), { onConflict: 'id' });
+          .upsert(usersRowBootstrapFromAuth(authUser), { onConflict: 'id', ignoreDuplicates: true });
         if (upsertError) {
           debugWebShell('[WebAppShell] users bootstrap upsert failed', { message: upsertError.message, code: upsertError.code });
         } else {
@@ -1421,6 +1433,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         email: profile?.email ?? null,
         fullName: profile?.full_name ?? null,
         username: profile?.username ?? null,
+        phoneFromUsersRow: profile?.phone_number != null ? String(profile.phone_number).slice(0, 6) + '…' : null,
         hasProfilePicture: !!profile?.profile_picture,
         hadProfileError: !!profileError,
       });
@@ -1433,7 +1446,23 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           : null
       );
 
-      const resolvedProfile = mergeUsersProfileForWebShell(profile, authUser);
+      let resolvedProfile = mergeUsersProfileForWebShell(profile, authUser);
+      if (!(resolvedProfile.phone_number || '').trim()) {
+        const { data: phoneOnly, error: phoneOnlyError } = await supabase
+          .from('users')
+          .select('phone_number')
+          .eq('id', authUser.id)
+          .maybeSingle();
+        if (!phoneOnlyError && phoneOnly?.phone_number != null) {
+          const p = String(phoneOnly.phone_number).trim();
+          if (p) {
+            resolvedProfile = { ...resolvedProfile, phone_number: p };
+            if (profile?.id) {
+              profile = { ...profile, phone_number: p };
+            }
+          }
+        }
+      }
 
       if (isAvatarHardDebugEnabled()) {
         console.log('[HARD DEBUG] AUTH USER:', {

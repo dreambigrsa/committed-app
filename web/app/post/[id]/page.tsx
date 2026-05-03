@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { Heart, Loader2, MessageCircle, Send } from 'lucide-react';
@@ -8,7 +8,6 @@ import { APP_SCHEME } from '@/lib/appLinks';
 import OpenAppFallback from '@/components/OpenAppFallback';
 import ExpoMirrorRoute from '@/components/ExpoMirrorRoute';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
-import { useWebViewerPresence } from '@/lib/use-web-viewer-presence';
 import { getDisplayName } from '@/lib/identity';
 import { resolveProfilePictureUrl } from '@/lib/profile-media-url';
 import { profileBrowseHref } from '@/lib/web-app-profile-href';
@@ -32,16 +31,6 @@ export default function PostPage() {
   const [commentDraft, setCommentDraft] = useState('');
   const [commentPending, setCommentPending] = useState(false);
   const [comments, setComments] = useState<any[]>([]);
-
-  const supabase = useMemo(() => {
-    try {
-      return getSupabaseBrowser() as any;
-    } catch {
-      return null;
-    }
-  }, []);
-
-  useWebViewerPresence(supabase, sessionUserId || null);
 
   const deepLinkUrl = `${APP_SCHEME}post/${id}`;
 
@@ -67,11 +56,8 @@ export default function PostPage() {
         setLoadingPost(false);
         return;
       }
-      if (!supabase) {
-        if (!cancelled) setLoadingPost(false);
-        return;
-      }
       try {
+        const supabase = getSupabaseBrowser() as any;
         const [
           {
             data: { user: authUser },
@@ -115,14 +101,15 @@ export default function PostPage() {
     return () => {
       cancelled = true;
     };
-  }, [id, isCreateRoute, supabase]);
+  }, [id, isCreateRoute]);
 
   if (isCreateRoute) {
     return <ExpoMirrorRoute initialTab="feed" />;
   }
 
   const toggleLike = async () => {
-    if (!post?.id || !sessionUserId || likePending || !supabase) return;
+    if (!post?.id || !sessionUserId || likePending) return;
+    const supabase = getSupabaseBrowser() as any;
     const nextLiked = !isLiked;
     setLikePending(true);
     setIsLiked(nextLiked);
@@ -145,9 +132,10 @@ export default function PostPage() {
 
   const submitComment = async () => {
     const text = commentDraft.trim();
-    if (!text || !post?.id || !sessionUserId || commentPending || !supabase) return;
+    if (!text || !post?.id || !sessionUserId || commentPending) return;
     setCommentPending(true);
     try {
+      const supabase = getSupabaseBrowser() as any;
       const { data, error } = await supabase
         .from('comments')
         .insert({ post_id: post.id, user_id: sessionUserId, content: text, message_type: 'text' })

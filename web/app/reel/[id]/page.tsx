@@ -1,13 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { APP_SCHEME } from '@/lib/appLinks';
 import OpenAppFallback from '@/components/OpenAppFallback';
 import ExpoMirrorRoute from '@/components/ExpoMirrorRoute';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
-import { useWebViewerPresence } from '@/lib/use-web-viewer-presence';
 import { getDisplayName } from '@/lib/identity';
 import { resolveProfilePictureUrl, resolveReelThumbnailUrl } from '@/lib/profile-media-url';
 import { profileBrowseHref } from '@/lib/web-app-profile-href';
@@ -33,16 +32,6 @@ export default function ReelPage() {
   const [comments, setComments] = useState<any[]>([]);
   const [shareNotice, setShareNotice] = useState('');
 
-  const supabase = useMemo(() => {
-    try {
-      return getSupabaseBrowser() as any;
-    } catch {
-      return null;
-    }
-  }, []);
-
-  useWebViewerPresence(supabase, sessionUserId || null);
-
   const deepLinkUrl = `${APP_SCHEME}reel/${id}`;
 
   useEffect(() => {
@@ -67,11 +56,8 @@ export default function ReelPage() {
         setLoadingReel(false);
         return;
       }
-      if (!supabase) {
-        if (!cancelled) setLoadingReel(false);
-        return;
-      }
       try {
+        const supabase = getSupabaseBrowser() as any;
         const [
           {
             data: { user: authUser },
@@ -113,14 +99,15 @@ export default function ReelPage() {
     return () => {
       cancelled = true;
     };
-  }, [id, isCreateRoute, supabase]);
+  }, [id, isCreateRoute]);
 
   if (isCreateRoute) {
     return <ExpoMirrorRoute initialTab="reels" />;
   }
 
   const toggleLike = async () => {
-    if (!reel?.id || !sessionUserId || likePending || !supabase) return;
+    if (!reel?.id || !sessionUserId || likePending) return;
+    const supabase = getSupabaseBrowser() as any;
     const nextLiked = !isLiked;
     setLikePending(true);
     setIsLiked(nextLiked);
@@ -143,9 +130,10 @@ export default function ReelPage() {
 
   const submitComment = async () => {
     const text = commentDraft.trim();
-    if (!text || !reel?.id || !sessionUserId || commentPending || !supabase) return;
+    if (!text || !reel?.id || !sessionUserId || commentPending) return;
     setCommentPending(true);
     try {
+      const supabase = getSupabaseBrowser() as any;
       const { data, error } = await supabase
         .from('reel_comments')
         .insert({ reel_id: reel.id, user_id: sessionUserId, content: text })

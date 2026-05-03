@@ -121,14 +121,49 @@ function firstPresent<T = unknown>(...values: T[]): T | undefined {
 function parseArrayValue(raw: unknown): any[] {
   if (Array.isArray(raw)) return raw;
   if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return [];
     try {
-      const parsed = JSON.parse(raw);
+      const parsed = JSON.parse(trimmed);
       if (Array.isArray(parsed)) return parsed;
     } catch {
-      return raw.split(',').map((item) => item.trim()).filter(Boolean);
+      if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+        return trimmed
+          .slice(1, -1)
+          .split(',')
+          .map((item) => item.trim().replace(/^"|"$/g, ''))
+          .filter(Boolean);
+      }
+      return trimmed.split(',').map((item) => item.trim()).filter(Boolean);
     }
   }
   return [];
+}
+
+function buildDatingConversationStartersForWeb(profile: any): string[] {
+  const normalized = normalizeDatingProfileForWeb(profile);
+  if (!normalized) return [];
+  const starters: string[] = [];
+  const explicitStarters = parseArrayValue(normalized.conversation_starters);
+  explicitStarters.forEach((starter) => {
+    if (typeof starter === 'string' && starter.trim() && starters.length < 3) starters.push(starter.trim());
+  });
+  const prompts = parseArrayValue(normalized.prompts);
+  prompts.slice(0, 2).forEach((prompt: any) => {
+    const question = typeof prompt === 'string' ? prompt : prompt?.question;
+    if (question && starters.length < 3) starters.push(String(question));
+  });
+  if (normalized.what_makes_me_different && starters.length < 3) starters.push('What makes you different?');
+  if (normalized.headline && starters.length < 3) {
+    starters.push(String(normalized.headline).length > 40 ? `Tell me more about "${String(normalized.headline).slice(0, 40)}..."` : 'Tell me more about your headline');
+  }
+  if (normalized.local_spot && starters.length < 3) starters.push(`What's your favorite spot in ${normalized.location_city || 'your city'}?`);
+  if (normalized.local_food && starters.length < 3) starters.push(`Tell me about ${normalized.local_food}`);
+  if (normalized.weekend_style && starters.length < 3) starters.push('How do you spend your weekends?');
+  if (normalized.local_slang && starters.length < 3) starters.push('Teach me some local slang!');
+  if (normalized.interests?.length && starters.length < 3) starters.push(`What do you love about ${normalized.interests[0]}?`);
+  if (normalized.values?.length && starters.length < 3) starters.push(`Tell me about ${normalized.values[0]}`);
+  return Array.from(new Set(starters.filter(Boolean))).slice(0, 3);
 }
 
 function calculateAgeFromDate(raw: unknown): number | null {
@@ -3643,13 +3678,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           dating_videos: videosResult.data || [],
           videos: videosResult.data || [],
         };
-        const starters = [
-          ...(Array.isArray(profileRow.conversation_starters) ? profileRow.conversation_starters : []),
-          ...(Array.isArray(profileRow.prompts) ? profileRow.prompts.map((prompt: any) => prompt?.question).filter(Boolean) : []),
-          profileRow.what_makes_me_different ? 'What makes you different?' : null,
-          profileRow.local_spot ? `Tell me about ${profileRow.local_spot}` : null,
-          profileRow.weekend_style ? 'What does your perfect weekend look like?' : null,
-        ].filter(Boolean).slice(0, 4);
+        const starters = buildDatingConversationStartersForWeb(normalizedProfile);
         if (!cancelled) {
           setRouteDatingProfile(normalizeDatingProfileForWeb(normalizedProfile));
           setRouteDatingBadges(badgesResult.data || []);

@@ -484,6 +484,119 @@ function isMissingColumnError(error: any): boolean {
   return code === '42703' || message.includes('column') || message.includes('schema cache');
 }
 
+/** Admin `users` list: try rich select + order, then fall back so one missing column never yields an empty Manage Users screen. */
+async function fetchAdminUsersList(supabase: any, limit: number): Promise<any[]> {
+  const attempts: Array<{ select: string; order: 'created_at' | 'id' }> = [
+    {
+      select:
+        'id,full_name,username,email,phone_number,profile_picture,role,verified,email_verified,phone_verified,id_verified,banned_at,banned_by,ban_reason,created_at',
+      order: 'created_at',
+    },
+    {
+      select:
+        'id,full_name,username,email,phone_number,profile_picture,role,verified,email_verified,phone_verified,id_verified,banned_at,banned_by,ban_reason',
+      order: 'id',
+    },
+    { select: String(USERS_SELECT_WITH_OPTIONAL_COLUMNS).replace(/\s+/g, ' ').trim(), order: 'id' },
+    { select: String(USERS_SELECT_BASE).replace(/\s+/g, ' ').trim(), order: 'id' },
+  ];
+  for (const { select, order } of attempts) {
+    const res = await (supabase as any)
+      .from('users')
+      .select(select)
+      .order(order, { ascending: false })
+      .limit(limit);
+    if (!res.error && Array.isArray(res.data)) return res.data;
+    if (process.env.NODE_ENV !== 'production' && res.error) {
+      console.warn('[WebAppShell admin users]', res.error.message);
+    }
+  }
+  return [];
+}
+
+async function fetchAdminRelationshipsList(supabase: any, limit: number): Promise<any[]> {
+  const attempts = [
+    'id,user_id,partner_user_id,partner_name,partner_phone,type,status,start_date,privacy_level,verified_date,end_date,created_at,updated_at,partner_face_photo,partner_date_of_birth_month,partner_date_of_birth_year,partner_city,users!relationships_user_id_fkey(id,full_name,email,phone_number)',
+    'id,user_id,partner_user_id,partner_name,partner_phone,type,status,start_date,privacy_level,verified_date,end_date,created_at,users!relationships_user_id_fkey(id,full_name,email,phone_number)',
+    'id,user_id,partner_user_id,partner_name,partner_phone,type,status,start_date,privacy_level,verified_date,end_date,created_at,users!relationships_user_id_fkey(full_name,email,phone_number)',
+  ];
+  for (const sel of attempts) {
+    const res = await supabase.from('relationships').select(sel).order('created_at', { ascending: false }).limit(limit);
+    if (!res.error && Array.isArray(res.data)) return res.data;
+    if (process.env.NODE_ENV !== 'production' && res.error) {
+      console.warn('[WebAppShell admin relationships]', res.error.message);
+    }
+  }
+  return [];
+}
+
+async function fetchAdminPostsModerationList(supabase: any, limit: number): Promise<any[]> {
+  const attempts = [
+    'id,user_id,content,media_urls,media_type,comment_count,moderation_status,moderation_reason,moderated_by,moderated_at,rejection_reason,reviewed_by,reviewed_at,created_at,users!posts_user_id_fkey(full_name,username,profile_picture)',
+    'id,user_id,content,media_urls,media_type,moderation_status,rejection_reason,reviewed_by,reviewed_at,created_at,users!posts_user_id_fkey(full_name,username,profile_picture)',
+    'id,user_id,content,media_urls,media_type,moderation_status,rejection_reason,created_at,users!posts_user_id_fkey(full_name,username,profile_picture)',
+    'id,user_id,content,media_urls,media_type,created_at,users!posts_user_id_fkey(full_name,profile_picture)',
+  ];
+  for (const sel of attempts) {
+    const res = await supabase.from('posts').select(sel).order('created_at', { ascending: false }).limit(limit);
+    if (!res.error && Array.isArray(res.data)) return res.data;
+    if (process.env.NODE_ENV !== 'production' && res.error) {
+      console.warn('[WebAppShell admin posts]', res.error.message);
+    }
+  }
+  return [];
+}
+
+async function fetchAdminReelsModerationList(supabase: any, limit: number): Promise<any[]> {
+  const attempts = [
+    'id,user_id,caption,video_url,thumbnail_url,moderation_status,moderation_reason,moderated_by,moderated_at,rejection_reason,reviewed_by,reviewed_at,created_at,users!reels_user_id_fkey(full_name,username,profile_picture)',
+    'id,user_id,caption,video_url,thumbnail_url,moderation_status,rejection_reason,reviewed_by,reviewed_at,created_at,users!reels_user_id_fkey(full_name,username,profile_picture)',
+    'id,user_id,caption,video_url,thumbnail_url,moderation_status,rejection_reason,created_at,users!reels_user_id_fkey(full_name,username,profile_picture)',
+    'id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(full_name,profile_picture)',
+  ];
+  for (const sel of attempts) {
+    const res = await supabase.from('reels').select(sel).order('created_at', { ascending: false }).limit(limit);
+    if (!res.error && Array.isArray(res.data)) return res.data;
+    if (process.env.NODE_ENV !== 'production' && res.error) {
+      console.warn('[WebAppShell admin reels]', res.error.message);
+    }
+  }
+  return [];
+}
+
+async function fetchAdminFalseRelationshipReportsList(supabase: any, limit: number): Promise<any[]> {
+  const attempts = [
+    'id,relationship_id,reported_by,reason,evidence_urls,status,resolution,resolved_by,resolved_at,created_at,updated_at,relationship:relationships(id,user_id,partner_user_id,partner_name,partner_phone,type,status,start_date,verified_date,privacy_level,end_date),reporter:users!false_relationship_reports_reported_by_fkey(id,full_name,email,phone_number),resolver:users!false_relationship_reports_resolved_by_fkey(id,full_name)',
+    'id,relationship_id,reported_by,reason,evidence_urls,status,resolution,resolved_by,resolved_at,created_at,updated_at,relationship:relationships(id,user_id,partner_user_id,partner_name,partner_phone,type,status,start_date,verified_date,privacy_level,end_date),reporter:users!false_relationship_reports_reported_by_fkey(id,full_name,email)',
+    'id,relationship_id,reported_by,reason,evidence_urls,status,resolution,created_at,relationship:relationships(id,user_id,partner_user_id,partner_name,partner_phone,type,status),reporter:users!false_relationship_reports_reported_by_fkey(full_name,email)',
+    'id,relationship_id,reported_by,reason,status,resolution,created_at,relationship:relationships(id,user_id,partner_name,type,status),reporter:users!false_relationship_reports_reported_by_fkey(full_name,email)',
+  ];
+  for (const sel of attempts) {
+    const res = await supabase.from('false_relationship_reports').select(sel).order('created_at', { ascending: false }).limit(limit);
+    if (!res.error && Array.isArray(res.data)) return res.data;
+    if (process.env.NODE_ENV !== 'production' && res.error) {
+      console.warn('[WebAppShell admin false reports]', res.error.message);
+    }
+  }
+  return [];
+}
+
+async function fetchAdminPaymentSubmissionsList(supabase: any, limit: number): Promise<any[]> {
+  const attempts = [
+    'id,user_id,advertisement_id,subscription_plan_id,amount,currency,payment_method_id,payment_proof_url,transaction_reference,payment_date,notes,status,verified_by,verified_at,rejection_reason,created_at,updated_at,user:users!payment_submissions_user_id_fkey(full_name,email,profile_picture)',
+    'id,user_id,advertisement_id,subscription_plan_id,amount,currency,payment_proof_url,transaction_reference,status,verified_by,verified_at,rejection_reason,created_at,user:users!payment_submissions_user_id_fkey(full_name,email,profile_picture)',
+    'id,user_id,amount,status,created_at,user:users!payment_submissions_user_id_fkey(full_name,email,profile_picture)',
+  ];
+  for (const sel of attempts) {
+    const res = await supabase.from('payment_submissions').select(sel).order('created_at', { ascending: false }).limit(limit);
+    if (!res.error && Array.isArray(res.data)) return res.data;
+    if (process.env.NODE_ENV !== 'production' && res.error) {
+      console.warn('[WebAppShell admin payments]', res.error.message);
+    }
+  }
+  return [];
+}
+
 async function fetchUsersRowById(supabase: SupabaseClient, userId: string) {
   const full = await (supabase as any).from('users').select(USERS_SELECT_WITH_OPTIONAL_COLUMNS).eq('id', userId).maybeSingle();
   if (!full.error || !isMissingColumnError(full.error)) return full;
@@ -2359,65 +2472,25 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
       if (isAdminRole(currentUser.role)) {
         const [
-          adminRelationshipsResult,
-          adminUsersResult,
           adsResult,
-          adminPostsResult,
-          adminReelsResult,
           professionalApplicationsResult,
-          falseReportsResult,
-          paymentSubmissionsResult,
           adminProfessionalSessionsResult,
           adminProfessionalReviewsResult,
+          adminRelationshipsData,
+          adminUsersData,
+          adminPostsData,
+          adminReelsData,
+          falseReportsData,
+          paymentSubmissionsData,
         ] = await Promise.all([
-          supabase
-            .from('relationships')
-            .select(
-              'id,user_id,partner_user_id,partner_name,partner_phone,type,status,start_date,privacy_level,verified_date,end_date,created_at,updated_at,partner_face_photo,partner_date_of_birth_month,partner_date_of_birth_year,partner_city,users!relationships_user_id_fkey(id,full_name,email,phone_number)'
-            )
-            .order('created_at', { ascending: false })
-            .limit(ADMIN_WEB_LIMIT_RELATIONSHIPS),
-          supabase
-            .from('users')
-            .select('id,full_name,username,email,phone_number,profile_picture,role,verified,email_verified,phone_verified,id_verified,banned_at,banned_by,ban_reason,created_at')
-            .order('created_at', { ascending: false })
-            .limit(ADMIN_WEB_LIMIT_USERS),
           supabase
             .from('advertisements')
             .select('id,user_id,title,description,image_url,link_url,type,placement,active,cta_type,cta_url,cta_phone,cta_message,cta_messenger_id,sponsor_name,sponsor_verified,status,rejection_reason,budget,daily_budget,total_budget,spend,start_date,end_date,billing_status,billing_provider,billing_txn_id,promoted_post_id,promoted_reel_id,targeting,created_at,updated_at')
             .order('created_at', { ascending: false })
             .limit(ADMIN_WEB_ADS_LIMIT),
           supabase
-            .from('posts')
-            .select(
-              'id,user_id,content,media_urls,media_type,comment_count,moderation_status,moderation_reason,moderated_by,moderated_at,rejection_reason,reviewed_by,reviewed_at,created_at,users!posts_user_id_fkey(full_name,username,profile_picture)'
-            )
-            .order('created_at', { ascending: false })
-            .limit(ADMIN_WEB_LIMIT_CONTENT),
-          supabase
-            .from('reels')
-            .select(
-              'id,user_id,caption,video_url,thumbnail_url,moderation_status,moderation_reason,moderated_by,moderated_at,rejection_reason,reviewed_by,reviewed_at,created_at,users!reels_user_id_fkey(full_name,username,profile_picture)'
-            )
-            .order('created_at', { ascending: false })
-            .limit(ADMIN_WEB_LIMIT_CONTENT),
-          supabase
             .from('professional_applications')
             .select('id,user_id,role_id,application_data,status,review_notes,rejection_reason,created_at,user:users!professional_applications_user_id_fkey(full_name,email,profile_picture),role:professional_roles!professional_applications_role_id_fkey(name)')
-            .order('created_at', { ascending: false })
-            .limit(ADMIN_WEB_LIMIT_MISC),
-          supabase
-            .from('false_relationship_reports')
-            .select(
-              'id,relationship_id,reported_by,reason,evidence_urls,status,resolution,resolved_by,resolved_at,created_at,updated_at,relationship:relationships(id,user_id,partner_user_id,partner_name,partner_phone,type,status,start_date,verified_date,privacy_level,end_date),reporter:users!false_relationship_reports_reported_by_fkey(id,full_name,email,phone_number),resolver:users!false_relationship_reports_resolved_by_fkey(id,full_name)'
-            )
-            .order('created_at', { ascending: false })
-            .limit(ADMIN_WEB_LIMIT_MISC),
-          supabase
-            .from('payment_submissions')
-            .select(
-              'id,user_id,advertisement_id,subscription_plan_id,amount,currency,payment_method_id,payment_proof_url,transaction_reference,payment_date,notes,status,verified_by,verified_at,rejection_reason,created_at,updated_at,user:users!payment_submissions_user_id_fkey(full_name,email,profile_picture)'
-            )
             .order('created_at', { ascending: false })
             .limit(ADMIN_WEB_LIMIT_MISC),
           supabase
@@ -2430,15 +2503,21 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             .select('id,professional_id,client_id,rating,review_text,is_anonymous,moderation_status,moderation_reason,moderated_by,moderated_at,reported_count,created_at,client:users!professional_reviews_client_id_fkey(full_name,email,profile_picture),professional:professional_profiles!professional_reviews_professional_id_fkey(full_name,user_id,pro_user:users!professional_profiles_user_id_fkey(id,full_name))')
             .order('created_at', { ascending: false })
             .limit(ADMIN_WEB_LIMIT_MISC),
+          fetchAdminRelationshipsList(supabase, ADMIN_WEB_LIMIT_RELATIONSHIPS),
+          fetchAdminUsersList(supabase, ADMIN_WEB_LIMIT_USERS),
+          fetchAdminPostsModerationList(supabase, ADMIN_WEB_LIMIT_CONTENT),
+          fetchAdminReelsModerationList(supabase, ADMIN_WEB_LIMIT_CONTENT),
+          fetchAdminFalseRelationshipReportsList(supabase, ADMIN_WEB_LIMIT_MISC),
+          fetchAdminPaymentSubmissionsList(supabase, ADMIN_WEB_LIMIT_MISC),
         ]);
-        setAdminRelationships(adminRelationshipsResult.data || []);
-        setAdminUsers(adminUsersResult.data || []);
+        setAdminRelationships(adminRelationshipsData);
+        setAdminUsers(adminUsersData);
         setAds(await enrichAdsWithMetrics(adsResult.data || []));
-        setAdminPosts(adminPostsResult.data || []);
-        setAdminReels(adminReelsResult.data || []);
+        setAdminPosts(adminPostsData);
+        setAdminReels(adminReelsData);
         setProfessionalApplications(professionalApplicationsResult.data || []);
-        setFalseRelationshipReports(falseReportsResult.data || []);
-        setPaymentSubmissions(paymentSubmissionsResult.data || []);
+        setFalseRelationshipReports(falseReportsData);
+        setPaymentSubmissions(paymentSubmissionsData);
         setAdminProfessionalSessions(adminProfessionalSessionsResult.data || []);
         setAdminProfessionalReviews(adminProfessionalReviewsResult.data || []);
       } else {
@@ -2731,8 +2810,18 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         const { data, error } = await query;
         if (cancelled) return;
         if (error) {
-          setRouteRows([]);
-          setRouteRowsError(error.message || `${route.title} is not available yet.`);
+          if (process.env.NODE_ENV !== 'production') {
+            console.warn(`[WebAppShell admin route ${subPath}]`, error.message);
+          }
+          const minimal = await supabase.from(route.table).select('*').limit(ADMIN_WEB_GENERIC_TABLE_LIMIT);
+          if (cancelled) return;
+          if (minimal.error) {
+            setRouteRows([]);
+            setRouteRowsError(error.message || `${route.title} is not available yet.`);
+          } else {
+            setRouteRows(minimal.data || []);
+            setRouteRowsError(null);
+          }
         } else {
           setRouteRows(data || []);
         }

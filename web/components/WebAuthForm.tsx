@@ -43,11 +43,19 @@ function normalizePhone(countryCode: string, rawPhone: string) {
 async function sendVerification(email: string, accessToken?: string) {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-  await fetch('/api/auth/send-verification', {
+  const res = await fetch('/api/auth/send-verification', {
     method: 'POST',
     headers,
     body: JSON.stringify({ email }),
   });
+  const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
+  if (!res.ok || data.success === false) {
+    throw new Error(
+      typeof data.error === 'string' && data.error.trim()
+        ? data.error
+        : 'Unable to send verification email. Please try again.'
+    );
+  }
 }
 
 function delay(ms: number) {
@@ -84,13 +92,14 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
   const canSubmit = useMemo(() => {
     if (!email.trim() || !password.trim()) return false;
     if (isSignUp && (!fullName.trim() || !phone.trim())) return false;
+    if (isSignUp && loadingLegalDocs) return false;
     if (isSignUp) {
       const requiredDocs = legalDocs.filter((doc) => !!doc.is_required);
       const hasAllRequired = requiredDocs.every((doc) => !!legalAcceptances[doc.id]);
       if (!hasAllRequired) return false;
     }
     return true;
-  }, [email, password, isSignUp, fullName, phone, legalAcceptances, legalDocs]);
+  }, [email, password, isSignUp, fullName, phone, legalAcceptances, legalDocs, loadingLegalDocs]);
 
   useEffect(() => {
     let cancelled = false;
@@ -126,6 +135,7 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
     };
   }, [isSignUp]);
 
+  /** Best-effort only: with email confirmation there is often no session yet, so RLS can block writes. */
   const saveSignUpLegalAcceptances = async (userId: string) => {
     const supabaseBrowser = getSupabaseBrowser();
     const supabaseAny = supabaseBrowser as any;
@@ -139,6 +149,18 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
         accepted_at: new Date().toISOString(),
       }));
     if (!acceptedDocs.length) return;
+
+    // Same pattern as mobile auth: wait briefly for public.users row (trigger can lag).
+    let userRowReady = false;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const { data: userRecord } = await supabaseBrowser.from('users').select('id').eq('id', userId).maybeSingle();
+      if (userRecord) {
+        userRowReady = true;
+        break;
+      }
+      await delay(500);
+    }
+    if (!userRowReady) return;
 
     // Mirror mobile strategy: try RPC first, then fallback to table upsert.
     try {
@@ -203,7 +225,13 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
 
         if (signUpError) throw signUpError;
         if (data.user?.id) {
-          await saveSignUpLegalAcceptances(data.user.id);
+          try {
+            await saveSignUpLegalAcceptances(data.user.id);
+          } catch (legalErr) {
+            if (process.env.NODE_ENV !== 'production') {
+              console.warn('[WebAuthForm] Sign-up legal acceptances not saved (non-fatal):', legalErr);
+            }
+          }
         }
 
         await sendVerification(normalizedEmail, data.session?.access_token);

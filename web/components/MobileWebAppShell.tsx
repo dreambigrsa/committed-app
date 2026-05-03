@@ -55,7 +55,7 @@ import {
   resolveProfilePictureUrlWithSupabase,
 } from '@/lib/profile-media-url';
 import { mergeUsersProfileForWebShell, usersRowBootstrapFromAuth } from '@/lib/web-user-profile';
-import { webAppProfileHref } from '@/lib/web-app-profile-href';
+import { profileBrowseHref, webAppProfileHref } from '@/lib/web-app-profile-href';
 import ReportUserModal from '@/components/ReportUserModal';
 import { buildPostWebUrl, buildReelWebUrl } from '@/lib/appLinks';
 import { getPostVisibilityOrFilter, getReelVisibilityOrFilter } from '@/lib/content-visibility';
@@ -112,7 +112,7 @@ type FeedPost = {
   media_type?: string | null;
   comment_count?: number | null;
   created_at?: string | null;
-  users?: { full_name?: string | null; profile_picture?: string | null } | null;
+  users?: { full_name?: string | null; username?: string | null; profile_picture?: string | null } | null;
   likes?: string[];
 };
 
@@ -123,7 +123,7 @@ type Reel = {
   video_url?: string | null;
   thumbnail_url?: string | null;
   created_at?: string | null;
-  users?: { full_name?: string | null; profile_picture?: string | null } | null;
+  users?: { full_name?: string | null; username?: string | null; profile_picture?: string | null } | null;
   likes?: string[];
 };
 
@@ -712,15 +712,18 @@ function Avatar({ src, name, size = 'md' }: { src?: string | null; name?: string
 function ProfileUserLink({
   viewerUserId,
   subjectUserId,
+  subjectUsername,
   className,
   children,
 }: {
   viewerUserId: string | null | undefined;
   subjectUserId: string | null | undefined;
+  /** When the viewer is not signed in, public `/profile/{username}` links are preferred when set. */
+  subjectUsername?: string | null;
   className?: string;
   children: ReactNode;
 }) {
-  const href = webAppProfileHref(viewerUserId, subjectUserId);
+  const href = profileBrowseHref(viewerUserId, subjectUserId, subjectUsername);
   if (!href) return <>{children}</>;
   return (
     <Link href={href} className={className}>
@@ -1707,13 +1710,13 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       const [postsResult, reelsResult, relationshipResult, myDatingResult, datingResult, notificationsResult, conversationsResult, likesResult, matchesResult] = await withClientTimeout(Promise.all([
         supabase
           .from('posts')
-          .select('id,user_id,content,media_urls,media_type,comment_count,created_at,users!posts_user_id_fkey(full_name,profile_picture)')
+          .select('id,user_id,content,media_urls,media_type,comment_count,created_at,users!posts_user_id_fkey(full_name,username,profile_picture)')
           .or(getPostVisibilityOrFilter(authUser.id))
           .order('created_at', { ascending: false })
           .limit(30),
         supabase
           .from('reels')
-          .select('id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(full_name,profile_picture)')
+          .select('id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(full_name,username,profile_picture)')
           .or(getReelVisibilityOrFilter(authUser.id))
           .order('created_at', { ascending: false })
           .limit(20),
@@ -2153,12 +2156,12 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             .limit(30),
           supabase
             .from('posts')
-            .select('id,user_id,content,media_urls,media_type,moderation_status,rejection_reason,created_at,users!posts_user_id_fkey(full_name,profile_picture)')
+            .select('id,user_id,content,media_urls,media_type,moderation_status,rejection_reason,created_at,users!posts_user_id_fkey(full_name,username,profile_picture)')
             .order('created_at', { ascending: false })
             .limit(50),
           supabase
             .from('reels')
-            .select('id,user_id,caption,video_url,thumbnail_url,moderation_status,rejection_reason,created_at,users!reels_user_id_fkey(full_name,profile_picture)')
+            .select('id,user_id,caption,video_url,thumbnail_url,moderation_status,rejection_reason,created_at,users!reels_user_id_fkey(full_name,username,profile_picture)')
             .order('created_at', { ascending: false })
             .limit(50),
           supabase
@@ -2574,7 +2577,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         const baseQueries: Promise<any>[] = [
           supabase
             .from('posts')
-            .select('id,user_id,content,media_urls,media_type,comment_count,created_at,users!posts_user_id_fkey(full_name,profile_picture)')
+            .select('id,user_id,content,media_urls,media_type,comment_count,created_at,users!posts_user_id_fkey(full_name,username,profile_picture)')
             .eq('user_id', profileUser.id)
             .or(getPostVisibilityOrFilter(viewerId || profileUser.id))
             .order('created_at', { ascending: false })
@@ -2582,7 +2585,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           supabase.from('post_likes').select('post_id,user_id').limit(500),
           supabase
             .from('reels')
-            .select('id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(full_name,profile_picture)')
+            .select('id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(full_name,username,profile_picture)')
             .eq('user_id', profileUser.id)
             .or(getReelVisibilityOrFilter(viewerId || profileUser.id))
             .order('created_at', { ascending: false })
@@ -3009,7 +3012,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         const [postResult, likesResult, countResult] = await Promise.all([
           supabase
             .from('posts')
-            .select('id,user_id,content,media_urls,media_type,comment_count,created_at,users!posts_user_id_fkey(full_name,profile_picture)')
+            .select('id,user_id,content,media_urls,media_type,comment_count,created_at,users!posts_user_id_fkey(full_name,username,profile_picture)')
             .eq('id', postId)
             .or(getPostVisibilityOrFilter(user.id))
             .maybeSingle(),
@@ -3059,7 +3062,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         const [reelResult, likesResult] = await Promise.all([
           supabase
             .from('reels')
-            .select('id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(full_name,profile_picture)')
+            .select('id,user_id,caption,video_url,thumbnail_url,created_at,users!reels_user_id_fkey(full_name,username,profile_picture)')
             .eq('id', reelId)
             .or(getReelVisibilityOrFilter(user.id))
             .maybeSingle(),
@@ -7087,7 +7090,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-4 text-white">
               <div className="flex items-end justify-between gap-4">
                 <div>
-                  <ProfileUserLink viewerUserId={user?.id} subjectUserId={reel.user_id} className="inline-block">
+                  <ProfileUserLink viewerUserId={user?.id} subjectUserId={reel.user_id} subjectUsername={reel.users?.username} className="inline-block">
                     <p className="font-black hover:underline">{getUserDisplayName(reel.users)}</p>
                   </ProfileUserLink>
                   <p className="mt-2 text-sm leading-5 text-white/85">{reel.caption || 'Shared a reel'}</p>
@@ -7168,11 +7171,11 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           {reel.video_url ? <video src={reel.video_url} poster={reel.thumbnail_url || undefined} controls className="h-full min-h-[calc(100vh-122px)] w-full object-cover" /> : reel.thumbnail_url ? <img src={reel.thumbnail_url} alt="" className="h-full min-h-[calc(100vh-122px)] w-full object-cover" /> : null}
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-4 text-white">
             <div className="flex items-center gap-3">
-              <ProfileUserLink viewerUserId={user?.id} subjectUserId={reel.user_id} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-white">
+              <ProfileUserLink viewerUserId={user?.id} subjectUserId={reel.user_id} subjectUsername={reel.users?.username} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-white">
                 <Avatar src={reel.users?.profile_picture} name={getUserDisplayName(reel.users)} />
               </ProfileUserLink>
               <div className="min-w-0 flex-1">
-                <ProfileUserLink viewerUserId={user?.id} subjectUserId={reel.user_id} className="inline-block min-w-0">
+                <ProfileUserLink viewerUserId={user?.id} subjectUserId={reel.user_id} subjectUsername={reel.users?.username} className="inline-block min-w-0">
                   <p className="truncate font-black hover:underline">{getUserDisplayName(reel.users)}</p>
                 </ProfileUserLink>
               </div>
@@ -10288,7 +10291,12 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       <div className="space-y-4 px-4 py-4">
         <section className="rounded-[28px] bg-white p-6 text-center shadow-sm ring-1 ring-slate-200">
           <div className="relative mx-auto w-fit">
-            <ProfileUserLink viewerUserId={user?.id} subjectUserId={profileSubjectId} className="inline-block rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
+            <ProfileUserLink
+              viewerUserId={user?.id}
+              subjectUserId={profileSubjectId}
+              subjectUsername={related.username}
+              className="inline-block rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500"
+            >
               <Avatar src={related.profile_picture} name={getUserDisplayName(related)} size="lg" />
             </ProfileUserLink>
             <span
@@ -10298,7 +10306,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             />
           </div>
           <div className="mt-4 flex items-center justify-center gap-2">
-            <ProfileUserLink viewerUserId={user?.id} subjectUserId={profileSubjectId} className="inline-block">
+            <ProfileUserLink viewerUserId={user?.id} subjectUserId={profileSubjectId} subjectUsername={related.username} className="inline-block">
               <h2 className="text-3xl font-black text-slate-950 hover:underline">{getUserDisplayName(related)}</h2>
             </ProfileUserLink>
             {related.phone_verified ? <CheckCircle2 className="h-6 w-6 shrink-0 text-blue-500" aria-label="Phone verified" /> : null}
@@ -10587,11 +10595,11 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           {adminUsers.map((member) => (
             <article key={member.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <div className="flex gap-3">
-                <ProfileUserLink viewerUserId={user?.id} subjectUserId={member.id} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
+                <ProfileUserLink viewerUserId={user?.id} subjectUserId={member.id} subjectUsername={member.username} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
                   <Avatar src={member.profile_picture} name={member.full_name || member.email} />
                 </ProfileUserLink>
                 <div className="min-w-0 flex-1">
-                  <ProfileUserLink viewerUserId={user?.id} subjectUserId={member.id} className="block min-w-0">
+                  <ProfileUserLink viewerUserId={user?.id} subjectUserId={member.id} subjectUsername={member.username} className="block min-w-0">
                     <p className="truncate font-black text-slate-950 hover:underline">{member.full_name || 'Member'}</p>
                   </ProfileUserLink>
                   <p className="truncate text-sm text-slate-500">{member.email}</p>
@@ -10653,7 +10661,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             <article key={row.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <div className="flex items-center gap-3">
                 {authorId ? (
-                  <ProfileUserLink viewerUserId={user?.id} subjectUserId={authorId} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
+                  <ProfileUserLink viewerUserId={user?.id} subjectUserId={authorId} subjectUsername={row.users?.username} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
                     <Avatar src={row.users?.profile_picture} name={row.users?.full_name} />
                   </ProfileUserLink>
                 ) : (
@@ -10661,7 +10669,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                 )}
                 <div className="min-w-0 flex-1">
                   {authorId ? (
-                    <ProfileUserLink viewerUserId={user?.id} subjectUserId={authorId} className="block min-w-0">
+                    <ProfileUserLink viewerUserId={user?.id} subjectUserId={authorId} subjectUsername={row.users?.username} className="block min-w-0">
                       <p className="truncate font-black text-slate-950 hover:underline">{row.users?.full_name || 'Member'}</p>
                     </ProfileUserLink>
                   ) : (
@@ -12356,12 +12364,13 @@ function PostCard({
         <ProfileUserLink
           viewerUserId={user?.id}
           subjectUserId={post.user_id}
+          subjectUsername={post.users?.username}
           className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500"
         >
           <Avatar src={post.users?.profile_picture} name={getUserDisplayName(post.users)} />
         </ProfileUserLink>
         <div className="min-w-0 flex-1">
-          <ProfileUserLink viewerUserId={user?.id} subjectUserId={post.user_id} className="block min-w-0">
+          <ProfileUserLink viewerUserId={user?.id} subjectUserId={post.user_id} subjectUsername={post.users?.username} className="block min-w-0">
             <p className="truncate font-black text-slate-950 hover:underline">{getUserDisplayName(post.users)}</p>
           </ProfileUserLink>
           <p className="text-xs font-semibold text-slate-400">{timeAgo(post.created_at)}</p>

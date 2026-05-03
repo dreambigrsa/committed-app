@@ -1522,7 +1522,7 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
     const { data, error } = await supabase
       .from('comments')
       .insert({ post_id: postId, user_id: session.user.id, content: text, parent_comment_id: null, message_type: 'text' })
-      .select('id,post_id,parent_comment_id,content,created_at,users!comments_user_id_fkey(full_name)')
+      .select('id,post_id,parent_comment_id,content,created_at,users!comments_user_id_fkey(full_name,username,email,profile_picture)')
       .single();
     if (error || !data) {
       setStatus('error');
@@ -1551,7 +1551,7 @@ function CommunityPanel({ initialTab = 'feed' }: { initialTab?: 'feed' | 'reels'
     const { data, error } = await supabase
       .from('comments')
       .insert({ post_id: postId, user_id: session.user.id, content: text, parent_comment_id: parentCommentId, message_type: 'text' })
-      .select('id,post_id,parent_comment_id,content,created_at,users!comments_user_id_fkey(full_name)')
+      .select('id,post_id,parent_comment_id,content,created_at,users!comments_user_id_fkey(full_name,username,email,profile_picture)')
       .single();
     if (error || !data) return;
     setReplyDraft((value) => ({ ...value, [key]: '' }));

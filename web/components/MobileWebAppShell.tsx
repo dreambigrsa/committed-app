@@ -82,6 +82,7 @@ type TabKey = 'home' | 'feed' | 'reels' | 'dating' | 'search' | 'notifications' 
 
 /** Lets Avatar use `storage.getPublicUrl` for path-only `users.profile_picture` values (same as mobile). */
 const WebShellSupabaseContext = createContext<SupabaseClient | null>(null);
+const WEB_DATING_PROFILE_HANDOFF_KEY = 'committed.web.datingProfileHandoff.v1';
 
 /** Verbose avatar pipeline logs + Settings/Profile debug panel (set NEXT_PUBLIC_DEBUG_AVATAR=1 on staging/prod builds). */
 function isAvatarHardDebugEnabled(): boolean {
@@ -164,6 +165,47 @@ function buildDatingConversationStartersForWeb(profile: any): string[] {
   if (normalized.interests?.length && starters.length < 3) starters.push(`What do you love about ${normalized.interests[0]}?`);
   if (normalized.values?.length && starters.length < 3) starters.push(`Tell me about ${normalized.values[0]}`);
   return Array.from(new Set(starters.filter(Boolean))).slice(0, 3);
+}
+
+function getDatingProfileCompletenessScore(profile: any): number {
+  if (!profile) return 0;
+  const normalized = normalizeDatingProfileForWeb(profile);
+  const scalarFields = [
+    'bio',
+    'location_city',
+    'what_makes_me_different',
+    'headline',
+    'daily_question_answer',
+    'what_im_looking_for',
+    'intention_tag',
+    'local_food',
+    'local_slang',
+    'local_spot',
+    'mood',
+    'weekend_style',
+    'kids',
+    'work',
+    'religion',
+    'education',
+    'height_cm',
+    'exercise',
+    'pets',
+    'smoke',
+    'drink',
+  ];
+  return scalarFields.filter((field) => firstPresent(normalized?.[field]) !== undefined).length +
+    parseArrayValue(normalized.relationship_goals).length +
+    parseArrayValue(normalized.interests).length +
+    parseArrayValue(normalized.values).length +
+    parseArrayValue(normalized.prompts).length +
+    parseArrayValue(normalized.dating_photos || normalized.photos).length +
+    parseArrayValue(normalized.dating_videos || normalized.videos).length;
+}
+
+function chooseRicherDatingProfile(primary: any, fallback: any) {
+  if (!primary) return fallback;
+  if (!fallback) return primary;
+  return getDatingProfileCompletenessScore(fallback) > getDatingProfileCompletenessScore(primary) ? fallback : primary;
 }
 
 function calculateAgeFromDate(raw: unknown): number | null {
@@ -2370,16 +2412,12 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           .maybeSingle(),
         supabase
           .from('dating_profiles')
-          .select(
-            'id,user_id,bio,age,gender,location_city,location_country,location_latitude,location_longitude,relationship_goals,interests,intention_tag,looking_for,age_range_min,age_range_max,max_distance_km'
-          )
+          .select('*')
           .eq('user_id', authUser.id)
           .maybeSingle(),
         supabase
           .from('dating_profiles')
-          .select(
-            'id,user_id,bio,age,gender,location_city,location_country,location_latitude,location_longitude,relationship_goals,interests,intention_tag,looking_for,is_active,last_active_at,admin_limited,admin_suspended'
-          )
+          .select('*')
           .eq('is_active', true)
           .eq('admin_limited', false)
           .eq('admin_suspended', false)
@@ -2584,9 +2622,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
         const relaxed = await supabase
           .from('dating_profiles')
-          .select(
-            'id,user_id,bio,age,gender,location_city,location_country,location_latitude,location_longitude,relationship_goals,interests,intention_tag,looking_for,last_active_at,admin_limited,admin_suspended,is_active'
-          )
+          .select('*')
           .neq('user_id', authUser.id)
           .limit(80);
         if (!relaxed.error && relaxed.data) {
@@ -3583,6 +3619,19 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         };
 
         let profileRow: any = null;
+        let handoffProfile: any = null;
+        try {
+          const rawHandoff = typeof window !== 'undefined' ? window.sessionStorage.getItem(WEB_DATING_PROFILE_HANDOFF_KEY) : null;
+          const parsed = rawHandoff ? JSON.parse(rawHandoff) : null;
+          if (
+            parsed &&
+            ((!explicitUserId || parsed.user_id === explicitUserId) &&
+              (!explicitProfileId || parsed.id === explicitProfileId) &&
+              (!legacyId || parsed.user_id === legacyId || parsed.id === legacyId))
+          ) {
+            handoffProfile = normalizeDatingProfileForWeb(parsed);
+          }
+        } catch {}
         if (explicitUserId) {
           profileRow = await fetchProfileByUserId(explicitUserId);
         }
@@ -3596,6 +3645,11 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           }
         }
         if (!profileRow?.id) {
+          if (handoffProfile?.id || handoffProfile?.user_id) {
+            profileRow = handoffProfile;
+          }
+        }
+        if (!profileRow?.id && !profileRow?.user_id) {
           if (!cancelled) {
             setRouteDatingProfile(null);
             setRouteDatingReaction({ liked: false, superLiked: false, matched: false });
@@ -3669,15 +3723,15 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         if (viewerUserId && viewerUserId !== targetUserId) {
           void supabase.from('dating_profiles').update({ last_active_at: new Date().toISOString() }).eq('user_id', targetUserId);
         }
-        const normalizedProfile = {
+        const normalizedProfile = chooseRicherDatingProfile({
           ...profileRow,
           users: userResult.data || null,
           user: userResult.data || null,
-          dating_photos: photosResult.data || [],
-          photos: photosResult.data || [],
-          dating_videos: videosResult.data || [],
-          videos: videosResult.data || [],
-        };
+          dating_photos: photosResult.data?.length ? photosResult.data : profileRow.dating_photos || profileRow.photos || [],
+          photos: photosResult.data?.length ? photosResult.data : profileRow.photos || profileRow.dating_photos || [],
+          dating_videos: videosResult.data?.length ? videosResult.data : profileRow.dating_videos || profileRow.videos || [],
+          videos: videosResult.data?.length ? videosResult.data : profileRow.videos || profileRow.dating_videos || [],
+        }, handoffProfile);
         const starters = buildDatingConversationStartersForWeb(normalizedProfile);
         if (!cancelled) {
           setRouteDatingProfile(normalizeDatingProfileForWeb(normalizedProfile));
@@ -8448,6 +8502,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
     const openDatingProfile = () => {
       if (!profile.user_id) return;
+      try {
+        window.sessionStorage.setItem(WEB_DATING_PROFILE_HANDOFF_KEY, JSON.stringify(normalizeDatingProfileForWeb(profile)));
+      } catch {}
       // Same route family as Expo `dating/user-profile` — loads `dating_profiles`, photos, badges, starters (not generic `/app/profile`).
       const profileIdParam = profile.id ? `&profileId=${encodeURIComponent(profile.id)}` : '';
       router.push(`/app/dating/user-profile?userId=${encodeURIComponent(profile.user_id)}${profileIdParam}`);
@@ -9234,42 +9291,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     const targetProfileId = searchParams?.get('profileId') || searchParams?.get('profile_id') || '';
     const legacyId = searchParams?.get('id') || appPath[2] || '';
     const hasExplicitProfileRoute = !!(targetUserId || targetProfileId || legacyId);
-    const fallbackProfile =
-      datingProfiles.find(
-        (item) =>
-          (!!targetUserId && item.user_id === targetUserId) ||
-          (!!targetProfileId && item.id === targetProfileId) ||
-          (!!legacyId && (item.user_id === legacyId || item.id === legacyId))
-      ) || null;
     const ownProfile = !targetUserId && !targetProfileId && !legacyId ? myDatingProfile : null;
-    const fallbackAny = fallbackProfile as any;
-    const routeAny = routeDatingProfile as any;
-    const rawProfile = routeDatingProfile
-      ? {
-          ...(fallbackProfile || {}),
-          ...routeDatingProfile,
-          users: routeAny.users || routeAny.user || fallbackAny?.users || fallbackAny?.user || null,
-          user: routeAny.user || routeAny.users || fallbackAny?.user || fallbackAny?.users || null,
-          dating_photos:
-            (Array.isArray(routeAny.dating_photos) && routeAny.dating_photos.length
-              ? routeAny.dating_photos
-              : fallbackAny?.dating_photos || fallbackAny?.photos || []),
-          photos:
-            (Array.isArray(routeAny.photos) && routeAny.photos.length
-              ? routeAny.photos
-              : fallbackAny?.photos || fallbackAny?.dating_photos || []),
-          dating_videos:
-            (Array.isArray(routeAny.dating_videos) && routeAny.dating_videos.length
-              ? routeAny.dating_videos
-              : fallbackAny?.dating_videos || fallbackAny?.videos || []),
-          videos:
-            (Array.isArray(routeAny.videos) && routeAny.videos.length
-              ? routeAny.videos
-              : fallbackAny?.videos || fallbackAny?.dating_videos || []),
-        }
-      : hasExplicitProfileRoute
-        ? null
-        : fallbackProfile || ownProfile;
+    const rawProfile = routeDatingProfile || (hasExplicitProfileRoute ? null : ownProfile);
     const profile = normalizeDatingProfileForWeb(rawProfile);
     if (routeDatingProfileLoading) {
       return (

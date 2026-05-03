@@ -588,6 +588,14 @@ const adminGenericRoutes: Record<string, { title: string; table: string; select:
   'warning-templates': { title: 'Warning Templates', table: 'warning_templates', select: 'id,severity,title_template,message_template,in_chat_warning_template,description,active,created_at,updated_at', order: 'severity', description: 'Reusable moderation warnings.' },
 };
 
+/** Web admin batch: mirror Expo admin list sizes (posts/reels 100; users/relationships unbounded on native — cap for browser). */
+const ADMIN_WEB_LIMIT_USERS = 400;
+const ADMIN_WEB_LIMIT_RELATIONSHIPS = 400;
+const ADMIN_WEB_LIMIT_CONTENT = 100;
+const ADMIN_WEB_LIMIT_MISC = 150;
+const ADMIN_WEB_GENERIC_TABLE_LIMIT = 250;
+const ADMIN_WEB_ADS_LIMIT = 60;
+
 function initials(name?: string | null) {
   const parts = (name || 'Committed').trim().split(/\s+/).filter(Boolean);
   return parts.slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'C';
@@ -2364,54 +2372,64 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         ] = await Promise.all([
           supabase
             .from('relationships')
-            .select('id,user_id,partner_user_id,partner_name,partner_phone,type,status,start_date,privacy_level,verified_date,end_date,created_at,users!relationships_user_id_fkey(full_name,email,phone_number)')
+            .select(
+              'id,user_id,partner_user_id,partner_name,partner_phone,type,status,start_date,privacy_level,verified_date,end_date,created_at,updated_at,partner_face_photo,partner_date_of_birth_month,partner_date_of_birth_year,partner_city,users!relationships_user_id_fkey(id,full_name,email,phone_number)'
+            )
             .order('created_at', { ascending: false })
-            .limit(50),
+            .limit(ADMIN_WEB_LIMIT_RELATIONSHIPS),
           supabase
             .from('users')
-            .select('id,full_name,username,email,phone_number,profile_picture,role,verified,email_verified,phone_verified,id_verified,banned_at,banned_by,ban_reason')
+            .select('id,full_name,username,email,phone_number,profile_picture,role,verified,email_verified,phone_verified,id_verified,banned_at,banned_by,ban_reason,created_at')
             .order('created_at', { ascending: false })
-            .limit(50),
+            .limit(ADMIN_WEB_LIMIT_USERS),
           supabase
             .from('advertisements')
             .select('id,user_id,title,description,image_url,link_url,type,placement,active,cta_type,cta_url,cta_phone,cta_message,cta_messenger_id,sponsor_name,sponsor_verified,status,rejection_reason,budget,daily_budget,total_budget,spend,start_date,end_date,billing_status,billing_provider,billing_txn_id,promoted_post_id,promoted_reel_id,targeting,created_at,updated_at')
             .order('created_at', { ascending: false })
-            .limit(30),
+            .limit(ADMIN_WEB_ADS_LIMIT),
           supabase
             .from('posts')
-            .select('id,user_id,content,media_urls,media_type,moderation_status,rejection_reason,created_at,users!posts_user_id_fkey(full_name,username,profile_picture)')
+            .select(
+              'id,user_id,content,media_urls,media_type,comment_count,moderation_status,moderation_reason,moderated_by,moderated_at,rejection_reason,reviewed_by,reviewed_at,created_at,users!posts_user_id_fkey(full_name,username,profile_picture)'
+            )
             .order('created_at', { ascending: false })
-            .limit(50),
+            .limit(ADMIN_WEB_LIMIT_CONTENT),
           supabase
             .from('reels')
-            .select('id,user_id,caption,video_url,thumbnail_url,moderation_status,rejection_reason,created_at,users!reels_user_id_fkey(full_name,username,profile_picture)')
+            .select(
+              'id,user_id,caption,video_url,thumbnail_url,moderation_status,moderation_reason,moderated_by,moderated_at,rejection_reason,reviewed_by,reviewed_at,created_at,users!reels_user_id_fkey(full_name,username,profile_picture)'
+            )
             .order('created_at', { ascending: false })
-            .limit(50),
+            .limit(ADMIN_WEB_LIMIT_CONTENT),
           supabase
             .from('professional_applications')
             .select('id,user_id,role_id,application_data,status,review_notes,rejection_reason,created_at,user:users!professional_applications_user_id_fkey(full_name,email,profile_picture),role:professional_roles!professional_applications_role_id_fkey(name)')
             .order('created_at', { ascending: false })
-            .limit(50),
+            .limit(ADMIN_WEB_LIMIT_MISC),
           supabase
             .from('false_relationship_reports')
-            .select('id,relationship_id,reported_by,reason,details,status,resolution,created_at,relationship:relationships(id,user_id,partner_user_id,partner_name,partner_phone,type,status,privacy_level),reporter:users!false_relationship_reports_reported_by_fkey(full_name,email)')
+            .select(
+              'id,relationship_id,reported_by,reason,evidence_urls,status,resolution,resolved_by,resolved_at,created_at,updated_at,relationship:relationships(id,user_id,partner_user_id,partner_name,partner_phone,type,status,start_date,verified_date,privacy_level,end_date),reporter:users!false_relationship_reports_reported_by_fkey(id,full_name,email,phone_number),resolver:users!false_relationship_reports_resolved_by_fkey(id,full_name)'
+            )
             .order('created_at', { ascending: false })
-            .limit(50),
+            .limit(ADMIN_WEB_LIMIT_MISC),
           supabase
             .from('payment_submissions')
-            .select('id,user_id,advertisement_id,subscription_plan_id,amount,method,reference,proof_url,payment_proof_url,transaction_reference,status,created_at,user:users!payment_submissions_user_id_fkey(full_name,email,profile_picture)')
+            .select(
+              'id,user_id,advertisement_id,subscription_plan_id,amount,currency,payment_method_id,payment_proof_url,transaction_reference,payment_date,notes,status,verified_by,verified_at,rejection_reason,created_at,updated_at,user:users!payment_submissions_user_id_fkey(full_name,email,profile_picture)'
+            )
             .order('created_at', { ascending: false })
-            .limit(50),
+            .limit(ADMIN_WEB_LIMIT_MISC),
           supabase
             .from('professional_sessions')
             .select('id,conversation_id,user_id,professional_id,role_id,status,scheduled_date,scheduled_duration_minutes,session_type,location_type,location_address,booking_notes,booking_fee_amount,payment_status,created_at,user:users!professional_sessions_user_id_fkey(full_name,email,profile_picture),professional:professional_profiles!professional_sessions_professional_id_fkey(id,full_name,user_id,pro_user:users!professional_profiles_user_id_fkey(id,full_name,profile_picture))')
             .order('scheduled_date', { ascending: false })
-            .limit(50),
+            .limit(ADMIN_WEB_LIMIT_MISC),
           supabase
             .from('professional_reviews')
             .select('id,professional_id,client_id,rating,review_text,is_anonymous,moderation_status,moderation_reason,moderated_by,moderated_at,reported_count,created_at,client:users!professional_reviews_client_id_fkey(full_name,email,profile_picture),professional:professional_profiles!professional_reviews_professional_id_fkey(full_name,user_id,pro_user:users!professional_profiles_user_id_fkey(id,full_name))')
             .order('created_at', { ascending: false })
-            .limit(50),
+            .limit(ADMIN_WEB_LIMIT_MISC),
         ]);
         setAdminRelationships(adminRelationshipsResult.data || []);
         setAdminUsers(adminUsersResult.data || []);
@@ -2708,7 +2726,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       setRouteRowsLoading(true);
       setRouteRowsError(null);
       try {
-        let query = supabase.from(route.table).select(route.select).limit(50);
+        let query = supabase.from(route.table).select(route.select).limit(ADMIN_WEB_GENERIC_TABLE_LIMIT);
         if (route.order) query = query.order(route.order, { ascending: false });
         const { data, error } = await query;
         if (cancelled) return;
@@ -5525,10 +5543,15 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const updateModeration = async (table: 'posts' | 'reels', id: string, status: 'approved' | 'rejected') => {
     if (!supabase || !user || !isAdminRole(user.role)) return;
     setSaving(true);
+    const now = new Date().toISOString();
+    /** Match Expo `posts-review` / `reels-review` (`moderated_*`, `moderation_reason`). */
     const patch = {
       moderation_status: status,
+      moderated_by: user.id,
+      moderated_at: now,
+      moderation_reason: status === 'rejected' ? 'Rejected by admin' : null,
       reviewed_by: user.id,
-      reviewed_at: new Date().toISOString(),
+      reviewed_at: now,
       rejection_reason: status === 'rejected' ? 'Rejected by admin' : null,
     };
     try {
@@ -10936,7 +10959,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           <section className="rounded-[28px] bg-slate-950 p-5 text-white">
             <User className="h-10 w-10 text-pink-400" />
             <h2 className="mt-4 text-3xl font-black">Manage Users</h2>
-            <p className="mt-2 text-sm text-slate-300">{adminUsers.length} users loaded</p>
+            <p className="mt-2 text-sm text-slate-300">
+              {adminUsers.length} user{adminUsers.length === 1 ? '' : 's'} loaded (synced batch, max {ADMIN_WEB_LIMIT_USERS})
+            </p>
           </section>
           {adminUsers.map((member) => (
             <article key={member.id} className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
@@ -11026,7 +11051,31 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                 </div>
                 <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-black uppercase text-amber-700">{row.moderation_status || 'pending'}</span>
               </div>
-              {reviewReelThumb ? <img src={reviewReelThumb} alt="" className="mt-3 max-h-56 w-full rounded-[18px] object-cover" /> : null}
+              {isPosts && Array.isArray(row.media_urls) && row.media_urls[0] ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={resolveProfilePictureUrl(String(row.media_urls[0])) || String(row.media_urls[0])}
+                  alt=""
+                  className="mt-3 max-h-56 w-full rounded-[18px] object-cover"
+                />
+              ) : !isPosts && reviewReelThumb ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={reviewReelThumb} alt="" className="mt-3 max-h-56 w-full rounded-[18px] object-cover" />
+              ) : !isPosts && resolveReelVideoUrl(row.video_url) ? (
+                <video
+                  src={resolveReelVideoUrl(row.video_url)}
+                  className="mt-3 max-h-56 w-full rounded-[18px] object-cover"
+                  muted
+                  playsInline
+                  preload="metadata"
+                  aria-hidden
+                />
+              ) : null}
+              {(row.moderation_reason || row.rejection_reason) ? (
+                <p className="mt-2 rounded-[14px] bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
+                  {row.moderation_reason || row.rejection_reason}
+                </p>
+              ) : null}
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => void updateModeration(isPosts ? 'posts' : 'reels', row.id, 'approved')} disabled={saving || row.moderation_status === 'approved'} className="rounded-[16px] bg-emerald-500 py-3 text-sm font-black text-white disabled:opacity-50">Approve</button>
                 <button type="button" onClick={() => void updateModeration(isPosts ? 'posts' : 'reels', row.id, 'rejected')} disabled={saving || row.moderation_status === 'rejected'} className="rounded-[16px] bg-red-500 py-3 text-sm font-black text-white disabled:opacity-50">Reject</button>
@@ -11097,7 +11146,10 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                 </div>
                 <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-black uppercase text-amber-700">{report.status}</span>
               </div>
-              <p className="mt-3 text-sm leading-6 text-slate-600">{report.details || report.reason || 'No details supplied.'}</p>
+              <p className="mt-3 text-sm leading-6 text-slate-600">{report.reason || report.resolution || 'No details supplied.'}</p>
+              {Array.isArray(report.evidence_urls) && report.evidence_urls.length ? (
+                <p className="mt-2 text-xs font-semibold text-slate-500">{report.evidence_urls.length} evidence file(s)</p>
+              ) : null}
               <div className="mt-4 grid grid-cols-3 gap-2">
                 <button type="button" onClick={() => void updateFalseReport(report, 'reviewing')} disabled={saving || report.status === 'reviewing' || report.status === 'resolved' || report.status === 'dismissed'} className="rounded-[16px] bg-blue-600 py-3 text-xs font-black text-white disabled:opacity-50">Review</button>
                 <button type="button" onClick={() => void updateFalseReport(report, 'dismissed')} disabled={saving || report.status === 'resolved' || report.status === 'dismissed'} className="rounded-[16px] bg-slate-700 py-3 text-xs font-black text-white disabled:opacity-50">Dismiss</button>
@@ -11332,10 +11384,19 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                   ) : (
                     <p className="truncate text-lg font-black text-slate-950">{payment.user?.full_name || payment.user?.email || 'Payment'}</p>
                   )}
-                  <p className="mt-1 text-sm text-slate-500">{payment.transaction_reference || payment.reference || payment.method || 'No reference'} - {payment.amount || ''}</p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {[payment.transaction_reference, payment.currency ? `${payment.amount} ${payment.currency}` : payment.amount].filter(Boolean).join(' · ') || 'Payment'}
+                  </p>
                 </div>
               </div>
-              {payment.proof_url || payment.payment_proof_url ? <Link href={`/app/admin/payment-proof-viewer?imageUrl=${encodeURIComponent(payment.proof_url || payment.payment_proof_url)}`} className="mt-3 inline-flex rounded-[14px] bg-blue-50 px-4 py-2 text-sm font-black text-blue-700">View proof</Link> : null}
+              {payment.payment_proof_url ? (
+                <Link
+                  href={`/app/admin/payment-proof-viewer?imageUrl=${encodeURIComponent(payment.payment_proof_url)}`}
+                  className="mt-3 inline-flex rounded-[14px] bg-blue-50 px-4 py-2 text-sm font-black text-blue-700"
+                >
+                  View proof
+                </Link>
+              ) : null}
               <span className="mt-3 block rounded-full bg-amber-50 px-3 py-1 text-center text-xs font-black uppercase text-amber-700">{payment.status || 'pending'}</span>
               {payment.status === 'pending' ? (
                 <div className="mt-4 grid grid-cols-2 gap-2">

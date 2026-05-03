@@ -3518,6 +3518,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     const loadRouteDatingProfile = async () => {
       setRouteDatingProfileLoading(true);
       try {
+        const { data: sessionData } = await supabase.auth.getSession().catch(() => ({ data: { session: null } } as any));
+        const viewerUserId = String(sessionData?.session?.user?.id || user?.id || '');
         const fetchProfileByUserId = (userId: string) =>
           supabase.from('dating_profiles').select('*').eq('user_id', userId).maybeSingle();
         const fetchProfileByProfileId = (profileId: string) =>
@@ -3584,26 +3586,26 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             .select('*')
             .eq('user_id', targetUserId)
             .order('earned_at', { ascending: false }),
-          user?.id && user.id !== targetUserId
+          viewerUserId && viewerUserId !== targetUserId
             ? supabase
                 .from('dating_likes')
                 .select('id,is_super_like')
-                .eq('liker_id', user.id)
+                .eq('liker_id', viewerUserId)
                 .eq('liked_id', targetUserId)
                 .maybeSingle()
             : Promise.resolve({ data: null }),
-          user?.id && user.id !== targetUserId
+          viewerUserId && viewerUserId !== targetUserId
             ? supabase
                 .from('dating_likes')
                 .select('id')
                 .eq('liker_id', targetUserId)
-                .eq('liked_id', user.id)
+                .eq('liked_id', viewerUserId)
                 .maybeSingle()
             : Promise.resolve({ data: null }),
         ]);
-        const user1Id = user?.id && user.id < targetUserId ? user.id : targetUserId;
-        const user2Id = user?.id && user.id > targetUserId ? user.id : targetUserId;
-        const matchResult = user?.id && user.id !== targetUserId
+        const user1Id = viewerUserId && viewerUserId < targetUserId ? viewerUserId : targetUserId;
+        const user2Id = viewerUserId && viewerUserId > targetUserId ? viewerUserId : targetUserId;
+        const matchResult = viewerUserId && viewerUserId !== targetUserId
           ? await supabase
               .from('dating_matches')
               .select('id')
@@ -3611,7 +3613,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               .eq('user2_id', user2Id)
               .maybeSingle()
           : { data: null };
-        if (user?.id && user.id !== targetUserId) {
+        if (viewerUserId && viewerUserId !== targetUserId) {
           void supabase.from('dating_profiles').update({ last_active_at: new Date().toISOString() }).eq('user_id', targetUserId);
         }
         const normalizedProfile = {
@@ -9179,15 +9181,40 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     const targetUserId = searchParams?.get('userId') || searchParams?.get('user_id') || '';
     const targetProfileId = searchParams?.get('profileId') || searchParams?.get('profile_id') || '';
     const legacyId = searchParams?.get('id') || appPath[2] || '';
-    const rawProfile =
-      routeDatingProfile ||
+    const fallbackProfile =
       datingProfiles.find(
         (item) =>
           (!!targetUserId && item.user_id === targetUserId) ||
           (!!targetProfileId && item.id === targetProfileId) ||
           (!!legacyId && (item.user_id === legacyId || item.id === legacyId))
-      ) ||
-      (!targetUserId && !targetProfileId && !legacyId ? myDatingProfile : null);
+      ) || null;
+    const ownProfile = !targetUserId && !targetProfileId && !legacyId ? myDatingProfile : null;
+    const fallbackAny = fallbackProfile as any;
+    const routeAny = routeDatingProfile as any;
+    const rawProfile = routeDatingProfile
+      ? {
+          ...(fallbackProfile || {}),
+          ...routeDatingProfile,
+          users: routeAny.users || routeAny.user || fallbackAny?.users || fallbackAny?.user || null,
+          user: routeAny.user || routeAny.users || fallbackAny?.user || fallbackAny?.users || null,
+          dating_photos:
+            (Array.isArray(routeAny.dating_photos) && routeAny.dating_photos.length
+              ? routeAny.dating_photos
+              : fallbackAny?.dating_photos || fallbackAny?.photos || []),
+          photos:
+            (Array.isArray(routeAny.photos) && routeAny.photos.length
+              ? routeAny.photos
+              : fallbackAny?.photos || fallbackAny?.dating_photos || []),
+          dating_videos:
+            (Array.isArray(routeAny.dating_videos) && routeAny.dating_videos.length
+              ? routeAny.dating_videos
+              : fallbackAny?.dating_videos || fallbackAny?.videos || []),
+          videos:
+            (Array.isArray(routeAny.videos) && routeAny.videos.length
+              ? routeAny.videos
+              : fallbackAny?.videos || fallbackAny?.dating_videos || []),
+        }
+      : fallbackProfile || ownProfile;
     const profile = normalizeDatingProfileForWeb(rawProfile);
     if (routeDatingProfileLoading) {
       return (

@@ -68,6 +68,8 @@ export default function PublicProfilePage() {
   const [followingCount, setFollowingCount] = useState(0);
   const [relationship, setRelationship] = useState<PublicRelationshipRow | null>(null);
   const [statusType, setStatusType] = useState<string | null>(null);
+  /** Signed-in viewer id (for “viewing own public profile” presence UX). */
+  const [viewerUserId, setViewerUserId] = useState('');
   const [activeTab, setActiveTab] = useState<ProfileTab>('posts');
   const [error, setError] = useState('');
 
@@ -88,6 +90,7 @@ export default function PublicProfilePage() {
           data: { session },
         } = await supabase.auth.getSession();
         const viewerId = (session?.user?.id || '').trim();
+        if (!cancelled) setViewerUserId(viewerId);
 
         const userQuery = supabase
           .from('users')
@@ -204,7 +207,8 @@ export default function PublicProfilePage() {
   }
 
   const name = getDisplayName(profile);
-  const online = statusType === 'online';
+  const viewingSelf = !!viewerUserId && viewerUserId === profile.id;
+  const online = viewingSelf || (statusType || '').toLowerCase() === 'online';
   const relVerified = relationship?.status === 'verified';
 
   return (

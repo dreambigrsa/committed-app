@@ -45,6 +45,7 @@ import {
 } from 'lucide-react';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import { getDisplayName as getUserDisplayName } from '@/lib/identity';
+import { resolveProfilePictureUrl } from '@/lib/profile-media-url';
 import { mergeUsersProfileForWebShell, usersRowBootstrapFromAuth } from '@/lib/web-user-profile';
 import { buildPostWebUrl, buildReelWebUrl } from '@/lib/appLinks';
 import { getPostVisibilityOrFilter, getReelVisibilityOrFilter } from '@/lib/content-visibility';
@@ -554,11 +555,20 @@ function getCommittedAIReply(
 function Avatar({ src, name, size = 'md' }: { src?: string | null; name?: string | null; size?: 'sm' | 'md' | 'lg' }) {
   const sizeClass = size === 'lg' ? 'h-14 w-14 text-lg' : size === 'sm' ? 'h-9 w-9 text-xs' : 'h-11 w-11 text-sm';
   const [failed, setFailed] = useState(false);
+  const resolvedSrc = src ? resolveProfilePictureUrl(src) : null;
   useEffect(() => {
     setFailed(false);
   }, [src]);
-  if (src && !failed) {
-    return <img src={src} alt="" onError={() => setFailed(true)} className={`${sizeClass} rounded-full object-cover`} />;
+  if (resolvedSrc && !failed) {
+    return (
+      <img
+        src={resolvedSrc}
+        alt=""
+        referrerPolicy="no-referrer"
+        onError={() => setFailed(true)}
+        className={`${sizeClass} rounded-full object-cover`}
+      />
+    );
   }
   return (
     <div className={`${sizeClass} grid place-items-center rounded-full bg-gradient-to-br from-pink-500 to-blue-600 font-black text-white`}>
@@ -8074,7 +8084,14 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         {uploadingLabel === 'Profile photo' ? 'Uploading profile photo...' : 'Upload profile photo'}
         <input type="file" accept="image/*" className="hidden" onChange={(event) => void handleFileUpload(event, 'avatars', 'Profile photo', setSettingsProfilePictureUrl)} />
       </label>
-      {settingsProfilePictureUrl ? <img src={settingsProfilePictureUrl} alt="Profile photo preview" className="max-h-[220px] w-full rounded-[18px] object-cover" /> : null}
+      {settingsProfilePictureUrl ? (
+        <img
+          src={resolveProfilePictureUrl(settingsProfilePictureUrl) || settingsProfilePictureUrl}
+          alt="Profile photo preview"
+          referrerPolicy="no-referrer"
+          className="max-h-[220px] w-full rounded-[18px] object-cover"
+        />
+      ) : null}
       <FormField label="Full name" value={settingsForm.fullName} onChange={(fullName) => setSettingsForm((prev) => ({ ...prev, fullName }))} />
       <FormField label="Username" value={settingsForm.username} onChange={(username) => setSettingsForm((prev) => ({ ...prev, username }))} placeholder="Optional" />
       <FormField label="Phone number" value={settingsForm.phoneNumber} onChange={(phoneNumber) => setSettingsForm((prev) => ({ ...prev, phoneNumber }))} />

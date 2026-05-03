@@ -3,6 +3,8 @@
  * Mirrors mobile AuthContext: prefer DB when sane, then auth user_metadata, never use email as display name.
  */
 
+import { resolveProfilePictureUrl } from '@/lib/profile-media-url';
+
 export type AuthUserLike = {
   id: string;
   email?: string | null;
@@ -22,7 +24,13 @@ export function authMetadataStrings(auth: AuthUserLike) {
   return {
     fullName: metaStr(m, 'full_name'),
     phoneNumber: metaStr(m, 'phone_number'),
-    profilePicture: metaStr(m, 'profile_picture') || metaStr(m, 'avatar_url') || metaStr(m, 'picture'),
+    profilePicture:
+      metaStr(m, 'profile_picture') ||
+      metaStr(m, 'avatar_url') ||
+      metaStr(m, 'picture') ||
+      metaStr(m, 'avatar') ||
+      metaStr(m, 'photo_url') ||
+      metaStr(m, 'image'),
   };
 }
 
@@ -37,7 +45,7 @@ export function usersRowBootstrapFromAuth(authUser: AuthUserLike) {
     email: authUser.email || null,
     phone_number: meta.phoneNumber || (authUser.phone || null) || null,
     role: metadataRole || 'user',
-    profile_picture: meta.profilePicture || null,
+    profile_picture: resolveProfilePictureUrl(meta.profilePicture || null),
     email_verified: !!authUser.email_confirmed_at,
     phone_verified: !!authUser.phone_confirmed_at,
   };
@@ -79,8 +87,8 @@ export function mergeUsersProfileForWebShell(profile: UsersRow | null, authUser:
   const phone_number =
     (profile?.phone_number || '').trim() || meta.phoneNumber || (authUser.phone || '').trim() || null;
 
-  const profile_picture =
-    (profile?.profile_picture || '').trim() || meta.profilePicture || null;
+  const rawPicture = (profile?.profile_picture || '').trim() || meta.profilePicture || null;
+  const profile_picture = resolveProfilePictureUrl(rawPicture);
 
   const metadataRole =
     typeof authUser.user_metadata?.role === 'string' ? authUser.user_metadata.role.trim() : '';

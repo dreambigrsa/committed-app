@@ -1722,6 +1722,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     soundEnabled: true,
   });
   const lastAuthUserIdRef = useRef<string | null>(null);
+  const loadAppDataInFlightRef = useRef<Promise<void> | null>(null);
+  const appShellHydratedRef = useRef(false);
   const [relationshipForm, setRelationshipForm] = useState({
     partnerName: '',
     partnerPhone: '',
@@ -2238,14 +2240,29 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     }));
   }, [supabase]);
 
-  const loadAppData = useCallback(async () => {
+  const loadAppData = useCallback(() => {
     if (!supabase) {
       setLoading(false);
-      return;
+      return Promise.resolve();
     }
 
-    setLoading(true);
-    try {
+    if (loadAppDataInFlightRef.current) {
+      return loadAppDataInFlightRef.current;
+    }
+
+    const request = (async () => {
+      let releasedInitialLoad = false;
+      const releaseInitialLoad = () => {
+        if (releasedInitialLoad) return;
+        releasedInitialLoad = true;
+        appShellHydratedRef.current = true;
+        setLoading(false);
+      };
+
+      if (!appShellHydratedRef.current) {
+        setLoading(true);
+      }
+      try {
       const authState = await withClientTimeout(resolveAuthUser(), 10000, 'Loading web auth session');
       const authUser = authState?.authUser || null;
       const authError = authState?.authError || null;
@@ -2255,6 +2272,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         error: authError?.message ?? null,
       });
       if (!authUser) {
+        appShellHydratedRef.current = false;
         lastAuthUserIdRef.current = null;
         resetUserScopedState();
         router.replace('/auth');
@@ -2266,6 +2284,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           previousUserId: lastAuthUserIdRef.current,
           nextUserId: authUser.id,
         });
+        appShellHydratedRef.current = false;
+        setLoading(true);
         resetUserScopedState();
       }
       lastAuthUserIdRef.current = authUser.id;
@@ -2443,62 +2463,74 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         userId: authUser.id,
         email: authUser.email ?? null,
       });
+      releaseInitialLoad();
 
-      const [postsResult, reelsResult, relationshipResult, myDatingResult, datingResult, notificationsResult, conversationsResult, likesResult, matchesResult] = await withClientTimeout(Promise.all([
-        fetchVisiblePosts(supabase, authUser.id, 30),
-        fetchVisibleReels(supabase, authUser.id, 20),
-        supabase
-          .from('relationships')
-          .select('id,user_id,partner_user_id,partner_name,partner_phone,type,status,start_date,privacy_level')
-          .or(`user_id.eq.${authUser.id},partner_user_id.eq.${authUser.id}`)
-          .in('status', ['pending', 'verified'])
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-        supabase
-          .from('dating_profiles')
-          .select('*')
-          .eq('user_id', authUser.id)
-          .maybeSingle(),
-        supabase
-          .from('dating_profiles')
-          .select('*')
-          .eq('is_active', true)
-          .eq('admin_limited', false)
-          .eq('admin_suspended', false)
-          .neq('user_id', authUser.id)
-          .limit(50),
-        supabase
-          .from('notifications')
-          .select('id,title,message,created_at,read,type,data')
-          .eq('user_id', authUser.id)
-          .order('created_at', { ascending: false })
-          .limit(20),
-        supabase
-          .from('conversations')
-          .select('id,last_message,last_message_at,created_at,participant_ids')
-          .contains('participant_ids', [authUser.id])
-          .order('last_message_at', { ascending: false })
-          .limit(20),
-        supabase
-          .from('dating_likes')
-          .select('id,liker_id,is_super_like,created_at')
-          .eq('liked_id', authUser.id)
-          .order('created_at', { ascending: false })
-          .limit(30),
-        supabase
-          .from('dating_matches')
-          .select('id,user1_id,user2_id,matched_at,created_at')
-          .or(`user1_id.eq.${authUser.id},user2_id.eq.${authUser.id}`)
-          .order('created_at', { ascending: false })
-          .limit(30),
-      ]), 20000, 'Loading core web app data');
+      const postsResultPromise = fetchVisiblePosts(supabase, authUser.id, 30);
+      const reelsResultPromise = fetchVisibleReels(supabase, authUser.id, 20);
+      const relationshipResultPromise = supabase
+        .from('relationships')
+        .select('id,user_id,partner_user_id,partner_name,partner_phone,type,status,start_date,privacy_level')
+        .or(`user_id.eq.${authUser.id},partner_user_id.eq.${authUser.id}`)
+        .in('status', ['pending', 'verified'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const myDatingResultPromise = supabase
+        .from('dating_profiles')
+        .select('*')
+        .eq('user_id', authUser.id)
+        .maybeSingle();
+      const notificationsResultPromise = supabase
+        .from('notifications')
+        .select('id,title,message,created_at,read,type,data')
+        .eq('user_id', authUser.id)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      const conversationsResultPromise = supabase
+        .from('conversations')
+        .select('id,last_message,last_message_at,created_at,participant_ids')
+        .contains('participant_ids', [authUser.id])
+        .order('last_message_at', { ascending: false })
+        .limit(20);
+      const datingResultPromise = supabase
+        .from('dating_profiles')
+        .select('*')
+        .eq('is_active', true)
+        .eq('admin_limited', false)
+        .eq('admin_suspended', false)
+        .neq('user_id', authUser.id)
+        .limit(50);
+      const likesResultPromise = supabase
+        .from('dating_likes')
+        .select('id,liker_id,is_super_like,created_at')
+        .eq('liked_id', authUser.id)
+        .order('created_at', { ascending: false })
+        .limit(30);
+      const matchesResultPromise = supabase
+        .from('dating_matches')
+        .select('id,user1_id,user2_id,matched_at,created_at')
+        .or(`user1_id.eq.${authUser.id},user2_id.eq.${authUser.id}`)
+        .order('created_at', { ascending: false })
+        .limit(30);
+
+      const [postsResult, reelsResult] = await withClientTimeout(
+        Promise.all([postsResultPromise, reelsResultPromise]),
+        12000,
+        'Loading feed and reels'
+      );
 
       const fetchedPosts = ((postsResult.data || []) as FeedPost[]).filter(Boolean);
       const postIds = fetchedPosts.map((post) => post.id);
-      const postLikes = postIds.length
-        ? await supabase.from('post_likes').select('post_id,user_id').in('post_id', postIds)
-        : { data: [] as Array<{ post_id: string; user_id: string }> };
+      const fetchedReels = ((reelsResult.data || []) as Reel[]).filter(Boolean);
+      const reelIds = fetchedReels.map((reel) => reel.id);
+      const [postLikes, reelLikes] = await Promise.all([
+        postIds.length
+          ? supabase.from('post_likes').select('post_id,user_id').in('post_id', postIds)
+          : Promise.resolve({ data: [] as Array<{ post_id: string; user_id: string }> }),
+        reelIds.length
+          ? supabase.from('reel_likes').select('reel_id,user_id').in('reel_id', reelIds)
+          : Promise.resolve({ data: [] as Array<{ reel_id: string; user_id: string }> }),
+      ]);
       const likesByPost = new Map<string, string[]>();
       (postLikes.data || []).forEach((like: any) => {
         likesByPost.set(like.post_id, [...(likesByPost.get(like.post_id) || []), like.user_id]);
@@ -2506,11 +2538,6 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       const enrichedPosts = fetchedPosts.map((post) => ({ ...post, likes: likesByPost.get(post.id) || [] }));
       setPosts(enrichedPosts);
 
-      const fetchedReels = ((reelsResult.data || []) as Reel[]).filter(Boolean);
-      const reelIds = fetchedReels.map((reel) => reel.id);
-      const reelLikes = reelIds.length
-        ? await supabase.from('reel_likes').select('reel_id,user_id').in('reel_id', reelIds)
-        : { data: [] as Array<{ reel_id: string; user_id: string }> };
       const likesByReel = new Map<string, string[]>();
       (reelLikes.data || []).forEach((like: any) => {
         likesByReel.set(like.reel_id, [...(likesByReel.get(like.reel_id) || []), like.user_id]);
@@ -2616,6 +2643,74 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         verifiedOnly,
         activeRecently,
       });
+
+      setNotifications(((notificationsResult.data || []) as NotificationRow[]).filter(Boolean));
+      const conversationRows = ((conversationsResult.data || []) as ConversationRow[]).filter(Boolean);
+      const conversationIds = conversationRows.map((conversation) => conversation.id).filter(Boolean);
+      const participantIds = Array.from(new Set(
+        conversationRows
+          .flatMap((conversation) => conversation.participant_ids || [])
+          .filter((id) => id && id !== authUser.id)
+      ));
+
+      const [conversationMessagesResult, participantsResult, statusesResult] = await Promise.all([
+        conversationIds.length
+          ? supabase
+              .from('messages')
+              .select('id,conversation_id,sender_id,receiver_id,content,message_type,media_url,document_url,document_name,created_at,deleted_for_sender,deleted_for_receiver')
+              .in('conversation_id', conversationIds)
+              .order('created_at', { ascending: true })
+          : Promise.resolve({ data: [] }),
+        participantIds.length
+          ? supabase
+              .from('users')
+              .select('id,full_name,email,profile_picture')
+              .in('id', participantIds)
+          : Promise.resolve({ data: [] }),
+        supabase
+          .from('statuses')
+          .select('id,user_id,content_type,text_content,media_path,background_color,created_at,expires_at,archived,users!statuses_user_id_fkey(full_name,profile_picture)')
+          .eq('archived', false)
+          .gt('expires_at', new Date().toISOString())
+          .order('created_at', { ascending: false })
+          .limit(25),
+      ]);
+
+      const participantsMap = new Map<string, WebUser>(
+        ((participantsResult.data || []) as WebUser[]).map((participant) => [participant.id, participant])
+      );
+      setConversations(conversationRows.map((conversation) => {
+        const names = (conversation.participant_ids || [])
+          .filter((id) => id !== authUser.id)
+          .map((id) => participantsMap.get(id)?.full_name || participantsMap.get(id)?.email || 'Committed member');
+        const avatars = Object.fromEntries(
+          (conversation.participant_ids || [])
+            .filter((id) => id !== authUser.id)
+            .map((id) => [id, participantsMap.get(id)?.profile_picture || null])
+        );
+        return { ...conversation, participantNames: names, participantAvatars: avatars };
+      }));
+
+      const messagesById: Record<string, MessageRow[]> = {};
+      const visibleMessages = filterVisibleMessagesForUser(((conversationMessagesResult.data || []) as MessageRow[]), authUser.id);
+      visibleMessages.forEach((message) => {
+        messagesById[message.conversation_id] = [...(messagesById[message.conversation_id] || []), message];
+      });
+      setMessagesByConversation(messagesById);
+
+      const latestStatusByUser = new Map<string, StatusFeedItem>();
+      ((statusesResult.data || []) as any[]).forEach((status) => {
+        if (latestStatusByUser.has(status.user_id)) return;
+        latestStatusByUser.set(status.user_id, {
+          user_id: status.user_id,
+          user_name: status.users?.full_name || (status.user_id === authUser.id ? 'You' : 'Committed member'),
+          user_avatar: status.users?.profile_picture || null,
+          latest_status: status,
+          has_unviewed: status.user_id !== authUser.id,
+        });
+      });
+      setStatusFeed(Array.from(latestStatusByUser.values()));
+      releaseInitialLoad();
 
       const applyProfileFilters = (rows: DatingProfile[]) => {
         return rows.filter((item) => {
@@ -2835,72 +2930,6 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       });
       setDatingProfiles(discoverProfiles);
       setDatingIndex(0);
-      setNotifications(((notificationsResult.data || []) as NotificationRow[]).filter(Boolean));
-      const conversationRows = ((conversationsResult.data || []) as ConversationRow[]).filter(Boolean);
-      const conversationIds = conversationRows.map((conversation) => conversation.id).filter(Boolean);
-      const participantIds = Array.from(new Set(
-        conversationRows
-          .flatMap((conversation) => conversation.participant_ids || [])
-          .filter((id) => id && id !== authUser.id)
-      ));
-
-      const [conversationMessagesResult, participantsResult, statusesResult] = await Promise.all([
-        conversationIds.length
-          ? supabase
-              .from('messages')
-              .select('id,conversation_id,sender_id,receiver_id,content,message_type,media_url,document_url,document_name,created_at,deleted_for_sender,deleted_for_receiver')
-              .in('conversation_id', conversationIds)
-              .order('created_at', { ascending: true })
-          : Promise.resolve({ data: [] }),
-        participantIds.length
-          ? supabase
-              .from('users')
-              .select('id,full_name,email,profile_picture')
-              .in('id', participantIds)
-          : Promise.resolve({ data: [] }),
-        supabase
-          .from('statuses')
-          .select('id,user_id,content_type,text_content,media_path,background_color,created_at,expires_at,archived,users!statuses_user_id_fkey(full_name,profile_picture)')
-          .eq('archived', false)
-          .gt('expires_at', new Date().toISOString())
-          .order('created_at', { ascending: false })
-          .limit(25),
-      ]);
-
-      const participantsMap = new Map<string, WebUser>(
-        ((participantsResult.data || []) as WebUser[]).map((participant) => [participant.id, participant])
-      );
-      setConversations(conversationRows.map((conversation) => {
-        const names = (conversation.participant_ids || [])
-          .filter((id) => id !== authUser.id)
-          .map((id) => participantsMap.get(id)?.full_name || participantsMap.get(id)?.email || 'Committed member');
-        const avatars = Object.fromEntries(
-          (conversation.participant_ids || [])
-            .filter((id) => id !== authUser.id)
-            .map((id) => [id, participantsMap.get(id)?.profile_picture || null])
-        );
-        return { ...conversation, participantNames: names, participantAvatars: avatars };
-      }));
-
-      const messagesById: Record<string, MessageRow[]> = {};
-      const visibleMessages = filterVisibleMessagesForUser(((conversationMessagesResult.data || []) as MessageRow[]), authUser.id);
-      visibleMessages.forEach((message) => {
-        messagesById[message.conversation_id] = [...(messagesById[message.conversation_id] || []), message];
-      });
-      setMessagesByConversation(messagesById);
-
-      const latestStatusByUser = new Map<string, StatusFeedItem>();
-      ((statusesResult.data || []) as any[]).forEach((status) => {
-        if (latestStatusByUser.has(status.user_id)) return;
-        latestStatusByUser.set(status.user_id, {
-          user_id: status.user_id,
-          user_name: status.users?.full_name || (status.user_id === authUser.id ? 'You' : 'Committed member'),
-          user_avatar: status.users?.profile_picture || null,
-          latest_status: status,
-          has_unviewed: status.user_id !== authUser.id,
-        });
-      });
-      setStatusFeed(Array.from(latestStatusByUser.values()));
 
       if (isAdminRole(currentUser.role)) {
         const [
@@ -3185,13 +3214,22 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         setDatingLikes([]);
         setDatingMatches([]);
       }
-    } catch (error: any) {
-      console.error('[WebAppShell] loadAppData error', error);
-      setReactionNotice(error?.message || 'Could not load app data. Please try again.');
-      window.setTimeout(() => setReactionNotice(null), 3200);
-    } finally {
-      setLoading(false);
-    }
+      } catch (error: any) {
+        console.error('[WebAppShell] loadAppData error', error);
+        setReactionNotice(error?.message || 'Could not load app data. Please try again.');
+        window.setTimeout(() => setReactionNotice(null), 3200);
+      } finally {
+        releaseInitialLoad();
+      }
+    })();
+
+    const trackedRequest = request.finally(() => {
+      if (loadAppDataInFlightRef.current === trackedRequest) {
+        loadAppDataInFlightRef.current = null;
+      }
+    });
+    loadAppDataInFlightRef.current = trackedRequest;
+    return trackedRequest;
   }, [enrichAdsWithMetrics, resetUserScopedState, resolveAuthUser, router, supabase]);
 
   useEffect(() => {

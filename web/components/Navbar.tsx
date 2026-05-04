@@ -6,7 +6,6 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { ArrowRight, Menu, X } from 'lucide-react';
 import { buildWebAppUrl } from '@/lib/appLinks';
-import { getSupabaseBrowser } from '@/lib/supabase-client';
 
 const publicLinks = [
   { href: '#experience', label: 'Experience' },
@@ -23,6 +22,11 @@ const appLinks = [
   { href: '/app/messages', label: 'Messages' },
   { href: '/app/profile', label: 'Profile' },
 ];
+
+async function getNavbarSupabaseClient() {
+  const { getSupabaseBrowser } = await import('@/lib/supabase-client');
+  return getSupabaseBrowser() as any;
+}
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -42,25 +46,30 @@ export default function Navbar() {
 
   useEffect(() => {
     let mounted = true;
-    const supabase = getSupabaseBrowser() as any;
     const check = async () => {
+      const supabase = await getNavbarSupabaseClient();
       const {
         data: { user },
       } = await supabase.auth.getUser();
       if (mounted) setIsAuthenticated(Boolean(user));
     };
     void check();
-    const { data: sub } = supabase.auth.onAuthStateChange((_event: string, session: any) => {
-      if (mounted) setIsAuthenticated(Boolean(session?.user));
+    let unsubscribe: (() => void) | undefined;
+    void getNavbarSupabaseClient().then((supabase) => {
+      if (!mounted) return;
+      const { data: sub } = supabase.auth.onAuthStateChange((_event: string, session: any) => {
+        if (mounted) setIsAuthenticated(Boolean(session?.user));
+      });
+      unsubscribe = () => sub?.subscription?.unsubscribe?.();
     });
     return () => {
       mounted = false;
-      sub?.subscription?.unsubscribe?.();
+      unsubscribe?.();
     };
   }, []);
 
   const onSignOut = async () => {
-    const supabase = getSupabaseBrowser() as any;
+    const supabase = await getNavbarSupabaseClient();
     await supabase.auth.signOut();
     router.replace('/sign-in');
   };

@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import MobileWebAppShell from '@/components/MobileWebAppShell';
+import MobileWebAppShellLoader from '@/components/MobileWebAppShellLoader';
 
 type ExpoMirrorRouteProps = {
   initialTab?: 'home' | 'feed' | 'reels' | 'dating' | 'search' | 'notifications' | 'messages' | 'profile';
@@ -14,7 +14,7 @@ export default function ExpoMirrorRoute({ initialTab = 'home' }: ExpoMirrorRoute
         </div>
       }
     >
-      <MobileWebAppShell initialTab={initialTab} />
+      <MobileWebAppShellLoader initialTab={initialTab} />
     </Suspense>
   );
 }

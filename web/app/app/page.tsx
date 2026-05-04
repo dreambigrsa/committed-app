@@ -1,5 +1,5 @@
-import MobileWebAppShell from '@/components/MobileWebAppShell';
+import MobileWebAppShellLoader from '@/components/MobileWebAppShellLoader';
 
 export default function WebAppHomePage() {
-  return <MobileWebAppShell initialTab="home" />;
+  return <MobileWebAppShellLoader initialTab="home" />;
 }

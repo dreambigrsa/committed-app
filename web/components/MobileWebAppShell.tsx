@@ -1263,6 +1263,14 @@ function debugWebShell(label: string, payload: Record<string, unknown>) {
   }
 }
 
+function committedAiFirstName(displayName: string) {
+  const t = displayName.trim();
+  if (!t) return '';
+  const first = t.split(/\s+/)[0] || t;
+  return first.length > 24 ? `${first.slice(0, 24)}…` : first;
+}
+
+/** Web-only Committed AI when the `ai@committed.app` user row is missing or for optimistic replies. */
 function getCommittedAIReply(
   input: string,
   history: MessageRow[] = [],
@@ -1271,6 +1279,9 @@ function getCommittedAIReply(
   const trimmed = input.trim();
   const value = trimmed.toLowerCase();
   const userDisplayName = getUserDisplayName(currentUser);
+  const first = committedAiFirstName(userDisplayName);
+  const hiCapital = first ? `${first}, ` : '';
+
   const recentUserInputs = history
     .filter((item) => item.sender_id !== 'committed-ai' && item.sender_id !== 'ai@committed.app')
     .map((item) => (item.content || '').trim().toLowerCase())
@@ -1278,36 +1289,95 @@ function getCommittedAIReply(
   const previousPrompt = recentUserInputs.length > 1 ? recentUserInputs[recentUserInputs.length - 2] : '';
   const isRepeatPrompt = !!previousPrompt && previousPrompt === value;
 
+  if (!trimmed) {
+    return first
+      ? `${first}, type what you need and I will walk you through it.`
+      : 'Type what you need and I will walk you through it.';
+  }
+
+  const looksFrustrated =
+    /wrong\s+with\s+you/i.test(trimmed) ||
+    /what\s*(?:is|'s)\s*wrong/i.test(trimmed) ||
+    /\b(frustrated|annoyed|angry|useless|not\s+helping|hate\s+this|this\s+sucks|so\s+bad)\b/i.test(trimmed) ||
+    (trimmed.length < 120 && /\bwhy\b/i.test(trimmed) && /\b(you|this|that)\b/i.test(trimmed));
+
+  if (looksFrustrated) {
+    return first
+      ? `I'm sorry that felt off, ${first}. I am here for you, not to rattle off scripts. Tell me what you were trying to do in the app (or what broke), and we will fix it together.`
+      : `I'm sorry that felt off. I am here for you, not to rattle off scripts. Tell me what you were trying to do in the app (or what broke), and we will fix it together.`;
+  }
+
+  const shortGreeting =
+    trimmed.length < 72 &&
+    (/^(hi|hey|hello|yo|sup|hiya|howdy|greetings)\b/i.test(trimmed) ||
+      /^(good\s+)?(morning|afternoon|evening)\b/i.test(trimmed) ||
+      /^\s*morning\b/i.test(trimmed) ||
+      /^\s*evening\b/i.test(trimmed) ||
+      /\b(morning|evening)\s+committed\b/i.test(trimmed));
+
+  if (shortGreeting) {
+    if (/morning/i.test(trimmed) && !/afternoon|evening/i.test(trimmed)) {
+      return first
+        ? `Good morning, ${first}. Lovely to hear from you. What would you like help with on Committed today?`
+        : `Good morning. Lovely to hear from you. What would you like help with on Committed today?`;
+    }
+    if (/afternoon/i.test(trimmed)) {
+      return first
+        ? `Good afternoon, ${first}. What can I help you with on Committed?`
+        : `Good afternoon. What can I help you with on Committed?`;
+    }
+    if (/evening/i.test(trimmed)) {
+      return first
+        ? `Good evening, ${first}. What can I help you with on Committed?`
+        : `Good evening. What can I help you with on Committed?`;
+    }
+    return first
+      ? `Hi ${first} — thanks for saying hello. Tell me what you are working on in the app and I will stay with you until it makes sense.`
+      : `Hi — thanks for saying hello. Tell me what you are working on in the app and I will stay with you until it makes sense.`;
+  }
+
+  if (/^(thanks|thank you|ty|thx|cheers)\b/i.test(trimmed) || trimmed.length < 24 && /\b(thanks|thank you)\b/i.test(trimmed)) {
+    return first
+      ? `You are welcome, ${first}. Anything else you want to sort out while we are here?`
+      : `You are welcome. Anything else you want to sort out while we are here?`;
+  }
+
   if ((value.includes('register') || value.includes('registration')) && value.includes('relationship')) {
-    return 'I can guide you now: open Home > Register relationship, add partner details and photo, choose relationship type/privacy, then submit. If you want, I will walk you field-by-field.';
+    return `${hiCapital}I can walk you through registering your relationship: from Home, open Register relationship, add your partner and photo, pick type and privacy, then submit. Say where you are stuck and I will go screen by screen with you.`;
   }
   if (value.includes('dating') || value.includes('match') || value.includes('swipe')) {
-    return 'For dating: open Dating, complete profile setup, then use Discover to like/pass. You can open Filters to widen age, distance, and location if cards look limited.';
+    return `${hiCapital}For dating, head to the Dating tab, finish your profile if anything is missing, then use Discover to like or pass. If you are not seeing people you like, open Filters and we can tune age, distance, and location together—tell me what you are seeing.`;
   }
   if (value.includes('verify') || value.includes('verification') || value.includes('id card') || value.includes('selfie')) {
-    return 'Open Verification and complete this order: Phone -> Email -> ID -> Couple Selfie. Tell me which step you are on and I will guide that exact screen.';
+    return `${hiCapital}Verification usually flows Phone → Email → ID → Couple selfie under the Verification section. Which step are you on right now, and what is happening on that screen?`;
   }
   if (value.includes('message') || value.includes('chat') || value.includes('ai')) {
-    return 'I can help with messaging. Share what is failing (not sending, duplicate replies, delay, or blank thread) and I will give direct troubleshooting steps.';
+    return `${hiCapital}Let us fix messaging. Is something not sending, showing twice, arriving late, or is a thread blank? Describe what you see and I will give concrete steps.`;
   }
   if (value.includes('settings') || value.includes('privacy') || value.includes('security')) {
-    return 'Go to Settings for profile photo, privacy/security controls, blocked users, sessions, and 2FA. Tell me what you want to change and I will map the exact path.';
+    return `${hiCapital}Most account controls live under Settings—profile photo, privacy, blocked people, sessions, and two-factor auth. What do you want to change? I will point you to the exact place.`;
   }
   if (value.includes('admin') || value.includes('dashboard') || value.includes('moderation')) {
-    return 'If you are an admin/moderator, open Profile > Admin to manage users, relationship reviews, posts/reels moderation, and payment verifications.';
+    return `${hiCapital}If you are an admin or moderator, open Profile → Admin for users, relationship reviews, posts and reels moderation, and payment checks. What are you trying to do there?`;
   }
   const asksName =
     /\b(my name|know my name|what('?s| is) my name|who am i)\b/.test(value) ||
     (value.includes('name') && value.includes('account'));
   if (asksName) {
-    return `Yes. Your account name is ${userDisplayName}. If this is not correct, update it in Settings and I will use the new name.`;
+    return first
+      ? `On your account you show up as ${userDisplayName || 'this profile'}. If that should read differently, you can update it in Settings and I will match it next time, ${first}.`
+      : `On your account you show up as ${userDisplayName || 'this profile'}. If that should read differently, you can update it in Settings.`;
   }
 
-  const preview = trimmed.length > 90 ? `${trimmed.slice(0, 90)}...` : trimmed;
   if (isRepeatPrompt) {
-    return `I saw the same message again: "${preview}". I understand. Pick one and I will guide it now: Dating, Relationship Registration, Verification, Settings, or Admin.`;
+    return first
+      ? `${first}, I may have missed what you needed last time. Forget the canned stuff—what is the one thing you want sorted in the app right now?`
+      : `I may have missed what you needed last time. Forget the canned stuff—what is the one thing you want sorted in the app right now?`;
   }
-  return `Understood: "${preview}". I can help with Dating, Relationship Registration, Verification, Settings, or Admin. Tell me which flow you want step-by-step.`;
+
+  return first
+    ? `${first}, I read you. I am Committed's assistant, not a search box with a script—tell me in plain language what you want to do (dating, your relationship on the app, verification, your profile or settings, or admin if that is you), and I will stay in the conversation with you.`
+    : `I read you. I am Committed's assistant—tell me in plain language what you want to do (dating, your relationship on the app, verification, your profile or settings, or admin if that is you), and I will stay in the conversation with you.`;
 }
 
 function Avatar({ src, name, size = 'md' }: { src?: string | null; name?: string | null; size?: 'sm' | 'md' | 'lg' }) {

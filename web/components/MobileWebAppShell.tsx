@@ -2513,6 +2513,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         .order('created_at', { ascending: false })
         .limit(30);
 
+      // Split loads: slow dating discovery / likes / matches must not block feed, relationship, or inbox.
       const [
         postsResult,
         reelsResult,
@@ -2520,9 +2521,6 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         myDatingResult,
         notificationsResult,
         conversationsResult,
-        datingResult,
-        likesResult,
-        matchesResult,
       ] = await withClientTimeout(
         Promise.all([
           postsResultPromise,
@@ -2531,12 +2529,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           myDatingResultPromise,
           notificationsResultPromise,
           conversationsResultPromise,
-          datingResultPromise,
-          likesResultPromise,
-          matchesResultPromise,
         ]),
         12000,
-        'Loading initial shell data'
+        'Loading feed and core shell'
       );
 
       const fetchedPosts = ((postsResult.data || []) as FeedPost[]).filter(Boolean);
@@ -2793,6 +2788,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         return [];
       };
 
+      const datingResult = await datingResultPromise;
       const initialDiscoveryRows = ((datingResult.data || []) as DatingProfile[]).filter(Boolean);
       let discoverProfiles = applyProfileFilters(initialDiscoveryRows);
       const [sentLikesResult, sentPassesResult] = await Promise.all([
@@ -3213,6 +3209,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         setAds(await enrichAdsWithMetrics(ownAdsResult.data || []));
       }
 
+      const [likesResult, matchesResult] = await Promise.all([likesResultPromise, matchesResultPromise]);
       const likeRows = ((likesResult.data || []) as DatingLike[]).filter(Boolean);
       const matchRows = ((matchesResult.data || []) as DatingMatch[]).filter(Boolean);
       const relatedUserIds = Array.from(new Set([

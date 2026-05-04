@@ -2513,10 +2513,30 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         .order('created_at', { ascending: false })
         .limit(30);
 
-      const [postsResult, reelsResult] = await withClientTimeout(
-        Promise.all([postsResultPromise, reelsResultPromise]),
+      const [
+        postsResult,
+        reelsResult,
+        relationshipResult,
+        myDatingResult,
+        notificationsResult,
+        conversationsResult,
+        datingResult,
+        likesResult,
+        matchesResult,
+      ] = await withClientTimeout(
+        Promise.all([
+          postsResultPromise,
+          reelsResultPromise,
+          relationshipResultPromise,
+          myDatingResultPromise,
+          notificationsResultPromise,
+          conversationsResultPromise,
+          datingResultPromise,
+          likesResultPromise,
+          matchesResultPromise,
+        ]),
         12000,
-        'Loading feed and reels'
+        'Loading initial shell data'
       );
 
       const fetchedPosts = ((postsResult.data || []) as FeedPost[]).filter(Boolean);

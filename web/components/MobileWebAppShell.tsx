@@ -44,6 +44,7 @@ import {
   Send,
   Settings,
   Share2,
+  ExternalLink,
   Shield,
   ShieldCheck,
   UploadCloud,
@@ -2184,6 +2185,22 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   }, [ads, appPath, searchParams, subPath]);
 
   useEffect(() => {
+    if (appPath[0] !== 'ads' || subPath !== 'promote') return;
+    const postId = (searchParams.get('postId') || '').trim();
+    if (!postId || (searchParams.get('adId') || '').trim()) return;
+    const post = posts.find((p) => p.id === postId);
+    if (!post) return;
+    setAdForm((prev) => {
+      if (prev.title.trim() && prev.description.trim()) return prev;
+      const snippet = (post.content || '').trim().slice(0, 48);
+      const title = prev.title.trim() || (snippet ? `Boost: ${snippet}${(post.content || '').length > 48 ? '…' : ''}` : 'Feed post boost');
+      const description = prev.description.trim() || (post.content || '').trim() || '';
+      const imageUrl = prev.imageUrl.trim() || (Array.isArray(post.media_urls) ? post.media_urls[0] : '') || '';
+      return { ...prev, title, description, imageUrl: imageUrl || prev.imageUrl, placement: prev.placement || 'feed' };
+    });
+  }, [appPath, posts, searchParams, subPath]);
+
+  useEffect(() => {
     setRelationshipStepAnim({ opacity: 0, y: 12 });
     const frame = window.requestAnimationFrame(() => {
       setRelationshipStepAnim({ opacity: 1, y: 0 });
@@ -4314,6 +4331,118 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     }
   };
 
+  const deleteOwnedPost = async (post: FeedPost) => {
+    if (!supabase || !user || post.user_id !== user.id) return;
+    if (!window.confirm('Delete this post?')) return;
+    try {
+      const { data, error } = await supabase.from('posts').delete().eq('id', post.id).eq('user_id', user.id).select('id').maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error('not_deleted');
+      setPosts((prev) => prev.filter((p) => p.id !== post.id));
+      setRoutePost((prev) => (prev?.id === post.id ? null : prev));
+      setReactionNotice('Post deleted');
+      window.setTimeout(() => setReactionNotice(null), 1800);
+    } catch {
+      setReactionNotice('Could not delete post');
+      window.setTimeout(() => setReactionNotice(null), 2500);
+    }
+  };
+
+  const editOwnedPostText = async (post: FeedPost) => {
+    if (!supabase || !user || post.user_id !== user.id) return;
+    const next = window.prompt('Edit post text', post.content || '');
+    if (next === null) return;
+    const mediaUrls = Array.isArray(post.media_urls) ? post.media_urls : [];
+    const mediaType = (post.media_type as string) || (mediaUrls.length ? 'image' : 'text');
+    try {
+      const { error } = await supabase
+        .from('posts')
+        .update({
+          content: next.trim() || null,
+          media_urls: mediaUrls,
+          media_type: mediaType,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', post.id)
+        .eq('user_id', user.id);
+      if (error) throw error;
+      setPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, content: next.trim() || null, media_urls: mediaUrls, media_type: mediaType } : p)));
+      setRoutePost((prev) => (prev?.id === post.id ? { ...prev, content: next.trim() || null, media_urls: mediaUrls, media_type: mediaType } : prev));
+      setReactionNotice('Post updated');
+      window.setTimeout(() => setReactionNotice(null), 1800);
+    } catch {
+      setReactionNotice('Could not update post');
+      window.setTimeout(() => setReactionNotice(null), 2500);
+    }
+  };
+
+  const reportPostFromFeed = async (post: FeedPost) => {
+    if (!supabase || !user || post.user_id === user.id) return;
+    const reason = window.prompt('Why are you reporting this post?', 'Spam or inappropriate');
+    if (!reason?.trim()) return;
+    try {
+      const { error } = await supabase.from('reported_content').insert({
+        reporter_id: user.id,
+        reported_user_id: post.user_id,
+        content_type: 'post',
+        content_id: post.id,
+        reason: reason.trim(),
+        description: post.content || null,
+        status: 'pending',
+      });
+      if (error) throw error;
+      setReactionNotice('Report sent for review');
+      window.setTimeout(() => setReactionNotice(null), 2200);
+    } catch {
+      setReactionNotice('Could not send report');
+      window.setTimeout(() => setReactionNotice(null), 2500);
+    }
+  };
+
+  const adminDeletePostFromFeed = async (post: FeedPost) => {
+    if (!supabase || !user || !isAdminRole(user.role)) return;
+    if (!window.confirm('Delete this post as admin?')) return;
+    try {
+      const { error } = await supabase.from('posts').delete().eq('id', post.id);
+      if (error) throw error;
+      setPosts((prev) => prev.filter((p) => p.id !== post.id));
+      setRoutePost((prev) => (prev?.id === post.id ? null : prev));
+      setReactionNotice('Post removed');
+      window.setTimeout(() => setReactionNotice(null), 1800);
+    } catch {
+      setReactionNotice('Could not delete post');
+      window.setTimeout(() => setReactionNotice(null), 2500);
+    }
+  };
+
+  const adminRejectPostFromFeed = async (post: FeedPost) => {
+    if (!supabase || !user || !isAdminRole(user.role)) return;
+    if (!window.confirm('Reject this post (moderation)?')) return;
+    try {
+      const { error } = await supabase
+        .from('posts')
+        .update({
+          moderation_status: 'rejected',
+          moderation_reason: 'Rejected by admin',
+          moderated_at: new Date().toISOString(),
+          moderated_by: user.id,
+        })
+        .eq('id', post.id);
+      if (error) throw error;
+      setPosts((prev) => prev.filter((p) => p.id !== post.id));
+      setRoutePost((prev) => (prev?.id === post.id ? null : prev));
+      setReactionNotice('Post rejected');
+      window.setTimeout(() => setReactionNotice(null), 1800);
+    } catch {
+      setReactionNotice('Could not reject post');
+      window.setTimeout(() => setReactionNotice(null), 2500);
+    }
+  };
+
+  const openBoostPostFlow = (post: FeedPost) => {
+    router.push(`/app/ads/promote?postId=${encodeURIComponent(post.id)}`);
+  };
+
   const toggleReelLike = async (reel: Reel) => {
     if (!supabase || !user) return;
     const wasLiked = !!reel.likes?.includes(user.id);
@@ -5082,6 +5211,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         billing_status: 'pending',
         status: 'pending',
         updated_at: new Date().toISOString(),
+        ...(!adId && (searchParams.get('postId') || '').trim()
+          ? { promoted_post_id: (searchParams.get('postId') || '').trim() }
+          : {}),
       };
       const query = adId
         ? supabase.from('advertisements').update(payload).eq('id', adId).eq('user_id', user.id)
@@ -8664,7 +8796,19 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       ) : null}
       <div className="mt-5">
         {posts.slice(0, 1).map((post) => (
-          <PostCard key={post.id} post={post} user={user} onLike={togglePostLike} onShare={shareText} />
+          <PostCard
+            key={post.id}
+            post={post}
+            user={user}
+            onLike={togglePostLike}
+            onShare={shareText}
+            onEditPost={editOwnedPostText}
+            onDeletePost={deleteOwnedPost}
+            onBoostPost={openBoostPostFlow}
+            onReportPost={reportPostFromFeed}
+            onAdminDeletePost={adminDeletePostFromFeed}
+            onAdminRejectPost={adminRejectPostFromFeed}
+          />
         ))}
       </div>
     </div>
@@ -8685,7 +8829,19 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           </Link>
         </div>
         {visiblePosts.map((post) => (
-          <PostCard key={post.id} post={post} user={user} onLike={togglePostLike} onShare={shareText} />
+          <PostCard
+            key={post.id}
+            post={post}
+            user={user}
+            onLike={togglePostLike}
+            onShare={shareText}
+            onEditPost={editOwnedPostText}
+            onDeletePost={deleteOwnedPost}
+            onBoostPost={openBoostPostFlow}
+            onReportPost={reportPostFromFeed}
+            onAdminDeletePost={adminDeletePostFromFeed}
+            onAdminRejectPost={adminRejectPostFromFeed}
+          />
         ))}
         {feedLimit < posts.length ? (
           <button type="button" onClick={() => setFeedLimit((prev) => prev + 5)} className="w-full rounded-[18px] bg-slate-900 py-3 font-black text-white">
@@ -8762,7 +8918,18 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     if (!post) return <EmptyState icon={Heart} title="Post Not Found" text="This post is not loaded or is no longer available." action="Back to Feed" onAction={() => router.push('/app/feed')} />;
     return (
       <div className="space-y-3 px-3 py-3">
-        <PostCard post={post} user={user} onLike={togglePostLike} onShare={shareText} />
+        <PostCard
+          post={post}
+          user={user}
+          onLike={togglePostLike}
+          onShare={shareText}
+          onEditPost={editOwnedPostText}
+          onDeletePost={deleteOwnedPost}
+          onBoostPost={openBoostPostFlow}
+          onReportPost={reportPostFromFeed}
+          onAdminDeletePost={adminDeletePostFromFeed}
+          onAdminRejectPost={adminRejectPostFromFeed}
+        />
         <CommentThread
           id="comments"
           title="Comments"
@@ -15269,14 +15436,46 @@ function PostCard({
   user,
   onLike,
   onShare,
+  onEditPost,
+  onDeletePost,
+  onBoostPost,
+  onReportPost,
+  onAdminDeletePost,
+  onAdminRejectPost,
 }: {
   post: FeedPost;
   user: WebUser | null;
   onLike: (post: FeedPost) => void | Promise<void>;
   onShare: (title: string, url: string) => void | Promise<void>;
+  onEditPost: (post: FeedPost) => void | Promise<void>;
+  onDeletePost: (post: FeedPost) => void | Promise<void>;
+  onBoostPost: (post: FeedPost) => void;
+  onReportPost: (post: FeedPost) => void | Promise<void>;
+  onAdminDeletePost: (post: FeedPost) => void | Promise<void>;
+  onAdminRejectPost: (post: FeedPost) => void | Promise<void>;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuWrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (e: MouseEvent) => {
+      if (menuWrapRef.current?.contains(e.target as Node)) return;
+      setMenuOpen(false);
+    };
+    const t = window.setTimeout(() => document.addEventListener('mousedown', close), 0);
+    return () => {
+      window.clearTimeout(t);
+      document.removeEventListener('mousedown', close);
+    };
+  }, [menuOpen]);
+
   const firstImage = mediaImage(post.media_urls?.[0]);
   const liked = !!(user && post.likes?.includes(user.id));
+  const isOwner = !!(user && post.user_id === user.id);
+  const isAdmin = isAdminRole(user?.role);
+  const closeMenu = () => setMenuOpen(false);
+
   return (
     <article className="rounded-[22px] border border-slate-200 bg-white shadow-sm">
       <div className="flex items-center gap-3 p-4">
@@ -15294,7 +15493,110 @@ function PostCard({
           </ProfileUserLink>
           <p className="text-xs font-semibold text-slate-400">{timeAgo(post.created_at)}</p>
         </div>
-        <MoreHorizontal className="h-5 w-5 text-slate-400" />
+        <div className="relative shrink-0" ref={menuWrapRef}>
+          <button
+            type="button"
+            aria-label="Post options"
+            aria-expanded={menuOpen}
+            onClick={(e) => {
+              e.stopPropagation();
+              setMenuOpen((o) => !o);
+            }}
+            className="grid h-10 w-10 place-items-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+          >
+            <MoreHorizontal className="h-5 w-5" />
+          </button>
+          {menuOpen ? (
+            <div
+              role="menu"
+              className="absolute right-0 top-full z-30 mt-1 min-w-[200px] overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm font-bold text-slate-800 shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {isOwner ? (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-slate-50"
+                    onClick={() => {
+                      closeMenu();
+                      void onEditPost(post);
+                    }}
+                  >
+                    <Pencil className="h-4 w-4 shrink-0 text-slate-600" />
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2 px-4 py-3 text-left text-rose-700 hover:bg-rose-50"
+                    onClick={() => {
+                      closeMenu();
+                      void onDeletePost(post);
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4 shrink-0" />
+                    Delete
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-slate-50"
+                    onClick={() => {
+                      closeMenu();
+                      onBoostPost(post);
+                    }}
+                  >
+                    <ExternalLink className="h-4 w-4 shrink-0 text-blue-600" />
+                    Boost post
+                  </button>
+                </>
+              ) : null}
+              {isAdmin && !isOwner ? (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2 px-4 py-3 text-left text-rose-700 hover:bg-rose-50"
+                    onClick={() => {
+                      closeMenu();
+                      void onAdminDeletePost(post);
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4 shrink-0" />
+                    Delete (Admin)
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2 px-4 py-3 text-left text-rose-700 hover:bg-rose-50"
+                    onClick={() => {
+                      closeMenu();
+                      void onAdminRejectPost(post);
+                    }}
+                  >
+                    <X className="h-4 w-4 shrink-0" />
+                    Reject (Admin)
+                  </button>
+                </>
+              ) : null}
+              {!isOwner ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 px-4 py-3 text-left text-rose-700 hover:bg-rose-50"
+                  onClick={() => {
+                    closeMenu();
+                    void onReportPost(post);
+                  }}
+                >
+                  <Flag className="h-4 w-4 shrink-0" />
+                  Report
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </div>
       {post.content ? <p className="px-4 pb-3 text-[15px] leading-6 text-slate-800">{post.content}</p> : null}
       {firstImage ? <img src={firstImage} alt="" loading="lazy" className="max-h-[460px] w-full object-cover" /> : null}

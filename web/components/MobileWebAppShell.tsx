@@ -76,6 +76,7 @@ import ReportUserModal from '@/components/ReportUserModal';
 import { buildPostWebUrl, buildReelWebUrl } from '@/lib/appLinks';
 import { getPostVisibilityOrFilter, getReelVisibilityOrFilter } from '@/lib/content-visibility';
 import { filterVisibleMessagesForUser } from '@/lib/parity-helpers';
+import { getSignedUrlForMediaForWeb } from '@/lib/status-media';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 const DatingDiscoverSwipeDeck = dynamic(
@@ -562,6 +563,21 @@ type StatusFeedItem = {
     created_at?: string | null;
   } | null;
   has_unviewed?: boolean;
+};
+
+/** Full status row for `/app/status/*` viewer (parity with mobile `getUserStatuses`). */
+type StatusViewerRow = {
+  id: string;
+  user_id: string;
+  content_type?: string | null;
+  text_content?: string | null;
+  media_path?: string | null;
+  background_color?: string | null;
+  text_style?: string | null;
+  text_effect?: string | null;
+  text_alignment?: string | null;
+  background_image_path?: string | null;
+  created_at?: string | null;
 };
 
 type SearchResult = {
@@ -1585,8 +1601,15 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   /** Re-render profile presence dot as `getEffectiveProfilePresence` ages out stale `online` rows without navigation. */
   const [profilePresenceTick, setProfilePresenceTick] = useState(0);
   const webPresenceHeartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [routeStatusItem, setRouteStatusItem] = useState<StatusFeedItem | null>(null);
-  const [routeStatusLoading, setRouteStatusLoading] = useState(false);
+  const [statusViewerStatuses, setStatusViewerStatuses] = useState<StatusViewerRow[]>([]);
+  const [statusViewerOwner, setStatusViewerOwner] = useState<{
+    id: string;
+    full_name: string | null;
+    profile_picture: string | null;
+  } | null>(null);
+  const [statusViewerIndex, setStatusViewerIndex] = useState(0);
+  const [statusViewerLoading, setStatusViewerLoading] = useState(false);
+  const [statusViewerMediaUrl, setStatusViewerMediaUrl] = useState<string | null>(null);
   const [routeRows, setRouteRows] = useState<any[]>([]);
   const [routeRowsLoading, setRouteRowsLoading] = useState(false);
   const [routeRowsError, setRouteRowsError] = useState<string | null>(null);
@@ -1981,8 +2004,11 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     setRouteProfileRelationship(null);
     setRouteProfileStatusType(null);
     setRouteProfileLastActiveAt(null);
-    setRouteStatusItem(null);
-    setRouteStatusLoading(false);
+    setStatusViewerStatuses([]);
+    setStatusViewerOwner(null);
+    setStatusViewerIndex(0);
+    setStatusViewerLoading(false);
+    setStatusViewerMediaUrl(null);
     setRouteRows([]);
     setIdVerificationDocument(null);
     setDatingInterestForm({ name: '', icon: '', category: 'hobbies' });
@@ -3889,54 +3915,125 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   }, [appPath, searchParams, subPath, supabase, user?.id]);
 
   useEffect(() => {
-    const targetId = (appPath[0] === 'status' || appPath[0] === 'status-item') ? appPath[1] : '';
-    if (!supabase || !targetId) {
-      setRouteStatusItem(null);
-      setRouteStatusLoading(false);
+    const seg0 = appPath[0];
+    const targetId = (seg0 === 'status' || seg0 === 'status-item') ? appPath[1] : '';
+    if (!supabase || !user || !targetId) {
+      setStatusViewerStatuses([]);
+      setStatusViewerOwner(null);
+      setStatusViewerIndex(0);
+      setStatusViewerLoading(false);
+      setStatusViewerMediaUrl(null);
       return;
     }
-    if (
-      statusFeed.some((status) =>
-        appPath[0] === 'status-item'
-          ? status.latest_status?.id === targetId
-          : status.user_id === targetId
-      )
-    ) {
-      setRouteStatusItem(null);
+    if (seg0 === 'status' && targetId === 'create') {
+      setStatusViewerStatuses([]);
+      setStatusViewerOwner(null);
+      setStatusViewerIndex(0);
+      setStatusViewerLoading(false);
+      setStatusViewerMediaUrl(null);
       return;
     }
+
     let cancelled = false;
-    const loadRouteStatus = async () => {
-      setRouteStatusLoading(true);
+    const loadAllStatusesForViewer = async () => {
+      setStatusViewerLoading(true);
+      setStatusViewerMediaUrl(null);
       try {
-        const query = supabase
+        let ownerId = targetId;
+        if (seg0 === 'status-item') {
+          const { data: row, error: rowErr } = await supabase
+            .from('statuses')
+            .select('user_id')
+            .eq('id', targetId)
+            .maybeSingle();
+          if (cancelled) return;
+          if (rowErr || !row?.user_id) {
+            setStatusViewerStatuses([]);
+            setStatusViewerOwner(null);
+            return;
+          }
+          ownerId = row.user_id;
+        }
+
+        const isOwn = ownerId === user.id;
+        let q = supabase
           .from('statuses')
-          .select('id,user_id,content_type,text_content,media_path,background_color,created_at,expires_at,archived,users!statuses_user_id_fkey(full_name,profile_picture)')
-          .eq('archived', false)
-          .gt('expires_at', new Date().toISOString())
-          .order('created_at', { ascending: false })
-          .limit(1);
-        const { data } = appPath[0] === 'status-item'
-          ? await query.eq('id', targetId)
-          : await query.eq('user_id', targetId);
-        const status = (data || [])[0] as any;
+          .select(
+            'id,user_id,content_type,text_content,media_path,background_color,text_style,text_effect,text_alignment,background_image_path,created_at,expires_at,archived'
+          )
+          .eq('user_id', ownerId);
+        if (!isOwn) {
+          q = q.eq('archived', false).gt('expires_at', new Date().toISOString());
+        }
+        const { data: rows, error } = await q.order('created_at', { ascending: true });
         if (cancelled) return;
-        setRouteStatusItem(status ? {
-          user_id: status.user_id,
-          user_name: status.users?.full_name || 'Committed member',
-          user_avatar: status.users?.profile_picture || null,
-          latest_status: status,
-          has_unviewed: status.user_id !== user?.id,
-        } : null);
+        if (error) {
+          if (process.env.NODE_ENV !== 'production') {
+            console.warn('[WebAppShell] status viewer query failed', error);
+          }
+          setStatusViewerStatuses([]);
+          setStatusViewerOwner(null);
+          return;
+        }
+
+        const { data: owner } = await supabase
+          .from('users')
+          .select('id,full_name,profile_picture')
+          .eq('id', ownerId)
+          .maybeSingle();
+        if (cancelled) return;
+
+        const list = ((rows || []) as StatusViewerRow[]).filter(Boolean);
+        setStatusViewerOwner(
+          owner
+            ? {
+                id: owner.id,
+                full_name: owner.full_name ?? null,
+                profile_picture: owner.profile_picture ?? null,
+              }
+            : { id: ownerId, full_name: null, profile_picture: null }
+        );
+        setStatusViewerStatuses(list);
+
+        let startIdx = 0;
+        if (seg0 === 'status-item') {
+          const i = list.findIndex((r) => r.id === targetId);
+          startIdx = i >= 0 ? i : Math.max(0, list.length - 1);
+        } else {
+          startIdx = list.length > 0 ? list.length - 1 : 0;
+        }
+        setStatusViewerIndex(startIdx);
       } finally {
-        if (!cancelled) setRouteStatusLoading(false);
+        if (!cancelled) setStatusViewerLoading(false);
       }
     };
-    void loadRouteStatus();
+
+    void loadAllStatusesForViewer();
     return () => {
       cancelled = true;
     };
-  }, [appPath, statusFeed, supabase, user?.id]);
+  }, [appPath, supabase, user?.id]);
+
+  useEffect(() => {
+    const st = statusViewerStatuses[statusViewerIndex];
+    if (!supabase || !st?.media_path?.trim()) {
+      setStatusViewerMediaUrl(null);
+      return;
+    }
+    const type = (st.content_type || '').toLowerCase();
+    if (type === 'text') {
+      setStatusViewerMediaUrl(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const url = await getSignedUrlForMediaForWeb(supabase, st.media_path!.trim());
+      if (!cancelled) setStatusViewerMediaUrl(url);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [statusViewerStatuses, statusViewerIndex, supabase]);
 
   useEffect(() => {
     const relationshipRouteActive = appPath[0] === 'certificates' || appPath[0] === 'anniversary';
@@ -8751,34 +8848,161 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   };
 
   const renderStatusViewer = () => {
-    const targetId = appPath[1];
-    const item = appPath[0] === 'status-item'
-      ? statusFeed.find((status) => status.latest_status?.id === targetId)
-      : (targetId ? statusFeed.find((status) => status.user_id === targetId) : statusFeed[0]);
-    const resolvedItem = item || routeStatusItem;
-    if (routeStatusLoading && !resolvedItem) return <ScreenSkeleton />;
-    if (!resolvedItem) return <EmptyState icon={Sparkles} title="No Status" text="This status is no longer available." action="Back to Feed" onAction={() => router.push('/app/feed')} />;
+    if (statusViewerLoading && statusViewerStatuses.length === 0) return <ScreenSkeleton />;
+    if (!statusViewerStatuses.length) {
+      return (
+        <EmptyState
+          icon={Sparkles}
+          title="No Status"
+          text="This story is not available or has expired."
+          action="Back to Feed"
+          onAction={() => router.push('/app/feed')}
+        />
+      );
+    }
+
+    const ownerId = statusViewerOwner?.id || statusViewerStatuses[0]?.user_id;
+    const ownerName =
+      (statusViewerOwner?.full_name && String(statusViewerOwner.full_name).trim()) ||
+      (ownerId === user?.id ? 'You' : 'Committed member');
+    const ownerAvatar = statusViewerOwner?.profile_picture || null;
+    const current = statusViewerStatuses[statusViewerIndex];
+    if (!current) {
+      return (
+        <EmptyState
+          icon={Sparkles}
+          title="No Status"
+          text="This story is not available."
+          action="Back to Feed"
+          onAction={() => router.push('/app/feed')}
+        />
+      );
+    }
+
+    const contentType = (current.content_type || '').toLowerCase();
+    const isText = contentType === 'text';
+    const isVideo = contentType === 'video';
+    const textAlign =
+      current.text_alignment === 'left' ? 'text-left' : current.text_alignment === 'right' ? 'text-right' : 'text-center';
+    const goPrev = () => setStatusViewerIndex((i) => Math.max(0, i - 1));
+    const goNext = () => setStatusViewerIndex((i) => Math.min(statusViewerStatuses.length - 1, i + 1));
+
     return (
-      <div className="grid min-h-[calc(100vh-122px)] place-items-center bg-slate-950 p-4 text-white">
-        <section className="relative flex min-h-[70vh] w-full flex-col justify-between overflow-hidden rounded-[28px] p-5 shadow-2xl" style={{ background: resolvedItem.latest_status?.background_color || 'linear-gradient(135deg,#2563eb,#ec4899)' }}>
-          {resolvedItem.latest_status?.media_path ? <img src={resolvedItem.latest_status.media_path} alt="" className="absolute inset-0 h-full w-full object-cover opacity-70" /> : null}
-          <div className="relative z-10 flex items-center gap-3">
+      <div className="relative flex min-h-[calc(100vh-122px)] flex-col bg-black text-white">
+        <div className="absolute left-2 right-2 top-2 z-30 flex gap-1">
+          {statusViewerStatuses.map((s, i) => (
+            <div key={s.id} className="h-1 flex-1 overflow-hidden rounded-full bg-white/25">
+              <div
+                className="h-full rounded-full bg-white transition-[width] duration-200"
+                style={{ width: i <= statusViewerIndex ? '100%' : '0%' }}
+              />
+            </div>
+          ))}
+        </div>
+
+        <header className="relative z-20 flex items-center justify-between px-3 pt-8">
+          <button
+            type="button"
+            onClick={() => router.push('/app/feed')}
+            className="grid h-10 w-10 place-items-center rounded-full bg-black/40 text-white backdrop-blur"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          <div className="flex min-w-0 flex-1 items-center gap-3 px-2">
             <ProfileUserLink
               viewerUserId={user?.id}
-              subjectUserId={resolvedItem.user_id}
+              subjectUserId={ownerId}
               className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-white"
             >
-              <Avatar src={resolvedItem.user_avatar} name={resolvedItem.user_name} />
+              <Avatar src={ownerAvatar} name={ownerName} />
             </ProfileUserLink>
-            <div>
-              <ProfileUserLink viewerUserId={user?.id} subjectUserId={resolvedItem.user_id} className="inline-block">
-                <p className="font-black hover:underline">{resolvedItem.user_name}</p>
+            <div className="min-w-0">
+              <ProfileUserLink viewerUserId={user?.id} subjectUserId={ownerId} className="inline-block min-w-0">
+                <p className="truncate font-black hover:underline">{ownerName}</p>
               </ProfileUserLink>
-              <p className="text-xs font-semibold text-white/75">{timeAgo(resolvedItem.latest_status?.created_at)}</p>
+              <p className="text-xs font-semibold text-white/75">
+                {timeAgo(current.created_at)}
+                {statusViewerStatuses.length > 1
+                  ? ` · ${statusViewerIndex + 1}/${statusViewerStatuses.length}`
+                  : null}
+              </p>
             </div>
           </div>
-          <p className="relative z-10 text-4xl font-black leading-tight">{resolvedItem.latest_status?.text_content || 'Status'}</p>
-        </section>
+          <span className="w-10" />
+        </header>
+
+        <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+          {isText ? (
+            <div
+              className={`flex min-h-[62vh] flex-1 flex-col items-center justify-center px-6 py-10 ${textAlign}`}
+              style={{
+                background: current.background_color?.startsWith('#')
+                  ? current.background_color
+                  : current.background_color || '#1A73E8',
+              }}
+            >
+              <p className="max-w-lg whitespace-pre-wrap text-3xl font-black leading-snug text-white drop-shadow-md sm:text-4xl">
+                {(current.text_content && current.text_content.trim()) || 'Status'}
+              </p>
+            </div>
+          ) : isVideo ? (
+            statusViewerMediaUrl ? (
+              <div className="relative flex min-h-[62vh] flex-1 items-center justify-center bg-black">
+                <video src={statusViewerMediaUrl} className="h-full max-h-[72vh] w-full object-contain" controls playsInline />
+                {current.text_content?.trim() ? (
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-6 pt-16">
+                    <p className={`whitespace-pre-wrap text-lg font-bold text-white ${textAlign}`}>{current.text_content.trim()}</p>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="flex min-h-[40vh] flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+                <Loader2 className="h-10 w-10 animate-spin text-white/80" />
+                <p className="text-sm font-semibold text-white/70">Loading video…</p>
+              </div>
+            )
+          ) : statusViewerMediaUrl ? (
+            <div className="relative flex min-h-[62vh] flex-1">
+              <img src={statusViewerMediaUrl} alt="" className="h-full w-full object-cover" />
+              {current.text_content?.trim() ? (
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-6 pt-20">
+                  <p className={`whitespace-pre-wrap text-lg font-bold text-white ${textAlign}`}>{current.text_content.trim()}</p>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="flex min-h-[40vh] flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+              <Loader2 className="h-10 w-10 animate-spin text-white/80" />
+              <p className="text-sm font-semibold text-white/70">Loading media…</p>
+            </div>
+          )}
+        </div>
+
+        {statusViewerStatuses.length > 1 ? (
+          <div className="relative z-20 flex items-center justify-between px-4 pb-6 pt-2">
+            <button
+              type="button"
+              onClick={goPrev}
+              disabled={statusViewerIndex <= 0}
+              className="grid h-12 w-12 place-items-center rounded-full bg-white/15 text-white backdrop-blur disabled:opacity-30"
+              aria-label="Previous status"
+            >
+              <ChevronLeft className="h-7 w-7" />
+            </button>
+            <button
+              type="button"
+              onClick={goNext}
+              disabled={statusViewerIndex >= statusViewerStatuses.length - 1}
+              className="grid h-12 w-12 place-items-center rounded-full bg-white/15 text-white backdrop-blur disabled:opacity-30"
+              aria-label="Next status"
+            >
+              <ChevronRight className="h-7 w-7" />
+            </button>
+          </div>
+        ) : (
+          <div className="h-4" />
+        )}
       </div>
     );
   };

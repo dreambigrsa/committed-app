@@ -74,6 +74,7 @@ import { mergeUsersProfileForWebShell, usersRowBootstrapFromAuth } from '@/lib/w
 import { countRowsByColumn } from '@/lib/supabase-count';
 import { profileBrowseHref, webAppProfileHref } from '@/lib/web-app-profile-href';
 import ReportUserModal from '@/components/ReportUserModal';
+import { EditPostEditorPanel } from '@/components/EditPostEditorPanel';
 import { buildPostWebUrl, buildReelWebUrl } from '@/lib/appLinks';
 import { getPostVisibilityOrFilter, getReelVisibilityOrFilter } from '@/lib/content-visibility';
 import { filterVisibleMessagesForUser } from '@/lib/parity-helpers';
@@ -101,6 +102,11 @@ type TabKey = 'home' | 'feed' | 'reels' | 'dating' | 'search' | 'notifications' 
 /** Lets Avatar use `storage.getPublicUrl` for path-only `users.profile_picture` values (same as mobile). */
 const WebShellSupabaseContext = createContext<SupabaseClient | null>(null);
 const WEB_DATING_PROFILE_HANDOFF_KEY = 'committed.web.datingProfileHandoff.v1';
+
+/** Web status viewer: auto-advance per slide (aligns with mobile default ~5s for text/image). */
+const WEB_STATUS_SEGMENT_MS_TEXT_IMAGE = 5000;
+/** Video: generous window so controls remain usable; advance when timer ends or user taps next. */
+const WEB_STATUS_SEGMENT_MS_VIDEO = 90000;
 
 /** Verbose avatar pipeline logs + Settings/Profile debug panel (set NEXT_PUBLIC_DEBUG_AVATAR=1 on staging/prod builds). */
 function isAvatarHardDebugEnabled(): boolean {
@@ -1611,6 +1617,12 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const [statusViewerIndex, setStatusViewerIndex] = useState(0);
   const [statusViewerLoading, setStatusViewerLoading] = useState(false);
   const [statusViewerMediaUrl, setStatusViewerMediaUrl] = useState<string | null>(null);
+  const [statusViewerPaused, setStatusViewerPaused] = useState(false);
+  const [statusViewerProgress, setStatusViewerProgress] = useState(0);
+  /** When already on the first slide, tap-left restarts the segment timer (Instagram-style). */
+  const [statusViewerSegmentNonce, setStatusViewerSegmentNonce] = useState(0);
+  const statusViewerPausedRef = useRef(false);
+  const statusViewerIndexRef = useRef(0);
   const [routeRows, setRouteRows] = useState<any[]>([]);
   const [routeRowsLoading, setRouteRowsLoading] = useState(false);
   const [routeRowsError, setRouteRowsError] = useState<string | null>(null);
@@ -1690,6 +1702,14 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const [statusBackgroundColor, setStatusBackgroundColor] = useState('#1A73E8');
   const [reelDraft, setReelDraft] = useState({ caption: '', videoUrl: '', thumbnailUrl: '' });
   const [postImageUrl, setPostImageUrl] = useState('');
+  const [editPostModal, setEditPostModal] = useState<FeedPost | null>(null);
+  const [editPostDraft, setEditPostDraft] = useState('');
+  const [editPostMediaUrls, setEditPostMediaUrls] = useState<string[]>([]);
+  const [editPostSaving, setEditPostSaving] = useState(false);
+  const [editPostUploading, setEditPostUploading] = useState(false);
+  const [editPostRouteLoading, setEditPostRouteLoading] = useState(false);
+  const [editPostRouteForbidden, setEditPostRouteForbidden] = useState(false);
+  const editPostFileInputRef = useRef<HTMLInputElement | null>(null);
   const [reelVideoUrl, setReelVideoUrl] = useState('');
   const [reelThumbnailUploadUrl, setReelThumbnailUploadUrl] = useState('');
   const [datingPhotoUrl, setDatingPhotoUrl] = useState('');
@@ -2010,6 +2030,16 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     setStatusViewerIndex(0);
     setStatusViewerLoading(false);
     setStatusViewerMediaUrl(null);
+    setStatusViewerPaused(false);
+    setStatusViewerProgress(0);
+    setStatusViewerSegmentNonce(0);
+    setEditPostModal(null);
+    setEditPostDraft('');
+    setEditPostMediaUrls([]);
+    setEditPostSaving(false);
+    setEditPostUploading(false);
+    setEditPostRouteLoading(false);
+    setEditPostRouteForbidden(false);
     setRouteRows([]);
     setIdVerificationDocument(null);
     setDatingInterestForm({ name: '', icon: '', category: 'hobbies' });
@@ -4017,8 +4047,11 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           const i = list.findIndex((r) => r.id === targetId);
           startIdx = i >= 0 ? i : Math.max(0, list.length - 1);
         } else {
-          startIdx = list.length > 0 ? list.length - 1 : 0;
+          startIdx = 0;
         }
+        setStatusViewerPaused(false);
+        setStatusViewerProgress(0);
+        setStatusViewerSegmentNonce(0);
         setStatusViewerIndex(startIdx);
       } finally {
         if (!cancelled) setStatusViewerLoading(false);
@@ -4051,6 +4084,86 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       cancelled = true;
     };
   }, [statusViewerStatuses, statusViewerIndex, supabase]);
+
+  useEffect(() => {
+    statusViewerPausedRef.current = statusViewerPaused;
+  }, [statusViewerPaused]);
+
+  useEffect(() => {
+    statusViewerIndexRef.current = statusViewerIndex;
+  }, [statusViewerIndex]);
+
+  useEffect(() => {
+    const onStatusRoute = appPath[0] === 'status' || appPath[0] === 'status-item';
+    if (!onStatusRoute || statusViewerStatuses.length === 0) return;
+
+    const st = statusViewerStatuses[statusViewerIndex];
+    if (!st) return;
+
+    const ct = (st.content_type || '').toLowerCase();
+    const segmentMs = ct === 'video' ? WEB_STATUS_SEGMENT_MS_VIDEO : WEB_STATUS_SEGMENT_MS_TEXT_IMAGE;
+
+    setStatusViewerProgress(0);
+    let progress = 0;
+    const tickMs = 100;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    const clear = () => {
+      if (intervalId != null) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const finishSegment = () => {
+      clear();
+      setStatusViewerIndex((i) => {
+        if (i >= statusViewerStatuses.length - 1) {
+          router.push('/app/feed');
+          return i;
+        }
+        return i + 1;
+      });
+    };
+
+    intervalId = setInterval(() => {
+      if (statusViewerPausedRef.current) return;
+      progress += tickMs / segmentMs;
+      setStatusViewerProgress(Math.min(progress, 1));
+      if (progress >= 1) finishSegment();
+    }, tickMs);
+
+    return () => clear();
+  }, [statusViewerIndex, statusViewerStatuses, statusViewerSegmentNonce, appPath[0], router]);
+
+  useEffect(() => {
+    const onStatusRoute = appPath[0] === 'status' || appPath[0] === 'status-item';
+    if (!onStatusRoute || statusViewerStatuses.length === 0) return;
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        if (statusViewerIndexRef.current > 0) {
+          setStatusViewerIndex((i) => i - 1);
+        } else {
+          setStatusViewerSegmentNonce((n) => n + 1);
+        }
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        if (statusViewerIndexRef.current >= statusViewerStatuses.length - 1) {
+          router.push('/app/feed');
+        } else {
+          setStatusViewerIndex((i) => i + 1);
+        }
+      } else if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        setStatusViewerPaused((p) => !p);
+      }
+    };
+
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [appPath[0], statusViewerStatuses.length, router]);
 
   useEffect(() => {
     const relationshipRouteActive = appPath[0] === 'certificates' || appPath[0] === 'anniversary';
@@ -4215,7 +4328,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   }, [supabase]);
 
   useEffect(() => {
-    const postId = appPath[0] === 'post' && appPath[1] !== 'create' ? appPath[1] : '';
+    const isPostEditRoute = appPath[0] === 'post' && appPath[1] === 'edit' && Boolean(appPath[2]);
+    const postId =
+      appPath[0] === 'post' && appPath[1] !== 'create' && !isPostEditRoute ? appPath[1] : '';
     if (!supabase || !user || !postId) {
       setRoutePost(null);
       setRoutePostLoading(false);
@@ -4348,32 +4463,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     }
   };
 
-  const editOwnedPostText = async (post: FeedPost) => {
-    if (!supabase || !user || post.user_id !== user.id) return;
-    const next = window.prompt('Edit post text', post.content || '');
-    if (next === null) return;
-    const mediaUrls = Array.isArray(post.media_urls) ? post.media_urls : [];
-    const mediaType = (post.media_type as string) || (mediaUrls.length ? 'image' : 'text');
-    try {
-      const { error } = await supabase
-        .from('posts')
-        .update({
-          content: next.trim() || null,
-          media_urls: mediaUrls,
-          media_type: mediaType,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', post.id)
-        .eq('user_id', user.id);
-      if (error) throw error;
-      setPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, content: next.trim() || null, media_urls: mediaUrls, media_type: mediaType } : p)));
-      setRoutePost((prev) => (prev?.id === post.id ? { ...prev, content: next.trim() || null, media_urls: mediaUrls, media_type: mediaType } : prev));
-      setReactionNotice('Post updated');
-      window.setTimeout(() => setReactionNotice(null), 1800);
-    } catch {
-      setReactionNotice('Could not update post');
-      window.setTimeout(() => setReactionNotice(null), 2500);
-    }
+  const goToEditPost = (post: FeedPost) => {
+    if (!user || post.user_id !== user.id) return;
+    router.push(`/app/post/edit/${encodeURIComponent(post.id)}`);
   };
 
   const reportPostFromFeed = async (post: FeedPost) => {
@@ -8548,6 +8640,189 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     }
   }, [uploadMediaFile]);
 
+  const closeEditPostEditor = useCallback(() => {
+    const wasEditRoute = appPath[0] === 'post' && appPath[1] === 'edit' && appPath[2];
+    const editId = wasEditRoute ? appPath[2] : '';
+    if (wasEditRoute && editId) {
+      router.replace(`/app/post/${encodeURIComponent(editId)}`);
+      return;
+    }
+    setEditPostModal(null);
+    setEditPostDraft('');
+    setEditPostMediaUrls([]);
+    setEditPostSaving(false);
+    setEditPostUploading(false);
+    setEditPostRouteLoading(false);
+    setEditPostRouteForbidden(false);
+  }, [appPath, router]);
+
+  const addMediaToEditPost = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const files = event.target.files;
+      if (!files?.length) return;
+      setEditPostUploading(true);
+      try {
+        const urls: string[] = [];
+        for (let i = 0; i < files.length; i += 1) {
+          urls.push(await uploadMediaFile(files[i], 'posts'));
+        }
+        setEditPostMediaUrls((prev) => [...prev, ...urls]);
+        setReactionNotice('Media added');
+        window.setTimeout(() => setReactionNotice(null), 1600);
+      } catch {
+        setReactionNotice('Could not upload media');
+        window.setTimeout(() => setReactionNotice(null), 2500);
+      } finally {
+        setEditPostUploading(false);
+        event.target.value = '';
+      }
+    },
+    [uploadMediaFile],
+  );
+
+  const saveEditPost = useCallback(async () => {
+    if (!supabase || !user) return;
+    const post = editPostModal;
+    if (!post || post.user_id !== user.id) return;
+    if (!editPostDraft.trim() && editPostMediaUrls.length === 0) {
+      setReactionNotice('Add text or at least one photo or video');
+      window.setTimeout(() => setReactionNotice(null), 2200);
+      return;
+    }
+    setEditPostSaving(true);
+    try {
+      const hasVideo = editPostMediaUrls.some(
+        (url) => /\.(mp4|mov|webm)(\?|$)/i.test(url) || url.toLowerCase().includes('video'),
+      );
+      const hasImage = editPostMediaUrls.some(
+        (url) => !/\.(mp4|mov|webm)(\?|$)/i.test(url) && !url.toLowerCase().includes('video'),
+      );
+      let mediaType = 'image';
+      if (hasVideo && hasImage) mediaType = 'mixed';
+      else if (hasVideo) mediaType = 'video';
+      else if (editPostMediaUrls.length === 0) mediaType = 'text';
+
+      const { error } = await supabase
+        .from('posts')
+        .update({
+          content: editPostDraft.trim() || null,
+          media_urls: editPostMediaUrls,
+          media_type: mediaType,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', post.id)
+        .eq('user_id', user.id);
+      if (error) throw error;
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === post.id
+            ? {
+                ...p,
+                content: editPostDraft.trim() || null,
+                media_urls: editPostMediaUrls,
+                media_type: mediaType,
+              }
+            : p,
+        ),
+      );
+      setRoutePost((prev) =>
+        prev?.id === post.id
+          ? { ...prev, content: editPostDraft.trim() || null, media_urls: editPostMediaUrls, media_type: mediaType }
+          : prev,
+      );
+      setReactionNotice('Post updated');
+      window.setTimeout(() => setReactionNotice(null), 1800);
+      closeEditPostEditor();
+    } catch {
+      setReactionNotice('Could not update post');
+      window.setTimeout(() => setReactionNotice(null), 2500);
+    } finally {
+      setEditPostSaving(false);
+    }
+  }, [supabase, user, editPostModal, editPostDraft, editPostMediaUrls, closeEditPostEditor]);
+
+  useEffect(() => {
+    const isEdit = appPath[0] === 'post' && appPath[1] === 'edit' && Boolean(appPath[2]);
+    if (!isEdit) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeEditPostEditor();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [appPath, closeEditPostEditor]);
+
+  useEffect(() => {
+    const isEdit = appPath[0] === 'post' && appPath[1] === 'edit' && Boolean(appPath[2]);
+    if (isEdit) return;
+    setEditPostModal(null);
+    setEditPostDraft('');
+    setEditPostMediaUrls([]);
+    setEditPostSaving(false);
+    setEditPostUploading(false);
+    setEditPostRouteLoading(false);
+    setEditPostRouteForbidden(false);
+  }, [appPath[0], appPath[1], appPath[2]]);
+
+  useEffect(() => {
+    const isEdit = appPath[0] === 'post' && appPath[1] === 'edit' && Boolean(appPath[2]);
+    if (!isEdit || !supabase || !user?.id) return;
+    const id = appPath[2]!;
+    let cancelled = false;
+    setEditPostRouteForbidden(false);
+    setEditPostRouteLoading(true);
+    setEditPostModal(null);
+
+    const run = async () => {
+      const fromList = posts.find((p) => p.id === id && p.user_id === user.id);
+      if (fromList) {
+        if (cancelled) return;
+        setEditPostModal(fromList);
+        setEditPostDraft(fromList.content || '');
+        setEditPostMediaUrls([...(Array.isArray(fromList.media_urls) ? fromList.media_urls : [])].filter(Boolean) as string[]);
+        setEditPostRouteLoading(false);
+        return;
+      }
+      try {
+        const postResult = await supabase
+          .from('posts')
+          .select(POST_SELECT_WITH_OPTIONAL_USER_COLUMNS)
+          .eq('id', id)
+          .or(getPostVisibilityOrFilter(user.id))
+          .maybeSingle();
+        if (cancelled) return;
+        if (postResult.error || !postResult.data) {
+          setEditPostRouteForbidden(true);
+          setEditPostRouteLoading(false);
+          return;
+        }
+        const row = postResult.data as FeedPost;
+        if (row.user_id !== user.id) {
+          setEditPostRouteForbidden(true);
+          setEditPostRouteLoading(false);
+          return;
+        }
+        const likesResult = await supabase.from('post_likes').select('user_id').eq('post_id', id);
+        if (cancelled) return;
+        const withLikes: FeedPost = {
+          ...row,
+          likes: ((likesResult.data || []) as Array<{ user_id: string }>).map((l) => l.user_id).filter(Boolean),
+        };
+        setEditPostModal(withLikes);
+        setEditPostDraft(withLikes.content || '');
+        setEditPostMediaUrls([...(Array.isArray(withLikes.media_urls) ? withLikes.media_urls : [])].filter(Boolean) as string[]);
+      } catch {
+        if (!cancelled) setEditPostRouteForbidden(true);
+      } finally {
+        if (!cancelled) setEditPostRouteLoading(false);
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [appPath[0], appPath[1], appPath[2], supabase, user?.id]);
+
   /** Upload then persist `users.profile_picture` immediately so refresh keeps the photo (matches mobile Settings). */
   const handleProfilePhotoUpload = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
@@ -8802,7 +9077,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             user={user}
             onLike={togglePostLike}
             onShare={shareText}
-            onEditPost={editOwnedPostText}
+            onEditPost={goToEditPost}
             onDeletePost={deleteOwnedPost}
             onBoostPost={openBoostPostFlow}
             onReportPost={reportPostFromFeed}
@@ -8835,7 +9110,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             user={user}
             onLike={togglePostLike}
             onShare={shareText}
-            onEditPost={editOwnedPostText}
+            onEditPost={goToEditPost}
             onDeletePost={deleteOwnedPost}
             onBoostPost={openBoostPostFlow}
             onReportPost={reportPostFromFeed}
@@ -8909,8 +9184,65 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     );
   };
 
+  const renderEditPostPage = () => {
+    const editId = appPath[2] || '';
+    if (!user?.id) {
+      return (
+        <EmptyState
+          icon={Heart}
+          title="Sign in"
+          text="Sign in to edit your post."
+          action="Home"
+          onAction={() => router.push('/app')}
+        />
+      );
+    }
+    if (editPostRouteForbidden) {
+      return (
+        <EmptyState
+          icon={Heart}
+          title="Cannot open editor"
+          text="This post is not available or you do not have permission to edit it."
+          action="Back to Feed"
+          onAction={() => router.push('/app/feed')}
+        />
+      );
+    }
+    if (editPostRouteLoading || !editPostModal || editPostModal.id !== editId) {
+      return <ScreenSkeleton />;
+    }
+    return (
+      <div className="space-y-4 px-3 py-4 pb-28">
+        <button
+          type="button"
+          onClick={() => closeEditPostEditor()}
+          className="inline-flex items-center gap-1.5 rounded-full px-1 py-1 text-sm font-black text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+        >
+          <ChevronLeft className="h-4 w-4 shrink-0" />
+          Back to post
+        </button>
+        <EditPostEditorPanel
+          variant="page"
+          title="Edit post"
+          subtitle="Update your caption and media order"
+          editPostDraft={editPostDraft}
+          onDraftChange={setEditPostDraft}
+          editPostMediaUrls={editPostMediaUrls}
+          onMediaUrlsChange={setEditPostMediaUrls}
+          editPostSaving={editPostSaving}
+          editPostUploading={editPostUploading}
+          fileInputRef={editPostFileInputRef}
+          onFilesSelected={addMediaToEditPost}
+          onSave={() => void saveEditPost()}
+          onCancel={() => closeEditPostEditor()}
+        />
+      </div>
+    );
+  };
+
   const renderPostDetail = () => {
-    const postId = appPath[1];
+    const isPostEditRoute = appPath[0] === 'post' && appPath[1] === 'edit' && Boolean(appPath[2]);
+    const postId = appPath[0] === 'post' && appPath[1] !== 'create' && !isPostEditRoute ? appPath[1] : '';
     const post = posts.find((item) => item.id === postId) || routePost;
     const comments = postId ? (postCommentsByPost[postId] || []) : [];
     const draftKey = `post:${postId}`;
@@ -8923,7 +9255,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           user={user}
           onLike={togglePostLike}
           onShare={shareText}
-          onEditPost={editOwnedPostText}
+          onEditPost={goToEditPost}
           onDeletePost={deleteOwnedPost}
           onBoostPost={openBoostPostFlow}
           onReportPost={reportPostFromFeed}
@@ -9051,27 +9383,42 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     const isVideo = contentType === 'video';
     const textAlign =
       current.text_alignment === 'left' ? 'text-left' : current.text_alignment === 'right' ? 'text-right' : 'text-center';
-    const goPrev = () => setStatusViewerIndex((i) => Math.max(0, i - 1));
-    const goNext = () => setStatusViewerIndex((i) => Math.min(statusViewerStatuses.length - 1, i + 1));
+    const goPrevStory = () => {
+      if (statusViewerIndex > 0) {
+        setStatusViewerIndex((i) => i - 1);
+      } else {
+        setStatusViewerSegmentNonce((n) => n + 1);
+      }
+    };
+    const goNextStory = () => {
+      if (statusViewerIndex >= statusViewerStatuses.length - 1) {
+        router.push('/app/feed');
+      } else {
+        setStatusViewerIndex((i) => i + 1);
+      }
+    };
 
     return (
-      <div className="relative flex min-h-[calc(100vh-122px)] flex-col bg-black text-white">
-        <div className="absolute left-2 right-2 top-2 z-30 flex gap-1">
+      <div className="relative flex min-h-[calc(100dvh-96px)] flex-col overflow-hidden bg-gradient-to-b from-zinc-950 via-black to-black pb-[max(0.5rem,env(safe-area-inset-bottom))] text-white ring-1 ring-white/10">
+        <div className="absolute left-3 right-3 top-3 z-40 flex gap-1 pt-[env(safe-area-inset-top,0px)]">
           {statusViewerStatuses.map((s, i) => (
-            <div key={s.id} className="h-1 flex-1 overflow-hidden rounded-full bg-white/25">
+            <div key={s.id} className="h-0.5 flex-1 overflow-hidden rounded-full bg-white/20">
               <div
-                className="h-full rounded-full bg-white transition-[width] duration-200"
-                style={{ width: i <= statusViewerIndex ? '100%' : '0%' }}
+                className="h-full rounded-full bg-white"
+                style={{
+                  width: `${(i < statusViewerIndex ? 1 : i === statusViewerIndex ? statusViewerProgress : 0) * 100}%`,
+                  transition: i === statusViewerIndex ? 'none' : 'width 0.2s ease-out',
+                }}
               />
             </div>
           ))}
         </div>
 
-        <header className="relative z-20 flex items-center justify-between px-3 pt-8">
+        <header className="relative z-20 mt-6 flex items-center justify-between border-b border-white/5 bg-black/40 px-3 py-2.5 backdrop-blur-md">
           <button
             type="button"
             onClick={() => router.push('/app/feed')}
-            className="grid h-10 w-10 place-items-center rounded-full bg-black/40 text-white backdrop-blur"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/10 text-white ring-1 ring-white/15 transition hover:bg-white/15"
             aria-label="Close"
           >
             <X className="h-5 w-5" />
@@ -9088,7 +9435,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               <ProfileUserLink viewerUserId={user?.id} subjectUserId={ownerId} className="inline-block min-w-0">
                 <p className="truncate font-black hover:underline">{ownerName}</p>
               </ProfileUserLink>
-              <p className="text-xs font-semibold text-white/75">
+              <p className="text-xs font-semibold text-white/70">
                 {timeAgo(current.created_at)}
                 {statusViewerStatuses.length > 1
                   ? ` · ${statusViewerIndex + 1}/${statusViewerStatuses.length}`
@@ -9096,29 +9443,30 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               </p>
             </div>
           </div>
-          <span className="w-10" />
+          <span className="w-10 shrink-0" />
         </header>
 
-        <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+        <div className="relative z-10 flex min-h-[52dvh] flex-1 flex-col">
           {isText ? (
             <div
-              className={`flex min-h-[62vh] flex-1 flex-col items-center justify-center px-6 py-10 ${textAlign}`}
+              className={`relative flex min-h-[58dvh] flex-1 flex-col items-center justify-center overflow-hidden px-6 py-12 ${textAlign}`}
               style={{
                 background: current.background_color?.startsWith('#')
                   ? current.background_color
                   : current.background_color || '#1A73E8',
               }}
             >
-              <p className="max-w-lg whitespace-pre-wrap text-3xl font-black leading-snug text-white drop-shadow-md sm:text-4xl">
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_85%_70%_at_50%_45%,transparent_0%,rgba(0,0,0,0.22)_100%)]" />
+              <p className="relative z-[1] max-w-lg whitespace-pre-wrap text-3xl font-black leading-snug tracking-tight text-white drop-shadow-[0_2px_24px_rgba(0,0,0,0.35)] sm:text-4xl md:text-5xl">
                 {(current.text_content && current.text_content.trim()) || 'Status'}
               </p>
             </div>
           ) : isVideo ? (
             statusViewerMediaUrl ? (
-              <div className="relative flex min-h-[62vh] flex-1 items-center justify-center bg-black">
-                <video src={statusViewerMediaUrl} className="h-full max-h-[72vh] w-full object-contain" controls playsInline />
+              <div className="relative flex min-h-[58dvh] flex-1 items-center justify-center bg-black">
+                <video src={statusViewerMediaUrl} className="relative z-0 h-full max-h-[78dvh] w-full object-contain" controls playsInline />
                 {current.text_content?.trim() ? (
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-6 pt-16">
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] bg-gradient-to-t from-black/90 via-black/40 to-transparent p-6 pt-20">
                     <p className={`whitespace-pre-wrap text-lg font-bold text-white ${textAlign}`}>{current.text_content.trim()}</p>
                   </div>
                 ) : null}
@@ -9130,10 +9478,11 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               </div>
             )
           ) : statusViewerMediaUrl ? (
-            <div className="relative flex min-h-[62vh] flex-1">
+            <div className="relative flex min-h-[58dvh] flex-1 bg-black">
               <img src={statusViewerMediaUrl} alt="" className="h-full w-full object-cover" />
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/50" />
               {current.text_content?.trim() ? (
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-6 pt-20">
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] bg-gradient-to-t from-black/90 to-transparent p-6 pt-24">
                   <p className={`whitespace-pre-wrap text-lg font-bold text-white ${textAlign}`}>{current.text_content.trim()}</p>
                 </div>
               ) : null}
@@ -9144,32 +9493,38 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               <p className="text-sm font-semibold text-white/70">Loading media…</p>
             </div>
           )}
-        </div>
 
-        {statusViewerStatuses.length > 1 ? (
-          <div className="relative z-20 flex items-center justify-between px-4 pb-6 pt-2">
+          {statusViewerPaused ? (
+            <div className="pointer-events-none absolute left-1/2 top-[42%] z-[25] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/20 bg-black/55 px-5 py-2 text-[11px] font-black uppercase tracking-[0.2em] text-white/95 shadow-lg backdrop-blur-md">
+              Paused
+            </div>
+          ) : null}
+
+          <div className="pointer-events-none absolute inset-0 z-30 flex">
             <button
               type="button"
-              onClick={goPrev}
-              disabled={statusViewerIndex <= 0}
-              className="grid h-12 w-12 place-items-center rounded-full bg-white/15 text-white backdrop-blur disabled:opacity-30"
-              aria-label="Previous status"
-            >
-              <ChevronLeft className="h-7 w-7" />
-            </button>
+              className="pointer-events-auto h-full w-[26%] max-w-[160px] cursor-w-resize border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/50"
+              aria-label="Previous story"
+              onClick={goPrevStory}
+            />
+            {isVideo && statusViewerMediaUrl ? (
+              <div className="pointer-events-none min-h-0 flex-1" aria-hidden />
+            ) : (
+              <button
+                type="button"
+                className="pointer-events-auto h-full min-h-0 flex-1 cursor-default border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/30"
+                aria-label={statusViewerPaused ? 'Resume story' : 'Pause story'}
+                onClick={() => setStatusViewerPaused((p) => !p)}
+              />
+            )}
             <button
               type="button"
-              onClick={goNext}
-              disabled={statusViewerIndex >= statusViewerStatuses.length - 1}
-              className="grid h-12 w-12 place-items-center rounded-full bg-white/15 text-white backdrop-blur disabled:opacity-30"
-              aria-label="Next status"
-            >
-              <ChevronRight className="h-7 w-7" />
-            </button>
+              className="pointer-events-auto h-full w-[26%] max-w-[160px] cursor-e-resize border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/50"
+              aria-label="Next story"
+              onClick={goNextStory}
+            />
           </div>
-        ) : (
-          <div className="h-4" />
-        )}
+        </div>
       </div>
     );
   };
@@ -14983,6 +15338,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     if (appPath[0] === 'post' && appPath[1] === 'create') return renderCreatePost();
     if (appPath[0] === 'status' && appPath[1] === 'create') return renderCreateStatus();
     if (appPath[0] === 'reel' && appPath[1] === 'create') return renderCreateReel();
+    if (appPath[0] === 'post' && appPath[1] === 'edit' && appPath[2]) return renderEditPostPage();
     if (appPath[0] === 'post') return renderPostDetail();
     if (appPath[0] === 'reel') return renderReelDetail();
     if (appPath[0] === 'status' || appPath[0] === 'status-item') return renderStatusViewer();

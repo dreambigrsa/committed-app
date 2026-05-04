@@ -2240,17 +2240,21 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     }));
   }, [supabase]);
 
-  const loadAppData = useCallback(() => {
+  const loadAppData = useCallback((options?: { chainAfterInFlight?: boolean }) => {
     if (!supabase) {
       setLoading(false);
       return Promise.resolve();
     }
 
-    if (loadAppDataInFlightRef.current) {
+    if (loadAppDataInFlightRef.current && !options?.chainAfterInFlight) {
       return loadAppDataInFlightRef.current;
     }
 
     const request = (async () => {
+      if (options?.chainAfterInFlight && loadAppDataInFlightRef.current) {
+        await loadAppDataInFlightRef.current.catch(() => undefined);
+      }
+
       let releasedInitialLoad = false;
       const releaseInitialLoad = () => {
         if (releasedInitialLoad) return;
@@ -2682,13 +2686,15 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               .select('id,full_name,email,profile_picture')
               .in('id', participantIds)
           : Promise.resolve({ data: [] }),
+        // No low row limit: a global LIMIT(25) hid newer statuses when many other members had stories (mobile loads all RLS-visible rows).
         supabase
           .from('statuses')
-          .select('id,user_id,content_type,text_content,media_path,background_color,created_at,expires_at,archived,users!statuses_user_id_fkey(full_name,profile_picture)')
+          .select(
+            'id,user_id,content_type,text_content,media_path,background_color,created_at,expires_at,archived,privacy_level'
+          )
           .eq('archived', false)
           .gt('expires_at', new Date().toISOString())
-          .order('created_at', { ascending: false })
-          .limit(25),
+          .order('created_at', { ascending: false }),
       ]);
 
       const participantsMap = new Map<string, WebUser>(
@@ -2713,13 +2719,32 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       });
       setMessagesByConversation(messagesById);
 
+      if (statusesResult.error && process.env.NODE_ENV !== 'production') {
+        console.warn('[WebAppShell] statuses query failed', statusesResult.error);
+      }
+      const statusRows = ((statusesResult.data || []) as any[]).filter(Boolean);
+      const statusOwnerIds = Array.from(new Set(statusRows.map((s) => s.user_id).filter(Boolean)));
+      const statusUsersById = new Map<string, { full_name: string | null; profile_picture: string | null }>();
+      if (statusOwnerIds.length) {
+        const { data: statusOwners, error: statusOwnersError } = await supabase
+          .from('users')
+          .select('id,full_name,profile_picture')
+          .in('id', statusOwnerIds);
+        if (statusOwnersError && process.env.NODE_ENV !== 'production') {
+          console.warn('[WebAppShell] status owner users lookup failed', statusOwnersError);
+        }
+        (statusOwners || []).forEach((row: { id: string; full_name: string | null; profile_picture: string | null }) => {
+          statusUsersById.set(row.id, { full_name: row.full_name, profile_picture: row.profile_picture });
+        });
+      }
       const latestStatusByUser = new Map<string, StatusFeedItem>();
-      ((statusesResult.data || []) as any[]).forEach((status) => {
+      statusRows.forEach((status) => {
         if (latestStatusByUser.has(status.user_id)) return;
+        const owner = statusUsersById.get(status.user_id);
         latestStatusByUser.set(status.user_id, {
           user_id: status.user_id,
-          user_name: status.users?.full_name || (status.user_id === authUser.id ? 'You' : 'Committed member'),
-          user_avatar: status.users?.profile_picture || null,
+          user_name: (owner?.full_name && String(owner.full_name).trim()) || (status.user_id === authUser.id ? 'You' : 'Committed member'),
+          user_avatar: owner?.profile_picture || null,
           latest_status: status,
           has_unviewed: status.user_id !== authUser.id,
         });
@@ -4600,7 +4625,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       await supabase.from('conversations').update({ last_message: openingMessage, last_message_at: new Date().toISOString() }).eq('id', existing.id);
     }
     if (existing?.id) {
-      await loadAppData();
+      await loadAppData({ chainAfterInFlight: true });
       router.push(`/app/messages/${existing.id}`);
     }
   };
@@ -4700,7 +4725,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     }
     setReactionNotice('Showing passed profiles again');
     window.setTimeout(() => setReactionNotice(null), 1800);
-    await loadAppData();
+    await loadAppData({ chainAfterInFlight: true });
   };
 
   const shareText = async (title: string, url: string) => {
@@ -4893,7 +4918,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       setStatusBackgroundColor('#1A73E8');
       setReactionNotice('Status shared');
       window.setTimeout(() => setReactionNotice(null), 1800);
-      await loadAppData();
+      await loadAppData({ chainAfterInFlight: true });
       router.push('/app/feed');
     } finally {
       setIsCreatingContent(false);
@@ -5209,7 +5234,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         setAiPrompt('');
         setReactionNotice('Sent to Committed AI');
         window.setTimeout(() => setReactionNotice(null), 1800);
-        await loadAppData();
+        await loadAppData({ chainAfterInFlight: true });
         router.push(`/app/messages/${existing.id}`);
       }
     } finally {
@@ -5289,7 +5314,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             .eq('id', conversation.id);
         }
       }
-      await loadAppData();
+      await loadAppData({ chainAfterInFlight: true });
     }
   };
 
@@ -5354,7 +5379,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           .update({ last_message: aiReplyText, last_message_at: new Date().toISOString() })
           .eq('id', conversation.id);
       }
-      await loadAppData();
+      await loadAppData({ chainAfterInFlight: true });
     }
     setChatDraft('');
   };
@@ -6109,7 +6134,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     setNotifications((prev) => prev.filter((item) => item.id !== notificationId));
     const { error } = await supabase.from('notifications').delete().eq('id', notificationId).eq('user_id', user.id);
     if (error) {
-      await loadAppData();
+      await loadAppData({ chainAfterInFlight: true });
       setReactionNotice('Could not delete notification');
       window.setTimeout(() => setReactionNotice(null), 2200);
     }
@@ -8138,7 +8163,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       setDatingProfileStep(1);
       setReactionNotice('Dating saved');
       window.setTimeout(() => setReactionNotice(null), 1800);
-      await loadAppData();
+      await loadAppData({ chainAfterInFlight: true });
     } catch (error: any) {
       setReactionNotice(error?.message || 'Could not save dating preferences');
       window.setTimeout(() => setReactionNotice(null), 2500);

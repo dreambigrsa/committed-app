@@ -1,5 +1,5 @@
-import MobileWebAppShell from '@/components/MobileWebAppShell';
+import MobileWebAppShellLoader from '@/components/MobileWebAppShellLoader';
 
 export default function WebAppModulePage({ params }: { params: { module: string[] } }) {
-  return <MobileWebAppShell initialTab={params.module[0] || 'home'} />;
+  return <MobileWebAppShellLoader initialTab={params.module[0] || 'home'} />;
 }

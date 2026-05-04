@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Bot, CheckCircle2, FileText, Loader2, Mail, ShieldCheck, Sparkles } from 'lucide-react';
@@ -64,6 +64,7 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
   const [aiConsentChecked, setAiConsentChecked] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const loadStateInFlightRef = useRef<Promise<void> | null>(null);
 
   const missingDocs = useMemo(() => {
     const accepted = new Set(acceptedDocIds);
@@ -97,7 +98,9 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
     return { authUser: null, session: null, userError: null };
   }, []);
 
-  const loadState = useCallback(async () => {
+  const loadState = useCallback(() => {
+    if (loadStateInFlightRef.current) return loadStateInFlightRef.current;
+    const request = (async () => {
     setError('');
     setStep('loading');
     try {
@@ -190,6 +193,11 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
       setError(err instanceof Error ? err.message : 'Unable to load onboarding state.');
       setStep('error');
     }
+    })();
+    loadStateInFlightRef.current = request.finally(() => {
+      loadStateInFlightRef.current = null;
+    });
+    return loadStateInFlightRef.current;
   }, [resolveAuthSnapshot, router]);
 
   useEffect(() => {

@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { HTMLAttributes } from 'react';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
@@ -76,7 +77,22 @@ import { buildPostWebUrl, buildReelWebUrl } from '@/lib/appLinks';
 import { getPostVisibilityOrFilter, getReelVisibilityOrFilter } from '@/lib/content-visibility';
 import { filterVisibleMessagesForUser } from '@/lib/parity-helpers';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { DatingDiscoverSwipeDeck, DatingDiscoveryCardFace } from '@/components/DatingDiscoverSwipeDeck';
+
+const DatingDiscoverSwipeDeck = dynamic(
+  () => import('@/components/DatingDiscoverSwipeDeck').then((mod) => mod.DatingDiscoverSwipeDeck),
+  {
+    ssr: false,
+    loading: () => <div className="min-h-[470px] rounded-[28px] bg-slate-100" />,
+  }
+);
+
+const DatingDiscoveryCardFace = dynamic(
+  () => import('@/components/DatingDiscoverSwipeDeck').then((mod) => mod.DatingDiscoveryCardFace),
+  {
+    ssr: false,
+    loading: () => <div className="h-full min-h-[470px] rounded-[28px] bg-slate-100" />,
+  }
+);
 
 type TabKey = 'home' | 'feed' | 'reels' | 'dating' | 'search' | 'notifications' | 'messages' | 'profile';
 
@@ -449,6 +465,27 @@ type RelationshipRow = {
   privacy_level?: string | null;
 };
 
+type RelationshipPartnerSearchResult = {
+  id: string | null;
+  fullName: string;
+  username?: string | null;
+  email?: string | null;
+  phoneNumber?: string | null;
+  profilePicture?: string | null;
+  isRegisteredUser: boolean;
+  relationshipType?: string | null;
+  relationshipStatus?: string | null;
+  relationshipPrivacy?: string | null;
+  partnerName?: string | null;
+  partnerPhone?: string | null;
+  partnerUserId?: string | null;
+  verifications?: {
+    phone?: boolean | null;
+    email?: boolean | null;
+    id?: boolean | null;
+  };
+};
+
 type VerificationDocument = {
   id: string;
   user_id: string;
@@ -506,6 +543,9 @@ type MessageRow = {
   message_type?: string | null;
   media_url?: string | null;
   document_url?: string | null;
+  document_name?: string | null;
+  deleted_for_sender?: boolean | null;
+  deleted_for_receiver?: boolean | null;
   created_at?: string | null;
 };
 
@@ -1685,6 +1725,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   const [relationshipForm, setRelationshipForm] = useState({
     partnerName: '',
     partnerPhone: '',
+    partnerUserId: '',
     type: 'serious',
     startDate: '',
     startDay: '',
@@ -1697,6 +1738,10 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     city: '',
     consent: false,
   });
+  const [relationshipPartnerSearchQuery, setRelationshipPartnerSearchQuery] = useState('');
+  const [relationshipPartnerSearchResults, setRelationshipPartnerSearchResults] = useState<RelationshipPartnerSearchResult[]>([]);
+  const [relationshipPartnerSearching, setRelationshipPartnerSearching] = useState(false);
+  const [selectedRelationshipPartner, setSelectedRelationshipPartner] = useState<RelationshipPartnerSearchResult | null>(null);
   const [relationshipStep, setRelationshipStep] = useState(1);
   const [datingProfileStep, setDatingProfileStep] = useState(1);
   const [showDatingReviewModal, setShowDatingReviewModal] = useState(false);
@@ -2803,7 +2848,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         conversationIds.length
           ? supabase
               .from('messages')
-              .select('id,conversation_id,sender_id,receiver_id,content,message_type,media_url,document_url,created_at,deleted_for_sender,deleted_for_receiver')
+              .select('id,conversation_id,sender_id,receiver_id,content,message_type,media_url,document_url,document_name,created_at,deleted_for_sender,deleted_for_receiver')
               .in('conversation_id', conversationIds)
               .order('created_at', { ascending: true })
           : Promise.resolve({ data: [] }),
@@ -3907,7 +3952,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             : Promise.resolve({ data: [] }),
           supabase
             .from('messages')
-            .select('id,conversation_id,sender_id,receiver_id,content,message_type,media_url,document_url,created_at,deleted_for_sender,deleted_for_receiver')
+            .select('id,conversation_id,sender_id,receiver_id,content,message_type,media_url,document_url,document_name,created_at,deleted_for_sender,deleted_for_receiver')
             .eq('conversation_id', conversationRow.id)
             .order('created_at', { ascending: true }),
         ]);
@@ -5259,28 +5304,333 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     setChatDraft('');
   };
 
+  const getMessagePreviewText = (message?: MessageRow | null) => {
+    if (!message) return '';
+    if (message.message_type === 'image' || message.media_url) return 'Photo';
+    if (message.message_type === 'document' || message.document_url) return message.document_name || 'Document';
+    return message.content || '';
+  };
+
+  const loadLastVisibleConversationMessage = async (conversationId: string, userId: string) => {
+    if (!supabase) return { lastMessage: '', lastMessageAt: new Date().toISOString() };
+    const { data } = await supabase
+      .from('messages')
+      .select('id,conversation_id,sender_id,receiver_id,content,message_type,media_url,document_url,document_name,created_at,deleted_for_sender,deleted_for_receiver')
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    const visible = filterVisibleMessagesForUser((data || []) as MessageRow[], userId);
+    const lastMessage = visible[0];
+    return {
+      lastMessage: getMessagePreviewText(lastMessage),
+      lastMessageAt: lastMessage?.created_at || new Date().toISOString(),
+    };
+  };
+
+  const updateConversationPreview = (conversationId: string, lastMessage: string, lastMessageAt: string) => {
+    setConversations((prev) =>
+      prev
+        .map((conversation) =>
+          conversation.id === conversationId
+            ? { ...conversation, last_message: lastMessage, last_message_at: lastMessageAt }
+            : conversation
+        )
+        .sort((a, b) => new Date(b.last_message_at || b.created_at || 0).getTime() - new Date(a.last_message_at || a.created_at || 0).getTime())
+    );
+  };
+
+  const deleteChatMessage = async (conversation: ConversationRow, message: MessageRow, deleteForEveryone = false) => {
+    if (!supabase || !user || saving) return;
+    const isSender = message.sender_id === user.id;
+    const isReceiver = message.receiver_id === user.id || (conversation.participant_ids || []).includes(user.id);
+    if (!isSender && !isReceiver) return;
+    if (deleteForEveryone && !isSender) return;
+
+    const localOnly = message.id.startsWith('pending-') || message.id.startsWith('ai-') || conversation.id === 'committed-ai-local';
+    const confirmed = window.confirm(
+      deleteForEveryone
+        ? 'Delete this message for everyone?'
+        : isSender
+          ? 'Delete this message for yourself? You can also choose Delete for everyone from your sent messages.'
+          : 'Delete this message for yourself?'
+    );
+    if (!confirmed) return;
+
+    setSaving(true);
+    try {
+      if (!localOnly) {
+        const updatePayload = deleteForEveryone
+          ? { deleted_for_sender: true, deleted_for_receiver: true, content: 'This message was deleted' }
+          : isSender
+            ? { deleted_for_sender: true }
+            : { deleted_for_receiver: true };
+        const { data, error } = await supabase.from('messages').update(updatePayload).eq('id', message.id).select('id');
+        if (error || !data?.length) throw error || new Error('Message was not updated');
+
+        const { lastMessage, lastMessageAt } = await loadLastVisibleConversationMessage(conversation.id, user.id);
+        await supabase
+          .from('conversations')
+          .update({ last_message: lastMessage, last_message_at: lastMessageAt })
+          .eq('id', conversation.id);
+        updateConversationPreview(conversation.id, lastMessage, lastMessageAt);
+      }
+
+      setMessagesByConversation((prev) => {
+        const updatedMessages = (prev[conversation.id] || []).map((item) => {
+          if (item.id !== message.id) return item;
+          if (deleteForEveryone) {
+            return { ...item, deleted_for_sender: true, deleted_for_receiver: true, content: 'This message was deleted' };
+          }
+          return isSender ? { ...item, deleted_for_sender: true } : { ...item, deleted_for_receiver: true };
+        });
+        return {
+          ...prev,
+          [conversation.id]: filterVisibleMessagesForUser(updatedMessages, user.id),
+        };
+      });
+      setReactionNotice(deleteForEveryone ? 'Message deleted for everyone' : 'Message deleted');
+    } catch {
+      setReactionNotice('Could not delete message');
+    } finally {
+      window.setTimeout(() => setReactionNotice(null), 2200);
+      setSaving(false);
+    }
+  };
+
+  const deleteChatConversation = async (conversation: ConversationRow) => {
+    if (!supabase || !user || saving) return;
+    const confirmed = window.confirm('Delete this conversation? All messages in this conversation will be permanently deleted.');
+    if (!confirmed) return;
+
+    setSaving(true);
+    try {
+      if (conversation.id === 'committed-ai-local') {
+        setConversations((prev) => prev.filter((item) => item.id !== conversation.id));
+        setMessagesByConversation((prev) => {
+          const next = { ...prev };
+          delete next[conversation.id];
+          return next;
+        });
+        router.push('/app/messages');
+        return;
+      }
+
+      const participantIds = conversation.participant_ids || [];
+      const sortedParticipantIds = [...participantIds].sort();
+      const { data: possibleMatches, error: queryError } = await supabase
+        .from('conversations')
+        .select('id,participant_ids')
+        .contains('participant_ids', [user.id]);
+      if (queryError) throw queryError;
+
+      const conversationIdsToDelete = ((possibleMatches || []) as ConversationRow[])
+        .filter((item) => {
+          const ids = item.participant_ids || [];
+          if (!ids.length || ids.length !== sortedParticipantIds.length) return item.id === conversation.id;
+          const sorted = [...ids].sort();
+          return sorted.every((id, index) => id === sortedParticipantIds[index]);
+        })
+        .map((item) => item.id);
+      const ids = conversationIdsToDelete.length ? conversationIdsToDelete : [conversation.id];
+
+      const { error: messagesError } = await supabase.from('messages').delete().in('conversation_id', ids);
+      if (messagesError) throw messagesError;
+      const { data: deletedRows, error: conversationError } = await supabase.from('conversations').delete().in('id', ids).select('id');
+      if (conversationError || !deletedRows?.length) throw conversationError || new Error('Conversation was not deleted');
+
+      setConversations((prev) => prev.filter((item) => !ids.includes(item.id)));
+      setMessagesByConversation((prev) => {
+        const next = { ...prev };
+        ids.forEach((id) => delete next[id]);
+        return next;
+      });
+      setReactionNotice('Conversation deleted');
+      if (subPath && ids.includes(subPath)) router.push('/app/messages');
+    } catch {
+      setReactionNotice('Could not delete conversation');
+    } finally {
+      window.setTimeout(() => setReactionNotice(null), 2200);
+      setSaving(false);
+    }
+  };
+
+  const normalizeRelationshipPhone = (value?: string | null) => (value || '').replace(/[^\d+]/g, '').trim();
+
+  const searchRelationshipPartners = async (query: string) => {
+    setRelationshipPartnerSearchQuery(query);
+    const trimmed = query.trim();
+    if (!supabase || trimmed.length < 2) {
+      setRelationshipPartnerSearchResults([]);
+      setRelationshipPartnerSearching(false);
+      return;
+    }
+
+    setRelationshipPartnerSearching(true);
+    try {
+      const safeQuery = trimmed.replace(/[,%]/g, ' ');
+      const normalizedPhone = normalizeRelationshipPhone(trimmed);
+      const searchQuery = normalizedPhone.length >= 2 ? normalizedPhone : safeQuery;
+
+      const userRpc = await supabase.rpc('search_users', { search_query: searchQuery });
+      let usersData = userRpc.error ? null : userRpc.data;
+      if (userRpc.error) {
+        const fallback = await supabase
+          .from('users')
+          .select('id,full_name,username,email,phone_number,profile_picture,phone_verified,email_verified,id_verified,role')
+          .or(`full_name.ilike.%${safeQuery}%,username.ilike.%${safeQuery}%,phone_number.ilike.%${safeQuery}%`)
+          .limit(12);
+        usersData = fallback.data || [];
+      }
+
+      const registeredUsers = await Promise.all(
+        ((usersData || []) as any[])
+          .filter((row) => row.id !== user?.id)
+          .slice(0, 10)
+          .map(async (row) => {
+            const { data: userRel } = await supabase
+              .from('relationships')
+              .select(`
+                id,
+                user_id,
+                partner_user_id,
+                type,
+                status,
+                partner_name,
+                partner_phone,
+                partner_face_photo,
+                privacy_level,
+                users!relationships_user_id_fkey(full_name,phone_number,profile_picture)
+              `)
+              .or(`user_id.eq.${row.id},partner_user_id.eq.${row.id}`)
+              .in('status', ['pending', 'verified'])
+              .limit(1)
+              .maybeSingle();
+            const owner = Array.isArray((userRel as any)?.users) ? (userRel as any)?.users[0] : (userRel as any)?.users;
+            const isOwner = (userRel as any)?.user_id === row.id;
+            return {
+              id: row.id,
+              fullName: row.full_name || row.username || row.email || 'Committed member',
+              username: row.username,
+              email: row.email,
+              phoneNumber: row.phone_number || '',
+              profilePicture: row.profile_picture,
+              isRegisteredUser: true,
+              relationshipType: (userRel as any)?.type,
+              relationshipStatus: (userRel as any)?.status,
+              relationshipPrivacy: (userRel as any)?.privacy_level,
+              partnerName: userRel ? (isOwner ? (userRel as any).partner_name : owner?.full_name) : null,
+              partnerPhone: userRel ? (isOwner ? (userRel as any).partner_phone : owner?.phone_number) : null,
+              partnerUserId: userRel ? (isOwner ? (userRel as any).partner_user_id : (userRel as any).user_id) : null,
+              verifications: {
+                phone: row.phone_verified,
+                email: row.email_verified,
+                id: row.id_verified,
+              },
+            } satisfies RelationshipPartnerSearchResult;
+          })
+      );
+
+      const partnerClauses = [`partner_name.ilike.%${safeQuery}%`];
+      if (normalizedPhone.length >= 2) partnerClauses.push(`partner_phone.ilike.%${normalizedPhone}%`);
+      const partnerSearch = await supabase
+        .from('relationships')
+        .select(`
+          partner_name,
+          partner_phone,
+          partner_user_id,
+          partner_face_photo,
+          type,
+          status,
+          privacy_level,
+          user_id,
+          users!relationships_user_id_fkey(full_name,phone_number,profile_picture)
+        `)
+        .or(partnerClauses.join(','))
+        .is('partner_user_id', null)
+        .in('status', ['pending', 'verified'])
+        .limit(12);
+
+      const nonRegistered = ((partnerSearch.data || []) as any[]).map((rel) => {
+        const owner = Array.isArray(rel.users) ? rel.users[0] : rel.users;
+        return {
+          id: null,
+          fullName: rel.partner_name || 'Unregistered partner',
+          phoneNumber: rel.partner_phone || '',
+          profilePicture: rel.partner_face_photo,
+          isRegisteredUser: false,
+          relationshipType: rel.type,
+          relationshipStatus: rel.status,
+          relationshipPrivacy: rel.privacy_level,
+          partnerName: owner?.full_name,
+          partnerPhone: owner?.phone_number,
+          partnerUserId: rel.user_id,
+          verifications: { phone: false, email: false, id: false },
+        } satisfies RelationshipPartnerSearchResult;
+      });
+
+      const seen = new Set<string>();
+      const combined = [...registeredUsers, ...nonRegistered].filter((item) => {
+        const phoneKey = normalizeRelationshipPhone(item.phoneNumber);
+        const key = item.id || phoneKey || item.fullName.toLowerCase().trim();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      setRelationshipPartnerSearchResults(combined);
+    } catch (error: any) {
+      console.warn('[Web relationship] partner search failed', error?.message || error);
+      setRelationshipPartnerSearchResults([]);
+    } finally {
+      setRelationshipPartnerSearching(false);
+    }
+  };
+
+  const selectRelationshipPartner = (partner: RelationshipPartnerSearchResult) => {
+    setSelectedRelationshipPartner(partner);
+    setRelationshipForm((prev) => ({
+      ...prev,
+      partnerName: partner.fullName || '',
+      partnerPhone: partner.phoneNumber || '',
+      partnerUserId: partner.id || '',
+    }));
+    setRelationshipPartnerSearchQuery('');
+    setRelationshipPartnerSearchResults([]);
+  };
+
+  const clearRelationshipPartnerSelection = () => {
+    setSelectedRelationshipPartner(null);
+    setRelationshipForm((prev) => ({
+      ...prev,
+      partnerName: '',
+      partnerPhone: '',
+      partnerUserId: '',
+    }));
+  };
+
   const submitRelationship = async () => {
     if (!supabase || !user || !relationshipForm.partnerName.trim() || !relationshipForm.consent) return;
     setSaving(true);
     try {
-      const normalizedPhone = relationshipForm.partnerPhone.replace(/[^\d+]/g, '').trim();
+      const normalizedPhone = normalizeRelationshipPhone(relationshipForm.partnerPhone);
       const startDateFromParts = getDateStringFromParts(relationshipForm.startDay, relationshipForm.startMonth, relationshipForm.startYear);
       const startDateValue = relationshipForm.startDate || startDateFromParts || new Date().toISOString();
       const partnerBirthMonth = relationshipForm.partnerBirthMonth ? Number(relationshipForm.partnerBirthMonth) : null;
       const partnerBirthYear = relationshipForm.partnerBirthYear ? Number(relationshipForm.partnerBirthYear) : null;
-      const partnerLookup = normalizedPhone
+      const selectedPartnerUserId = relationshipForm.partnerUserId.trim();
+      const partnerLookup = !selectedPartnerUserId && normalizedPhone
         ? await supabase
             .from('users')
             .select('id,full_name,phone_number')
             .eq('phone_number', normalizedPhone)
             .maybeSingle()
         : { data: null };
+      const partnerUserId = selectedPartnerUserId || partnerLookup.data?.id || null;
 
       const { data: createdRelationship, error } = await supabase
         .from('relationships')
         .insert({
           user_id: user.id,
-          partner_user_id: partnerLookup.data?.id || null,
+          partner_user_id: partnerUserId,
           partner_name: relationshipForm.partnerName.trim(),
           partner_phone: normalizedPhone || null,
           partner_face_photo: relationshipPhotoUrl.trim() || null,
@@ -5296,17 +5646,17 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         .single();
       if (error) throw error;
 
-      if (partnerLookup.data?.id && createdRelationship?.id) {
+      if (partnerUserId && createdRelationship?.id) {
         await supabase.from('relationship_requests').insert({
           relationship_id: createdRelationship.id,
           requester_id: user.id,
-          partner_user_id: partnerLookup.data.id,
+          partner_user_id: partnerUserId,
           partner_phone: normalizedPhone || null,
           partner_name: relationshipForm.partnerName.trim(),
           status: 'pending',
         });
         await supabase.from('notifications').insert({
-          user_id: partnerLookup.data.id,
+          user_id: partnerUserId,
           title: 'Relationship verification request',
           message: `${user.full_name || 'Someone'} registered a relationship with you.`,
           type: 'relationship_request',
@@ -5319,6 +5669,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       setRelationshipForm({
         partnerName: '',
         partnerPhone: '',
+        partnerUserId: '',
         type: 'serious',
         startDate: '',
         startDay: '',
@@ -5331,6 +5682,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         city: '',
         consent: false,
       });
+      setSelectedRelationshipPartner(null);
+      setRelationshipPartnerSearchQuery('');
+      setRelationshipPartnerSearchResults([]);
       setRelationshipStep(1);
       setRelationshipPhotoUrl('');
       setReactionNotice('Relationship registration submitted');
@@ -9937,7 +10291,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         window.setTimeout(() => setReactionNotice(null), 1800);
         return;
       }
-      if (relationshipStep === 2 && !relationshipForm.partnerPhone.trim()) {
+      if (relationshipStep === 2 && !relationshipForm.partnerPhone.trim() && !relationshipForm.partnerUserId.trim()) {
         setReactionNotice('Add partner phone to continue');
         window.setTimeout(() => setReactionNotice(null), 1800);
         return;
@@ -9979,9 +10333,84 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         {relationshipStep === 1 ? (
           <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
             <h3 className="text-lg font-black text-slate-950">Partner details</h3>
-            <p className="mt-1 text-sm text-slate-500">Add your partner name and optional identity details.</p>
+            <p className="mt-1 text-sm text-slate-500">Search registered members first, or enter partner details manually.</p>
             <div className="mt-4 space-y-4">
-              <FormField label="Partner name" value={relationshipForm.partnerName} onChange={(partnerName) => setRelationshipForm((prev) => ({ ...prev, partnerName }))} placeholder="Enter their full name" />
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <p className="text-sm font-black text-slate-800">Search Partner by Username, Name, or Phone</p>
+                  <span className="grid h-7 w-7 place-items-center rounded-full bg-pink-50 text-pink-600" title="Search registered users first.">
+                    <ShieldCheck className="h-4 w-4" />
+                  </span>
+                </div>
+                <div className="relative">
+                  <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    value={relationshipPartnerSearchQuery}
+                    onChange={(event) => void searchRelationshipPartners(event.target.value)}
+                    placeholder="Search by username, name, or phone..."
+                    className="min-h-[58px] w-full rounded-[18px] border border-slate-200 bg-white pl-12 pr-4 text-base font-semibold text-slate-900 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                    autoCapitalize="none"
+                  />
+                </div>
+                {relationshipPartnerSearching ? (
+                  <div className="mt-3 flex items-center gap-2 rounded-[16px] bg-slate-50 px-4 py-3 text-sm font-bold text-slate-500">
+                    <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                    Searching Committed members...
+                  </div>
+                ) : null}
+                {relationshipPartnerSearchResults.length > 0 ? (
+                  <div className="mt-3 overflow-hidden rounded-[18px] border border-slate-200 bg-white">
+                    {relationshipPartnerSearchResults.map((item) => (
+                      <button
+                        key={`${item.id || item.phoneNumber || item.fullName}-${item.isRegisteredUser ? 'registered' : 'unregistered'}`}
+                        type="button"
+                        onClick={() => selectRelationshipPartner(item)}
+                        className="flex w-full items-center gap-3 border-b border-slate-100 px-3 py-3 text-left last:border-b-0 hover:bg-slate-50"
+                      >
+                        <Avatar src={item.profilePicture} name={item.fullName} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="truncate font-black text-slate-950">{item.fullName}</p>
+                            {item.username ? <span className="text-xs font-bold text-slate-500">@{item.username}</span> : null}
+                            {!item.isRegisteredUser ? <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black text-slate-500">Not registered</span> : null}
+                            {item.verifications?.phone ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : null}
+                          </div>
+                          <p className="mt-1 truncate text-xs font-semibold text-slate-500">{item.phoneNumber || (item.isRegisteredUser ? 'Phone hidden' : "Registered as someone else's partner")}</p>
+                          {item.partnerName ? <p className="mt-1 text-xs font-semibold text-slate-400">Relationship record with {item.partnerName}</p> : null}
+                        </div>
+                        <ChevronRight className="h-5 w-5 shrink-0 text-slate-300" />
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+
+              {selectedRelationshipPartner ? (
+                <div className="rounded-[20px] border border-emerald-200 bg-emerald-50 p-3">
+                  <div className="flex items-center gap-3">
+                    <Avatar src={selectedRelationshipPartner.profilePicture} name={selectedRelationshipPartner.fullName} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-black text-emerald-950">{selectedRelationshipPartner.fullName}</p>
+                      <p className="truncate text-sm font-semibold text-emerald-700">
+                        {selectedRelationshipPartner.username ? `@${selectedRelationshipPartner.username}` : selectedRelationshipPartner.phoneNumber || 'Selected partner'}
+                      </p>
+                    </div>
+                    <button type="button" onClick={clearRelationshipPartnerSelection} className="grid h-9 w-9 place-items-center rounded-full bg-white text-red-500">
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-3">
+                    <span className="h-px flex-1 bg-slate-200" />
+                    <span className="text-sm font-black text-slate-500">OR</span>
+                    <span className="h-px flex-1 bg-slate-200" />
+                  </div>
+                  <FormField label="Enter partner's full name manually" value={relationshipForm.partnerName} onChange={(partnerName) => setRelationshipForm((prev) => ({ ...prev, partnerName, partnerUserId: '' }))} placeholder="Enter partner's name" />
+                </>
+              )}
+
               <FormField label="City or location" value={relationshipForm.city} onChange={(city) => setRelationshipForm((prev) => ({ ...prev, city }))} placeholder="Optional" />
               <div className="rounded-[18px] bg-slate-50 p-3 ring-1 ring-slate-200">
                 <p className="text-xs font-black uppercase tracking-wide text-slate-500">Date of birth (optional)</p>
@@ -9998,10 +10427,28 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         {relationshipStep === 2 ? (
           <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
             <h3 className="text-lg font-black text-slate-950">Partner contact</h3>
-            <p className="mt-1 text-sm text-slate-500">We use this phone to notify your partner for confirmation.</p>
-            <div className="mt-4 space-y-4">
-              <FormField label="Partner phone" value={relationshipForm.partnerPhone} onChange={(partnerPhone) => setRelationshipForm((prev) => ({ ...prev, partnerPhone }))} placeholder="+263..." />
-            </div>
+            {relationshipForm.partnerUserId.trim() ? (
+              <div className="mt-4 rounded-[20px] bg-blue-50 p-4 ring-1 ring-blue-100">
+                <p className="font-black text-blue-950">Registered partner selected</p>
+                <p className="mt-1 text-sm leading-6 text-blue-800">
+                  We can send the confirmation request directly to their Committed account. Phone number is optional when a registered member is selected.
+                </p>
+                <div className="mt-3 flex items-center gap-3 rounded-[16px] bg-white p-3">
+                  <Avatar src={selectedRelationshipPartner?.profilePicture} name={relationshipForm.partnerName} />
+                  <div className="min-w-0">
+                    <p className="truncate font-black text-slate-950">{relationshipForm.partnerName}</p>
+                    <p className="truncate text-sm text-slate-500">{selectedRelationshipPartner?.username ? `@${selectedRelationshipPartner.username}` : relationshipForm.partnerPhone || 'Committed member'}</p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <p className="mt-1 text-sm text-slate-500">We use this phone to notify your partner for confirmation.</p>
+                <div className="mt-4 space-y-4">
+                  <FormField label="Partner phone" value={relationshipForm.partnerPhone} onChange={(partnerPhone) => setRelationshipForm((prev) => ({ ...prev, partnerPhone }))} placeholder="+263..." />
+                </div>
+              </>
+            )}
           </section>
         ) : null}
 
@@ -10062,7 +10509,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               <h3 className="text-lg font-black text-slate-950">Review</h3>
               <div className="mt-3 space-y-2 text-sm text-slate-700">
                 <p><span className="font-black">Partner:</span> {relationshipForm.partnerName || 'Not set'}</p>
-                <p><span className="font-black">Phone:</span> {relationshipForm.partnerPhone || 'Not set'}</p>
+                <p><span className="font-black">Phone:</span> {relationshipForm.partnerPhone || (relationshipForm.partnerUserId ? 'Linked Committed account' : 'Not set')}</p>
                 <p><span className="font-black">Type:</span> {relationshipForm.type}</p>
                 <p><span className="font-black">Visibility:</span> {relationshipForm.privacy}</p>
                 <p><span className="font-black">City:</span> {relationshipForm.city || 'Not set'}</p>
@@ -10106,7 +10553,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             <button
               type="button"
               onClick={() => setShowRelationshipReviewModal(true)}
-              disabled={saving || !relationshipForm.partnerName.trim() || !relationshipForm.partnerPhone.trim() || !relationshipPhotoUrl.trim() || !relationshipForm.consent}
+              disabled={saving || !relationshipForm.partnerName.trim() || (!relationshipForm.partnerPhone.trim() && !relationshipForm.partnerUserId.trim()) || !relationshipPhotoUrl.trim() || !relationshipForm.consent}
               className="rounded-[18px] bg-blue-600 py-3 text-sm font-black text-white disabled:opacity-50"
             >
               {saving ? 'Submitting...' : 'Review & register'}
@@ -10123,7 +10570,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               </div>
               <div className="mt-4 space-y-2 text-sm text-slate-700">
                 <p><span className="font-black">Partner:</span> {relationshipForm.partnerName || 'Not set'}</p>
-                <p><span className="font-black">Phone:</span> {relationshipForm.partnerPhone || 'Not set'}</p>
+                <p><span className="font-black">Phone:</span> {relationshipForm.partnerPhone || (relationshipForm.partnerUserId ? 'Linked Committed account' : 'Not set')}</p>
                 <p><span className="font-black">City:</span> {relationshipForm.city || 'Not set'}</p>
                 <p><span className="font-black">Type:</span> {relationshipForm.type}</p>
                 <p><span className="font-black">Visibility:</span> {relationshipForm.privacy}</p>
@@ -10424,6 +10871,16 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               </ProfileUserLink>
               <p className="text-xs font-semibold text-slate-500">Messages sync from the same mobile conversations.</p>
             </div>
+            <button
+              type="button"
+              onClick={() => void deleteChatConversation(selectedConversation)}
+              disabled={saving}
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-red-50 text-red-500 disabled:opacity-50"
+              aria-label="Delete conversation"
+              title="Delete conversation"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
           </div>
           <div className="flex-1 space-y-3 overflow-y-auto px-3 py-4">
             {!messages.length ? <EmptyState icon={MessageCircle} title="No Messages Yet" text="Start the conversation here." /> : null}
@@ -10431,16 +10888,41 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
               const own = message.sender_id === user?.id;
               return (
                 <div key={message.id} className={`flex ${own ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[78%] rounded-[20px] px-4 py-3 text-sm font-semibold leading-5 ${own ? 'rounded-br-md bg-blue-600 text-white' : 'rounded-bl-md bg-white text-slate-800 ring-1 ring-slate-200'}`}>
+                  <div className={`group max-w-[78%] rounded-[20px] px-4 py-3 text-sm font-semibold leading-5 ${own ? 'rounded-br-md bg-blue-600 text-white' : 'rounded-bl-md bg-white text-slate-800 ring-1 ring-slate-200'}`}>
                     {message.media_url ? <img src={message.media_url} alt="" className="mb-2 max-h-64 rounded-[14px] object-cover" /> : null}
                     {message.document_url ? (
                       <a href={message.document_url} target="_blank" rel="noreferrer" className={`mb-2 flex items-center gap-2 rounded-[14px] px-3 py-2 text-xs font-black ${own ? 'bg-white/15 text-white' : 'bg-slate-50 text-blue-700'}`}>
                         <FileText className="h-4 w-4" />
-                        Open document
+                        {message.document_name || 'Open document'}
                       </a>
                     ) : null}
                     {message.content || (message.media_url ? 'Photo' : message.document_url ? 'Document' : 'Message')}
-                    <p className={`mt-1 text-[10px] ${own ? 'text-blue-100' : 'text-slate-400'}`}>{timeAgo(message.created_at)}</p>
+                    <div className={`mt-1 flex flex-wrap items-center gap-2 ${own ? 'justify-end' : 'justify-start'}`}>
+                      <p className={`text-[10px] ${own ? 'text-blue-100' : 'text-slate-400'}`}>{timeAgo(message.created_at)}</p>
+                      <button
+                        type="button"
+                        onClick={() => void deleteChatMessage(selectedConversation, message, false)}
+                        disabled={saving}
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black disabled:opacity-50 ${own ? 'bg-white/15 text-white' : 'bg-slate-100 text-red-500'}`}
+                        aria-label="Delete message for me"
+                        title="Delete message for me"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        Me
+                      </button>
+                      {own ? (
+                        <button
+                          type="button"
+                          onClick={() => void deleteChatMessage(selectedConversation, message, true)}
+                          disabled={saving}
+                          className="rounded-full bg-white/15 px-2 py-1 text-[10px] font-black text-white disabled:opacity-50"
+                          aria-label="Delete message for everyone"
+                          title="Delete message for everyone"
+                        >
+                          Everyone
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               );
@@ -10539,7 +11021,16 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                 </div>
                 <span className="shrink-0 text-xs font-semibold text-slate-400">{timeAgo(conversation.last_message_at || conversation.created_at)}</span>
               </div>
-              <Send className="h-5 w-5 shrink-0 text-slate-400" aria-hidden />
+              <button
+                type="button"
+                onClick={() => void deleteChatConversation(conversation)}
+                disabled={saving}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-red-50 text-red-500 disabled:opacity-50"
+                aria-label={`Delete conversation with ${displayName}`}
+                title="Delete conversation"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
             </div>
           );
         })}

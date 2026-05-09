@@ -341,14 +341,14 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
   };
 
   return (
-    <div className="p-5 sm:p-7">
-      <div className="flex items-start gap-4">
-        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-teal-300 shadow-lg shadow-slate-950/10">
+    <div className="p-4 sm:p-7">
+      <div className="flex items-start gap-3 sm:gap-4">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-teal-300 shadow-lg shadow-slate-950/10 sm:h-14 sm:w-14">
           {isSignUp ? <UserRound className="h-7 w-7" /> : <Mail className="h-7 w-7" />}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-black tracking-normal text-slate-950">{title}</h1>
+            <h1 className="text-xl font-black tracking-normal text-slate-950 sm:text-2xl">{title}</h1>
             {isSignUp ? (
               <span className="rounded-md bg-teal-50 px-2 py-1 text-xs font-black uppercase text-teal-700 ring-1 ring-teal-100">
                 2 min setup
@@ -371,11 +371,11 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
                 signUpStep === step ? 'bg-white text-slate-950 shadow-sm ring-1 ring-slate-200' : 'text-slate-500'
               }`}
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 <span className={`grid h-6 w-6 place-items-center rounded-md text-xs font-black ${signUpStep === step ? 'bg-teal-500 text-slate-950' : 'bg-white text-slate-500'}`}>
                   {step}
                 </span>
-                <span className="text-xs font-black uppercase">{label}</span>
+                <span className="text-[10px] font-black uppercase sm:text-xs">{label}</span>
               </div>
               <div className={`mt-3 h-1.5 rounded-full ${step <= signUpStep ? 'bg-teal-500' : 'bg-slate-200'}`} />
             </div>

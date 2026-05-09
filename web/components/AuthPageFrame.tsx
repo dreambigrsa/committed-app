@@ -33,7 +33,7 @@ export default function AuthPageFrame({ eyebrow, title, subtitle, children }: Au
         <div className="absolute inset-0 bg-slate-950/76" />
         <div className="absolute inset-y-0 left-0 w-full bg-[linear-gradient(90deg,rgba(2,6,23,0.92),rgba(2,6,23,0.72)_48%,rgba(2,6,23,0.32)_100%)]" />
 
-        <section className="relative mx-auto grid min-h-screen max-w-7xl gap-10 px-5 pb-12 pt-32 md:px-8 lg:grid-cols-[0.96fr_0.74fr] lg:items-center lg:gap-16 lg:pt-28">
+        <section className="relative mx-auto grid min-h-screen max-w-7xl gap-10 px-5 pb-12 pt-36 sm:pt-40 md:px-8 lg:grid-cols-[0.96fr_0.74fr] lg:items-center lg:gap-16 lg:pt-32">
           <div className="max-w-2xl">
             <div className="inline-flex items-center gap-2 rounded-md border border-white/20 bg-white/10 px-3 py-2 text-sm font-black text-teal-100 shadow-lg shadow-slate-950/10 backdrop-blur-md">
               <ShieldCheck className="h-4 w-4" />

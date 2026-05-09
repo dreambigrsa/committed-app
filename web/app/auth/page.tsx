@@ -1,52 +1,56 @@
 import Link from 'next/link';
-import Navbar from '@/components/Navbar';
-import Footer from '@/components/Footer';
+import { ArrowRight, Smartphone } from 'lucide-react';
+import AuthPageFrame from '@/components/AuthPageFrame';
 import OpenAppButton from '@/components/OpenAppButton';
 
 export default function AuthPage() {
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Navbar />
-      <main className="mx-auto flex min-h-[70vh] max-w-3xl flex-col justify-center px-4 py-16 sm:px-6">
-        <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-xl shadow-slate-200/50 sm:p-10">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-violet-600">Committed Web</p>
-          <h1 className="mt-4 font-display text-3xl font-bold text-slate-900 sm:text-4xl">
-            Continue your Committed experience online
-          </h1>
-          <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-slate-600">
-            Use the website on this same domain, or open the mobile app when you want the native app experience.
+    <AuthPageFrame
+      eyebrow="Committed Web"
+      title="Choose how you want to continue."
+      subtitle="Use the website on this same domain, create an account, or open the mobile app when you want the native experience."
+    >
+      <div className="p-5 sm:p-6">
+        <p className="text-sm font-black uppercase text-teal-700">Account access</p>
+        <h2 className="mt-3 text-2xl font-black tracking-normal text-slate-950">
+          Continue your Committed experience online.
+        </h2>
+        <p className="mt-3 text-sm leading-6 text-slate-600">
+          Pick the path that matches where you are in the journey.
+        </p>
+
+        <div className="mt-6 grid gap-3">
+          <Link
+            href="/sign-up"
+            className="inline-flex min-h-[54px] items-center justify-center gap-2 rounded-md bg-teal-500 px-5 font-black text-slate-950 transition hover:bg-teal-300"
+          >
+            Create account
+            <ArrowRight className="h-5 w-5" />
+          </Link>
+          <Link
+            href="/sign-in"
+            className="inline-flex min-h-[54px] items-center justify-center rounded-md border border-slate-200 bg-white px-5 font-black text-slate-950 transition hover:border-teal-400 hover:bg-teal-50"
+          >
+            Sign in
+          </Link>
+          <Link
+            href="/app"
+            className="inline-flex min-h-[54px] items-center justify-center rounded-md border border-slate-200 bg-slate-50 px-5 font-black text-slate-950 transition hover:border-teal-400 hover:bg-teal-50"
+          >
+            Open web app
+          </Link>
+        </div>
+
+        <div className="mt-6 rounded-md border border-slate-200 bg-slate-50 p-4">
+          <p className="inline-flex items-center gap-2 text-sm font-black text-slate-800">
+            <Smartphone className="h-4 w-4 text-teal-700" />
+            Prefer the mobile app?
           </p>
-
-          <div className="mt-8 grid gap-3 sm:grid-cols-3">
-            <Link
-              href="/sign-up"
-              className="inline-flex min-h-[56px] items-center justify-center rounded-2xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-rose-500 px-6 py-4 font-semibold text-white shadow-lg shadow-violet-500/25 transition-all hover:-translate-y-0.5 hover:shadow-xl"
-            >
-              Create Account
-            </Link>
-            <Link
-              href="/sign-in"
-              className="inline-flex min-h-[56px] items-center justify-center rounded-2xl border-2 border-violet-200 bg-white px-6 py-4 font-semibold text-violet-700 transition-all hover:border-violet-300 hover:bg-violet-50"
-            >
-              Sign In
-            </Link>
-            <Link
-              href="/app"
-              className="inline-flex min-h-[56px] items-center justify-center rounded-2xl border-2 border-slate-200 bg-slate-50 px-6 py-4 font-semibold text-slate-800 transition-all hover:border-violet-200 hover:bg-violet-50"
-            >
-              Web App
-            </Link>
-          </div>
-
-          <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-5">
-            <p className="text-sm font-medium text-slate-700">Prefer the mobile app?</p>
-            <div className="mt-4">
-              <OpenAppButton target="sign-in" label="Open Mobile App" variant="secondary" />
-            </div>
+          <div className="mt-4">
+            <OpenAppButton target="sign-in" label="Open Mobile App" variant="secondary" />
           </div>
         </div>
-      </main>
-      <Footer />
-    </div>
+      </div>
+    </AuthPageFrame>
   );
 }

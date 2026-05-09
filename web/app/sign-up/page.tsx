@@ -5,8 +5,8 @@ export default function SignUpPage() {
   return (
     <AuthPageFrame
       eyebrow="Join with intention"
-      title="Create your Committed account."
-      subtitle="Start with a safer account foundation, then meet intentionally, register relationships, and manage trust signals from one place."
+      title="Start safer. Meet with intention."
+      subtitle="Create a trust-first account for intentional dating, verified relationship records, and privacy-aware connection tools."
     >
       <WebAuthFormLoader mode="sign-up" />
     </AuthPageFrame>

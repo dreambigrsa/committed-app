@@ -124,7 +124,7 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
   const isSignUp = mode === 'sign-up';
   const title = isSignUp ? 'Create your account' : 'Welcome back';
   const subtitle = isSignUp
-    ? 'Start on web, then continue here or in the mobile app.'
+    ? 'Two quick steps to set up your secure web account.'
     : 'Sign in to continue your Committed experience on web.';
 
   const canSubmit = useMemo(() => {
@@ -341,38 +341,70 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
   };
 
   return (
-    <div className="p-5 sm:p-6">
-      <div className="text-center">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-md bg-slate-950 text-teal-300 shadow-lg shadow-slate-950/10">
+    <div className="p-5 sm:p-7">
+      <div className="flex items-start gap-4">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-teal-300 shadow-lg shadow-slate-950/10">
           {isSignUp ? <UserRound className="h-7 w-7" /> : <Mail className="h-7 w-7" />}
         </div>
-        <h1 className="mt-5 text-3xl font-black tracking-normal text-slate-950">{title}</h1>
-        <p className="mt-2 text-slate-600">{subtitle}</p>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-black tracking-normal text-slate-950">{title}</h1>
+            {isSignUp ? (
+              <span className="rounded-md bg-teal-50 px-2 py-1 text-xs font-black uppercase text-teal-700 ring-1 ring-teal-100">
+                2 min setup
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{subtitle}</p>
+        </div>
       </div>
 
       {isSignUp ? (
-        <div className="mt-7">
-          <div className="flex items-center gap-2">
-            {[1, 2].map((step) => (
-              <div key={step} className={`h-2 flex-1 rounded-full ${step <= signUpStep ? 'bg-teal-500' : 'bg-slate-200'}`} />
-            ))}
-          </div>
-          <div className="mt-3 flex items-center justify-between text-xs font-black uppercase text-slate-500">
-            <span>Step {signUpStep} of 2</span>
-            <span>{signUpStep === 1 ? 'Your details' : 'Secure account'}</span>
-          </div>
+        <div className="mt-7 grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-1">
+          {[
+            { step: 1, label: 'Your details' },
+            { step: 2, label: 'Secure account' },
+          ].map(({ step, label }) => (
+            <div
+              key={step}
+              className={`rounded-md px-3 py-3 transition ${
+                signUpStep === step ? 'bg-white text-slate-950 shadow-sm ring-1 ring-slate-200' : 'text-slate-500'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span className={`grid h-6 w-6 place-items-center rounded-md text-xs font-black ${signUpStep === step ? 'bg-teal-500 text-slate-950' : 'bg-white text-slate-500'}`}>
+                  {step}
+                </span>
+                <span className="text-xs font-black uppercase">{label}</span>
+              </div>
+              <div className={`mt-3 h-1.5 rounded-full ${step <= signUpStep ? 'bg-teal-500' : 'bg-slate-200'}`} />
+            </div>
+          ))}
         </div>
       ) : null}
 
-      <form onSubmit={handleSubmit} className="mt-7 space-y-4">
+      {isSignUp ? (
+        <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <p className="text-sm font-black text-slate-900">
+            {signUpStep === 1 ? 'Tell us how to identify you.' : 'Protect the account and confirm the essentials.'}
+          </p>
+          <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+            {signUpStep === 1
+              ? 'Use the same details you want connected to relationship and dating trust signals.'
+              : 'Your password secures web access. Legal confirmations keep the trust system explicit.'}
+          </p>
+        </div>
+      ) : null}
+
+      <form onSubmit={handleSubmit} className="mt-5 space-y-4">
         {isSignUp && signUpStep === 1 && (
           <label className="block">
-            <span className="text-sm font-semibold text-slate-700">Full name</span>
+            <span className="text-sm font-black text-slate-800">Full name</span>
             <input
               type="text"
               value={fullName}
               onChange={(event) => setFullName(event.target.value)}
-              className="mt-2 w-full rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-slate-950 outline-none transition focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-100"
+              className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-4 focus:ring-teal-100"
               placeholder="Enter your full name"
               autoComplete="name"
             />
@@ -380,27 +412,27 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
         )}
 
         {(!isSignUp || signUpStep === 1) && (
-        <label className="block">
-          <span className="text-sm font-semibold text-slate-700">Email</span>
-          <input
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className="mt-2 w-full rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-slate-950 outline-none transition focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-100"
-            placeholder="you@example.com"
-            autoComplete="email"
-          />
-        </label>
+          <label className="block">
+            <span className="text-sm font-black text-slate-800">Email</span>
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-4 focus:ring-teal-100"
+              placeholder="you@example.com"
+              autoComplete="email"
+            />
+          </label>
         )}
 
         {isSignUp && signUpStep === 1 && (
           <label className="block">
-            <span className="text-sm font-semibold text-slate-700">Phone number</span>
+            <span className="text-sm font-black text-slate-800">Phone number</span>
             <div className="mt-2 flex gap-2">
               <select
                 value={countryCode}
                 onChange={(event) => setCountryCode(event.target.value)}
-                className="w-28 rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-800 outline-none focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-100"
+                className="w-28 rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm font-black text-slate-800 shadow-sm outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-100"
               >
                 {countryCodes.map(({ code, label }) => (
                   <option key={`${label}-${code}`} value={code}>
@@ -412,7 +444,7 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
                 type="tel"
                 value={phone}
                 onChange={(event) => setPhone(event.target.value)}
-                className="min-w-0 flex-1 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-slate-950 outline-none transition focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-100"
+                className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-4 py-3 text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-4 focus:ring-teal-100"
                 placeholder="Phone number"
                 autoComplete="tel"
               />
@@ -421,35 +453,35 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
         )}
 
         {(!isSignUp || signUpStep === 2) && (
-        <label className="block">
-          <span className="text-sm font-semibold text-slate-700">Password</span>
-          <div className="relative mt-2">
-            <input
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="w-full rounded-md border border-slate-200 bg-slate-50 px-4 py-3 pr-12 text-slate-950 outline-none transition focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-100"
-              placeholder="Enter your password"
-              autoComplete={isSignUp ? 'new-password' : 'current-password'}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword((value) => !value)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-2 text-slate-500 hover:bg-slate-100"
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
-            >
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
-          </div>
-        </label>
+          <label className="block">
+            <span className="text-sm font-black text-slate-800">Password</span>
+            <div className="relative mt-2">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 pr-12 text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-4 focus:ring-teal-100"
+                placeholder="Enter your password"
+                autoComplete={isSignUp ? 'new-password' : 'current-password'}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((value) => !value)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-2 text-slate-500 hover:bg-slate-100"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          </label>
         )}
 
         {isSignUp && signUpStep === 2 && (
-          <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-sm font-black text-slate-800">Required legal documents</p>
-                <p className="mt-1 text-xs leading-5 text-slate-500">Review and accept the required terms before creating your account.</p>
+                <p className="text-sm font-black text-slate-900">Legal confirmations</p>
+                <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Accept each required document to finish sign-up.</p>
               </div>
               <span className="rounded-md bg-white px-2 py-1 text-xs font-black text-teal-700 ring-1 ring-slate-200">
                 {legalDocs.filter((doc) => legalAcceptances[doc.id]).length}/{legalDocs.length || 0}
@@ -462,7 +494,7 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
             ) : (
               <div className="mt-4 space-y-2">
                 {legalDocs.map((doc) => (
-                  <label key={doc.id} className="flex items-start gap-3 rounded-md border border-slate-200 bg-white p-3 transition hover:border-teal-300">
+                  <label key={doc.id} className="group flex items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition hover:border-teal-300">
                     <input
                       type="checkbox"
                       checked={!!legalAcceptances[doc.id]}
@@ -474,7 +506,7 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
                       }
                       className="mt-1 h-4 w-4 rounded border-slate-300 accent-teal-500"
                     />
-                    <span className="text-sm leading-5 text-slate-700">
+                    <span className="text-sm font-semibold leading-5 text-slate-700">
                       I accept{' '}
                       <Link href={`/legal/${doc.slug}`} className="font-black text-teal-700 hover:text-teal-900">
                         {doc.title}
@@ -488,7 +520,6 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
             )}
           </div>
         )}
-
         {error && (
           <div className="flex gap-3 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             <AlertCircle className="h-5 w-5 shrink-0" />

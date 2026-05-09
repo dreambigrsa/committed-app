@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { AlertCircle, CheckCircle2, Eye, EyeOff, Loader2, Mail, UserRound } from 'lucide-react';
+import { AlertCircle, ArrowRight, CheckCircle2, ChevronLeft, Eye, EyeOff, Loader2, Mail, UserRound } from 'lucide-react';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 import OpenAppButton from '@/components/OpenAppButton';
 
@@ -119,6 +119,7 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
   const [notice, setNotice] = useState('');
   const [legalDocs, setLegalDocs] = useState<LegalDoc[]>([]);
   const [legalAcceptances, setLegalAcceptances] = useState<Record<string, boolean>>({});
+  const [signUpStep, setSignUpStep] = useState(1);
 
   const isSignUp = mode === 'sign-up';
   const title = isSignUp ? 'Create your account' : 'Welcome back';
@@ -137,6 +138,11 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
     }
     return true;
   }, [email, password, isSignUp, fullName, phone, legalAcceptances, legalDocs, loadingLegalDocs]);
+
+  const canContinueSignUp = useMemo(() => {
+    if (!isSignUp) return true;
+    return Boolean(fullName.trim() && email.trim() && phone.trim());
+  }, [email, fullName, isSignUp, phone]);
 
   useEffect(() => {
     if (!isSignUp || typeof window === 'undefined') return;
@@ -232,6 +238,15 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isSignUp && signUpStep === 1) {
+      if (!canContinueSignUp) {
+        setError('Please add your name, email, and phone number to continue.');
+        return;
+      }
+      setError('');
+      setSignUpStep(2);
+      return;
+    }
     if (!canSubmit || loading) return;
 
     setLoading(true);
@@ -335,8 +350,22 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
         <p className="mt-2 text-slate-600">{subtitle}</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="mt-8 space-y-4">
-        {isSignUp && (
+      {isSignUp ? (
+        <div className="mt-7">
+          <div className="flex items-center gap-2">
+            {[1, 2].map((step) => (
+              <div key={step} className={`h-2 flex-1 rounded-full ${step <= signUpStep ? 'bg-teal-500' : 'bg-slate-200'}`} />
+            ))}
+          </div>
+          <div className="mt-3 flex items-center justify-between text-xs font-black uppercase text-slate-500">
+            <span>Step {signUpStep} of 2</span>
+            <span>{signUpStep === 1 ? 'Your details' : 'Secure account'}</span>
+          </div>
+        </div>
+      ) : null}
+
+      <form onSubmit={handleSubmit} className="mt-7 space-y-4">
+        {isSignUp && signUpStep === 1 && (
           <label className="block">
             <span className="text-sm font-semibold text-slate-700">Full name</span>
             <input
@@ -350,43 +379,7 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
           </label>
         )}
 
-        {isSignUp && (
-          <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
-            <p className="text-sm font-semibold text-slate-700">Required legal documents</p>
-            {loadingLegalDocs ? (
-              <p className="mt-2 text-sm text-slate-500">Loading documents...</p>
-            ) : legalDocs.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-500">No signup legal documents found.</p>
-            ) : (
-              <div className="mt-3 space-y-3">
-                {legalDocs.map((doc) => (
-                  <label key={doc.id} className="flex items-start gap-3 rounded-md border border-slate-200 bg-white p-3">
-                    <input
-                      type="checkbox"
-                      checked={!!legalAcceptances[doc.id]}
-                      onChange={(event) =>
-                        setLegalAcceptances((current) => ({
-                          ...current,
-                          [doc.id]: event.target.checked,
-                        }))
-                      }
-                      className="mt-1 h-4 w-4 rounded border-slate-300"
-                    />
-                    <span className="text-sm text-slate-700">
-                      I accept{' '}
-                      <Link href={`/legal/${doc.slug}`} className="font-semibold text-teal-700 hover:text-teal-900">
-                        {doc.title}
-                      </Link>{' '}
-                      (v{doc.version})
-                      {doc.is_required ? ' *' : ''}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
+        {(!isSignUp || signUpStep === 1) && (
         <label className="block">
           <span className="text-sm font-semibold text-slate-700">Email</span>
           <input
@@ -398,8 +391,9 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
             autoComplete="email"
           />
         </label>
+        )}
 
-        {isSignUp && (
+        {isSignUp && signUpStep === 1 && (
           <label className="block">
             <span className="text-sm font-semibold text-slate-700">Phone number</span>
             <div className="mt-2 flex gap-2">
@@ -426,6 +420,7 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
           </label>
         )}
 
+        {(!isSignUp || signUpStep === 2) && (
         <label className="block">
           <span className="text-sm font-semibold text-slate-700">Password</span>
           <div className="relative mt-2">
@@ -447,6 +442,52 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
             </button>
           </div>
         </label>
+        )}
+
+        {isSignUp && signUpStep === 2 && (
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-black text-slate-800">Required legal documents</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">Review and accept the required terms before creating your account.</p>
+              </div>
+              <span className="rounded-md bg-white px-2 py-1 text-xs font-black text-teal-700 ring-1 ring-slate-200">
+                {legalDocs.filter((doc) => legalAcceptances[doc.id]).length}/{legalDocs.length || 0}
+              </span>
+            </div>
+            {loadingLegalDocs ? (
+              <p className="mt-3 text-sm text-slate-500">Loading documents...</p>
+            ) : legalDocs.length === 0 ? (
+              <p className="mt-3 text-sm text-slate-500">No signup legal documents found.</p>
+            ) : (
+              <div className="mt-4 space-y-2">
+                {legalDocs.map((doc) => (
+                  <label key={doc.id} className="flex items-start gap-3 rounded-md border border-slate-200 bg-white p-3 transition hover:border-teal-300">
+                    <input
+                      type="checkbox"
+                      checked={!!legalAcceptances[doc.id]}
+                      onChange={(event) =>
+                        setLegalAcceptances((current) => ({
+                          ...current,
+                          [doc.id]: event.target.checked,
+                        }))
+                      }
+                      className="mt-1 h-4 w-4 rounded border-slate-300 accent-teal-500"
+                    />
+                    <span className="text-sm leading-5 text-slate-700">
+                      I accept{' '}
+                      <Link href={`/legal/${doc.slug}`} className="font-black text-teal-700 hover:text-teal-900">
+                        {doc.title}
+                      </Link>
+                      <span className="text-slate-400"> (v{doc.version})</span>
+                      {doc.is_required ? <span className="font-black text-rose-500"> *</span> : ''}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {error && (
           <div className="flex gap-3 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -462,14 +503,38 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
           </div>
         )}
 
-        <button
-          type="submit"
-          disabled={!canSubmit || loading}
-          className="flex min-h-[54px] w-full items-center justify-center gap-2 rounded-md bg-teal-500 px-6 py-3 font-black text-slate-950 shadow-lg shadow-teal-950/10 transition hover:bg-teal-300 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {loading && <Loader2 className="h-5 w-5 animate-spin" />}
-          {isSignUp ? 'Create account' : 'Sign in'}
-        </button>
+        <div className={`grid gap-3 ${isSignUp && signUpStep === 2 ? 'sm:grid-cols-[0.45fr_0.55fr]' : ''}`}>
+          {isSignUp && signUpStep === 2 ? (
+            <button
+              type="button"
+              onClick={() => {
+                setError('');
+                setSignUpStep(1);
+              }}
+              className="inline-flex min-h-[54px] items-center justify-center gap-2 rounded-md border border-slate-200 px-5 font-black text-slate-700 transition hover:border-teal-300 hover:bg-teal-50"
+            >
+              <ChevronLeft className="h-5 w-5" />
+              Back
+            </button>
+          ) : null}
+          <button
+            type="submit"
+            disabled={isSignUp && signUpStep === 1 ? !canContinueSignUp : !canSubmit || loading}
+            className="flex min-h-[54px] w-full items-center justify-center gap-2 rounded-md bg-teal-500 px-6 py-3 font-black text-slate-950 shadow-lg shadow-teal-950/10 transition hover:bg-teal-300 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : null}
+            {isSignUp && signUpStep === 1 ? (
+              <>
+                Continue
+                <ArrowRight className="h-5 w-5" />
+              </>
+            ) : isSignUp ? (
+              'Create account'
+            ) : (
+              'Sign in'
+            )}
+          </button>
+        </div>
       </form>
 
       <div className="mt-6 text-center text-sm text-slate-600">

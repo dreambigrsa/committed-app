@@ -341,16 +341,16 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
   };
 
   return (
-    <div className="p-4 sm:p-7">
-      <div className="flex items-start gap-3 sm:gap-4">
+    <div className="min-w-0 p-4 sm:p-7">
+      <div className="grid gap-3 min-[420px]:flex min-[420px]:items-start min-[420px]:gap-4">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-teal-300 shadow-lg shadow-slate-950/10 sm:h-14 sm:w-14">
           {isSignUp ? <UserRound className="h-7 w-7" /> : <Mail className="h-7 w-7" />}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="grid gap-2 min-[420px]:flex min-[420px]:flex-wrap min-[420px]:items-center">
             <h1 className="text-xl font-black tracking-normal text-slate-950 sm:text-2xl">{title}</h1>
             {isSignUp ? (
-              <span className="rounded-md bg-teal-50 px-2 py-1 text-xs font-black uppercase text-teal-700 ring-1 ring-teal-100">
+              <span className="w-fit rounded-md bg-teal-50 px-2 py-1 text-xs font-black uppercase text-teal-700 ring-1 ring-teal-100">
                 2 min setup
               </span>
             ) : null}
@@ -360,7 +360,7 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
       </div>
 
       {isSignUp ? (
-        <div className="mt-7 grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-1">
+        <div className="mt-6 grid gap-2 rounded-lg bg-slate-100 p-1 min-[420px]:mt-7 min-[420px]:grid-cols-2">
           {[
             { step: 1, label: 'Your details' },
             { step: 2, label: 'Secure account' },
@@ -398,7 +398,7 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
 
       <form onSubmit={handleSubmit} className="mt-5 space-y-4">
         {isSignUp && signUpStep === 1 && (
-          <label className="block">
+          <label className="block min-w-0">
             <span className="text-sm font-black text-slate-800">Full name</span>
             <input
               type="text"
@@ -412,7 +412,7 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
         )}
 
         {(!isSignUp || signUpStep === 1) && (
-          <label className="block">
+          <label className="block min-w-0">
             <span className="text-sm font-black text-slate-800">Email</span>
             <input
               type="email"
@@ -426,13 +426,13 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
         )}
 
         {isSignUp && signUpStep === 1 && (
-          <label className="block">
+          <label className="block min-w-0">
             <span className="text-sm font-black text-slate-800">Phone number</span>
-            <div className="mt-2 flex gap-2">
+            <div className="mt-2 grid gap-2 min-[380px]:grid-cols-[8.75rem_minmax(0,1fr)]">
               <select
                 value={countryCode}
                 onChange={(event) => setCountryCode(event.target.value)}
-                className="w-28 rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm font-black text-slate-800 shadow-sm outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-100"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm font-black text-slate-800 shadow-sm outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-100"
               >
                 {countryCodes.map(({ code, label }) => (
                   <option key={`${label}-${code}`} value={code}>
@@ -444,7 +444,7 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
                 type="tel"
                 value={phone}
                 onChange={(event) => setPhone(event.target.value)}
-                className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-4 py-3 text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-4 focus:ring-teal-100"
+                className="min-w-0 rounded-lg border border-slate-200 bg-white px-4 py-3 text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-4 focus:ring-teal-100"
                 placeholder="Phone number"
                 autoComplete="tel"
               />

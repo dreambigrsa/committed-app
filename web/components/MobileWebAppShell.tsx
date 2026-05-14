@@ -1960,6 +1960,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   });
   const [saving, setSaving] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteAccountDialogOpen, setDeleteAccountDialogOpen] = useState(false);
+  const [deleteAccountConfirmed, setDeleteAccountConfirmed] = useState(false);
 
   const pathSegments = useMemo(() => pathname?.split('/').filter(Boolean) || [], [pathname]);
   const appPath = useMemo(() => {
@@ -8497,21 +8499,34 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     }
   };
 
-  const deleteWebAccount = async () => {
+  const deleteWebAccount = () => {
     if (!supabase || !user || deletingAccount) return;
-    const confirmed = window.confirm(
-      'Permanently delete your account and all associated data? This cannot be undone.'
-    );
-    if (!confirmed) return;
-    const doubleConfirmed = window.confirm(
-      'Final confirmation: delete your Committed account now?'
-    );
-    if (!doubleConfirmed) return;
+    setDeleteAccountConfirmed(false);
+    setDeleteAccountDialogOpen(true);
+  };
 
+  const confirmDeleteWebAccount = async () => {
+    if (!supabase || !user || deletingAccount || !deleteAccountConfirmed) return;
     setDeletingAccount(true);
     try {
-      const { error } = await supabase.rpc('delete_user_account');
-      if (error) throw error;
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('Your session expired. Please sign in again before deleting your account.');
+      }
+      const res = await fetch('/api/account/delete', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string; traceId?: string };
+      if (!res.ok || data.success === false) {
+        throw new Error(data.error || 'Could not delete account');
+      }
+      setDeleteAccountDialogOpen(false);
       await signOutWebUser();
     } catch (error: any) {
       setReactionNotice(error?.message || 'Could not delete account');
@@ -15471,6 +15486,91 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             <div className="flex items-center gap-3 rounded-[22px] bg-slate-950 px-4 py-3 text-sm font-black text-white shadow-2xl">
               <CheckCircle2 className="h-5 w-5 text-blue-300" />
               {reactionNotice}
+            </div>
+          </div>
+        ) : null}
+        {deleteAccountDialogOpen ? (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-account-title"
+            className="fixed inset-0 z-[70] mx-auto flex max-w-[430px] items-center justify-center bg-slate-950/75 px-5 backdrop-blur-md"
+            onClick={() => {
+              if (!deletingAccount) setDeleteAccountDialogOpen(false);
+            }}
+          >
+            <div
+              className="w-full max-w-[360px] overflow-hidden rounded-[28px] bg-white text-slate-950 shadow-2xl ring-1 ring-white/30"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="bg-slate-950 p-5 text-white">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="grid h-12 w-12 place-items-center rounded-[16px] bg-red-500 text-white shadow-lg shadow-red-950/20">
+                    <Trash2 className="h-6 w-6" />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteAccountDialogOpen(false)}
+                    disabled={deletingAccount}
+                    className="grid h-10 w-10 place-items-center rounded-[14px] bg-white/10 text-white transition hover:bg-white/15 disabled:opacity-50"
+                    aria-label="Close delete account dialog"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                <p className="mt-5 text-xs font-black uppercase tracking-normal text-red-200">Permanent action</p>
+                <h2 id="delete-account-title" className="mt-2 text-2xl font-black leading-tight">
+                  Delete your Committed account?
+                </h2>
+                <p className="mt-3 text-sm font-semibold leading-6 text-slate-300">
+                  This removes your web account, profile, dating data, relationship records tied to your user, and account access.
+                </p>
+              </div>
+
+              <div className="space-y-4 p-5">
+                <div className="rounded-[20px] border border-red-100 bg-red-50 p-4">
+                  <p className="flex items-center gap-2 text-sm font-black text-red-700">
+                    <ShieldCheck className="h-4 w-4" />
+                    This cannot be undone.
+                  </p>
+                  <p className="mt-2 text-sm font-semibold leading-6 text-red-700/80">
+                    You will be signed out immediately after deletion succeeds.
+                  </p>
+                </div>
+
+                <label className="flex cursor-pointer items-start gap-3 rounded-[18px] border border-slate-200 bg-slate-50 p-4 text-left">
+                  <input
+                    type="checkbox"
+                    checked={deleteAccountConfirmed}
+                    onChange={(event) => setDeleteAccountConfirmed(event.target.checked)}
+                    disabled={deletingAccount}
+                    className="mt-1 h-5 w-5 accent-red-600"
+                  />
+                  <span className="text-sm font-black leading-6 text-slate-800">
+                    I understand this permanently deletes my account.
+                  </span>
+                </label>
+
+                <div className="grid gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void confirmDeleteWebAccount()}
+                    disabled={!deleteAccountConfirmed || deletingAccount}
+                    className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-[18px] bg-red-600 px-5 text-sm font-black text-white shadow-lg shadow-red-600/20 transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {deletingAccount ? <Loader2 className="h-5 w-5 animate-spin" /> : <Trash2 className="h-5 w-5" />}
+                    {deletingAccount ? 'Deleting account...' : 'Delete account permanently'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteAccountDialogOpen(false)}
+                    disabled={deletingAccount}
+                    className="min-h-[50px] rounded-[18px] bg-slate-100 px-5 text-sm font-black text-slate-800 transition hover:bg-slate-200 disabled:opacity-50"
+                  >
+                    Keep my account
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         ) : null}

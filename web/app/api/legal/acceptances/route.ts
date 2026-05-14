@@ -221,7 +221,7 @@ export async function POST(req: NextRequest) {
       user_id: auth.user.id,
       document_id: doc.id,
       document_version: doc.version || '1.0.0',
-      context: 'manual',
+      context: 'signup',
       accepted_at: now,
     }));
 

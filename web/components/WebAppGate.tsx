@@ -53,6 +53,10 @@ function debugAuth(label: string, payload: Record<string, unknown>) {
   }
 }
 
+function delay(ms: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+}
+
 async function loadLegalAcceptances(
   supabase: any,
   accessToken: string | undefined,
@@ -178,13 +182,34 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
       setUserId(currentUserId);
       setEmail(currentEmail);
 
-      const [{ data: profile }, { data: docs }, { data: onboarding }, acceptances] = await withTimeout(
+      const profileResult = await withTimeout<any>(
+        supabase
+          .from('users')
+          .select('id,email,email_verified,verified')
+          .eq('id', currentUserId)
+          .maybeSingle(),
+        10000,
+        'Loading web profile state'
+      );
+      const profile = profileResult.data;
+
+      debugAuth('[WebAppGate] Profile fetch response', {
+        requestedUserId: currentUserId,
+        profileUserId: profile?.id ?? null,
+        email: profile?.email ?? currentEmail,
+        emailVerified: profile?.email_verified ?? false,
+        verified: profile?.verified ?? false,
+        authEmailConfirmedAt: authUser.email_confirmed_at ?? null,
+      });
+
+      const isEmailVerified = Boolean(profile?.email_verified || profile?.verified);
+      if (!isEmailVerified) {
+        setStep('verify-email');
+        return;
+      }
+
+      const [{ data: docs }, { data: onboarding }, acceptances] = await withTimeout(
         Promise.all([
-          supabase
-            .from('users')
-            .select('id,email,email_verified,verified')
-            .eq('id', currentUserId)
-            .maybeSingle(),
           supabase
             .from('legal_documents')
             .select('id,title,slug,content,version')
@@ -201,19 +226,6 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
         12000,
         'Loading web onboarding state'
       );
-
-      debugAuth('[WebAppGate] Profile fetch response', {
-        requestedUserId: currentUserId,
-        profileUserId: profile?.id ?? null,
-        email: profile?.email ?? currentEmail,
-        emailVerified: profile?.email_verified ?? !!authUser.email_confirmed_at,
-      });
-
-      const isEmailVerified = (profile?.email_verified ?? false) || !!authUser.email_confirmed_at;
-      if (!isEmailVerified) {
-        setStep('verify-email');
-        return;
-      }
 
       const legalDocs = (docs ?? []) as LegalDoc[];
       const accepted = (acceptances ?? []).map(
@@ -354,11 +366,47 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
         traceId: data.traceId ?? null,
       });
       if (!res.ok || data.success === false) {
-        throw new Error(data.error || 'Unable to save legal acceptance.');
+        debugAuth('[WebAppGate] Legal save API failed; trying browser fallback', {
+          status: res.status,
+          error: data.error ?? null,
+          traceId: data.traceId ?? null,
+        });
+        const acceptedDocs = missingDocs.map((doc) => ({
+          user_id: userId,
+          document_id: doc.id,
+          document_version: doc.version || '1.0.0',
+          context: 'signup',
+          accepted_at: new Date().toISOString(),
+        }));
+
+        for (const row of acceptedDocs) {
+          let saved = false;
+          try {
+            const rpcResult = await supabase.rpc('insert_user_legal_acceptance', {
+              p_user_id: row.user_id,
+              p_document_id: row.document_id,
+              p_document_version: row.document_version,
+              p_context: row.context,
+            });
+            if (!rpcResult.error) saved = true;
+          } catch {
+            // Fall through to direct upsert.
+          }
+
+          if (!saved) {
+            const { error: upsertError } = await supabase
+              .from('user_legal_acceptances')
+              .upsert(row, { onConflict: 'user_id,document_id' });
+            if (upsertError) {
+              throw new Error(data.error || upsertError.message || 'Unable to save legal acceptance.');
+            }
+          }
+        }
       }
       setAcceptedDocIds((current) =>
         Array.from(new Set([...current, ...missingDocs.map((doc) => `${doc.id}:${doc.version}`)]))
       );
+      await delay(200);
       await loadState();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to save legal acceptance.');
@@ -659,12 +707,6 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
         )}
 
         {error && step !== 'error' ? <p className="mt-5 text-sm font-semibold text-red-600">{error}</p> : null}
-        {step !== 'loading' && (
-          <div className="mt-8 flex items-center justify-center gap-2 text-sm font-semibold text-slate-500">
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-            Deep links and mobile app access remain unchanged.
-          </div>
-        )}
           </div>
         </div>
       </section>

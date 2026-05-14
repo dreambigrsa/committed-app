@@ -52,6 +52,55 @@ function debugAuth(label: string, payload: Record<string, unknown>) {
   }
 }
 
+async function loadLegalAcceptances(
+  supabase: any,
+  accessToken: string | undefined,
+  userId: string
+): Promise<Array<{ document_id: string; document_version: string }>> {
+  if (accessToken) {
+    try {
+      const res = await fetch('/api/legal/acceptances', {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        cache: 'no-store',
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        acceptances?: Array<{ document_id: string; document_version: string }>;
+        error?: string;
+        traceId?: string;
+      };
+      debugAuth('[WebAppGate] Legal acceptance API status response', {
+        ok: res.ok,
+        success: data.success,
+        count: data.acceptances?.length ?? 0,
+        error: data.error ?? null,
+        traceId: data.traceId ?? null,
+      });
+      if (res.ok && data.success !== false && Array.isArray(data.acceptances)) {
+        return data.acceptances;
+      }
+    } catch (err) {
+      debugAuth('[WebAppGate] Legal acceptance API status failed; trying browser fallback', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('user_legal_acceptances')
+    .select('document_id,document_version')
+    .eq('user_id', userId);
+  debugAuth('[WebAppGate] Legal acceptance browser fallback response', {
+    count: data?.length ?? 0,
+    error: error?.message ?? null,
+  });
+  if (error) throw error;
+  return data ?? [];
+}
+
 export default function WebAppGate({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [step, setStep] = useState<GateStep>('loading');
@@ -128,7 +177,7 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
       setUserId(currentUserId);
       setEmail(currentEmail);
 
-      const [{ data: profile }, { data: docs }, { data: acceptances }, { data: onboarding }] = await withTimeout(
+      const [{ data: profile }, { data: docs }, { data: onboarding }, acceptances] = await withTimeout(
         Promise.all([
           supabase
             .from('users')
@@ -142,14 +191,11 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
             .eq('is_required', true)
             .order('created_at', { ascending: true }),
           supabase
-            .from('user_legal_acceptances')
-            .select('document_id,document_version')
-            .eq('user_id', currentUserId),
-          supabase
             .from('user_onboarding_data')
             .select('has_completed_onboarding,consent_given')
             .eq('user_id', currentUserId)
             .maybeSingle(),
+          loadLegalAcceptances(supabase, session?.access_token, currentUserId),
         ]),
         12000,
         'Loading web onboarding state'
@@ -172,6 +218,12 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
       const accepted = (acceptances ?? []).map(
         (row: { document_id: string; document_version: string }) => `${row.document_id}:${row.document_version}`
       );
+      debugAuth('[WebAppGate] Legal gate decision', {
+        requiredDocuments: legalDocs.map((doc) => `${doc.id}:${doc.version}`),
+        acceptedDocuments: accepted,
+        missingCount: legalDocs.filter((doc) => !accepted.includes(`${doc.id}:${doc.version}`)).length,
+        sessionExists: Boolean(session?.access_token),
+      });
       setRequiredDocs(legalDocs);
       setAcceptedDocIds(accepted);
       setCheckedDocIds([]);
@@ -251,29 +303,61 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
     setError('');
     try {
       const supabase = getSupabaseBrowser() as any;
-      const {
+      let {
         data: { session },
       } = await supabase.auth.getSession();
       if (!session?.access_token) {
+        const {
+          data: { session: refreshedSession },
+          error: refreshError,
+        } = await supabase.auth.refreshSession();
+        debugAuth('[WebAppGate] Legal save session refresh attempted', {
+          refreshed: Boolean(refreshedSession?.access_token),
+          error: refreshError?.message ?? null,
+        });
+        session = refreshedSession;
+      }
+      if (!session?.access_token) {
         throw new Error('Your session expired. Please sign in again.');
       }
+      const documents = missingDocs.map((doc) => ({
+        documentId: doc.id,
+        documentVersion: doc.version,
+      }));
+      debugAuth('[WebAppGate] Saving legal acceptances', {
+        userId,
+        documents,
+        sessionExists: Boolean(session.access_token),
+      });
       const res = await fetch('/api/legal/acceptances', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          documents: missingDocs.map((doc) => ({
-            documentId: doc.id,
-            documentVersion: doc.version,
-          })),
-        }),
+        body: JSON.stringify({ documents }),
       });
-      const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        error?: string;
+        acceptedCount?: number;
+        saveStrategy?: string;
+        traceId?: string;
+      };
+      debugAuth('[WebAppGate] Legal save API response', {
+        ok: res.ok,
+        success: data.success,
+        acceptedCount: data.acceptedCount ?? null,
+        saveStrategy: data.saveStrategy ?? null,
+        error: data.error ?? null,
+        traceId: data.traceId ?? null,
+      });
       if (!res.ok || data.success === false) {
         throw new Error(data.error || 'Unable to save legal acceptance.');
       }
+      setAcceptedDocIds((current) =>
+        Array.from(new Set([...current, ...missingDocs.map((doc) => `${doc.id}:${doc.version}`)]))
+      );
       await loadState();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to save legal acceptance.');

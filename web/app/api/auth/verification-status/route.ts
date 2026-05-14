@@ -26,8 +26,24 @@ export async function GET(req: NextRequest) {
 
     const { data: listData } = await supabase.auth.admin.listUsers({ page: 1, perPage: 500 });
     const authUser = listData?.users?.find((user) => user.email?.toLowerCase() === email);
+    const isAuthVerified = !!authUser?.email_confirmed_at;
 
-    return NextResponse.json({ verified: !!authUser?.email_confirmed_at }, { status: 200 });
+    if (isAuthVerified && (userRow?.id || authUser?.id)) {
+      const userId = userRow?.id || authUser?.id;
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({
+          email_verified: true,
+          verified: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', userId);
+      if (updateError) {
+        console.error('verification-status sync error:', updateError);
+      }
+    }
+
+    return NextResponse.json({ verified: isAuthVerified }, { status: 200 });
   } catch (error) {
     console.error('verification-status error:', error);
     return NextResponse.json({ verified: false }, { status: 200 });

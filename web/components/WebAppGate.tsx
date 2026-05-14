@@ -57,6 +57,22 @@ function delay(ms: number) {
   return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 }
 
+async function syncVerifiedEmail(email: string) {
+  if (!email) return false;
+  try {
+    const res = await fetch(`/api/auth/verification-status?email=${encodeURIComponent(email)}`, {
+      cache: 'no-store',
+    });
+    const data = (await res.json().catch(() => ({}))) as { verified?: boolean };
+    return data.verified === true;
+  } catch (err) {
+    debugAuth('[WebAppGate] Email verification sync failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
+}
+
 async function loadLegalAcceptances(
   supabase: any,
   accessToken: string | undefined,
@@ -202,7 +218,14 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
         authEmailConfirmedAt: authUser.email_confirmed_at ?? null,
       });
 
-      const isEmailVerified = Boolean(profile?.email_verified || profile?.verified);
+      let isEmailVerified = Boolean(profile?.email_verified || profile?.verified);
+      if (!isEmailVerified && currentEmail) {
+        isEmailVerified = await syncVerifiedEmail(currentEmail);
+        debugAuth('[WebAppGate] Email verification sync result', {
+          email: currentEmail,
+          verified: isEmailVerified,
+        });
+      }
       if (!isEmailVerified) {
         setStep('verify-email');
         return;

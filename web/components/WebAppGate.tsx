@@ -258,10 +258,24 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
         context: 'manual',
         accepted_at: new Date().toISOString(),
       }));
-      const { error: upsertError } = await supabase
-        .from('user_legal_acceptances')
-        .upsert(rows, { onConflict: 'user_id,document_id' });
-      if (upsertError) throw upsertError;
+      const rpcResults = await Promise.all(
+        rows.map((row) =>
+          supabase.rpc('insert_user_legal_acceptance', {
+            p_user_id: row.user_id,
+            p_document_id: row.document_id,
+            p_document_version: row.document_version,
+            p_context: row.context,
+          })
+        )
+      );
+      const rpcError = rpcResults.find((result) => !!result.error)?.error;
+
+      if (rpcError) {
+        const { error: upsertError } = await supabase
+          .from('user_legal_acceptances')
+          .upsert(rows, { onConflict: 'user_id,document_id' });
+        if (upsertError) throw upsertError;
+      }
       await loadState();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to save legal acceptance.');

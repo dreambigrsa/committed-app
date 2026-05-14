@@ -2,17 +2,19 @@
 
 import { Suspense, useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { CheckCircle, XCircle, Loader2, Smartphone, Mail, RefreshCcw } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { SITE_URL } from '@/lib/env';
 import { APP_SCHEME } from '@/lib/appLinks';
+import { getSupabaseBrowser } from '@/lib/supabase-client';
 
 type Status = 'loading' | 'success' | 'error';
 
 function VerifyEmailContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [status, setStatus] = useState<Status>('loading');
   const [triedOpen, setTriedOpen] = useState(false);
   const [resending, setResending] = useState(false);
@@ -45,6 +47,49 @@ function VerifyEmailContent() {
       });
     return () => { cancelled = true; };
   }, [token, email]);
+
+  useEffect(() => {
+    if (!email || token) return;
+    let cancelled = false;
+    let intervalId: number | null = null;
+
+    const checkVerified = async () => {
+      try {
+        const res = await fetch(`/api/auth/verification-status?email=${encodeURIComponent(email)}`, {
+          cache: 'no-store',
+        });
+        const data = (await res.json().catch(() => ({}))) as { verified?: boolean };
+        if (cancelled || data.verified !== true) return;
+
+        setStatus('success');
+        const supabase = getSupabaseBrowser();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!cancelled && session?.user) {
+          router.replace('/app');
+        }
+      } catch {
+        // Keep the instruction page visible; the next poll/focus can retry.
+      }
+    };
+
+    void checkVerified();
+    intervalId = window.setInterval(() => void checkVerified(), 5000);
+    const onFocus = () => void checkVerified();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void checkVerified();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      cancelled = true;
+      if (intervalId) window.clearInterval(intervalId);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [email, router, token]);
 
   const openApp = useCallback(() => {
     if (!token) return;
@@ -87,7 +132,7 @@ function VerifyEmailContent() {
               We sent a verification link to <span className="font-semibold text-slate-900">{email}</span>.
             </p>
             <p className="mt-3 text-sm text-slate-500">
-              After verification, sign in on web or open the app to continue.
+              After verification, keep this tab open. We will continue automatically when your email is confirmed.
             </p>
             <div className="mt-8 flex flex-col gap-3">
               <button

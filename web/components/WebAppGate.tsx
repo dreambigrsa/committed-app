@@ -1,9 +1,10 @@
 'use client';
 
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Bot, CheckCircle2, FileText, Loader2, Mail, ShieldCheck, Sparkles } from 'lucide-react';
+import { ArrowRight, Bot, CheckCircle2, FileText, HeartHandshake, Loader2, Mail, ShieldCheck, Sparkles } from 'lucide-react';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 
 type LegalDoc = {
@@ -398,22 +399,106 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
 
   if (step === 'ready') return <>{children}</>;
 
+  const stepMeta =
+    step === 'verify-email'
+      ? {
+          eyebrow: 'Secure account',
+          title: 'Verify your email to continue.',
+          text: 'One confirmation keeps your account, relationship records, and trust signals tied to the right person.',
+        }
+      : step === 'legal'
+        ? {
+            eyebrow: 'Consent and records',
+            title: 'Review the essentials before entering.',
+            text: 'Required documents keep privacy, consent, and relationship records explicit across web and mobile.',
+          }
+        : step === 'ai-consent'
+          ? {
+              eyebrow: 'Committed AI',
+              title: 'Understand AI support before using it.',
+              text: 'AI support is useful for guidance and next steps, while human help remains available when needed.',
+            }
+          : step === 'error'
+            ? {
+                eyebrow: 'Account check',
+                title: 'Something needs attention.',
+                text: 'We could not finish this account step yet. Try again so the web app can continue safely.',
+              }
+            : {
+                eyebrow: 'Preparing access',
+                title: 'Setting up your web app.',
+                text: 'We are checking your account, verification, documents, and onboarding status.',
+              };
+
   return (
-    <main className="mx-auto flex min-h-[70vh] max-w-3xl flex-col justify-center px-6 py-16 md:px-10">
-      <div className="rounded-3xl border border-slate-200 bg-white p-6 text-center shadow-xl shadow-slate-200/60 md:p-10">
+    <main className="relative min-h-screen overflow-hidden bg-slate-950 text-white">
+      <Image
+        src="/hero/committed-trust-hero.png"
+        alt=""
+        fill
+        priority
+        sizes="100vw"
+        className="object-cover"
+      />
+      <div className="absolute inset-0 bg-slate-950/78" />
+      <div className="absolute inset-y-0 left-0 w-full bg-[linear-gradient(90deg,rgba(2,6,23,0.94),rgba(2,6,23,0.76)_48%,rgba(2,6,23,0.38)_100%)]" />
+
+      <section className="relative mx-auto grid min-h-screen max-w-7xl gap-8 px-4 py-8 sm:px-5 sm:py-10 md:px-8 lg:grid-cols-[0.9fr_0.72fr] lg:items-center lg:gap-16">
+        <div className="order-2 min-w-0 lg:order-1">
+          <div className="inline-flex items-center gap-2 rounded-md border border-white/20 bg-white/10 px-3 py-2 text-xs font-black uppercase text-teal-100 shadow-lg shadow-slate-950/10 backdrop-blur-md sm:text-sm">
+            <ShieldCheck className="h-4 w-4" />
+            {stepMeta.eyebrow}
+          </div>
+          <h1 className="mt-5 max-w-3xl text-3xl font-black leading-[1.13] tracking-normal text-balance sm:mt-6 sm:text-5xl sm:leading-[1.08] lg:text-6xl lg:leading-[1.04]">
+            {stepMeta.title}
+          </h1>
+          <p className="mt-4 max-w-xl text-base font-semibold leading-8 text-slate-200 sm:mt-6 sm:text-lg sm:leading-8">
+            {stepMeta.text}
+          </p>
+
+          <div className="mt-7 grid gap-3 rounded-lg border border-white/14 bg-white/10 p-2 shadow-2xl shadow-slate-950/15 backdrop-blur-md sm:mt-9">
+            {[
+              { label: 'Email', active: step !== 'loading', done: step !== 'verify-email' && step !== 'loading' && step !== 'error' },
+              { label: 'Documents', active: step === 'legal' || step === 'ai-consent', done: step === 'ai-consent' },
+              { label: 'AI consent', active: step === 'ai-consent', done: false },
+            ].map((item, index) => (
+              <div key={item.label} className="grid grid-cols-[2.75rem_minmax(0,1fr)] gap-3 rounded-md p-4 text-slate-100 sm:grid-cols-[3rem_minmax(0,1fr)] sm:gap-4 sm:p-5">
+                <span className={`grid h-11 w-11 place-items-center rounded-md text-sm font-black ${item.done ? 'bg-teal-400 text-slate-950' : item.active ? 'bg-white text-slate-950' : 'bg-white/10 text-slate-300'}`}>
+                  {item.done ? <CheckCircle2 className="h-5 w-5" /> : `0${index + 1}`}
+                </span>
+                <div className="min-w-0">
+                  <p className={`text-base font-black leading-6 ${item.active || item.done ? 'text-white' : 'text-slate-400'}`}>{item.label}</p>
+                  <div className={`mt-3 h-1.5 rounded-full ${item.done ? 'bg-teal-400' : item.active ? 'bg-white' : 'bg-white/15'}`} />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <p className="mt-6 inline-flex items-center gap-2 text-sm font-black text-teal-200">
+            <HeartHandshake className="h-4 w-4" />
+            Built for trust before connection.
+          </p>
+        </div>
+
+        <div className="order-1 mx-auto w-full max-w-[520px] overflow-hidden rounded-xl border border-white/18 bg-white/95 p-2 text-slate-950 shadow-2xl shadow-slate-950/35 backdrop-blur-xl lg:order-2">
+          <div className="rounded-lg bg-white p-5 text-center sm:p-7 md:p-8">
         {step === 'loading' && (
           <>
-            <Loader2 className="mx-auto h-12 w-12 animate-spin text-violet-600" />
-            <h1 className="mt-5 font-display text-2xl font-bold text-slate-950">Preparing your web app</h1>
-            <p className="mt-2 text-slate-600">Checking your account safely.</p>
+            <div className="mx-auto grid h-14 w-14 place-items-center rounded-lg bg-slate-950 text-teal-300 shadow-lg shadow-slate-950/10">
+              <Loader2 className="h-7 w-7 animate-spin" />
+            </div>
+            <h1 className="mt-5 text-2xl font-black tracking-normal text-slate-950">Preparing your web app</h1>
+            <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Checking your account safely.</p>
           </>
         )}
 
         {step === 'verify-email' && (
           <>
-            <Mail className="mx-auto h-14 w-14 text-violet-600" />
-            <h1 className="mt-5 font-display text-3xl font-bold text-slate-950">Verify your email first</h1>
-            <p className="mx-auto mt-3 max-w-xl text-slate-600">
+            <div className="mx-auto grid h-14 w-14 place-items-center rounded-lg bg-slate-950 text-teal-300 shadow-lg shadow-slate-950/10">
+              <Mail className="h-7 w-7" />
+            </div>
+            <h1 className="mt-5 text-2xl font-black tracking-normal text-slate-950 sm:text-3xl">Verify your email first</h1>
+            <p className="mx-auto mt-3 max-w-xl text-sm font-semibold leading-6 text-slate-600">
               We need to confirm your email before legal documents, AI consent, and the web app open.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
@@ -421,13 +506,13 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
                 type="button"
                 onClick={resendVerification}
                 disabled={saving}
-                className="inline-flex min-h-[52px] items-center justify-center rounded-2xl bg-violet-600 px-6 py-3 font-semibold text-white hover:bg-violet-700 disabled:opacity-60"
+                className="inline-flex min-h-[54px] items-center justify-center rounded-md bg-teal-500 px-6 py-3 font-black text-slate-950 shadow-lg shadow-teal-950/10 transition hover:bg-teal-300 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {saving ? 'Sending...' : 'Resend verification'}
               </button>
               <Link
                 href={`/verify-email?email=${encodeURIComponent(email)}`}
-                className="inline-flex min-h-[52px] items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 px-6 py-3 font-semibold text-slate-700 hover:bg-slate-100"
+                className="inline-flex min-h-[54px] items-center justify-center rounded-md border border-slate-200 bg-slate-50 px-6 py-3 font-black text-slate-800 transition hover:border-teal-300 hover:bg-teal-50"
               >
                 View instructions
               </Link>
@@ -437,14 +522,16 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
 
         {step === 'legal' && (
           <>
-            <FileText className="mx-auto h-14 w-14 text-violet-600" />
-            <h1 className="mt-5 font-display text-3xl font-bold text-slate-950">Legal documents</h1>
-            <p className="mx-auto mt-3 max-w-xl text-slate-600">
+            <div className="mx-auto grid h-14 w-14 place-items-center rounded-lg bg-slate-950 text-teal-300 shadow-lg shadow-slate-950/10">
+              <FileText className="h-7 w-7" />
+            </div>
+            <h1 className="mt-5 text-2xl font-black tracking-normal text-slate-950 sm:text-3xl">Legal documents</h1>
+            <p className="mx-auto mt-3 max-w-xl text-sm font-semibold leading-6 text-slate-600">
               Please review and accept the required documents before continuing.
             </p>
             <div className="mt-8 space-y-3 text-left">
               {missingDocs.map((doc) => (
-                <label key={doc.id} className="flex cursor-pointer gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <label key={doc.id} className="group flex cursor-pointer gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 transition hover:border-teal-300 hover:bg-teal-50/40">
                   <input
                     type="checkbox"
                     checked={checkedDocIds.includes(doc.id)}
@@ -453,12 +540,12 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
                         event.target.checked ? [...current, doc.id] : current.filter((id) => id !== doc.id)
                       );
                     }}
-                    className="mt-1 h-5 w-5 rounded border-slate-300 text-violet-600"
+                    className="mt-1 h-5 w-5 rounded border-slate-300 accent-teal-500"
                   />
                   <span>
-                    <span className="block font-semibold text-slate-950">{doc.title}</span>
-                    <span className="mt-1 block text-sm text-slate-500">Version {doc.version}</span>
-                    <Link href={`/legal/${doc.slug}`} className="mt-2 inline-block text-sm font-semibold text-violet-700 hover:text-violet-900">
+                    <span className="block font-black text-slate-950">{doc.title}</span>
+                    <span className="mt-1 block text-sm font-semibold text-slate-500">Version {doc.version}</span>
+                    <Link href={`/legal/${doc.slug}`} className="mt-2 inline-block text-sm font-black text-teal-700 hover:text-teal-900">
                       View full document
                     </Link>
                   </span>
@@ -469,33 +556,36 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
               type="button"
               onClick={acceptLegal}
               disabled={!allMissingChecked || saving}
-              className="mt-8 inline-flex min-h-[54px] w-full items-center justify-center rounded-2xl bg-gradient-to-r from-violet-600 to-rose-500 px-6 py-3 font-semibold text-white shadow-lg disabled:opacity-60"
+              className="mt-8 inline-flex min-h-[54px] w-full items-center justify-center gap-2 rounded-md bg-teal-500 px-6 py-3 font-black text-slate-950 shadow-lg shadow-teal-950/10 transition hover:bg-teal-300 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {saving ? 'Saving...' : 'Accept and continue'}
+              {!saving ? <ArrowRight className="h-5 w-5" /> : null}
             </button>
           </>
         )}
 
         {step === 'ai-consent' && (
           <>
-            <Sparkles className="mx-auto h-14 w-14 text-rose-500" />
-            <h1 className="mt-5 font-display text-3xl font-bold text-slate-950">Committed AI consent</h1>
-            <p className="mx-auto mt-3 max-w-xl text-slate-600">
+            <div className="mx-auto grid h-14 w-14 place-items-center rounded-lg bg-slate-950 text-teal-300 shadow-lg shadow-slate-950/10">
+              <Sparkles className="h-7 w-7" />
+            </div>
+            <h1 className="mt-5 text-2xl font-black tracking-normal text-slate-950 sm:text-3xl">Committed AI consent</h1>
+            <p className="mx-auto mt-3 max-w-xl text-sm font-semibold leading-6 text-slate-600">
               Review how Committed AI supports you before using AI-powered help.
             </p>
-            <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-6 text-left">
+            <div className="mt-8 rounded-lg border border-slate-200 bg-slate-50 p-5 text-left sm:p-6">
               {(() => {
                 const item = aiSteps[aiStep];
                 const Icon = item.icon;
                 return (
                   <>
                     <div className="flex items-center gap-3">
-                      <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-violet-600 shadow-sm">
+                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-teal-500 text-slate-950 shadow-sm">
                         <Icon className="h-6 w-6" />
                       </span>
-                      <h2 className="font-display text-xl font-bold text-slate-950">{item.title}</h2>
+                      <h2 className="text-lg font-black leading-6 text-slate-950 sm:text-xl">{item.title}</h2>
                     </div>
-                    <p className="mt-4 leading-7 text-slate-600">{item.text}</p>
+                    <p className="mt-4 text-sm font-semibold leading-7 text-slate-600">{item.text}</p>
                   </>
                 );
               })()}
@@ -506,20 +596,20 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
                   key={item.title}
                   type="button"
                   onClick={() => setAiStep(index)}
-                  className={`h-2.5 rounded-full transition-all ${index === aiStep ? 'w-8 bg-rose-500' : 'w-2.5 bg-slate-300'}`}
+                  className={`h-2.5 rounded-full transition-all ${index === aiStep ? 'w-8 bg-teal-500' : 'w-2.5 bg-slate-300'}`}
                   aria-label={`Go to AI consent step ${index + 1}`}
                 />
               ))}
             </div>
             {aiStep === aiSteps.length - 1 && (
-              <label className="mt-6 flex cursor-pointer items-center justify-center gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-left">
+              <label className="mt-6 flex cursor-pointer items-center justify-center gap-3 rounded-lg border border-teal-200 bg-teal-50 p-4 text-left">
                 <input
                   type="checkbox"
                   checked={aiConsentChecked}
                   onChange={(event) => setAiConsentChecked(event.target.checked)}
-                  className="h-5 w-5 rounded border-slate-300 text-rose-600"
+                  className="h-5 w-5 rounded border-slate-300 accent-teal-500"
                 />
-                <span className="font-medium text-slate-800">I understand and consent to Committed AI support.</span>
+                <span className="font-black text-slate-800">I understand and consent to Committed AI support.</span>
               </label>
             )}
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -527,7 +617,7 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
                 <button
                   type="button"
                   onClick={() => setAiStep((value) => Math.max(0, value - 1))}
-                  className="min-h-[52px] flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-6 py-3 font-semibold text-slate-700 hover:bg-slate-100"
+                  className="min-h-[54px] flex-1 rounded-md border border-slate-200 bg-slate-50 px-6 py-3 font-black text-slate-800 transition hover:border-teal-300 hover:bg-teal-50"
                 >
                   Back
                 </button>
@@ -536,7 +626,7 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
                 <button
                   type="button"
                   onClick={() => setAiStep((value) => Math.min(aiSteps.length - 1, value + 1))}
-                  className="min-h-[52px] flex-1 rounded-2xl bg-violet-600 px-6 py-3 font-semibold text-white hover:bg-violet-700"
+                  className="min-h-[54px] flex-1 rounded-md bg-teal-500 px-6 py-3 font-black text-slate-950 shadow-lg shadow-teal-950/10 transition hover:bg-teal-300"
                 >
                   Next
                 </button>
@@ -545,7 +635,7 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
                   type="button"
                   onClick={acceptAiConsent}
                   disabled={!aiConsentChecked || saving}
-                  className="min-h-[52px] flex-1 rounded-2xl bg-gradient-to-r from-violet-600 to-rose-500 px-6 py-3 font-semibold text-white disabled:opacity-60"
+                  className="min-h-[54px] flex-1 rounded-md bg-teal-500 px-6 py-3 font-black text-slate-950 shadow-lg shadow-teal-950/10 transition hover:bg-teal-300 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {saving ? 'Saving...' : 'Accept and enter web app'}
                 </button>
@@ -556,26 +646,28 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
 
         {step === 'error' && (
           <>
-            <h1 className="font-display text-2xl font-bold text-slate-950">Something needs attention</h1>
-            <p className="mt-3 text-red-600">{error}</p>
+            <h1 className="text-2xl font-black tracking-normal text-slate-950">Something needs attention</h1>
+            <p className="mt-3 text-sm font-semibold leading-6 text-red-600">{error}</p>
             <button
               type="button"
               onClick={loadState}
-              className="mt-6 rounded-2xl bg-violet-600 px-6 py-3 font-semibold text-white hover:bg-violet-700"
+              className="mt-6 min-h-[54px] rounded-md bg-teal-500 px-6 py-3 font-black text-slate-950 transition hover:bg-teal-300"
             >
               Try again
             </button>
           </>
         )}
 
-        {error && step !== 'error' ? <p className="mt-5 text-sm text-red-600">{error}</p> : null}
+        {error && step !== 'error' ? <p className="mt-5 text-sm font-semibold text-red-600">{error}</p> : null}
         {step !== 'loading' && (
-          <div className="mt-8 flex items-center justify-center gap-2 text-sm text-slate-500">
+          <div className="mt-8 flex items-center justify-center gap-2 text-sm font-semibold text-slate-500">
             <CheckCircle2 className="h-4 w-4 text-emerald-600" />
             Deep links and mobile app access remain unchanged.
           </div>
         )}
-      </div>
+          </div>
+        </div>
+      </section>
     </main>
   );
 }

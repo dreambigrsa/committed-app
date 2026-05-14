@@ -379,6 +379,7 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
         acceptedCount?: number;
         saveStrategy?: string;
         traceId?: string;
+        details?: { message?: string; code?: string; hint?: string; details?: string };
       };
       debugAuth('[WebAppGate] Legal save API response', {
         ok: res.ok,
@@ -392,6 +393,7 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
         debugAuth('[WebAppGate] Legal save API failed; trying browser fallback', {
           status: res.status,
           error: data.error ?? null,
+          details: data.details ?? null,
           traceId: data.traceId ?? null,
         });
         const acceptedDocs = missingDocs.map((doc) => ({
@@ -421,7 +423,11 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
               .from('user_legal_acceptances')
               .upsert(row, { onConflict: 'user_id,document_id' });
             if (upsertError) {
-              throw new Error(data.error || upsertError.message || 'Unable to save legal acceptance.');
+              const reference = data.traceId ? ` Reference: ${data.traceId}.` : '';
+              const apiDetail = data.details?.message ? ` API detail: ${data.details.message}.` : '';
+              throw new Error(
+                `${upsertError.message || data.error || 'Unable to save legal acceptance.'}${apiDetail}${reference}`
+              );
             }
           }
         }

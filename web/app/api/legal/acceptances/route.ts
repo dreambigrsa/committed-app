@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient, type User as SupabaseUser } from '@supabase/supabase-js';
 import { createSupabaseAdmin } from '@/lib/supabase-server';
 
 export const dynamic = 'force-dynamic';
@@ -31,7 +31,7 @@ type LegalAcceptanceRow = {
 type AuthedSupabase = {
   userClient: SupabaseClient;
   adminClient: SupabaseClient | null;
-  user: { id: string; email?: string | null };
+  user: SupabaseUser;
 };
 
 function createTraceId() {
@@ -114,8 +114,116 @@ async function requireUser(req: NextRequest, traceId: string): Promise<AuthedSup
   return {
     userClient,
     adminClient: tryCreateAdmin(traceId),
-    user: { id: user.id, email: user.email },
+    user,
   };
+}
+
+function buildFallbackPhone(user: SupabaseUser) {
+  const metaPhone = typeof user.user_metadata?.phone_number === 'string' ? user.user_metadata.phone_number.trim() : '';
+  const authPhone = typeof user.phone === 'string' ? user.phone.trim() : '';
+  if (metaPhone) return metaPhone;
+  if (authPhone) return authPhone;
+  return '';
+}
+
+function buildUserRow(user: SupabaseUser) {
+  const email = (user.email || '').trim().toLowerCase();
+  const metaName = typeof user.user_metadata?.full_name === 'string' ? user.user_metadata.full_name.trim() : '';
+  const fallbackName = email ? email.split('@')[0] : 'User';
+
+  return {
+    id: user.id,
+    full_name: metaName || fallbackName || 'User',
+    email,
+    phone_number: buildFallbackPhone(user),
+    role: email === 'nashiezw@gmail.com' ? 'super_admin' : 'user',
+    phone_verified: false,
+    email_verified: Boolean(user.email_confirmed_at),
+    id_verified: false,
+  };
+}
+
+async function findUserRow(client: SupabaseClient, userId: string, traceId: string, source: string) {
+  const result = await client
+    .from('users')
+    .select('id')
+    .eq('id', userId)
+    .maybeSingle();
+
+  logLegal(traceId, `users row checked with ${source}`, {
+    userId,
+    found: Boolean(result.data?.id),
+    error: result.error ? errorDetails(result.error) : null,
+  });
+
+  return result;
+}
+
+async function insertUserRow(client: SupabaseClient, user: SupabaseUser, traceId: string, source: string) {
+  const row = buildUserRow(user);
+  const result = await client
+    .from('users')
+    .insert(row)
+    .select('id')
+    .maybeSingle();
+
+  logLegal(traceId, `users row repair attempted with ${source}`, {
+    userId: user.id,
+    email: row.email,
+    hasFullName: Boolean(row.full_name),
+    hasPhoneNumber: Boolean(row.phone_number),
+    inserted: Boolean(result.data?.id),
+    error: result.error ? errorDetails(result.error) : null,
+  });
+
+  return result;
+}
+
+async function ensureUserRow(auth: AuthedSupabase, traceId: string) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const userResult = await findUserRow(auth.userClient, auth.user.id, traceId, `user attempt ${attempt + 1}`);
+    if (userResult.data?.id) return 'existing_user';
+    if (userResult.error && userResult.error.code !== 'PGRST116') {
+      logLegal(traceId, 'users row lookup through user client failed', {
+        error: errorDetails(userResult.error),
+      });
+    }
+
+    if (auth.adminClient) {
+      const adminResult = await findUserRow(auth.adminClient, auth.user.id, traceId, `admin attempt ${attempt + 1}`);
+      if (adminResult.data?.id) return 'existing_admin';
+    }
+
+    if (attempt < 3) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+
+  const failures: Array<{ strategy: string; error: ReturnType<typeof errorDetails> }> = [];
+
+  try {
+    const insertResult = await insertUserRow(auth.userClient, auth.user, traceId, 'user');
+    if (insertResult.data?.id || !insertResult.error) return 'created_user';
+    failures.push({ strategy: 'user_insert', error: errorDetails(insertResult.error) });
+  } catch (error) {
+    failures.push({ strategy: 'user_insert', error: errorDetails(error) });
+  }
+
+  if (auth.adminClient) {
+    try {
+      const insertResult = await insertUserRow(auth.adminClient, auth.user, traceId, 'admin');
+      if (insertResult.data?.id || !insertResult.error) return 'created_admin';
+      failures.push({ strategy: 'admin_insert', error: errorDetails(insertResult.error) });
+    } catch (error) {
+      failures.push({ strategy: 'admin_insert', error: errorDetails(error) });
+    }
+  }
+
+  const finalUserResult = await findUserRow(auth.adminClient ?? auth.userClient, auth.user.id, traceId, 'final');
+  if (finalUserResult.data?.id) return 'created_race';
+
+  logLegal(traceId, 'unable to ensure users row before legal acceptance save', { failures });
+  throw new Error(`Unable to create users row required by legal acceptances: ${JSON.stringify(failures)}`);
 }
 
 async function selectRequiredDocs(client: SupabaseClient, requestedIds: string[], traceId: string, source: string) {
@@ -357,6 +465,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const userRowState = await ensureUserRow(auth, traceId);
     const now = new Date().toISOString();
     const rows: LegalAcceptanceRow[] = docsResult.data.map((doc) => ({
       user_id: auth.user.id,
@@ -373,6 +482,7 @@ export async function POST(req: NextRequest) {
         success: true,
         acceptedCount: rows.length,
         saveStrategy,
+        userRowState,
         traceId,
       },
       { status: 200 }

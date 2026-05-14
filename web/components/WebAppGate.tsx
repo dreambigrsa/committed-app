@@ -251,30 +251,28 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
     setError('');
     try {
       const supabase = getSupabaseBrowser() as any;
-      const rows = missingDocs.map((doc) => ({
-        user_id: userId,
-        document_id: doc.id,
-        document_version: doc.version,
-        context: 'manual',
-        accepted_at: new Date().toISOString(),
-      }));
-      const rpcResults = await Promise.all(
-        rows.map((row) =>
-          supabase.rpc('insert_user_legal_acceptance', {
-            p_user_id: row.user_id,
-            p_document_id: row.document_id,
-            p_document_version: row.document_version,
-            p_context: row.context,
-          })
-        )
-      );
-      const rpcError = rpcResults.find((result) => !!result.error)?.error;
-
-      if (rpcError) {
-        const { error: upsertError } = await supabase
-          .from('user_legal_acceptances')
-          .upsert(rows, { onConflict: 'user_id,document_id' });
-        if (upsertError) throw upsertError;
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('Your session expired. Please sign in again.');
+      }
+      const res = await fetch('/api/legal/acceptances', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          documents: missingDocs.map((doc) => ({
+            documentId: doc.id,
+            documentVersion: doc.version,
+          })),
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
+      if (!res.ok || data.success === false) {
+        throw new Error(data.error || 'Unable to save legal acceptance.');
       }
       await loadState();
     } catch (err) {

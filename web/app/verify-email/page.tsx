@@ -65,21 +65,13 @@ function VerifyEmailContent() {
           return;
         }
 
-        let authVerified = Boolean(currentSession?.user?.email_confirmed_at);
-        if (!authVerified && currentSession?.refresh_token) {
-          const {
-            data: { session: refreshedSession },
-          } = await supabase.auth.refreshSession();
-          authVerified = Boolean(refreshedSession?.user?.email_confirmed_at);
-        }
-
         const res = await fetch(`/api/auth/verification-status?email=${encodeURIComponent(activeEmail)}`, {
           cache: 'no-store',
         });
-        const data = (await res.json().catch(() => ({}))) as { verified?: boolean };
+        const data = (await res.json().catch(() => ({}))) as { verified?: boolean; source?: string };
         if (cancelled) return;
 
-        const verified = authVerified || data.verified === true;
+        const verified = data.verified === true;
         setStatus(verified ? 'success' : 'loading');
         if (!verified) return;
 

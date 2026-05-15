@@ -76,6 +76,10 @@ function delay(ms: number) {
   return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 }
 
+function legalKey(documentId: string, version: unknown) {
+  return `${documentId}:${String(version || '1.0.0').trim()}`;
+}
+
 async function syncVerifiedEmail(email: string) {
   if (!email) return false;
   try {
@@ -177,10 +181,41 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
 
   const missingDocs = useMemo(() => {
     const accepted = new Set(acceptedDocIds);
-    return requiredDocs.filter((doc) => !accepted.has(`${doc.id}:${doc.version}`));
+    const acceptedDocumentIds = new Set(acceptedDocIds.map((item) => item.split(':')[0]).filter(Boolean));
+    return requiredDocs.filter((doc) => {
+      const id = String(doc.id);
+      return !accepted.has(legalKey(id, doc.version)) && !acceptedDocumentIds.has(id);
+    });
   }, [requiredDocs, acceptedDocIds]);
 
-  const allMissingChecked = missingDocs.length > 0 && missingDocs.every((doc) => checkedDocIds.includes(doc.id));
+  const checkedSet = useMemo(() => new Set(checkedDocIds.map(String)), [checkedDocIds]);
+  const allMissingChecked = missingDocs.length > 0 && missingDocs.every((doc) => checkedSet.has(String(doc.id)));
+
+  const setLegalDocChecked = useCallback((docId: string, checked: boolean) => {
+    const normalizedId = String(docId);
+    setCheckedDocIds((current) => {
+      const next = new Set(current.map(String));
+      if (checked) {
+        next.add(normalizedId);
+      } else {
+        next.delete(normalizedId);
+      }
+      return Array.from(next);
+    });
+  }, []);
+
+  const toggleLegalDocChecked = useCallback((docId: string) => {
+    const normalizedId = String(docId);
+    setCheckedDocIds((current) => {
+      const next = new Set(current.map(String));
+      if (next.has(normalizedId)) {
+        next.delete(normalizedId);
+      } else {
+        next.add(normalizedId);
+      }
+      return Array.from(next);
+    });
+  }, []);
 
   const resolveAuthSnapshot = useCallback(async () => {
     const supabase = getSupabaseBrowser() as any;
@@ -273,9 +308,9 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
       const legalDocs = webState.requiredDocs ?? [];
       const accepted = webState.acceptedDocuments ?? [];
       debugAuth('[WebAppGate] Legal gate decision', {
-        requiredDocuments: legalDocs.map((doc) => `${doc.id}:${doc.version}`),
+        requiredDocuments: legalDocs.map((doc) => legalKey(doc.id, doc.version)),
         acceptedDocuments: accepted,
-        missingCount: legalDocs.filter((doc) => !accepted.includes(`${doc.id}:${doc.version}`)).length,
+        missingCount: legalDocs.filter((doc) => !accepted.includes(legalKey(doc.id, doc.version))).length,
         sessionExists: Boolean(activeSession.access_token),
         serverStep: webState.step ?? null,
         traceId: webState.traceId ?? null,
@@ -374,12 +409,10 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
       if (!session?.access_token) {
         throw new Error('Your session expired. Please sign in again.');
       }
-      let emailVerifiedBeforeSave = Boolean(session.user?.email_confirmed_at);
-      if (!emailVerifiedBeforeSave && email) {
-        emailVerifiedBeforeSave = await syncVerifiedEmail(email);
-      }
+      const emailVerifiedBeforeSave = email ? await syncVerifiedEmail(email) : false;
       if (!emailVerifiedBeforeSave) {
-        setStep('verify-email');
+        const emailParam = email ? `?email=${encodeURIComponent(email)}` : '';
+        router.replace(`/verify-email${emailParam}`);
         throw new Error('Please verify your email before accepting legal documents.');
       }
       const documents = missingDocs.map((doc) => ({
@@ -469,7 +502,7 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
       const savedDocuments =
         Array.isArray(data.acceptedDocuments) && data.acceptedDocuments.length > 0
           ? data.acceptedDocuments
-          : missingDocs.map((doc) => `${doc.id}:${doc.version || '1.0.0'}`);
+          : missingDocs.map((doc) => legalKey(doc.id, doc.version));
       setAcceptedDocIds((current) => Array.from(new Set([...current, ...savedDocuments])));
       await delay(200);
       await loadState();
@@ -644,25 +677,45 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
             </p>
             <div className="mt-8 space-y-3 text-left">
               {missingDocs.map((doc) => (
-                <label key={doc.id} className="group flex cursor-pointer gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 transition hover:border-teal-300 hover:bg-teal-50/40">
+                <div
+                  key={doc.id}
+                  role="checkbox"
+                  aria-checked={checkedSet.has(String(doc.id))}
+                  tabIndex={0}
+                  onClick={() => toggleLegalDocChecked(doc.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      toggleLegalDocChecked(doc.id);
+                    }
+                  }}
+                  className={`group flex cursor-pointer gap-4 rounded-lg border p-4 text-left transition ${
+                    checkedSet.has(String(doc.id))
+                      ? 'border-teal-400 bg-teal-50/70'
+                      : 'border-slate-200 bg-slate-50 hover:border-teal-300 hover:bg-teal-50/40'
+                  }`}
+                >
                   <input
                     type="checkbox"
-                    checked={checkedDocIds.includes(doc.id)}
+                    checked={checkedSet.has(String(doc.id))}
+                    onClick={(event) => event.stopPropagation()}
                     onChange={(event) => {
-                      setCheckedDocIds((current) =>
-                        event.target.checked ? [...current, doc.id] : current.filter((id) => id !== doc.id)
-                      );
+                      setLegalDocChecked(doc.id, event.target.checked);
                     }}
                     className="mt-1 h-5 w-5 rounded border-slate-300 accent-teal-500"
                   />
                   <span>
                     <span className="block font-black text-slate-950">{doc.title}</span>
                     <span className="mt-1 block text-sm font-semibold text-slate-500">Version {doc.version}</span>
-                    <Link href={`/legal/${doc.slug}`} className="mt-2 inline-block text-sm font-black text-teal-700 hover:text-teal-900">
+                    <Link
+                      href={`/legal/${doc.slug}`}
+                      onClick={(event) => event.stopPropagation()}
+                      className="mt-2 inline-block text-sm font-black text-teal-700 hover:text-teal-900"
+                    >
                       View full document
                     </Link>
                   </span>
-                </label>
+                </div>
               ))}
             </div>
             <button

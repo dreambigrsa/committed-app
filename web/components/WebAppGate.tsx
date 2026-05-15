@@ -18,6 +18,24 @@ type LegalDoc = {
 
 type GateStep = 'loading' | 'verify-email' | 'legal' | 'ai-consent' | 'ready' | 'error';
 
+type WebStateResponse = {
+  success?: boolean;
+  step?: GateStep;
+  error?: string;
+  traceId?: string;
+  user?: {
+    id?: string | null;
+    email?: string | null;
+    email_confirmed_at?: string | null;
+  };
+  requiredDocs?: LegalDoc[];
+  acceptedDocuments?: string[];
+  onboarding?: {
+    has_completed_onboarding?: boolean | null;
+    consent_given?: boolean | null;
+  };
+};
+
 const AI_ONBOARDING_VERSION = '1.0.0';
 
 const aiSteps = [
@@ -79,28 +97,6 @@ async function syncVerifiedEmail(email: string) {
   }
 }
 
-async function syncVerifiedProfileFlags(supabase: any, userId: string) {
-  try {
-    const { error } = await supabase
-      .from('users')
-      .update({
-        email_verified: true,
-        verified: true,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', userId);
-    debugAuth('[WebAppGate] Profile verified flags sync response', {
-      userId,
-      error: error?.message ?? null,
-    });
-  } catch (err) {
-    debugAuth('[WebAppGate] Profile verified flags sync failed', {
-      userId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-}
-
 async function ensureBrowserUserRow(supabase: any, authUser: any) {
   if (!authUser?.id) return false;
   try {
@@ -140,53 +136,29 @@ async function ensureBrowserUserRow(supabase: any, authUser: any) {
   }
 }
 
-async function loadLegalAcceptances(
-  supabase: any,
-  accessToken: string | undefined,
-  userId: string
-): Promise<Array<{ document_id: string; document_version: string }>> {
-  if (accessToken) {
-    try {
-      const res = await fetch('/api/legal/acceptances', {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-        cache: 'no-store',
-      });
-      const data = (await res.json().catch(() => ({}))) as {
-        success?: boolean;
-        acceptances?: Array<{ document_id: string; document_version: string }>;
-        error?: string;
-        traceId?: string;
-      };
-      debugAuth('[WebAppGate] Legal acceptance API status response', {
-        ok: res.ok,
-        success: data.success,
-        count: data.acceptances?.length ?? 0,
-        error: data.error ?? null,
-        traceId: data.traceId ?? null,
-      });
-      if (res.ok && data.success !== false && Array.isArray(data.acceptances)) {
-        return data.acceptances;
-      }
-    } catch (err) {
-      debugAuth('[WebAppGate] Legal acceptance API status failed; trying browser fallback', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
-
-  const { data, error } = await supabase
-    .from('user_legal_acceptances')
-    .select('document_id,document_version')
-    .eq('user_id', userId);
-  debugAuth('[WebAppGate] Legal acceptance browser fallback response', {
-    count: data?.length ?? 0,
-    error: error?.message ?? null,
+async function loadServerWebState(accessToken: string): Promise<WebStateResponse> {
+  const res = await fetch('/api/auth/web-state', {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    cache: 'no-store',
   });
-  if (error) throw error;
-  return data ?? [];
+  const data = (await res.json().catch(() => ({}))) as WebStateResponse;
+  debugAuth('[WebAppGate] Server web state response', {
+    ok: res.ok,
+    success: data.success,
+    step: data.step ?? null,
+    traceId: data.traceId ?? null,
+    error: data.error ?? null,
+    requiredCount: data.requiredDocs?.length ?? 0,
+    acceptedCount: data.acceptedDocuments?.length ?? 0,
+    emailConfirmedAt: data.user?.email_confirmed_at ?? null,
+  });
+  if (!res.ok || data.success === false) {
+    throw new Error(data.error || 'Unable to load account access state.');
+  }
+  return data;
 }
 
 export default function WebAppGate({ children }: { children: ReactNode }) {
@@ -239,7 +211,6 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
     if (loadStateInFlightRef.current) return loadStateInFlightRef.current;
     const request = (async () => {
     setError('');
-    setStep('loading');
     try {
       const supabase = getSupabaseBrowser() as any;
       const { authUser, session, userError } = await withTimeout(resolveAuthSnapshot(), 10000, 'Loading web auth session');
@@ -248,6 +219,7 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
         id: authUser?.id ?? null,
         email: authUser?.email ?? null,
         sessionUserId: session?.user?.id ?? null,
+        currentRoute: typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : null,
         error: userError?.message ?? null,
       });
 
@@ -265,101 +237,57 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
       setUserId(currentUserId);
       setEmail(currentEmail);
 
-      const profileResult = await withTimeout<any>(
-        supabase
-          .from('users')
-          .select('id,email,email_verified,verified')
-          .eq('id', currentUserId)
-          .maybeSingle(),
-        10000,
-        'Loading web profile state'
-      );
-      const profile = profileResult.data;
-
-      debugAuth('[WebAppGate] Profile fetch response', {
-        requestedUserId: currentUserId,
-        profileUserId: profile?.id ?? null,
-        email: profile?.email ?? currentEmail,
-        profileEmailVerified: profile?.email_verified ?? false,
-        profileVerified: profile?.verified ?? false,
-        authEmailConfirmedAt: authUser.email_confirmed_at ?? null,
-        sessionEmailConfirmedAt: session?.user?.email_confirmed_at ?? null,
-      });
-
-      let authEmailVerified = Boolean(authUser.email_confirmed_at || session?.user?.email_confirmed_at);
-      if (!authEmailVerified && session?.refresh_token) {
+      let activeSession = session;
+      if (!activeSession?.access_token && session?.refresh_token) {
         const {
           data: { session: refreshedSession },
           error: refreshError,
         } = await supabase.auth.refreshSession();
-        authEmailVerified = Boolean(refreshedSession?.user?.email_confirmed_at);
-        debugAuth('[WebAppGate] Email verification session refresh response', {
+        activeSession = refreshedSession;
+        debugAuth('[WebAppGate] Missing access token session refresh response', {
           refreshed: Boolean(refreshedSession?.access_token),
-          authEmailVerified,
           error: refreshError?.message ?? null,
         });
       }
 
-      let isEmailVerified = authEmailVerified;
-      if (authEmailVerified && (!profile?.email_verified || !profile?.verified)) {
-        void syncVerifiedProfileFlags(supabase, currentUserId);
+      if (!activeSession?.access_token) {
+        router.replace(`/sign-in?redirect=${encodeURIComponent('/app')}`);
+        return;
       }
-      if (!isEmailVerified && currentEmail) {
-        isEmailVerified = await syncVerifiedEmail(currentEmail);
-        debugAuth('[WebAppGate] Email verification sync result', {
-          email: currentEmail,
-          verified: isEmailVerified,
-        });
-        if (isEmailVerified) {
-          void syncVerifiedProfileFlags(supabase, currentUserId);
-        }
-      }
-      if (!isEmailVerified) {
+
+      const webState = await withTimeout(
+        loadServerWebState(activeSession.access_token),
+        12000,
+        'Loading web access state'
+      );
+
+      setEmail(webState.user?.email ?? currentEmail);
+
+      if (webState.step === 'verify-email') {
         setStep('verify-email');
         return;
       }
 
-      const [{ data: docs }, { data: onboarding }, acceptances] = await withTimeout(
-        Promise.all([
-          supabase
-            .from('legal_documents')
-            .select('id,title,slug,content,version')
-            .eq('is_active', true)
-            .eq('is_required', true)
-            .order('created_at', { ascending: true }),
-          supabase
-            .from('user_onboarding_data')
-            .select('has_completed_onboarding,consent_given')
-            .eq('user_id', currentUserId)
-            .maybeSingle(),
-          loadLegalAcceptances(supabase, session?.access_token, currentUserId),
-        ]),
-        12000,
-        'Loading web onboarding state'
-      );
-
-      const legalDocs = (docs ?? []) as LegalDoc[];
-      const accepted = (acceptances ?? []).map(
-        (row: { document_id: string; document_version: string }) => `${row.document_id}:${row.document_version}`
-      );
+      const legalDocs = webState.requiredDocs ?? [];
+      const accepted = webState.acceptedDocuments ?? [];
       debugAuth('[WebAppGate] Legal gate decision', {
         requiredDocuments: legalDocs.map((doc) => `${doc.id}:${doc.version}`),
         acceptedDocuments: accepted,
         missingCount: legalDocs.filter((doc) => !accepted.includes(`${doc.id}:${doc.version}`)).length,
-        sessionExists: Boolean(session?.access_token),
+        sessionExists: Boolean(activeSession.access_token),
+        serverStep: webState.step ?? null,
+        traceId: webState.traceId ?? null,
       });
       setRequiredDocs(legalDocs);
       setAcceptedDocIds(accepted);
       setCheckedDocIds([]);
 
-      const acceptedSet = new Set(accepted);
-      const hasMissingLegal = legalDocs.some((doc) => !acceptedSet.has(`${doc.id}:${doc.version}`));
-      if (hasMissingLegal) {
+      if (webState.step === 'legal') {
         setStep('legal');
         return;
       }
 
-      if (!onboarding?.has_completed_onboarding || !onboarding?.consent_given) {
+      if (webState.step === 'ai-consent') {
         setStep('ai-consent');
         return;
       }

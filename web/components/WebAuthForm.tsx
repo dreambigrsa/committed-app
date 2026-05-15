@@ -8,13 +8,6 @@ import { getSupabaseBrowser } from '@/lib/supabase-client';
 import OpenAppButton from '@/components/OpenAppButton';
 
 type Mode = 'sign-in' | 'sign-up';
-type LegalDoc = {
-  id: string;
-  title: string;
-  slug: string;
-  version: string;
-  is_required?: boolean | null;
-};
 
 const countryCodes = [
   { code: '+263', label: 'ZW' },
@@ -114,11 +107,8 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [loadingLegalDocs, setLoadingLegalDocs] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [legalDocs, setLegalDocs] = useState<LegalDoc[]>([]);
-  const [legalAcceptances, setLegalAcceptances] = useState<Record<string, boolean>>({});
   const [signUpStep, setSignUpStep] = useState(1);
 
   const isSignUp = mode === 'sign-up';
@@ -130,14 +120,8 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
   const canSubmit = useMemo(() => {
     if (!email.trim() || !password.trim()) return false;
     if (isSignUp && (!fullName.trim() || !phone.trim())) return false;
-    if (isSignUp && loadingLegalDocs) return false;
-    if (isSignUp) {
-      const requiredDocs = legalDocs.filter((doc) => !!doc.is_required);
-      const hasAllRequired = requiredDocs.every((doc) => !!legalAcceptances[doc.id]);
-      if (!hasAllRequired) return false;
-    }
     return true;
-  }, [email, password, isSignUp, fullName, phone, legalAcceptances, legalDocs, loadingLegalDocs]);
+  }, [email, password, isSignUp, fullName, phone]);
 
   const canContinueSignUp = useMemo(() => {
     if (!isSignUp) return true;
@@ -150,91 +134,6 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
     const ref = (params.get('ref') || params.get('referral') || '').trim();
     if (ref) writePendingWebReferral(ref);
   }, [isSignUp]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const loadLegalDocs = async () => {
-      if (!isSignUp) return;
-      setLoadingLegalDocs(true);
-      try {
-        const supabaseBrowser = getSupabaseBrowser();
-        const { data, error: docsError } = await supabaseBrowser
-          .from('legal_documents')
-          .select('id,title,slug,version,is_required')
-          .eq('is_active', true)
-          .contains('display_location', ['signup'])
-          .order('created_at', { ascending: true });
-        if (docsError) throw docsError;
-        if (cancelled) return;
-        const docs = ((data ?? []) as LegalDoc[]).filter(Boolean);
-        setLegalDocs(docs);
-        const defaults: Record<string, boolean> = {};
-        docs.forEach((doc) => {
-          defaults[doc.id] = false;
-        });
-        setLegalAcceptances(defaults);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to load legal documents.');
-      } finally {
-        if (!cancelled) setLoadingLegalDocs(false);
-      }
-    };
-    void loadLegalDocs();
-    return () => {
-      cancelled = true;
-    };
-  }, [isSignUp]);
-
-  /** Best-effort only: with email confirmation there is often no session yet, so RLS can block writes. */
-  const saveSignUpLegalAcceptances = async (userId: string) => {
-    const supabaseBrowser = getSupabaseBrowser();
-    const supabaseAny = supabaseBrowser as any;
-    const acceptedDocs = legalDocs
-      .filter((doc) => legalAcceptances[doc.id])
-      .map((doc) => ({
-        user_id: userId,
-        document_id: doc.id,
-        document_version: doc.version || '1.0.0',
-        context: 'signup',
-        accepted_at: new Date().toISOString(),
-      }));
-    if (!acceptedDocs.length) return;
-
-    // Same pattern as mobile auth: wait briefly for public.users row (trigger can lag).
-    let userRowReady = false;
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      const { data: userRecord } = await supabaseBrowser.from('users').select('id').eq('id', userId).maybeSingle();
-      if (userRecord) {
-        userRowReady = true;
-        break;
-      }
-      await delay(500);
-    }
-    if (!userRowReady) return;
-
-    // Mirror mobile strategy: try RPC first, then fallback to table upsert.
-    try {
-      const rpcResults = await Promise.all(
-        acceptedDocs.map((row) =>
-          supabaseAny.rpc('insert_user_legal_acceptance', {
-            p_user_id: row.user_id,
-            p_document_id: row.document_id,
-            p_document_version: row.document_version,
-            p_context: row.context,
-          })
-        )
-      );
-      const rpcFailed = rpcResults.some((result) => !!result.error);
-      if (!rpcFailed) return;
-    } catch {
-      // fall through to upsert fallback
-    }
-
-    const { error: upsertError } = await supabaseAny
-      .from('user_legal_acceptances')
-      .upsert(acceptedDocs, { onConflict: 'user_id,document_id' });
-    if (upsertError) throw upsertError;
-  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -259,11 +158,6 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
       const supabaseBrowser = getSupabaseBrowser();
 
       if (isSignUp) {
-        const requiredDocs = legalDocs.filter((doc) => !!doc.is_required);
-        const missingRequired = requiredDocs.filter((doc) => !legalAcceptances[doc.id]);
-        if (missingRequired.length) {
-          throw new Error('Please accept all required legal documents to continue.');
-        }
         const normalizedPhone = normalizePhone(countryCode, phone);
         const redirectTo =
           typeof window !== 'undefined'
@@ -283,16 +177,6 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
         });
 
         if (signUpError) throw signUpError;
-        if (data.user?.id) {
-          try {
-            await saveSignUpLegalAcceptances(data.user.id);
-          } catch (legalErr) {
-            if (process.env.NODE_ENV !== 'production') {
-              console.warn('[WebAuthForm] Sign-up legal acceptances not saved (non-fatal):', legalErr);
-            }
-          }
-        }
-
         const signedInUserId = data.session?.user?.id || data.user?.id;
         if (signedInUserId) {
           await applyPendingWebReferral(supabaseBrowser, signedInUserId);
@@ -391,7 +275,7 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
           <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
             {signUpStep === 1
               ? 'Use the same details you want connected to relationship and dating trust signals.'
-              : 'Your password secures web access. Legal confirmations keep the trust system explicit.'}
+              : 'Create a strong password. After email verification, we will guide you through the required documents.'}
           </p>
         </div>
       ) : null}
@@ -477,47 +361,11 @@ export default function WebAuthForm({ mode }: { mode: Mode }) {
         )}
 
         {isSignUp && signUpStep === 2 && (
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-black text-slate-900">Legal confirmations</p>
-                <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Accept each required document to finish sign-up.</p>
-              </div>
-              <span className="rounded-md bg-white px-2 py-1 text-xs font-black text-teal-700 ring-1 ring-slate-200">
-                {legalDocs.filter((doc) => legalAcceptances[doc.id]).length}/{legalDocs.length || 0}
-              </span>
-            </div>
-            {loadingLegalDocs ? (
-              <p className="mt-3 text-sm text-slate-500">Loading documents...</p>
-            ) : legalDocs.length === 0 ? (
-              <p className="mt-3 text-sm text-slate-500">No signup legal documents found.</p>
-            ) : (
-              <div className="mt-4 space-y-2">
-                {legalDocs.map((doc) => (
-                  <label key={doc.id} className="group flex items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition hover:border-teal-300">
-                    <input
-                      type="checkbox"
-                      checked={!!legalAcceptances[doc.id]}
-                      onChange={(event) =>
-                        setLegalAcceptances((current) => ({
-                          ...current,
-                          [doc.id]: event.target.checked,
-                        }))
-                      }
-                      className="mt-1 h-4 w-4 rounded border-slate-300 accent-teal-500"
-                    />
-                    <span className="text-sm font-semibold leading-5 text-slate-700">
-                      I accept{' '}
-                      <Link href={`/legal/${doc.slug}`} className="font-black text-teal-700 hover:text-teal-900">
-                        {doc.title}
-                      </Link>
-                      <span className="text-slate-400"> (v{doc.version})</span>
-                      {doc.is_required ? <span className="font-black text-rose-500"> *</span> : ''}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            )}
+          <div className="rounded-lg border border-teal-100 bg-teal-50 p-4">
+            <p className="text-sm font-black text-slate-900">Verification comes next</p>
+            <p className="mt-1 text-xs font-semibold leading-5 text-slate-600">
+              We will send a verification email first. Legal documents only appear after your email is confirmed.
+            </p>
           </div>
         )}
         {error && (

@@ -15,11 +15,27 @@ export default function AuthRouteGuard() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      let emailConfirmedAt = user?.email_confirmed_at || session?.user?.email_confirmed_at || null;
+      if (!emailConfirmedAt && session?.refresh_token) {
+        const {
+          data: { session: refreshedSession },
+        } = await supabase.auth.refreshSession();
+        emailConfirmedAt = refreshedSession?.user?.email_confirmed_at || null;
+      }
       console.debug('[WebAuthGuard] Authenticated user object', {
         id: user?.id ?? null,
         email: user?.email ?? null,
+        emailConfirmedAt,
       });
       if (!mounted || !user) return;
+      if (!emailConfirmedAt) {
+        const emailParam = user.email ? `?email=${encodeURIComponent(user.email)}` : '';
+        router.replace(`/verify-email${emailParam}`);
+        return;
+      }
       router.replace('/app');
     };
 
@@ -30,11 +46,19 @@ export default function AuthRouteGuard() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
+      const emailConfirmedAt = user?.email_confirmed_at || session?.user?.email_confirmed_at || null;
       console.debug('[WebAuthGuard] Auth state user object', {
         id: user?.id ?? null,
         email: user?.email ?? null,
+        event: _event,
+        emailConfirmedAt,
       });
       if (!mounted || !user) return;
+      if (!emailConfirmedAt) {
+        const emailParam = user.email ? `?email=${encodeURIComponent(user.email)}` : '';
+        router.replace(`/verify-email${emailParam}`);
+        return;
+      }
       router.replace('/app');
     });
 

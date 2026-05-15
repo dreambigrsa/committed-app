@@ -118,6 +118,27 @@ async function requireUser(req: NextRequest, traceId: string): Promise<AuthedSup
   };
 }
 
+function requireVerifiedEmail(auth: AuthedSupabase, traceId: string): NextResponse | null {
+  const verified = Boolean(auth.user.email_confirmed_at);
+  logLegal(traceId, 'email verification checked before legal acceptance', {
+    userId: auth.user.id,
+    email: auth.user.email ?? null,
+    emailConfirmedAt: auth.user.email_confirmed_at ?? null,
+    verified,
+  });
+
+  if (verified) return null;
+
+  return NextResponse.json(
+    {
+      success: false,
+      error: 'Please verify your email before accepting legal documents.',
+      traceId,
+    },
+    { status: 403 }
+  );
+}
+
 function buildFallbackPhone(user: SupabaseUser) {
   const metaPhone = typeof user.user_metadata?.phone_number === 'string' ? user.user_metadata.phone_number.trim() : '';
   const metaPhoneAlt = typeof user.user_metadata?.phone === 'string' ? user.user_metadata.phone.trim() : '';
@@ -411,6 +432,8 @@ export async function GET(req: NextRequest) {
   try {
     const auth = await requireUser(req, traceId);
     if ('response' in auth) return auth.response;
+    const unverifiedResponse = requireVerifiedEmail(auth, traceId);
+    if (unverifiedResponse) return unverifiedResponse;
 
     const { data, source } = await loadAcceptanceRows(auth, traceId);
 
@@ -434,6 +457,8 @@ export async function POST(req: NextRequest) {
   try {
     const auth = await requireUser(req, traceId);
     if ('response' in auth) return auth.response;
+    const unverifiedResponse = requireVerifiedEmail(auth, traceId);
+    if (unverifiedResponse) return unverifiedResponse;
 
     const body = (await req.json().catch(() => ({}))) as AcceptLegalBody;
     const requestedDocs = Array.isArray(body.documents) ? body.documents : [];

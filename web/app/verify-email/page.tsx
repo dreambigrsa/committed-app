@@ -26,7 +26,7 @@ function VerifyEmailContent() {
 
   useEffect(() => {
     if (email && !token) {
-      setStatus('success');
+      setStatus('loading');
       return;
     }
     if (!token || token.length < 16) {
@@ -55,14 +55,34 @@ function VerifyEmailContent() {
 
     const checkVerified = async () => {
       try {
-        const res = await fetch(`/api/auth/verification-status?email=${encodeURIComponent(email)}`, {
+        const supabase = getSupabaseBrowser();
+        const {
+          data: { session: currentSession },
+        } = await supabase.auth.getSession();
+        const activeEmail = email || currentSession?.user?.email || '';
+        if (!activeEmail) {
+          if (!cancelled) setStatus('error');
+          return;
+        }
+
+        let authVerified = Boolean(currentSession?.user?.email_confirmed_at);
+        if (!authVerified && currentSession?.refresh_token) {
+          const {
+            data: { session: refreshedSession },
+          } = await supabase.auth.refreshSession();
+          authVerified = Boolean(refreshedSession?.user?.email_confirmed_at);
+        }
+
+        const res = await fetch(`/api/auth/verification-status?email=${encodeURIComponent(activeEmail)}`, {
           cache: 'no-store',
         });
         const data = (await res.json().catch(() => ({}))) as { verified?: boolean };
-        if (cancelled || data.verified !== true) return;
+        if (cancelled) return;
 
-        setStatus('success');
-        const supabase = getSupabaseBrowser();
+        const verified = authVerified || data.verified === true;
+        setStatus(verified ? 'success' : 'loading');
+        if (!verified) return;
+
         const {
           data: { session },
         } = await supabase.auth.getSession();
@@ -75,7 +95,7 @@ function VerifyEmailContent() {
     };
 
     void checkVerified();
-    intervalId = window.setInterval(() => void checkVerified(), 5000);
+    intervalId = window.setInterval(() => void checkVerified(), 3000);
     const onFocus = () => void checkVerified();
     const onVisible = () => {
       if (document.visibilityState === 'visible') void checkVerified();
@@ -120,7 +140,7 @@ function VerifyEmailContent() {
     }
   }, [email, resending]);
 
-  if (email && !token) {
+  if (email && !token && status !== 'success') {
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-violet-50">
         <Navbar />
@@ -160,6 +180,35 @@ function VerifyEmailContent() {
             </div>
             {resendMessage && <p className="mt-4 text-sm text-emerald-700">{resendMessage}</p>}
             {resendError && <p className="mt-4 text-sm text-red-600">{resendError}</p>}
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (email && !token && status === 'success') {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-emerald-50">
+        <Navbar />
+        <main className="mx-auto flex min-h-[60vh] max-w-md flex-col justify-center px-4 py-16">
+          <div className="rounded-3xl border border-emerald-100 bg-white p-8 text-center shadow-xl shadow-emerald-100/50">
+            <CheckCircle className="mx-auto h-16 w-16 text-emerald-500" />
+            <h1 className="mt-4 font-display text-2xl font-bold text-slate-900">Email verified</h1>
+            <p className="mt-2 text-slate-600">
+              Your email is confirmed. You can continue into Committed now.
+            </p>
+            <div className="mt-8 flex flex-col gap-3">
+              <Link
+                href="/app"
+                className="inline-flex items-center justify-center rounded-xl bg-primary-600 px-6 py-3 font-semibold text-white hover:bg-primary-700"
+              >
+                Continue to web app
+              </Link>
+              <Link href="/sign-in" className="text-sm text-slate-600 hover:text-primary-600">
+                Sign in with this account
+              </Link>
+            </div>
           </div>
         </main>
         <Footer />

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { BadgeCheck, HeartHandshake, LockKeyhole, ShieldCheck } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import AuthRouteGuard from '@/components/AuthRouteGuard';
 
 type AuthPageFrameProps = {
   eyebrow: string;
@@ -20,6 +21,7 @@ const trustPoints = [
 export default function AuthPageFrame({ eyebrow, title, subtitle, children }: AuthPageFrameProps) {
   return (
     <div className="min-h-screen bg-slate-950 text-white">
+      <AuthRouteGuard />
       <Navbar />
       <main className="relative min-h-[calc(100svh-1px)] overflow-hidden">
         <Image

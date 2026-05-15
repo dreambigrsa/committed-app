@@ -120,10 +120,14 @@ async function requireUser(req: NextRequest, traceId: string): Promise<AuthedSup
 
 function buildFallbackPhone(user: SupabaseUser) {
   const metaPhone = typeof user.user_metadata?.phone_number === 'string' ? user.user_metadata.phone_number.trim() : '';
+  const metaPhoneAlt = typeof user.user_metadata?.phone === 'string' ? user.user_metadata.phone.trim() : '';
+  const metaPhoneCamel = typeof user.user_metadata?.phoneNumber === 'string' ? user.user_metadata.phoneNumber.trim() : '';
   const authPhone = typeof user.phone === 'string' ? user.phone.trim() : '';
   if (metaPhone) return metaPhone;
+  if (metaPhoneAlt) return metaPhoneAlt;
+  if (metaPhoneCamel) return metaPhoneCamel;
   if (authPhone) return authPhone;
-  return '';
+  return `+0000000${user.id.replace(/-/g, '').slice(-4).padStart(4, '0')}`;
 }
 
 function buildUserRow(user: SupabaseUser) {
@@ -163,7 +167,7 @@ async function insertUserRow(client: SupabaseClient, user: SupabaseUser, traceId
   const row = buildUserRow(user);
   const result = await client
     .from('users')
-    .insert(row)
+    .upsert(row, { onConflict: 'id', ignoreDuplicates: true })
     .select('id')
     .maybeSingle();
 

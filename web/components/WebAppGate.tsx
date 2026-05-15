@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, Bot, CheckCircle2, FileText, HeartHandshake, Loader2, Mail, ShieldCheck, Sparkles } from 'lucide-react';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
+import { usersRowBootstrapFromAuth } from '@/lib/web-user-profile';
 
 type LegalDoc = {
   id: string;
@@ -92,6 +93,45 @@ async function syncVerifiedProfileFlags(supabase: any, userId: string) {
       userId,
       error: err instanceof Error ? err.message : String(err),
     });
+  }
+}
+
+async function ensureBrowserUserRow(supabase: any, authUser: any) {
+  if (!authUser?.id) return false;
+  try {
+    const { data: existing, error: findError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', authUser.id)
+      .maybeSingle();
+    debugAuth('[WebAppGate] Browser users row check before legal fallback', {
+      userId: authUser.id,
+      found: Boolean(existing?.id),
+      error: findError?.message ?? null,
+    });
+    if (existing?.id) return true;
+
+    const { error: upsertError } = await supabase
+      .from('users')
+      .upsert(usersRowBootstrapFromAuth(authUser), { onConflict: 'id', ignoreDuplicates: true });
+    debugAuth('[WebAppGate] Browser users row repair before legal fallback', {
+      userId: authUser.id,
+      error: upsertError?.message ?? null,
+    });
+    if (upsertError) return false;
+
+    const { data: repaired } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', authUser.id)
+      .maybeSingle();
+    return Boolean(repaired?.id);
+  } catch (err) {
+    debugAuth('[WebAppGate] Browser users row repair failed before legal fallback', {
+      userId: authUser.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return false;
   }
 }
 
@@ -425,6 +465,12 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
           details: data.details ?? null,
           traceId: data.traceId ?? null,
         });
+        const userReady = await ensureBrowserUserRow(supabase, session.user);
+        if (!userReady) {
+          const reference = data.traceId ? ` Reference: ${data.traceId}.` : '';
+          const apiDetail = data.details?.message ? ` ${data.details.message}` : '';
+          throw new Error(`${data.error || 'Unable to save legal acceptance.'}${apiDetail}${reference}`);
+        }
         const acceptedDocs = missingDocs.map((doc) => ({
           user_id: userId,
           document_id: doc.id,

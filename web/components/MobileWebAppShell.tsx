@@ -12078,159 +12078,265 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     </div>
   );
 
-  const renderSettings = () => (
-    <div className="space-y-4 px-4 py-4">
-      {renderAvatarHardDebugPanel()}
-      <section className="rounded-[26px] bg-white p-5 shadow-sm ring-1 ring-slate-200">
-        <div className="flex items-center gap-3">
-          <ProfileUserLink viewerUserId={user?.id} subjectUserId={user?.id} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
-            <Avatar src={settingsProfilePictureUrl || shellAvatarSrc} name={getUserDisplayName(shellAvatarNameUser)} size="lg" />
-          </ProfileUserLink>
-          <div>
-            <h2 className="text-2xl font-black text-slate-950">Settings</h2>
-            <p className="text-sm text-slate-500">{user?.username ? `@${user.username}` : 'Account and profile details'}</p>
+  const renderSettings = () => {
+    const profilePhotoPreview = settingsProfilePictureUrl
+      ? supabase
+        ? resolveProfilePictureUrlWithSupabase(supabase, settingsProfilePictureUrl) ||
+          resolveProfilePictureUrl(settingsProfilePictureUrl) ||
+          settingsProfilePictureUrl
+        : resolveProfilePictureUrl(settingsProfilePictureUrl) || settingsProfilePictureUrl
+      : '';
+    const verificationItems = [
+      { label: 'Email', href: '/app/verification/email', verified: Boolean(user?.email_verified), icon: Mail },
+      { label: 'Phone', href: '/app/verification/phone', verified: Boolean(user?.phone_verified), icon: Phone },
+      { label: 'ID', href: '/app/verification/id', verified: Boolean(user?.id_verified), icon: ShieldCheck },
+    ];
+    const shortcutItems = [
+      { href: '/app/settings/2fa', title: 'Two-factor authentication', text: 'Add an extra sign-in check', icon: Shield },
+      { href: '/app/settings/sessions', title: 'Active sessions', text: 'Review signed-in devices', icon: Clock },
+      { href: '/app/settings/blocked-users', title: 'Blocked users', text: 'Manage restricted members', icon: Ban },
+      { href: '/app/verification', title: 'Verification center', text: 'Phone, email, ID, and privacy checks', icon: CheckCircle2 },
+    ];
+
+    return (
+      <div className="mx-auto w-full max-w-3xl space-y-5 px-4 pb-28 pt-4 sm:px-6 sm:pt-6">
+        {renderAvatarHardDebugPanel()}
+        <section className="overflow-hidden rounded-[30px] bg-slate-950 text-white shadow-2xl shadow-slate-950/20">
+          <div className="relative p-5 sm:p-6">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(45,212,191,0.28),transparent_34%),linear-gradient(135deg,rgba(37,99,235,0.38),rgba(15,23,42,0)_55%)]" />
+            <div className="relative flex flex-col gap-5 min-[420px]:flex-row min-[420px]:items-center">
+              <ProfileUserLink viewerUserId={user?.id} subjectUserId={user?.id} className="shrink-0 rounded-full outline-none ring-offset-2 ring-offset-slate-950 focus-visible:ring-2 focus-visible:ring-teal-300">
+                <div className="rounded-full bg-white/10 p-1 ring-1 ring-white/15">
+                  <Avatar src={settingsProfilePictureUrl || shellAvatarSrc} name={getUserDisplayName(shellAvatarNameUser)} size="lg" />
+                </div>
+              </ProfileUserLink>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-black uppercase tracking-normal text-teal-200">Profile settings</p>
+                <h2 className="mt-1 truncate text-3xl font-black tracking-normal text-white">
+                  {settingsForm.fullName?.trim() || getUserDisplayName(shellAvatarNameUser) || 'Your account'}
+                </h2>
+                <p className="mt-2 truncate text-sm font-semibold text-slate-300">
+                  {user?.username ? `@${user.username}` : settingsForm.email || 'Account and profile details'}
+                </p>
+              </div>
+              <label className="inline-flex min-h-[46px] cursor-pointer items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-black text-slate-950 shadow-lg shadow-slate-950/20 transition hover:bg-teal-50">
+                <UploadCloud className="h-5 w-5 text-teal-600" />
+                {uploadingLabel === 'Profile photo' ? 'Uploading...' : 'Photo'}
+                <input type="file" accept="image/*" className="hidden" onChange={(event) => void handleProfilePhotoUpload(event)} />
+              </label>
+            </div>
+            <div className="relative mt-5 grid grid-cols-3 gap-2">
+              {verificationItems.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.label}
+                    href={item.href}
+                    className={`rounded-2xl px-3 py-3 text-center ring-1 transition active:scale-[0.99] ${
+                      item.verified
+                        ? 'bg-teal-300 text-slate-950 ring-teal-200'
+                        : 'bg-white/10 text-slate-300 ring-white/10'
+                    }`}
+                  >
+                    <Icon className="mx-auto h-4 w-4" />
+                    <span className="mt-1 block text-xs font-black">{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
           </div>
+          {profilePhotoPreview ? (
+            <img src={profilePhotoPreview} alt="Profile photo preview" className="h-44 w-full object-cover sm:h-56" />
+          ) : null}
+        </section>
+
+        <section className="rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="mb-5 flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-black text-slate-950">Personal details</h3>
+              <p className="mt-1 text-sm font-semibold leading-5 text-slate-500">Keep your profile identity consistent across web and mobile.</p>
+            </div>
+            <User className="h-6 w-6 shrink-0 text-teal-600" />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="Full name" value={settingsForm.fullName} onChange={(fullName) => setSettingsForm((prev) => ({ ...prev, fullName }))} />
+            <FormField label="Username" value={settingsForm.username} onChange={(username) => setSettingsForm((prev) => ({ ...prev, username }))} placeholder="Optional" />
+            <FormField label="Phone number" value={settingsForm.phoneNumber} onChange={(phoneNumber) => setSettingsForm((prev) => ({ ...prev, phoneNumber }))} />
+            <FormField
+              label="Email address"
+              value={settingsForm.email}
+              onChange={() => {}}
+              readOnly
+              hint="Sign-in email is managed by your account provider."
+            />
+            <FormField
+              label="Gender (optional)"
+              value={settingsForm.gender}
+              onChange={(gender) => setSettingsForm((prev) => ({ ...prev, gender }))}
+              placeholder="Male, Female, Other"
+            />
+            <FormField
+              label="Date of birth (optional)"
+              value={settingsForm.dateOfBirth}
+              onChange={(dateOfBirth) => setSettingsForm((prev) => ({ ...prev, dateOfBirth }))}
+              placeholder="YYYY-MM-DD"
+            />
+          </div>
+        </section>
+
+        <section className="rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-black text-slate-950">Verification</h3>
+              <p className="mt-1 text-sm font-semibold leading-5 text-slate-500">Complete trust signals other members can rely on.</p>
+            </div>
+            <ShieldCheck className="h-6 w-6 shrink-0 text-blue-600" />
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {[
+              ...verificationItems,
+              { label: 'Couple selfie', href: '/app/verification/couple-selfie', verified: false, icon: Camera },
+            ].map((item) => {
+              const Icon = item.icon;
+              return (
+                <Link key={item.label} href={item.href} className="flex items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3 ring-1 ring-slate-200 transition hover:bg-teal-50 hover:ring-teal-200">
+                  <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl ${item.verified ? 'bg-emerald-100 text-emerald-700' : 'bg-white text-slate-500 ring-1 ring-slate-200'}`}>
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-black text-slate-900">{item.label}</span>
+                    <span className={`mt-0.5 block text-xs font-bold ${item.verified ? 'text-emerald-700' : 'text-slate-500'}`}>
+                      {item.verified ? 'Verified' : 'Needs attention'}
+                    </span>
+                  </span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-black text-slate-950">Privacy and discovery</h3>
+              <p className="mt-1 text-sm font-semibold leading-5 text-slate-500">Control who can find and view your account.</p>
+            </div>
+            <SlidersHorizontal className="h-6 w-6 shrink-0 text-teal-600" />
+          </div>
+          <label className="mt-4 block text-sm font-black text-slate-700">
+            Profile visibility
+            <select value={privacySettings.profileVisibility} onChange={(event) => setPrivacySettings((prev) => ({ ...prev, profileVisibility: event.target.value }))} className="mt-2 h-14 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 font-bold text-slate-900 outline-none transition focus:border-teal-500 focus:ring-4 focus:ring-teal-100">
+              <option value="public">Public</option>
+              <option value="private">Private</option>
+              <option value="verified-only">Verified only</option>
+            </select>
+          </label>
+          <div className="mt-4 grid gap-3">
+            {[
+              ['searchVisibility', 'Show me in search'],
+              ['allowSearchByPhone', 'Allow search by phone'],
+            ].map(([key, label]) => (
+              <label key={key} className="flex min-h-[58px] items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3 ring-1 ring-slate-200">
+                <span className="text-sm font-black text-slate-800">{label}</span>
+                <input
+                  type="checkbox"
+                  checked={Boolean((privacySettings as any)[key])}
+                  onChange={(event) => setPrivacySettings((prev) => ({ ...prev, [key]: event.target.checked }))}
+                  className="h-5 w-5 accent-teal-500"
+                />
+              </label>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-black text-slate-950">Notifications</h3>
+              <p className="mt-1 text-sm font-semibold leading-5 text-slate-500">Choose what deserves your attention.</p>
+            </div>
+            <Bell className="h-6 w-6 shrink-0 text-blue-600" />
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {[
+              ['relationshipUpdates', 'Relationship updates'],
+              ['cheatingAlerts', 'Integrity alerts'],
+              ['verificationAttempts', 'Verification updates'],
+              ['anniversaryReminders', 'Anniversary reminders'],
+              ['marketingPromotions', 'Marketing and promotions'],
+              ['soundEnabled', 'Notification sound'],
+            ].map(([key, label]) => (
+              <label key={key} className="flex min-h-[58px] items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3 ring-1 ring-slate-200">
+                <span className="text-sm font-black text-slate-800">{label}</span>
+                <input
+                  type="checkbox"
+                  checked={Boolean((notificationSettings as any)[key])}
+                  onChange={(event) => setNotificationSettings((prev) => ({ ...prev, [key]: event.target.checked }))}
+                  className="h-5 w-5 accent-blue-600"
+                />
+              </label>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <h3 className="text-lg font-black text-slate-950">Security shortcuts</h3>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {shortcutItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <Link key={item.href} href={item.href} className="flex items-center gap-3 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200 transition hover:bg-blue-50 hover:ring-blue-200">
+                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white text-blue-600 ring-1 ring-slate-200">
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-black text-slate-900">{item.title}</span>
+                    <span className="mt-0.5 block text-xs font-bold text-slate-500">{item.text}</span>
+                  </span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+
+        <div className="sticky bottom-[76px] z-20 rounded-[24px] border border-slate-200/80 bg-white/95 p-3 shadow-2xl shadow-slate-950/10 backdrop-blur sm:static sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none">
+          <button
+            type="button"
+            onClick={() => void saveSettings()}
+            disabled={saving || uploadingLabel === 'Profile photo'}
+            className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-4 text-base font-black text-white shadow-lg shadow-slate-950/15 transition hover:bg-slate-800 disabled:opacity-60"
+          >
+            {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
+            Save changes
+          </button>
         </div>
-        <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs font-black">
-          <span className={`rounded-full px-2 py-2 ${user?.email_verified ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>Email</span>
-          <span className={`rounded-full px-2 py-2 ${user?.phone_verified ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>Phone</span>
-          <span className={`rounded-full px-2 py-2 ${user?.id_verified ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>ID</span>
-        </div>
-      </section>
-      <label className="flex cursor-pointer items-center justify-center gap-2 rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm">
-        <UploadCloud className="h-5 w-5 text-blue-600" />
-        {uploadingLabel === 'Profile photo' ? 'Uploading profile photo...' : 'Upload profile photo'}
-        <input type="file" accept="image/*" className="hidden" onChange={(event) => void handleProfilePhotoUpload(event)} />
-      </label>
-      {settingsProfilePictureUrl ? (
-        <img
-          src={
-            supabase
-              ? resolveProfilePictureUrlWithSupabase(supabase, settingsProfilePictureUrl) ||
-                resolveProfilePictureUrl(settingsProfilePictureUrl) ||
-                settingsProfilePictureUrl
-              : resolveProfilePictureUrl(settingsProfilePictureUrl) || settingsProfilePictureUrl
-          }
-          alt="Profile photo preview"
-          className="max-h-[220px] w-full rounded-[18px] object-cover"
-        />
-      ) : null}
-      <FormField label="Full name" value={settingsForm.fullName} onChange={(fullName) => setSettingsForm((prev) => ({ ...prev, fullName }))} />
-      <FormField label="Username" value={settingsForm.username} onChange={(username) => setSettingsForm((prev) => ({ ...prev, username }))} placeholder="Optional" />
-      <FormField label="Phone number" value={settingsForm.phoneNumber} onChange={(phoneNumber) => setSettingsForm((prev) => ({ ...prev, phoneNumber }))} />
-      <FormField
-        label="Email address"
-        value={settingsForm.email}
-        onChange={() => {}}
-        readOnly
-        hint="Same as mobile: sign-in email is managed in your account provider; this field is read-only here."
-      />
-      <FormField
-        label="Gender (optional)"
-        value={settingsForm.gender}
-        onChange={(gender) => setSettingsForm((prev) => ({ ...prev, gender }))}
-        placeholder="Male, Female, Other"
-      />
-      <FormField
-        label="Date of birth (optional)"
-        value={settingsForm.dateOfBirth}
-        onChange={(dateOfBirth) => setSettingsForm((prev) => ({ ...prev, dateOfBirth }))}
-        placeholder="YYYY-MM-DD"
-      />
-      <section className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
-        <p className="text-sm font-black text-slate-900">Verification Status</p>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <Link href="/app/verification/phone" className="rounded-[14px] bg-slate-50 px-3 py-3 text-sm font-black text-slate-700 ring-1 ring-slate-200">Phone: {user?.phone_verified ? 'Verified' : 'Not verified'}</Link>
-          <Link href="/app/verification/email" className="rounded-[14px] bg-slate-50 px-3 py-3 text-sm font-black text-slate-700 ring-1 ring-slate-200">Email: {user?.email_verified ? 'Verified' : 'Not verified'}</Link>
-          <Link href="/app/verification/id" className="rounded-[14px] bg-slate-50 px-3 py-3 text-sm font-black text-slate-700 ring-1 ring-slate-200">ID: {user?.id_verified ? 'Verified' : 'Not verified'}</Link>
-          <Link href="/app/verification/couple-selfie" className="rounded-[14px] bg-slate-50 px-3 py-3 text-sm font-black text-slate-700 ring-1 ring-slate-200">Couple selfie</Link>
-        </div>
-      </section>
-      <section className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
-        <p className="text-sm font-black text-slate-900">Privacy & Security</p>
-        <label className="mt-3 block text-sm font-black text-slate-700">
-          Profile visibility
-          <select value={privacySettings.profileVisibility} onChange={(event) => setPrivacySettings((prev) => ({ ...prev, profileVisibility: event.target.value }))} className="mt-2 w-full rounded-[16px] border border-slate-200 bg-white px-3 py-3 font-semibold outline-none focus:border-blue-500">
-            <option value="public">Public</option>
-            <option value="private">Private</option>
-            <option value="verified-only">Verified only</option>
-          </select>
-        </label>
-        <div className="mt-3 grid gap-2">
-          {[
-            ['searchVisibility', 'Show me in search'],
-            ['allowSearchByPhone', 'Allow search by phone'],
-          ].map(([key, label]) => (
-            <label key={key} className="flex items-center justify-between rounded-[14px] bg-slate-50 px-3 py-3 text-sm font-black text-slate-700 ring-1 ring-slate-200">
-              <span>{label}</span>
-              <input
-                type="checkbox"
-                checked={Boolean((privacySettings as any)[key])}
-                onChange={(event) => setPrivacySettings((prev) => ({ ...prev, [key]: event.target.checked }))}
-                className="h-5 w-5 accent-blue-600"
-              />
-            </label>
-          ))}
-        </div>
-      </section>
-      <section className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
-        <p className="text-sm font-black text-slate-900">Notifications</p>
-        <div className="mt-3 grid gap-2">
-          {[
-            ['relationshipUpdates', 'Relationship updates'],
-            ['cheatingAlerts', 'Integrity alerts'],
-            ['verificationAttempts', 'Verification updates'],
-            ['anniversaryReminders', 'Anniversary reminders'],
-            ['marketingPromotions', 'Marketing and promotions'],
-            ['soundEnabled', 'Notification sound'],
-          ].map(([key, label]) => (
-            <label key={key} className="flex items-center justify-between rounded-[14px] bg-slate-50 px-3 py-3 text-sm font-black text-slate-700 ring-1 ring-slate-200">
-              <span>{label}</span>
-              <input
-                type="checkbox"
-                checked={Boolean((notificationSettings as any)[key])}
-                onChange={(event) => setNotificationSettings((prev) => ({ ...prev, [key]: event.target.checked }))}
-                className="h-5 w-5 accent-blue-600"
-              />
-            </label>
-          ))}
-        </div>
-      </section>
-      <section className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
-        <p className="text-sm font-black text-slate-900">Security shortcuts</p>
-        <div className="mt-3 grid gap-2">
-          <Link href="/app/settings/2fa" className="rounded-[14px] bg-slate-50 px-3 py-3 text-sm font-black text-slate-700 ring-1 ring-slate-200">Two-factor authentication</Link>
-          <Link href="/app/settings/sessions" className="rounded-[14px] bg-slate-50 px-3 py-3 text-sm font-black text-slate-700 ring-1 ring-slate-200">Sessions</Link>
-          <Link href="/app/settings/blocked-users" className="rounded-[14px] bg-slate-50 px-3 py-3 text-sm font-black text-slate-700 ring-1 ring-slate-200">Blocked users</Link>
-          <Link href="/app/verification" className="rounded-[14px] bg-slate-50 px-3 py-3 text-sm font-black text-slate-700 ring-1 ring-slate-200">Status & privacy controls</Link>
-        </div>
-      </section>
-      <button
-        type="button"
-        onClick={() => void saveSettings()}
-        disabled={saving || uploadingLabel === 'Profile photo'}
-        className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-blue-600 py-4 text-base font-black text-white disabled:opacity-60"
-      >
-        {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
-        Save changes
-      </button>
-      <button
-        type="button"
-        onClick={() => void signOutWebUser()}
-        className="w-full rounded-[20px] bg-red-50 py-4 text-base font-black text-red-600 ring-1 ring-red-100"
-      >
-        Sign out
-      </button>
-      <button
-        type="button"
-        onClick={() => void deleteWebAccount()}
-        disabled={deletingAccount}
-        className="w-full rounded-[20px] bg-red-600 py-4 text-base font-black text-white shadow-lg shadow-red-600/20 disabled:opacity-60"
-      >
-        {deletingAccount ? 'Deleting account...' : 'Delete Account'}
-      </button>
-    </div>
-  );
+
+        <section className="rounded-[26px] border border-red-100 bg-red-50 p-4 shadow-sm sm:p-5">
+          <h3 className="text-lg font-black text-red-950">Account access</h3>
+          <p className="mt-1 text-sm font-semibold leading-5 text-red-700">Sign out of this browser or permanently remove your account.</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => void signOutWebUser()}
+              className="min-h-[54px] rounded-2xl bg-white px-5 py-4 text-base font-black text-red-700 ring-1 ring-red-100 transition hover:bg-red-100"
+            >
+              Sign out
+            </button>
+            <button
+              type="button"
+              onClick={() => void deleteWebAccount()}
+              disabled={deletingAccount}
+              className="min-h-[54px] rounded-2xl bg-red-600 px-5 py-4 text-base font-black text-white shadow-lg shadow-red-600/20 transition hover:bg-red-700 disabled:opacity-60"
+            >
+              {deletingAccount ? 'Deleting account...' : 'Delete account'}
+            </button>
+          </div>
+        </section>
+      </div>
+    );
+  };
 
   const renderRouteHub = (
     title: string,

@@ -22,10 +22,22 @@ export async function GET(req: NextRequest) {
 
     const { data: listData } = await supabase.auth.admin.listUsers({ page: 1, perPage: 500 });
     const authUser = listData?.users?.find((user) => user.email?.toLowerCase() === email);
-    const isAuthVerified = !!authUser?.email_confirmed_at;
+    const userId = userRow?.id || authUser?.id || null;
+    const { data: tokenRow, error: tokenError } = await supabase
+      .from('auth_tokens')
+      .select('id,used_at')
+      .eq('type', 'verify_email')
+      .or(userId ? `user_id.eq.${userId},email.eq.${email}` : `email.eq.${email}`)
+      .not('used_at', 'is', null)
+      .order('used_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (tokenError) {
+      console.error('verification-status token lookup error:', tokenError);
+    }
+    const isCommittedVerified = !!tokenRow?.used_at;
 
-    if (isAuthVerified && (userRow?.id || authUser?.id)) {
-      const userId = userRow?.id || authUser?.id;
+    if (isCommittedVerified && userId) {
       const { error: updateError } = await supabase
         .from('users')
         .update({
@@ -41,8 +53,8 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(
       {
-        verified: isAuthVerified,
-        source: isAuthVerified ? 'auth' : 'unverified',
+        verified: isCommittedVerified,
+        source: isCommittedVerified ? 'committed_token' : 'unverified',
       },
       { status: 200 }
     );

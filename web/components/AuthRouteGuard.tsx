@@ -4,6 +4,28 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
 
+async function hasCommittedVerification(email: string) {
+  if (!email) return false;
+  try {
+    const res = await fetch(`/api/auth/verification-status?email=${encodeURIComponent(email)}`, {
+      cache: 'no-store',
+    });
+    const data = (await res.json().catch(() => ({}))) as { verified?: boolean; source?: string };
+    console.debug('[WebAuthGuard] Verification status response', {
+      email,
+      verified: data.verified === true,
+      source: data.source ?? null,
+    });
+    return data.verified === true;
+  } catch (error) {
+    console.debug('[WebAuthGuard] Verification status failed', {
+      email,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+}
+
 export default function AuthRouteGuard() {
   const router = useRouter();
 
@@ -25,13 +47,15 @@ export default function AuthRouteGuard() {
         } = await supabase.auth.refreshSession();
         emailConfirmedAt = refreshedSession?.user?.email_confirmed_at || null;
       }
+      const committedVerified = user?.email ? await hasCommittedVerification(user.email) : false;
       console.debug('[WebAuthGuard] Authenticated user object', {
         id: user?.id ?? null,
         email: user?.email ?? null,
         emailConfirmedAt,
+        committedVerified,
       });
       if (!mounted || !user) return;
-      if (!emailConfirmedAt) {
+      if (!committedVerified) {
         const emailParam = user.email ? `?email=${encodeURIComponent(user.email)}` : '';
         router.replace(`/verify-email${emailParam}`);
         return;
@@ -47,14 +71,16 @@ export default function AuthRouteGuard() {
         data: { user },
       } = await supabase.auth.getUser();
       const emailConfirmedAt = user?.email_confirmed_at || session?.user?.email_confirmed_at || null;
+      const committedVerified = user?.email ? await hasCommittedVerification(user.email) : false;
       console.debug('[WebAuthGuard] Auth state user object', {
         id: user?.id ?? null,
         email: user?.email ?? null,
         event: _event,
         emailConfirmedAt,
+        committedVerified,
       });
       if (!mounted || !user) return;
-      if (!emailConfirmedAt) {
+      if (!committedVerified) {
         const emailParam = user.email ? `?email=${encodeURIComponent(user.email)}` : '';
         router.replace(`/verify-email${emailParam}`);
         return;

@@ -118,8 +118,35 @@ async function requireUser(req: NextRequest, traceId: string): Promise<AuthedSup
   };
 }
 
-function requireVerifiedEmail(auth: AuthedSupabase, traceId: string): NextResponse | null {
-  const verified = Boolean(auth.user.email_confirmed_at);
+async function hasCommittedEmailVerification(auth: AuthedSupabase, traceId: string) {
+  const email = (auth.user.email || '').trim().toLowerCase();
+  const client = auth.adminClient ?? auth.userClient;
+  if (!email) return false;
+
+  const result = await client
+    .from('auth_tokens')
+    .select('id,used_at')
+    .eq('type', 'verify_email')
+    .or(`user_id.eq.${auth.user.id},email.eq.${email}`)
+    .not('used_at', 'is', null)
+    .order('used_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  logLegal(traceId, 'committed verification token checked before legal acceptance', {
+    userId: auth.user.id,
+    email,
+    hasUsedToken: Boolean(result.data?.used_at),
+    usedAt: result.data?.used_at ?? null,
+    error: result.error ? errorDetails(result.error) : null,
+  });
+
+  if (result.error) throw result.error;
+  return Boolean(result.data?.used_at);
+}
+
+async function requireVerifiedEmail(auth: AuthedSupabase, traceId: string): Promise<NextResponse | null> {
+  const verified = await hasCommittedEmailVerification(auth, traceId);
   logLegal(traceId, 'email verification checked before legal acceptance', {
     userId: auth.user.id,
     email: auth.user.email ?? null,
@@ -432,7 +459,7 @@ export async function GET(req: NextRequest) {
   try {
     const auth = await requireUser(req, traceId);
     if ('response' in auth) return auth.response;
-    const unverifiedResponse = requireVerifiedEmail(auth, traceId);
+    const unverifiedResponse = await requireVerifiedEmail(auth, traceId);
     if (unverifiedResponse) return unverifiedResponse;
 
     const { data, source } = await loadAcceptanceRows(auth, traceId);
@@ -457,7 +484,7 @@ export async function POST(req: NextRequest) {
   try {
     const auth = await requireUser(req, traceId);
     if ('response' in auth) return auth.response;
-    const unverifiedResponse = requireVerifiedEmail(auth, traceId);
+    const unverifiedResponse = await requireVerifiedEmail(auth, traceId);
     if (unverifiedResponse) return unverifiedResponse;
 
     const body = (await req.json().catch(() => ({}))) as AcceptLegalBody;

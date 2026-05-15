@@ -67,6 +67,32 @@ async function syncVerifiedProfile(client: SupabaseClient, user: SupabaseUser, i
   });
 }
 
+async function hasCommittedEmailVerification(client: SupabaseClient, user: SupabaseUser, id: string) {
+  const email = (user.email || '').trim().toLowerCase();
+  if (!email) return false;
+
+  const result = await client
+    .from('auth_tokens')
+    .select('id,used_at')
+    .eq('type', 'verify_email')
+    .or(`user_id.eq.${user.id},email.eq.${email}`)
+    .not('used_at', 'is', null)
+    .order('used_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  logState(id, 'committed verification token checked', {
+    userId: user.id,
+    email,
+    hasUsedToken: Boolean(result.data?.used_at),
+    usedAt: result.data?.used_at ?? null,
+    error: result.error?.message ?? null,
+  });
+
+  if (result.error) throw result.error;
+  return Boolean(result.data?.used_at);
+}
+
 async function loadRequiredDocs(client: SupabaseClient, id: string) {
   const result = await client
     .from('legal_documents')
@@ -151,7 +177,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, step: 'verify-email', error: 'Invalid auth session.', traceId: id }, { status: 401 });
     }
 
-    const isEmailVerified = Boolean(user.email_confirmed_at);
+    const admin = tryAdmin(id);
+    const readClient = admin ?? userClient;
+    const isEmailVerified = admin
+      ? await hasCommittedEmailVerification(admin, user, id)
+      : false;
     if (!isEmailVerified) {
       const response = {
         success: true,
@@ -159,12 +189,10 @@ export async function GET(req: NextRequest) {
         user: { id: user.id, email: user.email ?? null, email_confirmed_at: null },
         traceId: id,
       };
-      logState(id, 'decision', { step: response.step, reason: 'email_not_confirmed' });
+      logState(id, 'decision', { step: response.step, reason: 'committed_email_token_not_used' });
       return NextResponse.json(response, { status: 200 });
     }
 
-    const admin = tryAdmin(id);
-    const readClient = admin ?? userClient;
     if (admin) {
       void syncVerifiedProfile(admin, user, id);
     }

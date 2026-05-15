@@ -68,6 +68,14 @@ export async function POST(req: NextRequest) {
     }
 
     const uid = await resolveUserIdByEmail(supabase, email);
+    const { data: previousVerifiedToken } = await supabase
+      .from('auth_tokens')
+      .select('id')
+      .eq('email', email)
+      .eq('type', 'verify_email')
+      .not('used_at', 'is', null)
+      .limit(1)
+      .maybeSingle();
 
     const rawToken = randomToken(32);
     const tokenHash = await hashToken(rawToken);
@@ -88,6 +96,19 @@ export async function POST(req: NextRequest) {
         { success: false, error: 'Unable to process request. Please try again later.' },
         { status: 500 }
       );
+    }
+
+    if (uid && !previousVerifiedToken?.id) {
+      const { error: resetErr } = await supabase
+        .from('users')
+        .update({
+          email_verified: false,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', uid);
+      if (resetErr) {
+        console.error('send-verification profile reset error:', resetErr.message);
+      }
     }
 
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://committed.dreambig.org.za';

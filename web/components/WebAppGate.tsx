@@ -184,10 +184,9 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
 
   const missingDocs = useMemo(() => {
     const accepted = new Set(acceptedDocIds);
-    const acceptedDocumentIds = new Set(acceptedDocIds.map((item) => item.split(':')[0]).filter(Boolean));
     return requiredDocs.filter((doc) => {
       const id = String(doc.id);
-      return !accepted.has(legalKey(id, doc.version)) && !acceptedDocumentIds.has(id);
+      return !accepted.has(legalKey(id, doc.version));
     });
   }, [requiredDocs, acceptedDocIds]);
 
@@ -464,6 +463,9 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
         error?: string;
         acceptedCount?: number;
         acceptedDocuments?: string[];
+        hasAllRequiredLegal?: boolean;
+        nextStep?: GateStep;
+        missingRequiredDocuments?: LegalDoc[];
         saveStrategy?: string;
         traceId?: string;
         details?: { message?: string; code?: string; hint?: string; details?: string };
@@ -473,6 +475,9 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
         success: data.success,
         acceptedCount: data.acceptedCount ?? null,
         acceptedDocuments: data.acceptedDocuments ?? null,
+        hasAllRequiredLegal: data.hasAllRequiredLegal ?? null,
+        nextStep: data.nextStep ?? null,
+        missingRequiredDocuments: data.missingRequiredDocuments?.map((doc) => legalKey(doc.id, doc.version)) ?? null,
         saveStrategy: data.saveStrategy ?? null,
         error: data.error ?? null,
         traceId: data.traceId ?? null,
@@ -555,8 +560,23 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
       }
 
       if (latestState?.step === 'legal') {
+        if (data.hasAllRequiredLegal === true && (data.nextStep === 'ai-consent' || data.nextStep === 'ready')) {
+          debugAuth('[WebAppGate] Legal API confirmed full acceptance; using API next step after stale web-state legal response', {
+            apiTraceId: data.traceId ?? null,
+            webStateTraceId: latestState.traceId ?? null,
+            apiNextStep: data.nextStep,
+            apiAcceptedDocuments: data.acceptedDocuments ?? null,
+          });
+          setRequiredDocs((current) => current.filter((doc) => !savedDocuments.includes(legalKey(doc.id, doc.version))));
+          setCheckedDocIds([]);
+          setStep(data.nextStep);
+          return;
+        }
+        const missingFromApi = data.missingRequiredDocuments?.length
+          ? ` Missing: ${data.missingRequiredDocuments.map((doc) => legalKey(doc.id, doc.version)).join(', ')}.`
+          : '';
         throw new Error(
-          `Legal acceptance saved, but account state still reports missing legal documents. Please try again. Reference: ${latestState.traceId ?? 'post-legal-refresh'}.`
+          `Legal acceptance saved, but account state still reports missing legal documents.${missingFromApi} Please try again. Reference: ${latestState.traceId ?? data.traceId ?? 'post-legal-refresh'}.`
         );
       }
     } catch (err) {

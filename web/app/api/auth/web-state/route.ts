@@ -241,10 +241,9 @@ export async function GET(req: NextRequest) {
     ]);
 
     const accepted = new Set(acceptances.map((row: any) => legalKey(row.document_id, row.document_version)));
-    const acceptedDocumentIds = new Set(acceptances.map((row: any) => String(row.document_id)));
     const missingLegalDocs = requiredDocs.filter((doc: any) => {
       const key = legalKey(doc.id, doc.version);
-      return !accepted.has(key) && !acceptedDocumentIds.has(String(doc.id));
+      return !accepted.has(key);
     });
     const hasMissingLegal = missingLegalDocs.length > 0;
     const step: WebStateStep = hasMissingLegal

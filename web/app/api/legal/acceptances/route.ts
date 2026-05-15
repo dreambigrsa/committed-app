@@ -20,6 +20,8 @@ type AcceptLegalBody = {
   }>;
 };
 
+type WebStateStep = 'legal' | 'ai-consent' | 'ready';
+
 type LegalAcceptanceRow = {
   user_id: string;
   document_id: string;
@@ -468,6 +470,23 @@ async function saveRows(auth: AuthedSupabase, rows: LegalAcceptanceRow[], traceI
 }
 
 async function loadAcceptanceRows(auth: AuthedSupabase, traceId: string) {
+  if (auth.adminClient) {
+    const adminResult = await auth.adminClient
+      .from('user_legal_acceptances')
+      .select('document_id,document_version,accepted_at,context')
+      .eq('user_id', auth.user.id);
+
+    logLegal(traceId, 'acceptance status loaded with admin client', {
+      userId: auth.user.id,
+      count: adminResult.data?.length ?? 0,
+      error: adminResult.error ? errorDetails(adminResult.error) : null,
+    });
+
+    if (!adminResult.error) {
+      return { data: adminResult.data ?? [], source: 'admin' };
+    }
+  }
+
   const userResult = await auth.userClient
     .from('user_legal_acceptances')
     .select('document_id,document_version,accepted_at,context')
@@ -483,35 +502,15 @@ async function loadAcceptanceRows(auth: AuthedSupabase, traceId: string) {
     return { data: userResult.data ?? [], source: 'user' };
   }
 
-  if (!auth.adminClient) {
-    throw userResult.error;
-  }
-
-  const adminResult = await auth.adminClient
-    .from('user_legal_acceptances')
-    .select('document_id,document_version,accepted_at,context')
-    .eq('user_id', auth.user.id);
-
-  logLegal(traceId, 'acceptance status loaded with admin fallback', {
-    userId: auth.user.id,
-    count: adminResult.data?.length ?? 0,
-    error: adminResult.error ? errorDetails(adminResult.error) : null,
-  });
-
-  if (adminResult.error) {
-    throw adminResult.error;
-  }
-
-  return { data: adminResult.data ?? [], source: 'admin' };
+  throw userResult.error;
 }
 
 async function verifySavedRows(auth: AuthedSupabase, rows: LegalAcceptanceRow[], traceId: string) {
   const { data, source } = await loadAcceptanceRows(auth, traceId);
   const accepted = new Set((data ?? []).map((row: any) => legalKey(row.document_id, row.document_version)));
-  const acceptedDocumentIds = new Set((data ?? []).map((row: any) => String(row.document_id)));
   const missing = rows.filter((row) => {
     const key = legalKey(row.document_id, row.document_version);
-    return !accepted.has(key) && !acceptedDocumentIds.has(String(row.document_id));
+    return !accepted.has(key);
   });
 
   logLegal(traceId, 'acceptance save verification completed', {
@@ -526,6 +525,79 @@ async function verifySavedRows(auth: AuthedSupabase, rows: LegalAcceptanceRow[],
   }
 
   return { data, source };
+}
+
+async function loadAllRequiredDocs(auth: AuthedSupabase, traceId: string) {
+  const client = auth.adminClient ?? auth.userClient;
+  const result = await client
+    .from('legal_documents')
+    .select('id,title,slug,version')
+    .eq('is_active', true)
+    .eq('is_required', true)
+    .order('created_at', { ascending: true });
+
+  logLegal(traceId, 'all required legal documents loaded after save', {
+    count: result.data?.length ?? 0,
+    error: result.error ? errorDetails(result.error) : null,
+  });
+
+  if (result.error) throw result.error;
+  return result.data ?? [];
+}
+
+async function loadOnboardingState(auth: AuthedSupabase, traceId: string) {
+  const client = auth.adminClient ?? auth.userClient;
+  const result = await client
+    .from('user_onboarding_data')
+    .select('has_completed_onboarding,consent_given')
+    .eq('user_id', auth.user.id)
+    .maybeSingle();
+
+  logLegal(traceId, 'onboarding state loaded after legal save', {
+    userId: auth.user.id,
+    hasCompletedOnboarding: result.data?.has_completed_onboarding ?? false,
+    consentGiven: result.data?.consent_given ?? false,
+    error: result.error ? errorDetails(result.error) : null,
+  });
+
+  if (result.error) throw result.error;
+  return result.data;
+}
+
+async function evaluateFullLegalState(auth: AuthedSupabase, traceId: string) {
+  const [requiredDocs, acceptanceRows, onboarding] = await Promise.all([
+    loadAllRequiredDocs(auth, traceId),
+    loadAcceptanceRows(auth, traceId),
+    loadOnboardingState(auth, traceId),
+  ]);
+  const accepted = new Set((acceptanceRows.data ?? []).map((row: any) => legalKey(row.document_id, row.document_version)));
+  const missingRequiredDocs = requiredDocs.filter((doc: any) => !accepted.has(legalKey(doc.id, doc.version)));
+  const hasAllRequiredLegal = missingRequiredDocs.length === 0;
+  const nextStep: WebStateStep = !hasAllRequiredLegal
+    ? 'legal'
+    : !onboarding?.has_completed_onboarding || !onboarding?.consent_given
+      ? 'ai-consent'
+      : 'ready';
+
+  logLegal(traceId, 'full legal state evaluated after save', {
+    userId: auth.user.id,
+    hasAllRequiredLegal,
+    nextStep,
+    requiredDocuments: requiredDocs.map((doc: any) => legalKey(doc.id, doc.version)),
+    acceptedDocuments: Array.from(accepted),
+    missingDocuments: missingRequiredDocs.map((doc: any) => legalKey(doc.id, doc.version)),
+    acceptanceSource: acceptanceRows.source,
+  });
+
+  return {
+    hasAllRequiredLegal,
+    nextStep,
+    requiredDocs,
+    missingRequiredDocs,
+    acceptedDocuments: Array.from(accepted),
+    acceptanceSource: acceptanceRows.source,
+    onboarding,
+  };
 }
 
 export async function GET(req: NextRequest) {
@@ -607,6 +679,7 @@ export async function POST(req: NextRequest) {
 
     const saveStrategy = await saveRows(auth, rows, traceId);
     const verifiedAcceptances = await verifySavedRows(auth, rows, traceId);
+    const fullLegalState = await evaluateFullLegalState(auth, traceId);
 
     return NextResponse.json(
       {
@@ -614,8 +687,22 @@ export async function POST(req: NextRequest) {
         acceptedCount: rows.length,
         saveStrategy,
         userRowState,
-        acceptedDocuments: verifiedAcceptances.data.map((row: any) => legalKey(row.document_id, row.document_version)),
-        acceptanceSource: verifiedAcceptances.source,
+        acceptedDocuments: fullLegalState.acceptedDocuments.length > 0
+          ? fullLegalState.acceptedDocuments
+          : verifiedAcceptances.data.map((row: any) => legalKey(row.document_id, row.document_version)),
+        acceptanceSource: fullLegalState.acceptanceSource,
+        hasAllRequiredLegal: fullLegalState.hasAllRequiredLegal,
+        nextStep: fullLegalState.nextStep,
+        missingRequiredDocuments: fullLegalState.missingRequiredDocs.map((doc: any) => ({
+          id: doc.id,
+          title: doc.title,
+          slug: doc.slug,
+          version: doc.version,
+        })),
+        onboarding: {
+          has_completed_onboarding: fullLegalState.onboarding?.has_completed_onboarding ?? false,
+          consent_given: fullLegalState.onboarding?.consent_given ?? false,
+        },
         traceId,
       },
       { status: 200 }

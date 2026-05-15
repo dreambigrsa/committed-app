@@ -87,6 +87,7 @@ function VerifyEmailContent() {
         setStatus(verified ? 'success' : 'loading');
         if (!verified) return;
 
+        await supabase.auth.refreshSession().catch(() => {});
         const {
           data: { session },
         } = await supabase.auth.getSession();

@@ -128,6 +128,7 @@ async function hasProductEmailVerification(auth: AuthedSupabase, traceId: string
   const email = (auth.user.email || '').trim().toLowerCase();
   const client = auth.adminClient ?? auth.userClient;
   if (!email) return false;
+  const hasConfirmedAuthEmail = Boolean(auth.user.email_confirmed_at);
 
   const profileResult = await client
     .from('profiles')
@@ -144,7 +145,7 @@ async function hasProductEmailVerification(auth: AuthedSupabase, traceId: string
   });
 
   if (profileResult.error) throw profileResult.error;
-  if (profileResult.data?.is_verified === true) return true;
+  if (profileResult.data?.is_verified === true && hasConfirmedAuthEmail) return true;
 
   const result = await client
     .from('auth_tokens')
@@ -195,7 +196,14 @@ async function hasProductEmailVerification(auth: AuthedSupabase, traceId: string
       usersError: usersError ? errorDetails(usersError) : null,
     });
   }
-  return verifiedByToken;
+  if (verifiedByToken && !hasConfirmedAuthEmail) {
+    logLegal(traceId, 'verification token exists but auth email is not confirmed in current session', {
+      userId: auth.user.id,
+      email,
+      emailConfirmedAt: auth.user.email_confirmed_at ?? null,
+    });
+  }
+  return verifiedByToken && hasConfirmedAuthEmail;
 }
 
 async function requireVerifiedEmail(auth: AuthedSupabase, traceId: string): Promise<NextResponse | null> {

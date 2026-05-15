@@ -30,6 +30,8 @@ export async function GET(req: NextRequest) {
       .maybeSingle();
     const userId = userRow?.id || profileByEmail?.id || authUser?.id || null;
 
+    const authEmailConfirmedAt = authUser?.email_confirmed_at ?? null;
+
     if (userId) {
       const { data: profileRow, error: profileError } = await supabase
         .from('profiles')
@@ -39,12 +41,13 @@ export async function GET(req: NextRequest) {
       if (profileError) {
         console.error('verification-status profile lookup error:', profileError);
       }
-      if (profileRow?.is_verified === true) {
+      if (profileRow?.is_verified === true && authEmailConfirmedAt) {
         return NextResponse.json(
           {
             verified: true,
             source: 'profile',
             verifiedAt: profileRow.verified_at ?? null,
+            emailConfirmedAt: authEmailConfirmedAt,
           },
           { status: 200 }
         );
@@ -96,6 +99,16 @@ export async function GET(req: NextRequest) {
       await supabase.auth.admin.updateUserById(userId, { email_confirm: true }).catch((error) => {
         console.error('verification-status auth confirm sync error:', error);
       });
+
+      if (!authEmailConfirmedAt) {
+        return NextResponse.json(
+          {
+            verified: false,
+            source: 'auth_confirmation_pending',
+          },
+          { status: 200 }
+        );
+      }
     }
 
     return NextResponse.json(

@@ -14,6 +14,12 @@ const supabaseAnonKey =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJkaXpjdWV4em5nYW53Z2Rkc3JmbyIsInJlZiI6ImRpemN1ZXh6bmdhbndnZGRzcmZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUyNjcxODcsImV4cCI6MjA4MDg0MzE4N30.cvnt9KN4rz2u9QbDQjFcA_Q7WDz2M_lGln3RCJ-hJQ';
 
 type WebStateStep = 'verify-email' | 'legal' | 'ai-consent' | 'ready';
+type AuthedWebRequest = {
+  userClient: SupabaseClient;
+  admin: SupabaseClient | null;
+  user: SupabaseUser;
+  accessToken: string;
+};
 
 function legalKey(documentId: string, version: unknown) {
   return `${documentId}:${String(version || '1.0.0').trim()}`;
@@ -89,6 +95,7 @@ async function syncVerifiedProfile(client: SupabaseClient, user: SupabaseUser, i
 async function hasProductEmailVerification(client: SupabaseClient, user: SupabaseUser, id: string) {
   const email = (user.email || '').trim().toLowerCase();
   if (!email) return false;
+  const hasConfirmedAuthEmail = Boolean(user.email_confirmed_at);
 
   const profileResult = await client
     .from('profiles')
@@ -105,7 +112,7 @@ async function hasProductEmailVerification(client: SupabaseClient, user: Supabas
   });
 
   if (profileResult.error) throw profileResult.error;
-  if (profileResult.data?.is_verified === true) return true;
+  if (profileResult.data?.is_verified === true && hasConfirmedAuthEmail) return true;
 
   const result = await client
     .from('auth_tokens')
@@ -130,7 +137,14 @@ async function hasProductEmailVerification(client: SupabaseClient, user: Supabas
   if (verifiedByToken) {
     await syncVerifiedProfile(client, user, id, result.data?.used_at ?? null);
   }
-  return verifiedByToken;
+  if (verifiedByToken && !hasConfirmedAuthEmail) {
+    logState(id, 'product verification token exists but auth email is not confirmed in current session', {
+      userId: user.id,
+      email,
+      emailConfirmedAt: user.email_confirmed_at ?? null,
+    });
+  }
+  return verifiedByToken && hasConfirmedAuthEmail;
 }
 
 async function loadRequiredDocs(client: SupabaseClient, id: string) {
@@ -184,61 +198,63 @@ async function loadOnboarding(client: SupabaseClient, userId: string, id: string
   return result.data;
 }
 
-export async function GET(req: NextRequest) {
-  const id = traceId();
-  try {
-    const authHeader = req.headers.get('Authorization') || '';
-    const accessToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+async function requireWebAuth(req: NextRequest, id: string): Promise<AuthedWebRequest | NextResponse> {
+  const authHeader = req.headers.get('Authorization') || '';
+  const accessToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
 
-    logState(id, 'request received', {
-      path: new URL(req.url).pathname,
-      hasBearerToken: Boolean(accessToken),
-      reason: req.headers.get('x-committed-auth-flow') || 'unspecified',
-    });
+  logState(id, 'request received', {
+    path: new URL(req.url).pathname,
+    hasBearerToken: Boolean(accessToken),
+    reason: req.headers.get('x-committed-auth-flow') || 'unspecified',
+  });
 
-    if (!accessToken) {
-      return NextResponse.json({ success: false, step: 'verify-email', error: 'Missing auth session.', traceId: id }, { status: 401 });
-    }
+  if (!accessToken) {
+    return NextResponse.json({ success: false, step: 'verify-email', error: 'Missing auth session.', traceId: id }, { status: 401 });
+  }
 
-    const userClient = createUserClient(accessToken);
-    const {
-      data: { user },
-      error: userError,
-    } = await userClient.auth.getUser(accessToken);
+  const userClient = createUserClient(accessToken);
+  const {
+    data: { user },
+    error: userError,
+  } = await userClient.auth.getUser(accessToken);
 
-    logState(id, 'auth user checked', {
-      hasUser: Boolean(user?.id),
-      userId: user?.id ?? null,
-      email: user?.email ?? null,
-      emailConfirmedAt: user?.email_confirmed_at ?? null,
-      error: userError?.message ?? null,
-    });
+  logState(id, 'auth user checked', {
+    hasUser: Boolean(user?.id),
+    userId: user?.id ?? null,
+    email: user?.email ?? null,
+    emailConfirmedAt: user?.email_confirmed_at ?? null,
+    error: userError?.message ?? null,
+  });
 
-    if (userError || !user?.id) {
-      return NextResponse.json({ success: false, step: 'verify-email', error: 'Invalid auth session.', traceId: id }, { status: 401 });
-    }
+  if (userError || !user?.id) {
+    return NextResponse.json({ success: false, step: 'verify-email', error: 'Invalid auth session.', traceId: id }, { status: 401 });
+  }
 
-    const admin = tryAdmin(id);
-    const readClient = admin ?? userClient;
-    const isEmailVerified = admin
-      ? await hasProductEmailVerification(admin, user, id)
-      : false;
-    if (!isEmailVerified) {
-      const response = {
-        success: true,
-        step: 'verify-email' as WebStateStep,
-        user: { id: user.id, email: user.email ?? null, email_confirmed_at: null },
-        traceId: id,
-      };
-      logState(id, 'decision', { step: response.step, reason: 'product_email_not_verified' });
-      return NextResponse.json(response, { status: 200 });
-    }
+  const admin = tryAdmin(id);
+  return { userClient, admin, user, accessToken };
+}
 
-    const [requiredDocs, acceptances, onboarding] = await Promise.all([
-      loadRequiredDocs(readClient, id),
-      loadAcceptances(readClient, user.id, id),
-      loadOnboarding(readClient, user.id, id),
-    ]);
+async function resolveWebState(auth: AuthedWebRequest, id: string) {
+  const readClient = auth.admin ?? auth.userClient;
+  const isEmailVerified = auth.admin
+    ? await hasProductEmailVerification(auth.admin, auth.user, id)
+    : false;
+  if (!isEmailVerified) {
+    const response = {
+      success: true,
+      step: 'verify-email' as WebStateStep,
+      user: { id: auth.user.id, email: auth.user.email ?? null, email_confirmed_at: auth.user.email_confirmed_at ?? null },
+      traceId: id,
+    };
+    logState(id, 'decision', { step: response.step, reason: 'product_email_not_verified' });
+    return response;
+  }
+
+  const [requiredDocs, acceptances, onboarding] = await Promise.all([
+    loadRequiredDocs(readClient, id),
+    loadAcceptances(readClient, auth.user.id, id),
+    loadOnboarding(readClient, auth.user.id, id),
+  ]);
 
     const accepted = new Set(acceptances.map((row: any) => legalKey(row.document_id, row.document_version)));
     const missingLegalDocs = requiredDocs.filter((doc: any) => {
@@ -260,21 +276,26 @@ export async function GET(req: NextRequest) {
       missingDocuments: missingLegalDocs.map((doc: any) => legalKey(doc.id, doc.version)),
     });
 
-    return NextResponse.json(
-      {
-        success: true,
-        step,
-        user: { id: user.id, email: user.email ?? null, email_confirmed_at: user.email_confirmed_at },
-        requiredDocs,
-        acceptedDocuments: acceptances.map((row: any) => legalKey(row.document_id, row.document_version)),
-        onboarding: {
-          has_completed_onboarding: onboarding?.has_completed_onboarding ?? false,
-          consent_given: onboarding?.consent_given ?? false,
-        },
-        traceId: id,
-      },
-      { status: 200 }
-    );
+  return {
+    success: true,
+    step,
+    user: { id: auth.user.id, email: auth.user.email ?? null, email_confirmed_at: auth.user.email_confirmed_at },
+    requiredDocs,
+    acceptedDocuments: acceptances.map((row: any) => legalKey(row.document_id, row.document_version)),
+    onboarding: {
+      has_completed_onboarding: onboarding?.has_completed_onboarding ?? false,
+      consent_given: onboarding?.consent_given ?? false,
+    },
+    traceId: id,
+  };
+}
+
+export async function GET(req: NextRequest) {
+  const id = traceId();
+  try {
+    const auth = await requireWebAuth(req, id);
+    if (auth instanceof NextResponse) return auth;
+    return NextResponse.json(await resolveWebState(auth, id), { status: 200 });
   } catch (error) {
     console.error(`[auth-web-state:${id}] error`, error);
     return NextResponse.json(
@@ -282,6 +303,77 @@ export async function GET(req: NextRequest) {
         success: false,
         step: 'verify-email',
         error: error instanceof Error ? error.message : 'Unable to load auth state.',
+        traceId: id,
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(req: NextRequest) {
+  const id = traceId();
+  try {
+    const auth = await requireWebAuth(req, id);
+    if (auth instanceof NextResponse) return auth;
+    const body = (await req.json().catch(() => ({}))) as { action?: string };
+    const before = await resolveWebState(auth, id);
+
+    logState(id, 'post action received', {
+      action: body.action ?? null,
+      currentStep: before.step,
+      userId: auth.user.id,
+    });
+
+    if (body.action !== 'complete_ai_consent') {
+      return NextResponse.json({ success: false, error: 'Unsupported action.', traceId: id }, { status: 400 });
+    }
+
+    if (before.step !== 'ai-consent' && before.step !== 'ready') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: before.step === 'verify-email'
+            ? 'Please verify your email before onboarding.'
+            : 'Please accept legal documents before onboarding.',
+          state: before,
+          traceId: id,
+        },
+        { status: 409 }
+      );
+    }
+
+    const now = new Date().toISOString();
+    const writer = auth.admin ?? auth.userClient;
+    const { error: upsertError } = await writer
+      .from('user_onboarding_data')
+      .upsert(
+        {
+          user_id: auth.user.id,
+          has_completed_onboarding: true,
+          onboarding_version: '1.0.0',
+          ai_explanation_viewed: true,
+          consent_given: true,
+          consent_given_at: now,
+          completed_at: now,
+        },
+        { onConflict: 'user_id' }
+      );
+
+    logState(id, 'ai consent persistence attempted', {
+      userId: auth.user.id,
+      error: upsertError?.message ?? null,
+    });
+
+    if (upsertError) throw upsertError;
+
+    const state = await resolveWebState(auth, id);
+    return NextResponse.json({ success: true, state, traceId: id }, { status: 200 });
+  } catch (error) {
+    console.error(`[auth-web-state:${id}] post error`, error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unable to update onboarding state.',
         traceId: id,
       },
       { status: 500 }

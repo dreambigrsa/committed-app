@@ -6,7 +6,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, Bot, CheckCircle2, FileText, HeartHandshake, Loader2, Mail, ShieldCheck, Sparkles } from 'lucide-react';
 import { getSupabaseBrowser } from '@/lib/supabase-client';
-import { usersRowBootstrapFromAuth } from '@/lib/web-user-profile';
 
 type LegalDoc = {
   id: string;
@@ -35,8 +34,6 @@ type WebStateResponse = {
     consent_given?: boolean | null;
   };
 };
-
-const AI_ONBOARDING_VERSION = '1.0.0';
 
 const aiSteps = [
   {
@@ -78,66 +75,6 @@ function delay(ms: number) {
 
 function legalKey(documentId: string, version: unknown) {
   return `${documentId}:${String(version || '1.0.0').trim()}`;
-}
-
-async function syncVerifiedEmail(email: string) {
-  if (!email) return false;
-  try {
-    const res = await fetch(`/api/auth/verification-status?email=${encodeURIComponent(email)}`, {
-      cache: 'no-store',
-    });
-    const data = (await res.json().catch(() => ({}))) as { verified?: boolean; source?: string };
-    debugAuth('[WebAppGate] Email verification status API response', {
-      email,
-      verified: data.verified === true,
-      source: data.source ?? null,
-    });
-    return data.verified === true;
-  } catch (err) {
-    debugAuth('[WebAppGate] Email verification sync failed', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return false;
-  }
-}
-
-async function ensureBrowserUserRow(supabase: any, authUser: any) {
-  if (!authUser?.id) return false;
-  try {
-    const { data: existing, error: findError } = await supabase
-      .from('users')
-      .select('id')
-      .eq('id', authUser.id)
-      .maybeSingle();
-    debugAuth('[WebAppGate] Browser users row check before legal fallback', {
-      userId: authUser.id,
-      found: Boolean(existing?.id),
-      error: findError?.message ?? null,
-    });
-    if (existing?.id) return true;
-
-    const { error: upsertError } = await supabase
-      .from('users')
-      .upsert(usersRowBootstrapFromAuth(authUser), { onConflict: 'id', ignoreDuplicates: true });
-    debugAuth('[WebAppGate] Browser users row repair before legal fallback', {
-      userId: authUser.id,
-      error: upsertError?.message ?? null,
-    });
-    if (upsertError) return false;
-
-    const { data: repaired } = await supabase
-      .from('users')
-      .select('id')
-      .eq('id', authUser.id)
-      .maybeSingle();
-    return Boolean(repaired?.id);
-  } catch (err) {
-    debugAuth('[WebAppGate] Browser users row repair failed before legal fallback', {
-      userId: authUser.id,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return false;
-  }
 }
 
 async function loadServerWebState(accessToken: string, reason = 'manual'): Promise<WebStateResponse> {
@@ -413,7 +350,19 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
   };
 
   const acceptLegal = async () => {
-    if (!userId || !allMissingChecked || saving) return;
+    if (!userId || !allMissingChecked || saving) {
+      debugAuth('[WebAppGate] Legal accept blocked before request', {
+        userId: userId || null,
+        allMissingChecked,
+        saving,
+        missingDocuments: missingDocs.map((doc) => legalKey(doc.id, doc.version)),
+        checkedDocIds,
+      });
+      if (!saving && !allMissingChecked) {
+        setError('Please select every required legal document before continuing.');
+      }
+      return;
+    }
     setSaving(true);
     setError('');
     try {
@@ -434,12 +383,6 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
       }
       if (!session?.access_token) {
         throw new Error('Your session expired. Please sign in again.');
-      }
-      const emailVerifiedBeforeSave = email ? await syncVerifiedEmail(email) : false;
-      if (!emailVerifiedBeforeSave) {
-        const emailParam = email ? `?email=${encodeURIComponent(email)}` : '';
-        router.replace(`/verify-email${emailParam}`);
-        throw new Error('Please verify your email before accepting legal documents.');
       }
       const documents = missingDocs.map((doc) => ({
         documentId: doc.id,
@@ -468,6 +411,7 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
         missingRequiredDocuments?: LegalDoc[];
         saveStrategy?: string;
         traceId?: string;
+        onboarding?: WebStateResponse['onboarding'];
         details?: { message?: string; code?: string; hint?: string; details?: string };
       };
       debugAuth('[WebAppGate] Legal save API response', {
@@ -483,59 +427,36 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
         traceId: data.traceId ?? null,
       });
       if (!res.ok || data.success === false) {
-        debugAuth('[WebAppGate] Legal save API failed; trying browser fallback', {
+        debugAuth('[WebAppGate] Legal save API failed', {
           status: res.status,
           error: data.error ?? null,
           details: data.details ?? null,
           traceId: data.traceId ?? null,
         });
-        const userReady = await ensureBrowserUserRow(supabase, session.user);
-        if (!userReady) {
-          const reference = data.traceId ? ` Reference: ${data.traceId}.` : '';
-          const apiDetail = data.details?.message ? ` ${data.details.message}` : '';
-          throw new Error(`${data.error || 'Unable to save legal acceptance.'}${apiDetail}${reference}`);
-        }
-        const acceptedDocs = missingDocs.map((doc) => ({
-          user_id: userId,
-          document_id: doc.id,
-          document_version: doc.version || '1.0.0',
-          context: 'signup',
-          accepted_at: new Date().toISOString(),
-        }));
-
-        for (const row of acceptedDocs) {
-          let saved = false;
-          try {
-            const rpcResult = await supabase.rpc('insert_user_legal_acceptance', {
-              p_user_id: row.user_id,
-              p_document_id: row.document_id,
-              p_document_version: row.document_version,
-              p_context: row.context,
-            });
-            if (!rpcResult.error) saved = true;
-          } catch {
-            // Fall through to direct upsert.
-          }
-
-          if (!saved) {
-            const { error: upsertError } = await supabase
-              .from('user_legal_acceptances')
-              .upsert(row, { onConflict: 'user_id,document_id' });
-            if (upsertError) {
-              const reference = data.traceId ? ` Reference: ${data.traceId}.` : '';
-              const apiDetail = data.details?.message ? ` API detail: ${data.details.message}.` : '';
-              throw new Error(
-                `${upsertError.message || data.error || 'Unable to save legal acceptance.'}${apiDetail}${reference}`
-              );
-            }
-          }
-        }
+        const reference = data.traceId ? ` Reference: ${data.traceId}.` : '';
+        const apiDetail = data.details?.message ? ` ${data.details.message}` : '';
+        throw new Error(`${data.error || 'Unable to save legal acceptance.'}${apiDetail}${reference}`);
       }
       const savedDocuments =
         Array.isArray(data.acceptedDocuments) && data.acceptedDocuments.length > 0
           ? data.acceptedDocuments
           : missingDocs.map((doc) => legalKey(doc.id, doc.version));
       setAcceptedDocIds((current) => Array.from(new Set([...current, ...savedDocuments])));
+      setCheckedDocIds([]);
+
+      if (data.hasAllRequiredLegal === true && (data.nextStep === 'ai-consent' || data.nextStep === 'ready')) {
+        debugAuth('[WebAppGate] Legal API confirmed transition; applying next step immediately', {
+          apiTraceId: data.traceId ?? null,
+          apiNextStep: data.nextStep,
+          apiAcceptedDocuments: data.acceptedDocuments ?? null,
+          onboarding: data.onboarding ?? null,
+        });
+        setRequiredDocs((current) => current.filter((doc) => !savedDocuments.includes(legalKey(doc.id, doc.version))));
+        setStep(data.nextStep);
+        void loadState({ force: true, reason: 'legal_acceptance_background_revalidate' });
+        return;
+      }
+
       setStep('loading');
 
       let latestState: WebStateResponse | null = null;
@@ -560,24 +481,15 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
       }
 
       if (latestState?.step === 'legal') {
-        if (data.hasAllRequiredLegal === true && (data.nextStep === 'ai-consent' || data.nextStep === 'ready')) {
-          debugAuth('[WebAppGate] Legal API confirmed full acceptance; using API next step after stale web-state legal response', {
-            apiTraceId: data.traceId ?? null,
-            webStateTraceId: latestState.traceId ?? null,
-            apiNextStep: data.nextStep,
-            apiAcceptedDocuments: data.acceptedDocuments ?? null,
-          });
-          setRequiredDocs((current) => current.filter((doc) => !savedDocuments.includes(legalKey(doc.id, doc.version))));
-          setCheckedDocIds([]);
-          setStep(data.nextStep);
-          return;
-        }
         const missingFromApi = data.missingRequiredDocuments?.length
           ? ` Missing: ${data.missingRequiredDocuments.map((doc) => legalKey(doc.id, doc.version)).join(', ')}.`
           : '';
         throw new Error(
           `Legal acceptance saved, but account state still reports missing legal documents.${missingFromApi} Please try again. Reference: ${latestState.traceId ?? data.traceId ?? 'post-legal-refresh'}.`
         );
+      }
+      if (!latestState?.step) {
+        throw new Error(`Legal acceptance saved, but the web app could not load the next onboarding state. Please try again. Reference: ${data.traceId ?? 'post-legal-refresh'}.`);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to save legal acceptance.');
@@ -592,23 +504,55 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
     setError('');
     try {
       const supabase = getSupabaseBrowser() as any;
-      const now = new Date().toISOString();
-      const { error: upsertError } = await supabase
-        .from('user_onboarding_data')
-        .upsert(
-          {
-            user_id: userId,
-            has_completed_onboarding: true,
-            onboarding_version: AI_ONBOARDING_VERSION,
-            ai_explanation_viewed: true,
-            consent_given: true,
-            consent_given_at: now,
-            completed_at: now,
-          },
-          { onConflict: 'user_id' }
-        );
-      if (upsertError) throw upsertError;
-      await loadState({ force: true, reason: 'ai_consent_complete' });
+      let {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        const {
+          data: { session: refreshedSession },
+          error: refreshError,
+        } = await supabase.auth.refreshSession();
+        debugAuth('[WebAppGate] AI consent session refresh attempted', {
+          refreshed: Boolean(refreshedSession?.access_token),
+          error: refreshError?.message ?? null,
+        });
+        session = refreshedSession;
+      }
+      if (!session?.access_token) {
+        throw new Error('Your session expired. Please sign in again.');
+      }
+
+      const res = await fetch('/api/auth/web-state', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+          'X-Committed-Auth-Flow': 'ai_consent_complete',
+        },
+        body: JSON.stringify({ action: 'complete_ai_consent' }),
+        cache: 'no-store',
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        error?: string;
+        state?: WebStateResponse;
+        traceId?: string;
+      };
+      debugAuth('[WebAppGate] AI consent server response', {
+        ok: res.ok,
+        success: data.success,
+        step: data.state?.step ?? null,
+        traceId: data.traceId ?? data.state?.traceId ?? null,
+        error: data.error ?? null,
+      });
+      if (!res.ok || data.success === false) {
+        throw new Error(data.error || 'Unable to save Committed AI consent.');
+      }
+      if (data.state?.step === 'ready') {
+        setStep('ready');
+        return;
+      }
+      await loadState({ force: true, reason: 'ai_consent_complete_refresh' });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to save Committed AI consent.');
     } finally {

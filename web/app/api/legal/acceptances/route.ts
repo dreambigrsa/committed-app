@@ -122,10 +122,27 @@ async function requireUser(req: NextRequest, traceId: string): Promise<AuthedSup
   };
 }
 
-async function hasCommittedEmailVerification(auth: AuthedSupabase, traceId: string) {
+async function hasProductEmailVerification(auth: AuthedSupabase, traceId: string) {
   const email = (auth.user.email || '').trim().toLowerCase();
   const client = auth.adminClient ?? auth.userClient;
   if (!email) return false;
+
+  const profileResult = await client
+    .from('profiles')
+    .select('is_verified,verified_at')
+    .eq('id', auth.user.id)
+    .maybeSingle();
+
+  logLegal(traceId, 'product verification profile checked before legal acceptance', {
+    userId: auth.user.id,
+    email,
+    isVerified: profileResult.data?.is_verified ?? false,
+    verifiedAt: profileResult.data?.verified_at ?? null,
+    error: profileResult.error ? errorDetails(profileResult.error) : null,
+  });
+
+  if (profileResult.error) throw profileResult.error;
+  if (profileResult.data?.is_verified === true) return true;
 
   const result = await client
     .from('auth_tokens')
@@ -146,11 +163,41 @@ async function hasCommittedEmailVerification(auth: AuthedSupabase, traceId: stri
   });
 
   if (result.error) throw result.error;
-  return Boolean(result.data?.used_at);
+  const verifiedByToken = Boolean(result.data?.used_at);
+  if (verifiedByToken) {
+    const verifiedAt = result.data?.used_at || new Date().toISOString();
+    const { error: profileError } = await client
+      .from('profiles')
+      .upsert(
+        {
+          id: auth.user.id,
+          email,
+          is_verified: true,
+          verified_at: verifiedAt,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      );
+    const { error: usersError } = await client
+      .from('users')
+      .update({
+        email,
+        email_verified: true,
+        verified: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', auth.user.id);
+    logLegal(traceId, 'product verification repaired from token before legal acceptance', {
+      userId: auth.user.id,
+      profileError: profileError ? errorDetails(profileError) : null,
+      usersError: usersError ? errorDetails(usersError) : null,
+    });
+  }
+  return verifiedByToken;
 }
 
 async function requireVerifiedEmail(auth: AuthedSupabase, traceId: string): Promise<NextResponse | null> {
-  const verified = await hasCommittedEmailVerification(auth, traceId);
+  const verified = await hasProductEmailVerification(auth, traceId);
   logLegal(traceId, 'email verification checked before legal acceptance', {
     userId: auth.user.id,
     email: auth.user.email ?? null,

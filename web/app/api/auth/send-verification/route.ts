@@ -23,6 +23,14 @@ async function resolveUserIdByEmail(supabase: ReturnType<typeof createSupabaseAd
     .maybeSingle();
   if (userRow?.id) return userRow.id as string;
 
+  const { data: profileRow } = await supabase
+    .from('profiles')
+    .select('id')
+    .ilike('email', email)
+    .limit(1)
+    .maybeSingle();
+  if (profileRow?.id) return profileRow.id as string;
+
   const { data: listData } = await supabase.auth.admin.listUsers({ page: 1, perPage: 500 });
   const authUser = listData?.users?.find((u) => u.email?.toLowerCase() === email.toLowerCase());
   return authUser?.id ?? null;
@@ -108,6 +116,21 @@ export async function POST(req: NextRequest) {
         .eq('id', uid);
       if (resetErr) {
         console.error('send-verification profile reset error:', resetErr.message);
+      }
+      const { error: profileResetErr } = await supabase
+        .from('profiles')
+        .upsert(
+          {
+            id: uid,
+            email,
+            is_verified: false,
+            verified_at: null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'id' }
+        );
+      if (profileResetErr) {
+        console.error('send-verification product profile reset error:', profileResetErr.message);
       }
     }
 

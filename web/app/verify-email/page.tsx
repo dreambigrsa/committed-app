@@ -38,15 +38,27 @@ function VerifyEmailContent() {
     const url = `${base}/api/auth/verify-email?token=${encodeURIComponent(token)}`;
     fetch(url, { method: 'GET' })
       .then((res) => res.json())
-      .then((data) => {
+      .then(async (data) => {
         if (cancelled) return;
-        setStatus(data.ok === true ? 'success' : 'error');
+        if (data.ok !== true) {
+          setStatus('error');
+          return;
+        }
+        setStatus('success');
+        const supabase = getSupabaseBrowser();
+        await supabase.auth.refreshSession().catch(() => {});
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!cancelled && session?.user) {
+          router.replace('/app');
+        }
       })
       .catch(() => {
         if (!cancelled) setStatus('error');
       });
     return () => { cancelled = true; };
-  }, [token, email]);
+  }, [token, email, router]);
 
   useEffect(() => {
     if (!email || token) return;

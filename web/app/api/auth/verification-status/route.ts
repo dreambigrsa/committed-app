@@ -22,7 +22,35 @@ export async function GET(req: NextRequest) {
 
     const { data: listData } = await supabase.auth.admin.listUsers({ page: 1, perPage: 500 });
     const authUser = listData?.users?.find((user) => user.email?.toLowerCase() === email);
-    const userId = userRow?.id || authUser?.id || null;
+    const { data: profileByEmail } = await supabase
+      .from('profiles')
+      .select('id')
+      .ilike('email', email)
+      .limit(1)
+      .maybeSingle();
+    const userId = userRow?.id || profileByEmail?.id || authUser?.id || null;
+
+    if (userId) {
+      const { data: profileRow, error: profileError } = await supabase
+        .from('profiles')
+        .select('is_verified,verified_at')
+        .eq('id', userId)
+        .maybeSingle();
+      if (profileError) {
+        console.error('verification-status profile lookup error:', profileError);
+      }
+      if (profileRow?.is_verified === true) {
+        return NextResponse.json(
+          {
+            verified: true,
+            source: 'profile',
+            verifiedAt: profileRow.verified_at ?? null,
+          },
+          { status: 200 }
+        );
+      }
+    }
+
     const { data: tokenRow, error: tokenError } = await supabase
       .from('auth_tokens')
       .select('id,used_at')
@@ -38,6 +66,22 @@ export async function GET(req: NextRequest) {
     const isCommittedVerified = !!tokenRow?.used_at;
 
     if (isCommittedVerified && userId) {
+      const verifiedAt = tokenRow.used_at || new Date().toISOString();
+      const { error: profileUpdateError } = await supabase
+        .from('profiles')
+        .upsert(
+          {
+            id: userId,
+            email,
+            is_verified: true,
+            verified_at: verifiedAt,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'id' }
+        );
+      if (profileUpdateError) {
+        console.error('verification-status profile sync error:', profileUpdateError);
+      }
       const { error: updateError } = await supabase
         .from('users')
         .update({
@@ -49,12 +93,15 @@ export async function GET(req: NextRequest) {
       if (updateError) {
         console.error('verification-status sync error:', updateError);
       }
+      await supabase.auth.admin.updateUserById(userId, { email_confirm: true }).catch((error) => {
+        console.error('verification-status auth confirm sync error:', error);
+      });
     }
 
     return NextResponse.json(
       {
         verified: isCommittedVerified,
-        source: isCommittedVerified ? 'committed_token' : 'unverified',
+        source: isCommittedVerified ? 'committed_token_synced_to_profile' : 'unverified',
       },
       { status: 200 }
     );

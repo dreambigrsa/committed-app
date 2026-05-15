@@ -28,7 +28,7 @@ function parseAuthParams(searchParams: URLSearchParams, hash: string): ParsedPar
     const hashParams = new URLSearchParams(hash.replace(/^#/, ''));
     token = token || hashParams.get('access_token') || hashParams.get('token');
     const hashType = hashParams.get('type');
-    if (hashType === 'signup') type = 'verify'; // Supabase confirms with type=signup; treat as verify success
+    if (hashType === 'signup') type = 'verify';
     if (!type && (hashType === 'verify' || hashType === 'recovery')) type = hashType as 'verify' | 'recovery';
   }
 
@@ -169,7 +169,8 @@ function AuthCallbackContent() {
       const hashParams = hash ? new URLSearchParams(hash.replace(/^#/, '')) : null;
       const isSupabaseSignup = hashParams?.get('type') === 'signup' && hashParams?.get('access_token');
       if (isSupabaseSignup) {
-        setStatus('success');
+        setStatus('redirecting');
+        router.replace('/verify-email');
         return;
       }
       runVerify(token);

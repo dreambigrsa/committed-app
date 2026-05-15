@@ -53,8 +53,22 @@ function tryAdmin(id: string) {
   }
 }
 
-async function syncVerifiedProfile(client: SupabaseClient, user: SupabaseUser, id: string) {
+async function syncVerifiedProfile(client: SupabaseClient, user: SupabaseUser, id: string, verifiedAt?: string | null) {
   const email = (user.email || '').trim().toLowerCase();
+  const timestamp = verifiedAt || new Date().toISOString();
+  const { error: profileError } = await client
+    .from('profiles')
+    .upsert(
+      {
+        id: user.id,
+        email,
+        is_verified: true,
+        verified_at: timestamp,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    );
+
   const { error } = await client
     .from('users')
     .update({
@@ -67,13 +81,31 @@ async function syncVerifiedProfile(client: SupabaseClient, user: SupabaseUser, i
 
   logState(id, 'profile verification flags sync attempted', {
     userId: user.id,
+    profileError: profileError?.message ?? null,
     error: error?.message ?? null,
   });
 }
 
-async function hasCommittedEmailVerification(client: SupabaseClient, user: SupabaseUser, id: string) {
+async function hasProductEmailVerification(client: SupabaseClient, user: SupabaseUser, id: string) {
   const email = (user.email || '').trim().toLowerCase();
   if (!email) return false;
+
+  const profileResult = await client
+    .from('profiles')
+    .select('is_verified,verified_at')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  logState(id, 'product verification profile checked', {
+    userId: user.id,
+    email,
+    isVerified: profileResult.data?.is_verified ?? false,
+    verifiedAt: profileResult.data?.verified_at ?? null,
+    error: profileResult.error?.message ?? null,
+  });
+
+  if (profileResult.error) throw profileResult.error;
+  if (profileResult.data?.is_verified === true) return true;
 
   const result = await client
     .from('auth_tokens')
@@ -94,7 +126,11 @@ async function hasCommittedEmailVerification(client: SupabaseClient, user: Supab
   });
 
   if (result.error) throw result.error;
-  return Boolean(result.data?.used_at);
+  const verifiedByToken = Boolean(result.data?.used_at);
+  if (verifiedByToken) {
+    await syncVerifiedProfile(client, user, id, result.data?.used_at ?? null);
+  }
+  return verifiedByToken;
 }
 
 async function loadRequiredDocs(client: SupabaseClient, id: string) {
@@ -184,7 +220,7 @@ export async function GET(req: NextRequest) {
     const admin = tryAdmin(id);
     const readClient = admin ?? userClient;
     const isEmailVerified = admin
-      ? await hasCommittedEmailVerification(admin, user, id)
+      ? await hasProductEmailVerification(admin, user, id)
       : false;
     if (!isEmailVerified) {
       const response = {
@@ -193,12 +229,8 @@ export async function GET(req: NextRequest) {
         user: { id: user.id, email: user.email ?? null, email_confirmed_at: null },
         traceId: id,
       };
-      logState(id, 'decision', { step: response.step, reason: 'committed_email_token_not_used' });
+      logState(id, 'decision', { step: response.step, reason: 'product_email_not_verified' });
       return NextResponse.json(response, { status: 200 });
-    }
-
-    if (admin) {
-      void syncVerifiedProfile(admin, user, id);
     }
 
     const [requiredDocs, acceptances, onboarding] = await Promise.all([

@@ -1,6 +1,7 @@
 /**
  * GET /api/auth/verify-email?token=...
- * Validates token, marks used, and syncs the app users.email_verified flag.
+ * Validates token and syncs the same product verification state mobile uses:
+ * profiles.is_verified. The users/auth flags are repaired as compatibility mirrors.
  */
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -18,6 +19,14 @@ async function resolveUserIdByEmail(supabase: ReturnType<typeof createSupabaseAd
     .limit(1)
     .maybeSingle();
   if (userRow?.id) return userRow.id as string;
+
+  const { data: profileRow } = await supabase
+    .from('profiles')
+    .select('id')
+    .ilike('email', normalizedEmail)
+    .limit(1)
+    .maybeSingle();
+  if (profileRow?.id) return profileRow.id as string;
 
   const { data: listData } = await supabase.auth.admin.listUsers({ page: 1, perPage: 500 });
   const authUser = listData?.users?.find((u) => u.email?.toLowerCase() === normalizedEmail);
@@ -60,6 +69,18 @@ export async function GET(req: NextRequest) {
     }
 
     if (userId) {
+      await supabase
+        .from('profiles')
+        .upsert(
+          {
+            id: userId,
+            email: (row.email || '').toLowerCase(),
+            is_verified: true,
+            verified_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'id' }
+        );
       await supabase
         .from('users')
         .update({

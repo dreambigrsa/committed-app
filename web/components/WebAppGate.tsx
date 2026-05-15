@@ -264,7 +264,9 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
       setEmail(webState.user?.email ?? currentEmail);
 
       if (webState.step === 'verify-email') {
-        setStep('verify-email');
+        const targetEmail = webState.user?.email ?? currentEmail;
+        const emailParam = targetEmail ? `?email=${encodeURIComponent(targetEmail)}` : '';
+        router.replace(`/verify-email${emailParam}`);
         return;
       }
 
@@ -401,6 +403,7 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
         success?: boolean;
         error?: string;
         acceptedCount?: number;
+        acceptedDocuments?: string[];
         saveStrategy?: string;
         traceId?: string;
         details?: { message?: string; code?: string; hint?: string; details?: string };
@@ -409,6 +412,7 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
         ok: res.ok,
         success: data.success,
         acceptedCount: data.acceptedCount ?? null,
+        acceptedDocuments: data.acceptedDocuments ?? null,
         saveStrategy: data.saveStrategy ?? null,
         error: data.error ?? null,
         traceId: data.traceId ?? null,
@@ -462,9 +466,11 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
           }
         }
       }
-      setAcceptedDocIds((current) =>
-        Array.from(new Set([...current, ...missingDocs.map((doc) => `${doc.id}:${doc.version}`)]))
-      );
+      const savedDocuments =
+        Array.isArray(data.acceptedDocuments) && data.acceptedDocuments.length > 0
+          ? data.acceptedDocuments
+          : missingDocs.map((doc) => `${doc.id}:${doc.version || '1.0.0'}`);
+      setAcceptedDocIds((current) => Array.from(new Set([...current, ...savedDocuments])));
       await delay(200);
       await loadState();
     } catch (err) {

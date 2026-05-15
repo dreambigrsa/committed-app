@@ -34,6 +34,10 @@ type AuthedSupabase = {
   user: SupabaseUser;
 };
 
+function legalKey(documentId: string, version: unknown) {
+  return `${documentId}:${String(version || '1.0.0').trim()}`;
+}
+
 function createTraceId() {
   return `legal-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -454,6 +458,29 @@ async function loadAcceptanceRows(auth: AuthedSupabase, traceId: string) {
   return { data: adminResult.data ?? [], source: 'admin' };
 }
 
+async function verifySavedRows(auth: AuthedSupabase, rows: LegalAcceptanceRow[], traceId: string) {
+  const { data, source } = await loadAcceptanceRows(auth, traceId);
+  const accepted = new Set((data ?? []).map((row: any) => legalKey(row.document_id, row.document_version)));
+  const acceptedDocumentIds = new Set((data ?? []).map((row: any) => String(row.document_id)));
+  const missing = rows.filter((row) => {
+    const key = legalKey(row.document_id, row.document_version);
+    return !accepted.has(key) && !acceptedDocumentIds.has(String(row.document_id));
+  });
+
+  logLegal(traceId, 'acceptance save verification completed', {
+    requested: rows.map((row) => legalKey(row.document_id, row.document_version)),
+    accepted: Array.from(accepted),
+    missing: missing.map((row) => legalKey(row.document_id, row.document_version)),
+    source,
+  });
+
+  if (missing.length > 0) {
+    throw new Error(`Legal acceptance save did not persist required rows: ${missing.map((row) => row.document_id).join(', ')}`);
+  }
+
+  return { data, source };
+}
+
 export async function GET(req: NextRequest) {
   const traceId = createTraceId();
   try {
@@ -532,6 +559,7 @@ export async function POST(req: NextRequest) {
     }));
 
     const saveStrategy = await saveRows(auth, rows, traceId);
+    const verifiedAcceptances = await verifySavedRows(auth, rows, traceId);
 
     return NextResponse.json(
       {
@@ -539,6 +567,8 @@ export async function POST(req: NextRequest) {
         acceptedCount: rows.length,
         saveStrategy,
         userRowState,
+        acceptedDocuments: verifiedAcceptances.data.map((row: any) => legalKey(row.document_id, row.document_version)),
+        acceptanceSource: verifiedAcceptances.source,
         traceId,
       },
       { status: 200 }

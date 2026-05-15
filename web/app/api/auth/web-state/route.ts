@@ -15,6 +15,10 @@ const supabaseAnonKey =
 
 type WebStateStep = 'verify-email' | 'legal' | 'ai-consent' | 'ready';
 
+function legalKey(documentId: string, version: unknown) {
+  return `${documentId}:${String(version || '1.0.0').trim()}`;
+}
+
 function traceId() {
   return `web-state-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -203,8 +207,13 @@ export async function GET(req: NextRequest) {
       loadOnboarding(readClient, user.id, id),
     ]);
 
-    const accepted = new Set(acceptances.map((row: any) => `${row.document_id}:${row.document_version}`));
-    const hasMissingLegal = requiredDocs.some((doc: any) => !accepted.has(`${doc.id}:${doc.version}`));
+    const accepted = new Set(acceptances.map((row: any) => legalKey(row.document_id, row.document_version)));
+    const acceptedDocumentIds = new Set(acceptances.map((row: any) => String(row.document_id)));
+    const missingLegalDocs = requiredDocs.filter((doc: any) => {
+      const key = legalKey(doc.id, doc.version);
+      return !accepted.has(key) && !acceptedDocumentIds.has(String(doc.id));
+    });
+    const hasMissingLegal = missingLegalDocs.length > 0;
     const step: WebStateStep = hasMissingLegal
       ? 'legal'
       : !onboarding?.has_completed_onboarding || !onboarding?.consent_given
@@ -216,6 +225,7 @@ export async function GET(req: NextRequest) {
       reason: hasMissingLegal ? 'missing_legal' : step === 'ai-consent' ? 'missing_ai_consent' : 'ready',
       requiredCount: requiredDocs.length,
       acceptanceCount: acceptances.length,
+      missingDocuments: missingLegalDocs.map((doc: any) => legalKey(doc.id, doc.version)),
     });
 
     return NextResponse.json(
@@ -224,7 +234,7 @@ export async function GET(req: NextRequest) {
         step,
         user: { id: user.id, email: user.email ?? null, email_confirmed_at: user.email_confirmed_at },
         requiredDocs,
-        acceptedDocuments: acceptances.map((row: any) => `${row.document_id}:${row.document_version}`),
+        acceptedDocuments: acceptances.map((row: any) => legalKey(row.document_id, row.document_version)),
         onboarding: {
           has_completed_onboarding: onboarding?.has_completed_onboarding ?? false,
           consent_given: onboarding?.consent_given ?? false,

@@ -193,6 +193,7 @@ export async function GET(req: NextRequest) {
     logState(id, 'request received', {
       path: new URL(req.url).pathname,
       hasBearerToken: Boolean(accessToken),
+      reason: req.headers.get('x-committed-auth-flow') || 'unspecified',
     });
 
     if (!accessToken) {

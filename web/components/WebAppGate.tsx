@@ -140,11 +140,12 @@ async function ensureBrowserUserRow(supabase: any, authUser: any) {
   }
 }
 
-async function loadServerWebState(accessToken: string): Promise<WebStateResponse> {
+async function loadServerWebState(accessToken: string, reason = 'manual'): Promise<WebStateResponse> {
   const res = await fetch('/api/auth/web-state', {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${accessToken}`,
+      'X-Committed-Auth-Flow': reason,
     },
     cache: 'no-store',
   });
@@ -158,6 +159,7 @@ async function loadServerWebState(accessToken: string): Promise<WebStateResponse
     requiredCount: data.requiredDocs?.length ?? 0,
     acceptedCount: data.acceptedDocuments?.length ?? 0,
     emailConfirmedAt: data.user?.email_confirmed_at ?? null,
+    reason,
   });
   if (!res.ok || data.success === false) {
     throw new Error(data.error || 'Unable to load account access state.');
@@ -177,7 +179,8 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
   const [aiConsentChecked, setAiConsentChecked] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const loadStateInFlightRef = useRef<Promise<void> | null>(null);
+  const loadStateInFlightRef = useRef<Promise<WebStateResponse | null> | null>(null);
+  const loadStateSeqRef = useRef(0);
 
   const missingDocs = useMemo(() => {
     const accepted = new Set(acceptedDocIds);
@@ -242,8 +245,12 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
     return { authUser: null, session: null, userError: null };
   }, []);
 
-  const loadState = useCallback(() => {
-    if (loadStateInFlightRef.current) return loadStateInFlightRef.current;
+  const loadState = useCallback((opts?: { force?: boolean; reason?: string }) => {
+    const reason = opts?.reason ?? 'manual';
+    if (loadStateInFlightRef.current && !opts?.force) return loadStateInFlightRef.current;
+    const requestSeq = loadStateSeqRef.current + 1;
+    loadStateSeqRef.current = requestSeq;
+    const isCurrentRequest = () => requestSeq === loadStateSeqRef.current;
     const request = (async () => {
     setError('');
     try {
@@ -256,21 +263,25 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
         sessionUserId: session?.user?.id ?? null,
         currentRoute: typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : null,
         error: userError?.message ?? null,
+        reason,
       });
 
       if (!authUser) {
+        if (!isCurrentRequest()) return null;
         const requestedPath =
           typeof window !== 'undefined'
             ? `${window.location.pathname}${window.location.search}`
             : '/app';
         router.replace(`/sign-in?redirect=${encodeURIComponent(requestedPath)}`);
-        return;
+        return null;
       }
 
       const currentUserId = authUser.id;
       const currentEmail = authUser.email ?? '';
-      setUserId(currentUserId);
-      setEmail(currentEmail);
+      if (isCurrentRequest()) {
+        setUserId(currentUserId);
+        setEmail(currentEmail);
+      }
 
       let activeSession = session;
       if (!activeSession?.access_token && session?.refresh_token) {
@@ -282,19 +293,30 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
         debugAuth('[WebAppGate] Missing access token session refresh response', {
           refreshed: Boolean(refreshedSession?.access_token),
           error: refreshError?.message ?? null,
+          reason,
         });
       }
 
       if (!activeSession?.access_token) {
+        if (!isCurrentRequest()) return null;
         router.replace(`/sign-in?redirect=${encodeURIComponent('/app')}`);
-        return;
+        return null;
       }
 
       const webState = await withTimeout(
-        loadServerWebState(activeSession.access_token),
+        loadServerWebState(activeSession.access_token, reason),
         12000,
         'Loading web access state'
       );
+
+      if (!isCurrentRequest()) {
+        debugAuth('[WebAppGate] Ignoring stale web state response', {
+          reason,
+          step: webState.step ?? null,
+          traceId: webState.traceId ?? null,
+        });
+        return webState;
+      }
 
       setEmail(webState.user?.email ?? currentEmail);
 
@@ -302,7 +324,7 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
         const targetEmail = webState.user?.email ?? currentEmail;
         const emailParam = targetEmail ? `?email=${encodeURIComponent(targetEmail)}` : '';
         router.replace(`/verify-email${emailParam}`);
-        return;
+        return webState;
       }
 
       const legalDocs = webState.requiredDocs ?? [];
@@ -314,6 +336,7 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
         sessionExists: Boolean(activeSession.access_token),
         serverStep: webState.step ?? null,
         traceId: webState.traceId ?? null,
+        reason,
       });
       setRequiredDocs(legalDocs);
       setAcceptedDocIds(accepted);
@@ -321,18 +344,22 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
 
       if (webState.step === 'legal') {
         setStep('legal');
-        return;
+        return webState;
       }
 
       if (webState.step === 'ai-consent') {
         setStep('ai-consent');
-        return;
+        return webState;
       }
 
       setStep('ready');
+      return webState;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to load onboarding state.');
-      setStep('error');
+      if (isCurrentRequest()) {
+        setError(err instanceof Error ? err.message : 'Unable to load onboarding state.');
+        setStep('error');
+      }
+      return null;
     }
     })();
     loadStateInFlightRef.current = request.finally(() => {
@@ -342,7 +369,7 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
   }, [resolveAuthSnapshot, router]);
 
   useEffect(() => {
-    void loadState();
+    void loadState({ reason: 'mount' });
   }, [loadState]);
 
   useEffect(() => {
@@ -351,7 +378,7 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event: string) => {
       if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
-        void loadState();
+        void loadState({ reason: `auth_event_${event}` });
       }
     });
     return () => {
@@ -362,7 +389,7 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
-        void loadState();
+        void loadState({ reason: 'visibility_visible' });
       }
     };
     document.addEventListener('visibilitychange', onVisible);
@@ -504,8 +531,34 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
           ? data.acceptedDocuments
           : missingDocs.map((doc) => legalKey(doc.id, doc.version));
       setAcceptedDocIds((current) => Array.from(new Set([...current, ...savedDocuments])));
-      await delay(200);
-      await loadState();
+      setStep('loading');
+
+      let latestState: WebStateResponse | null = null;
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        if (attempt > 0) {
+          await delay([300, 800, 1500][attempt - 1] ?? 1500);
+        }
+        latestState = await loadState({
+          force: true,
+          reason: `legal_acceptance_post_save_attempt_${attempt + 1}`,
+        });
+        debugAuth('[WebAppGate] Post-legal transition check', {
+          attempt: attempt + 1,
+          step: latestState?.step ?? null,
+          traceId: latestState?.traceId ?? null,
+          acceptedDocuments: latestState?.acceptedDocuments ?? null,
+          savedDocuments,
+        });
+        if (latestState?.step && latestState.step !== 'legal') {
+          break;
+        }
+      }
+
+      if (latestState?.step === 'legal') {
+        throw new Error(
+          `Legal acceptance saved, but account state still reports missing legal documents. Please try again. Reference: ${latestState.traceId ?? 'post-legal-refresh'}.`
+        );
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to save legal acceptance.');
     } finally {
@@ -535,7 +588,7 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
           { onConflict: 'user_id' }
         );
       if (upsertError) throw upsertError;
-      await loadState();
+      await loadState({ force: true, reason: 'ai_consent_complete' });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to save Committed AI consent.');
     } finally {
@@ -816,7 +869,9 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
             <p className="mt-3 text-sm font-semibold leading-6 text-red-600">{error}</p>
             <button
               type="button"
-              onClick={loadState}
+              onClick={() => {
+                void loadState({ force: true, reason: 'error_retry' });
+              }}
               className="mt-6 min-h-[54px] rounded-md bg-teal-500 px-6 py-3 font-black text-slate-950 transition hover:bg-teal-300"
             >
               Try again

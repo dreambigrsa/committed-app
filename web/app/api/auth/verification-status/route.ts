@@ -20,10 +20,6 @@ export async function GET(req: NextRequest) {
       .limit(1)
       .maybeSingle();
 
-    if (userRow?.email_verified || userRow?.verified) {
-      return NextResponse.json({ verified: true }, { status: 200 });
-    }
-
     const { data: listData } = await supabase.auth.admin.listUsers({ page: 1, perPage: 500 });
     const authUser = listData?.users?.find((user) => user.email?.toLowerCase() === email);
     const isAuthVerified = !!authUser?.email_confirmed_at;
@@ -43,7 +39,13 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ verified: isAuthVerified }, { status: 200 });
+    return NextResponse.json(
+      {
+        verified: isAuthVerified,
+        source: isAuthVerified ? 'auth' : 'unverified',
+      },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('verification-status error:', error);
     return NextResponse.json({ verified: false }, { status: 200 });

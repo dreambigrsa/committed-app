@@ -64,7 +64,12 @@ async function syncVerifiedEmail(email: string) {
     const res = await fetch(`/api/auth/verification-status?email=${encodeURIComponent(email)}`, {
       cache: 'no-store',
     });
-    const data = (await res.json().catch(() => ({}))) as { verified?: boolean };
+    const data = (await res.json().catch(() => ({}))) as { verified?: boolean; source?: string };
+    debugAuth('[WebAppGate] Email verification status API response', {
+      email,
+      verified: data.verified === true,
+      source: data.source ?? null,
+    });
     return data.verified === true;
   } catch (err) {
     debugAuth('[WebAppGate] Email verification sync failed', {
@@ -275,13 +280,27 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
         requestedUserId: currentUserId,
         profileUserId: profile?.id ?? null,
         email: profile?.email ?? currentEmail,
-        emailVerified: profile?.email_verified ?? false,
-        verified: profile?.verified ?? false,
+        profileEmailVerified: profile?.email_verified ?? false,
+        profileVerified: profile?.verified ?? false,
         authEmailConfirmedAt: authUser.email_confirmed_at ?? null,
+        sessionEmailConfirmedAt: session?.user?.email_confirmed_at ?? null,
       });
 
-      const authEmailVerified = Boolean(authUser.email_confirmed_at || session?.user?.email_confirmed_at);
-      let isEmailVerified = authEmailVerified || Boolean(profile?.email_verified || profile?.verified);
+      let authEmailVerified = Boolean(authUser.email_confirmed_at || session?.user?.email_confirmed_at);
+      if (!authEmailVerified && session?.refresh_token) {
+        const {
+          data: { session: refreshedSession },
+          error: refreshError,
+        } = await supabase.auth.refreshSession();
+        authEmailVerified = Boolean(refreshedSession?.user?.email_confirmed_at);
+        debugAuth('[WebAppGate] Email verification session refresh response', {
+          refreshed: Boolean(refreshedSession?.access_token),
+          authEmailVerified,
+          error: refreshError?.message ?? null,
+        });
+      }
+
+      let isEmailVerified = authEmailVerified;
       if (authEmailVerified && (!profile?.email_verified || !profile?.verified)) {
         void syncVerifiedProfileFlags(supabase, currentUserId);
       }
@@ -424,6 +443,14 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
       }
       if (!session?.access_token) {
         throw new Error('Your session expired. Please sign in again.');
+      }
+      let emailVerifiedBeforeSave = Boolean(session.user?.email_confirmed_at);
+      if (!emailVerifiedBeforeSave && email) {
+        emailVerifiedBeforeSave = await syncVerifiedEmail(email);
+      }
+      if (!emailVerifiedBeforeSave) {
+        setStep('verify-email');
+        throw new Error('Please verify your email before accepting legal documents.');
       }
       const documents = missingDocs.map((doc) => ({
         documentId: doc.id,

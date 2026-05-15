@@ -2162,7 +2162,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     const uid = user?.id;
     if (uid && supabase) {
       const now = new Date().toISOString();
-      await supabase
+      const { error: statusError } = await supabase
         .from('user_status')
         .upsert(
           {
@@ -2174,8 +2174,10 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             last_seen_visibility: 'everyone',
           },
           { onConflict: 'user_id' },
-        )
-        .catch(() => {});
+        );
+      if (statusError) {
+        console.warn('[MobileWebAppShell] Failed to mark user offline during sign out', statusError);
+      }
     }
     resetUserScopedState();
     try {

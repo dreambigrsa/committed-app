@@ -73,6 +73,28 @@ async function syncVerifiedEmail(email: string) {
   }
 }
 
+async function syncVerifiedProfileFlags(supabase: any, userId: string) {
+  try {
+    const { error } = await supabase
+      .from('users')
+      .update({
+        email_verified: true,
+        verified: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', userId);
+    debugAuth('[WebAppGate] Profile verified flags sync response', {
+      userId,
+      error: error?.message ?? null,
+    });
+  } catch (err) {
+    debugAuth('[WebAppGate] Profile verified flags sync failed', {
+      userId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 async function loadLegalAcceptances(
   supabase: any,
   accessToken: string | undefined,
@@ -218,13 +240,20 @@ export default function WebAppGate({ children }: { children: ReactNode }) {
         authEmailConfirmedAt: authUser.email_confirmed_at ?? null,
       });
 
-      let isEmailVerified = Boolean(profile?.email_verified || profile?.verified);
+      const authEmailVerified = Boolean(authUser.email_confirmed_at || session?.user?.email_confirmed_at);
+      let isEmailVerified = authEmailVerified || Boolean(profile?.email_verified || profile?.verified);
+      if (authEmailVerified && (!profile?.email_verified || !profile?.verified)) {
+        void syncVerifiedProfileFlags(supabase, currentUserId);
+      }
       if (!isEmailVerified && currentEmail) {
         isEmailVerified = await syncVerifiedEmail(currentEmail);
         debugAuth('[WebAppGate] Email verification sync result', {
           email: currentEmail,
           verified: isEmailVerified,
         });
+        if (isEmailVerified) {
+          void syncVerifiedProfileFlags(supabase, currentUserId);
+        }
       }
       if (!isEmailVerified) {
         setStep('verify-email');

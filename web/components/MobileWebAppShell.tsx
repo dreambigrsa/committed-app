@@ -11322,13 +11322,15 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   };
 
   const renderRelationshipRegister = () => {
-    const stepTitles = [
-      "Let's start with your partner's information",
-      'How can we reach your partner?',
-      'Upload a clear face photo of your partner',
-      'Add relationship details and privacy',
-      'Review and confirm your relationship registration',
+    const relationshipStepMeta = [
+      { title: 'Partner', subtitle: "Find your partner or enter their details manually.", icon: UserPlus },
+      { title: 'Contact', subtitle: 'Choose how your partner should receive the confirmation request.', icon: Phone },
+      { title: 'Photo', subtitle: 'Add a clear face photo for relationship verification review.', icon: Camera },
+      { title: 'Details', subtitle: 'Set relationship type, start date, and visibility.', icon: Heart },
+      { title: 'Review', subtitle: 'Confirm everything before submitting the record.', icon: CheckCircle2 },
     ];
+    const currentRelationshipStep = relationshipStepMeta[relationshipStep - 1] || relationshipStepMeta[0];
+    const CurrentRelationshipStepIcon = currentRelationshipStep.icon;
 
     const nextRelationshipStep = () => {
       if (relationshipStep === 1 && !relationshipForm.partnerName.trim()) {
@@ -11355,17 +11357,52 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     };
 
     return (
-      <div className="space-y-4 px-4 py-4">
-        <section className="rounded-[28px] bg-gradient-to-br from-pink-500 to-blue-700 p-5 text-white shadow-xl shadow-pink-500/20">
-          <div className="mb-4">
-            <div className="h-2 rounded-full bg-white/25">
-              <div className="h-2 rounded-full bg-white" style={{ width: `${(relationshipStep / 5) * 100}%` }} />
+      <div className="space-y-5 bg-slate-50 px-4 pb-28 pt-4">
+        <section className="overflow-hidden rounded-[32px] bg-slate-950 text-white shadow-2xl shadow-slate-950/20">
+          <div className="relative p-5">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(236,72,153,0.36),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(37,99,235,0.42),transparent_40%)]" />
+            <div className="relative">
+              <div className="flex items-center justify-between gap-3">
+                <span className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-black uppercase text-white/85 ring-1 ring-white/15">Step {relationshipStep} of 5</span>
+                <span className="text-xs font-black text-white/70">{Math.round((relationshipStep / 5) * 100)}%</span>
+              </div>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/20">
+                <div className="h-full rounded-full bg-white shadow-[0_0_18px_rgba(255,255,255,0.55)] transition-all duration-300" style={{ width: `${(relationshipStep / 5) * 100}%` }} />
+              </div>
             </div>
-            <p className="mt-2 text-xs font-black uppercase tracking-wide text-white/80">Step {relationshipStep} of 5</p>
+
+            <div className="relative mt-6 flex items-start gap-4">
+              <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-white/12 text-white ring-1 ring-white/15">
+                <CurrentRelationshipStepIcon className="h-7 w-7" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-2xl font-black leading-tight">Register relationship</h2>
+                <p className="mt-2 text-sm font-semibold leading-6 text-white/80">{currentRelationshipStep.subtitle}</p>
+              </div>
+            </div>
+
+            <div className="relative mt-6 grid grid-cols-5 gap-2">
+              {relationshipStepMeta.map(({ title, icon: Icon }, index) => {
+                const stepNumber = index + 1;
+                const active = stepNumber === relationshipStep;
+                const complete = stepNumber < relationshipStep;
+                return (
+                  <button
+                    key={title}
+                    type="button"
+                    onClick={() => {
+                      if (stepNumber < relationshipStep) setRelationshipStep(stepNumber);
+                    }}
+                    className={`min-w-0 rounded-2xl px-2 py-3 text-center ring-1 transition ${active ? 'bg-white text-slate-950 ring-white' : complete ? 'bg-teal-300 text-slate-950 ring-teal-200' : 'bg-white/10 text-white/65 ring-white/10'}`}
+                    aria-label={`Relationship registration step ${stepNumber}: ${title}`}
+                  >
+                    <Icon className="mx-auto h-4 w-4" />
+                    <span className="mt-1 block truncate text-[10px] font-black">{title}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <Shield className="h-10 w-10" />
-          <h2 className="mt-4 text-3xl font-black">Register relationship</h2>
-          <p className="mt-2 text-sm leading-6 text-white/85">{stepTitles[relationshipStep - 1]}</p>
         </section>
 
         <div
@@ -11376,15 +11413,25 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           }}
         >
         {relationshipStep === 1 ? (
-          <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
-            <h3 className="text-lg font-black text-slate-950">Partner details</h3>
-            <p className="mt-1 text-sm text-slate-500">Search registered members first, or enter partner details manually.</p>
-            <div className="mt-4 space-y-4">
+          <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm shadow-slate-200/70">
+            <div className="border-b border-slate-100 bg-gradient-to-br from-white via-white to-teal-50/70 p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase text-teal-700">Partner details</p>
+                  <h3 className="mt-1 text-xl font-black text-slate-950">Start with a registered member.</h3>
+                  <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">Search Committed first. If they are not registered yet, enter their details manually below.</p>
+                </div>
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-teal-100 text-teal-700">
+                  <ShieldCheck className="h-5 w-5" />
+                </span>
+              </div>
+            </div>
+            <div className="space-y-5 p-5">
               <div>
                 <div className="mb-2 flex items-center justify-between gap-3">
-                  <p className="text-sm font-black text-slate-800">Search Partner by Username, Name, or Phone</p>
-                  <span className="grid h-7 w-7 place-items-center rounded-full bg-pink-50 text-pink-600" title="Search registered users first.">
-                    <ShieldCheck className="h-4 w-4" />
+                  <p className="text-sm font-black text-slate-800">Search by username, name, or phone</p>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black uppercase text-slate-500">
+                    Recommended
                   </span>
                 </div>
                 <div className="relative">
@@ -11392,8 +11439,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                   <input
                     value={relationshipPartnerSearchQuery}
                     onChange={(event) => void searchRelationshipPartners(event.target.value)}
-                    placeholder="Search by username, name, or phone..."
-                    className="min-h-[58px] w-full rounded-[18px] border border-slate-200 bg-white pl-12 pr-4 text-base font-semibold text-slate-900 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                    placeholder="Username, name, or phone"
+                    className="min-h-[58px] w-full rounded-[20px] border border-slate-200 bg-slate-50 pl-12 pr-4 text-base font-semibold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-100"
                     autoCapitalize="none"
                   />
                 </div>
@@ -11449,10 +11496,12 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                 <>
                   <div className="flex items-center gap-3">
                     <span className="h-px flex-1 bg-slate-200" />
-                    <span className="text-sm font-black text-slate-500">OR</span>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-500">OR</span>
                     <span className="h-px flex-1 bg-slate-200" />
                   </div>
-                  <FormField label="Enter partner's full name manually" value={relationshipForm.partnerName} onChange={(partnerName) => setRelationshipForm((prev) => ({ ...prev, partnerName, partnerUserId: '' }))} placeholder="Enter partner's name" />
+                  <div className="rounded-[22px] bg-slate-50 p-4 ring-1 ring-slate-200">
+                    <FormField label="Enter partner's full name manually" value={relationshipForm.partnerName} onChange={(partnerName) => setRelationshipForm((prev) => ({ ...prev, partnerName, partnerUserId: '' }))} placeholder="Enter partner's name" />
+                  </div>
                 </>
               )}
 

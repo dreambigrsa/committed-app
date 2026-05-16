@@ -1452,17 +1452,22 @@ function ProfileUserLink({
 
 function ScreenSkeleton() {
   return (
-    <div className="space-y-4 px-4 py-4">
+    <div className="space-y-4 bg-slate-50 px-4 pb-28 pt-4">
+      <div className="overflow-hidden rounded-[32px] bg-slate-950 p-5 shadow-2xl shadow-slate-950/15">
+        <div className="h-12 w-12 animate-pulse rounded-2xl bg-white/10" />
+        <div className="mt-5 h-8 w-48 animate-pulse rounded bg-white/15" />
+        <div className="mt-3 h-4 w-64 max-w-full animate-pulse rounded bg-white/10" />
+      </div>
       {[0, 1, 2].map((item) => (
-        <div key={item} className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
+        <div key={item} className="rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
           <div className="flex items-center gap-3">
-            <div className="h-11 w-11 animate-pulse rounded-full bg-slate-200" />
-            <div className="space-y-2">
+            <div className="h-12 w-12 animate-pulse rounded-2xl bg-slate-200" />
+            <div className="flex-1 space-y-2">
               <div className="h-4 w-32 animate-pulse rounded bg-slate-200" />
               <div className="h-3 w-20 animate-pulse rounded bg-slate-100" />
             </div>
           </div>
-          <div className="mt-4 h-28 animate-pulse rounded-2xl bg-slate-100" />
+          <div className="mt-4 h-24 animate-pulse rounded-2xl bg-slate-100" />
         </div>
       ))}
     </div>
@@ -1487,16 +1492,19 @@ function EmptyState({
   onSecondaryAction?: () => void;
 }) {
   return (
-    <div className="flex min-h-[54vh] flex-col items-center justify-center px-8 text-center">
-      <Icon className="h-20 w-20 text-slate-300" strokeWidth={1.8} />
-      <h2 className="mt-5 text-3xl font-bold text-slate-900">{title}</h2>
-      <p className="mt-3 text-base leading-6 text-slate-500">{text}</p>
+    <div className="flex min-h-[54vh] flex-col items-center justify-center bg-slate-50 px-4 py-8 text-center">
+      <div className="w-full max-w-md rounded-[32px] border border-slate-200 bg-white p-7 shadow-sm shadow-slate-200/70">
+      <span className="mx-auto grid h-20 w-20 place-items-center rounded-[28px] bg-slate-950 text-teal-200 shadow-lg shadow-slate-950/10">
+        <Icon className="h-10 w-10" strokeWidth={1.8} />
+      </span>
+      <h2 className="mt-5 text-2xl font-black leading-8 text-slate-950">{title}</h2>
+      <p className="mt-3 text-sm font-semibold leading-6 text-slate-500">{text}</p>
       <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
         {action && onAction ? (
           <button
             type="button"
             onClick={onAction}
-            className="rounded-[18px] bg-blue-600 px-9 py-4 text-base font-black text-white shadow-xl shadow-blue-600/20 active:scale-[0.98]"
+            className="min-h-[52px] rounded-2xl bg-slate-950 px-7 py-3 text-base font-black text-white shadow-lg shadow-slate-950/15 active:scale-[0.98]"
           >
             {action}
           </button>
@@ -1505,11 +1513,12 @@ function EmptyState({
           <button
             type="button"
             onClick={onSecondaryAction}
-            className="rounded-[18px] border border-slate-300 bg-white px-7 py-4 text-base font-black text-slate-700 shadow-sm active:scale-[0.98]"
+            className="min-h-[52px] rounded-2xl border border-slate-200 bg-slate-50 px-6 py-3 text-base font-black text-slate-700 shadow-sm active:scale-[0.98]"
           >
             {secondaryAction}
           </button>
         ) : null}
+      </div>
       </div>
     </div>
   );
@@ -3296,6 +3305,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       setPaymentMethods(paymentMethodsResult.data || []);
       setTwoFactorRecord(twoFactorResult.data || null);
       setTwoFactorBackupCodes(Array.isArray(twoFactorResult.data?.backup_codes) ? twoFactorResult.data.backup_codes : []);
+      setTwoFactorSecret(twoFactorResult.data && !twoFactorResult.data.enabled && typeof twoFactorResult.data.secret === 'string' ? twoFactorResult.data.secret : '');
       setIdVerificationDocument((idVerificationResult.data || null) as VerificationDocument | null);
       setVerificationForm((prev) => ({
         ...prev,
@@ -6799,13 +6809,34 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     window.setTimeout(() => setReactionNotice(null), 1800);
   };
 
-  const generateBackupCodes = () => Array.from({ length: 10 }, () => Math.random().toString(36).slice(2, 10).toUpperCase());
+  const randomToken = (length: number) => {
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      const bytes = new Uint8Array(length);
+      crypto.getRandomValues(bytes);
+      return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
+    }
+    return Math.random().toString(36).slice(2, 2 + length).toUpperCase();
+  };
+
+  const generateBackupCodes = () => Array.from({ length: 10 }, () => randomToken(8));
+
+  const copyTwoFactorText = async (text: string, label: string) => {
+    if (!text.trim()) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setReactionNotice(`${label} copied`);
+    } catch {
+      setReactionNotice(`Unable to copy ${label.toLowerCase()}`);
+    }
+    window.setTimeout(() => setReactionNotice(null), 1800);
+  };
 
   const setupTwoFactor = async () => {
     if (!supabase || !user) return;
     setSaving(true);
     try {
-      const secret = Math.random().toString(36).slice(2, 18).toUpperCase();
+      const secret = randomToken(20);
       const backupCodes = generateBackupCodes();
       const { data, error } = await supabase
         .from('user_2fa')
@@ -6823,13 +6854,27 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       setTwoFactorBackupCodes(backupCodes);
       setReactionNotice('Save your backup codes, then enter any 6 digit authenticator code.');
       window.setTimeout(() => setReactionNotice(null), 3000);
+    } catch (error) {
+      setReactionNotice(error instanceof Error ? error.message : 'Could not start 2FA setup');
+      window.setTimeout(() => setReactionNotice(null), 3000);
     } finally {
       setSaving(false);
     }
   };
 
   const verifyAndEnableTwoFactor = async () => {
-    if (!supabase || !user || !twoFactorRecord?.id || twoFactorCode.trim().length !== 6) return;
+    const code = twoFactorCode.trim();
+    if (!supabase || !user) return;
+    if (!twoFactorRecord?.id) {
+      setReactionNotice('Start 2FA setup first');
+      window.setTimeout(() => setReactionNotice(null), 1800);
+      return;
+    }
+    if (!/^\d{6}$/.test(code)) {
+      setReactionNotice('Enter a 6 digit verification code');
+      window.setTimeout(() => setReactionNotice(null), 1800);
+      return;
+    }
     setSaving(true);
     try {
       const { data, error } = await supabase
@@ -6847,6 +6892,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       setTwoFactorCode('');
       setReactionNotice('Two-factor authentication enabled');
       window.setTimeout(() => setReactionNotice(null), 1800);
+    } catch (error) {
+      setReactionNotice(error instanceof Error ? error.message : 'Could not enable 2FA');
+      window.setTimeout(() => setReactionNotice(null), 3000);
     } finally {
       setSaving(false);
     }
@@ -6873,6 +6921,9 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       setTwoFactorCode('');
       setReactionNotice('Two-factor authentication disabled');
       window.setTimeout(() => setReactionNotice(null), 1800);
+    } catch (error) {
+      setReactionNotice(error instanceof Error ? error.message : 'Could not disable 2FA');
+      window.setTimeout(() => setReactionNotice(null), 3000);
     } finally {
       setSaving(false);
     }
@@ -11642,19 +11693,20 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     };
 
     return (
-      <div className="space-y-4 px-4 py-4">
-        <div className="overflow-hidden rounded-[28px] bg-gradient-to-br from-blue-600 via-blue-500 to-pink-500 text-white shadow-xl shadow-blue-600/20">
-          <div className="p-5">
-            <div className="flex items-center justify-between">
-              <div className="grid h-12 w-12 place-items-center rounded-[20px] bg-white/20">
+      <div className="space-y-5 bg-slate-50 px-4 pb-28 pt-4">
+        <div className="overflow-hidden rounded-[32px] bg-slate-950 text-white shadow-2xl shadow-slate-950/20">
+          <div className="relative p-5 sm:p-6">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(45,212,191,0.28),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(236,72,153,0.24),transparent_40%)]" />
+            <div className="relative flex items-center justify-between gap-3">
+              <div className="grid h-14 w-14 place-items-center rounded-2xl bg-white/10 text-teal-200 ring-1 ring-white/15">
                 <Search className="h-7 w-7" />
               </div>
-              <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-black">Public registry</span>
+              <span className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-black uppercase text-teal-100 ring-1 ring-white/15">Public registry</span>
             </div>
-            <h2 className="mt-5 text-2xl font-black">Search relationships</h2>
-            <p className="mt-2 text-sm leading-6 text-blue-50">Check a name, phone number, or relationship photo against registered Committed records.</p>
+            <h2 className="relative mt-5 text-3xl font-black leading-10">Search relationships</h2>
+            <p className="relative mt-2 max-w-xl text-sm font-semibold leading-7 text-slate-300">Check a name, phone number, or relationship photo against registered Committed records.</p>
           </div>
-          <div className="grid grid-cols-2 border-t border-white/20 bg-white/10 p-2">
+          <div className="grid grid-cols-2 border-t border-white/10 bg-white/10 p-2 backdrop-blur">
             {[
               { key: 'text', label: 'Text search', icon: Search },
               { key: 'face', label: 'Face search', icon: ImageIcon },
@@ -11666,7 +11718,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                   setSearchMode(key as typeof searchMode);
                   setSearchResultFilter('all');
                 }}
-                className={`flex items-center justify-center gap-2 rounded-[18px] py-3 text-sm font-black ${searchMode === key ? 'bg-white text-blue-700 shadow-sm' : 'text-white/90'}`}
+                className={`flex min-h-[48px] items-center justify-center gap-2 rounded-[18px] py-3 text-sm font-black transition ${searchMode === key ? 'bg-white text-slate-950 shadow-sm' : 'text-white/85 hover:bg-white/10'}`}
               >
                 <Icon className="h-4 w-4" />
                 {label}
@@ -11675,17 +11727,17 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           </div>
         </div>
 
-        <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+        <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
           {searchMode === 'text' ? (
             <div className="flex gap-2">
-              <input value={searchQuery} onChange={(event) => void runSearch(event.target.value)} placeholder="Search by name or phone" className="h-14 min-w-0 flex-1 rounded-[18px] border border-slate-200 bg-slate-50 px-4 font-semibold outline-none focus:border-blue-500 focus:bg-white" />
-              <button type="button" onClick={() => void runSearch()} className="grid h-14 w-14 place-items-center rounded-[18px] bg-blue-600 text-white">
+              <input value={searchQuery} onChange={(event) => void runSearch(event.target.value)} placeholder="Search by name or phone" className="h-14 min-w-0 flex-1 rounded-[20px] border border-slate-200 bg-slate-50 px-4 font-bold text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-100" />
+              <button type="button" onClick={() => void runSearch()} className="grid h-14 w-14 shrink-0 place-items-center rounded-[20px] bg-slate-950 text-white shadow-lg shadow-slate-950/10">
                 {isSearching ? <Loader2 className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
               </button>
             </div>
           ) : (
             <div className="space-y-3">
-              <label className="flex min-h-[140px] cursor-pointer flex-col items-center justify-center gap-3 rounded-[22px] border border-dashed border-blue-300 bg-blue-50 px-4 text-center text-blue-700">
+              <label className="flex min-h-[156px] cursor-pointer flex-col items-center justify-center gap-3 rounded-[24px] border border-dashed border-teal-300 bg-teal-50/70 px-4 text-center text-teal-800 transition hover:bg-teal-50">
                 {searchPhoto ? (
                   <img src={searchPhoto} alt="Face search preview" className="h-24 w-24 rounded-[24px] object-cover shadow-md" />
                 ) : (
@@ -11695,7 +11747,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                 )}
                 <div>
                   <p className="text-sm font-black">{uploadingLabel === 'Search photo' ? 'Uploading photo...' : searchPhoto ? 'Change search photo' : 'Upload a face photo'}</p>
-                  <p className="mt-1 text-xs font-semibold text-blue-500">Use a clear front-facing image for best results.</p>
+                  <p className="mt-1 text-xs font-semibold text-teal-700">Use a clear front-facing image for best results.</p>
                 </div>
                 <input
                   type="file"
@@ -11707,21 +11759,43 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                   })}
                 />
               </label>
-              <button type="button" disabled={!searchPhoto || isSearching} onClick={() => void runFaceSearch()} className="flex w-full items-center justify-center gap-2 rounded-[18px] bg-blue-600 py-3 text-sm font-black text-white disabled:opacity-50">
+              <button type="button" disabled={!searchPhoto || isSearching} onClick={() => void runFaceSearch()} className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-[20px] bg-slate-950 py-3 text-sm font-black text-white shadow-lg shadow-slate-950/10 disabled:opacity-50">
                 {isSearching ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
                 Search by photo
               </button>
             </div>
           )}
           {(searchQuery || searchPhoto || searchResults.length) ? (
-            <button type="button" onClick={clearSearch} className="mt-3 text-sm font-black text-slate-500">Clear search</button>
+            <button type="button" onClick={clearSearch} className="mt-4 rounded-full bg-slate-100 px-4 py-2 text-sm font-black text-slate-600">Clear search</button>
           ) : null}
         </section>
+
+        {!searchQuery && !searchPhoto && !searchResults.length ? (
+          <section className="grid gap-3 min-[430px]:grid-cols-2">
+            {[
+              { title: 'Search by name', text: 'Use a full name or username when you know it.', icon: User },
+              { title: 'Search by phone', text: 'Check a number when consent and context are clear.', icon: Phone },
+              { title: 'Face search', text: 'Upload a clear image to compare public records.', icon: Camera },
+              { title: 'Verified records', text: 'Only public records can appear in registry results.', icon: ShieldCheck },
+            ].map((item) => {
+              const Icon = item.icon;
+              return (
+                <div key={item.title} className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
+                  <span className="grid h-11 w-11 place-items-center rounded-2xl bg-teal-50 text-teal-700 ring-1 ring-teal-100">
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <p className="mt-3 text-base font-black text-slate-950">{item.title}</p>
+                  <p className="mt-1 text-sm font-semibold leading-5 text-slate-500">{item.text}</p>
+                </div>
+              );
+            })}
+          </section>
+        ) : null}
 
         {searchResults.length ? (
           <div className="flex gap-2 overflow-x-auto pb-1">
             {filters.map(({ value, label, icon: Icon }) => (
-              <button key={value} type="button" onClick={() => setSearchResultFilter(value)} className={`flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-black shadow-sm ring-1 ${searchResultFilter === value ? 'bg-blue-600 text-white ring-blue-600' : 'bg-white text-slate-600 ring-slate-200'}`}>
+              <button key={value} type="button" onClick={() => setSearchResultFilter(value)} className={`flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-black shadow-sm ring-1 ${searchResultFilter === value ? 'bg-slate-950 text-white ring-slate-950' : 'bg-white text-slate-600 ring-slate-200'}`}>
                 <Icon className="h-4 w-4" />
                 {label}
               </button>
@@ -11730,7 +11804,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
         ) : null}
 
         {searchResults.length ? (
-          <p className="rounded-[18px] bg-slate-100 px-4 py-3 text-xs font-semibold leading-5 text-slate-500">
+          <p className="rounded-[22px] bg-white px-4 py-3 text-xs font-semibold leading-5 text-slate-500 shadow-sm ring-1 ring-slate-200">
             Search results are verification signals, not proof of current relationship status by themselves. Open verified records and use reports if anything looks incorrect.
           </p>
         ) : null}
@@ -11765,7 +11839,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                       }
                     : undefined
                 }
-                className={`flex gap-3 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 ${cardHref ? 'cursor-pointer' : ''}`}
+                className={`flex gap-4 rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 transition hover:border-teal-200 hover:shadow-lg ${cardHref ? 'cursor-pointer' : ''}`}
               >
                 <ProfileUserLink viewerUserId={user?.id} subjectUserId={item.id} className="shrink-0 rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
                   <Avatar src={item.profilePicture || item.facePhotoUrl} name={item.fullName} />
@@ -11784,8 +11858,8 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                     <span className={`rounded-full px-2.5 py-1 text-xs font-black ${isVerified ? 'bg-emerald-100 text-emerald-700' : isPending ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>
                       {status}
                     </span>
-                    {item.relationshipType ? <span className="rounded-full bg-pink-100 px-2.5 py-1 text-xs font-black capitalize text-pink-700">{relationshipTypeLabel(item.relationshipType)}</span> : null}
-                    {privacyLabel(item.relationshipPrivacy) ? <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-black text-blue-700">{privacyLabel(item.relationshipPrivacy)}</span> : null}
+                    {item.relationshipType ? <span className="rounded-full bg-rose-100 px-2.5 py-1 text-xs font-black capitalize text-rose-700">{relationshipTypeLabel(item.relationshipType)}</span> : null}
+                    {privacyLabel(item.relationshipPrivacy) ? <span className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-black text-teal-700">{privacyLabel(item.relationshipPrivacy)}</span> : null}
                     {!item.isRegisteredUser ? <span className="rounded-full bg-slate-900 px-2.5 py-1 text-xs font-black text-white">Not on app</span> : null}
                     {typeof item.similarityScore === 'number' ? <span className="rounded-full bg-purple-100 px-2.5 py-1 text-xs font-black text-purple-700">{Math.round(item.similarityScore * 100)}% match</span> : null}
                   </div>
@@ -12120,44 +12194,60 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     );
   };
 
-  const renderProfile = () => (
-    <div className="px-4 py-4">
-      <section className="rounded-[28px] bg-white p-5 text-center shadow-sm ring-1 ring-slate-200">
-        <div className="mx-auto w-fit">
-          <ProfileUserLink viewerUserId={user?.id} subjectUserId={user?.id} className="inline-block rounded-full outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-blue-500">
-            <Avatar src={shellAvatarSrc} name={getUserDisplayName(shellAvatarNameUser)} size="lg" />
-          </ProfileUserLink>
-        </div>
-        <ProfileUserLink viewerUserId={user?.id} subjectUserId={user?.id} className="mt-4 inline-block">
-          <h2 className="text-2xl font-black text-slate-950 hover:underline">{getUserDisplayName(user)}</h2>
-        </ProfileUserLink>
-        <p className="text-sm text-slate-500">{user?.username ? `@${user.username}` : user?.email}</p>
-        <div className="mt-4 flex justify-center gap-2">
-          <span className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-black text-blue-700">{user?.role || 'user'}</span>
-          {user?.verified ? <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700">Verified</span> : null}
-        </div>
-      </section>
-      {renderAvatarHardDebugPanel()}
-      <div className="mt-4 space-y-3">
-        {[
-          { href: '/app/settings', title: 'Settings', text: 'Account, privacy, and app preferences' },
-          { href: '/app/verification', title: 'Verification', text: 'Phone, email, ID, and couple selfie checks' },
-          { href: '/app/dating/profile-setup', title: 'Dating profile', text: 'Photos, bio, goals, and discovery details' },
-          { href: '/app/ads', title: 'Ads and boosts', text: 'Campaigns, invoices, and promoted content' },
-          { href: '/app/bookings', title: 'Bookings', text: 'Professional sessions and reschedules' },
-          { href: '/app/professionals', title: 'Professionals', text: 'Bookings, profile, and approvals' },
-          ...(isAdminRole(user?.role)
-            ? [{ href: '/app/admin', title: 'Admin', text: 'Manage approvals and verification queues' }]
-            : []),
-        ].map((item) => (
-          <Link key={item.title} href={item.href} className="block rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="font-black text-slate-950">{item.title}</p>
-            <p className="mt-1 text-sm text-slate-500">{item.text}</p>
-          </Link>
-        ))}
+  const renderProfile = () => {
+    const profileItems = [
+      { href: '/app/settings', title: 'Settings', text: 'Account, privacy, and app preferences', icon: Settings, tone: 'text-teal-700 bg-teal-50 ring-teal-100' },
+      { href: '/app/verification', title: 'Verification', text: 'Phone, email, ID, and couple selfie checks', icon: ShieldCheck, tone: 'text-blue-700 bg-blue-50 ring-blue-100' },
+      { href: '/app/dating/profile-setup', title: 'Dating profile', text: 'Photos, bio, goals, and discovery details', icon: Heart, tone: 'text-rose-700 bg-rose-50 ring-rose-100' },
+      { href: '/app/ads', title: 'Ads and boosts', text: 'Campaigns, invoices, and promoted content', icon: Zap, tone: 'text-amber-700 bg-amber-50 ring-amber-100' },
+      { href: '/app/bookings', title: 'Bookings', text: 'Professional sessions and reschedules', icon: Calendar, tone: 'text-slate-700 bg-white ring-slate-200' },
+      { href: '/app/professionals', title: 'Professionals', text: 'Bookings, profile, and approvals', icon: Briefcase, tone: 'text-purple-700 bg-purple-50 ring-purple-100' },
+      ...(isAdminRole(user?.role)
+        ? [{ href: '/app/admin', title: 'Admin', text: 'Manage approvals and verification queues', icon: Shield, tone: 'text-slate-950 bg-slate-100 ring-slate-200' }]
+        : []),
+    ];
+
+    return (
+      <div className="space-y-5 bg-slate-50 px-4 pb-28 pt-4">
+        <section className="overflow-hidden rounded-[32px] bg-slate-950 text-white shadow-2xl shadow-slate-950/20">
+          <div className="relative p-5 text-center sm:p-6">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(45,212,191,0.28),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(37,99,235,0.26),transparent_40%)]" />
+            <div className="relative mx-auto w-fit rounded-full bg-white/10 p-1 ring-1 ring-white/15">
+              <ProfileUserLink viewerUserId={user?.id} subjectUserId={user?.id} className="inline-block rounded-full outline-none ring-offset-2 ring-offset-slate-950 focus-visible:ring-2 focus-visible:ring-teal-300">
+                <Avatar src={shellAvatarSrc} name={getUserDisplayName(shellAvatarNameUser)} size="lg" />
+              </ProfileUserLink>
+            </div>
+            <ProfileUserLink viewerUserId={user?.id} subjectUserId={user?.id} className="relative mt-4 inline-block max-w-full">
+              <h2 className="truncate text-3xl font-black leading-10 text-white hover:underline">{getUserDisplayName(user)}</h2>
+            </ProfileUserLink>
+            <p className="relative mt-1 truncate text-sm font-semibold text-slate-300">{user?.username ? `@${user.username}` : user?.email}</p>
+            <div className="relative mt-4 flex flex-wrap justify-center gap-2">
+              <span className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-black uppercase text-teal-100 ring-1 ring-white/15">{user?.role || 'user'}</span>
+              {user?.verified ? <span className="rounded-full bg-teal-300 px-3 py-1.5 text-xs font-black text-slate-950">Verified</span> : null}
+            </div>
+          </div>
+        </section>
+        {renderAvatarHardDebugPanel()}
+        <section className="grid gap-3">
+          {profileItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link key={item.title} href={item.href} className="group flex min-h-[86px] items-center gap-4 rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 transition hover:-translate-y-0.5 hover:border-teal-200 hover:shadow-lg active:scale-[0.99]">
+                <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl ring-1 ${item.tone}`}>
+                  <Icon className="h-5 w-5" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-lg font-black leading-6 text-slate-950">{item.title}</span>
+                  <span className="mt-1 block text-sm font-semibold leading-5 text-slate-500">{item.text}</span>
+                </span>
+                <ChevronRight className="h-5 w-5 shrink-0 text-slate-300 transition group-hover:text-teal-600" />
+              </Link>
+            );
+          })}
+        </section>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderSettings = () => {
     const profilePhotoPreview = settingsProfilePictureUrl
@@ -12442,17 +12532,28 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
   ) => {
     const Icon = icon;
     return (
-      <div className="space-y-4 px-4 py-4">
-        <section className="rounded-[28px] bg-slate-950 p-5 text-white shadow-xl shadow-slate-950/20">
-          <Icon className="h-10 w-10 text-blue-300" />
-          <h2 className="mt-4 text-3xl font-black">{title}</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-300">{text}</p>
+      <div className="space-y-4 bg-slate-50 px-4 pb-28 pt-4">
+        <section className="overflow-hidden rounded-[32px] bg-slate-950 text-white shadow-2xl shadow-slate-950/20">
+          <div className="relative p-5 sm:p-6">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(45,212,191,0.25),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(37,99,235,0.28),transparent_38%)]" />
+            <div className="relative grid h-14 w-14 place-items-center rounded-2xl bg-white/10 text-teal-200 ring-1 ring-white/15">
+              <Icon className="h-7 w-7" />
+            </div>
+            <h2 className="relative mt-5 text-3xl font-black leading-10">{title}</h2>
+            <p className="relative mt-2 max-w-xl text-sm font-semibold leading-6 text-slate-300">{text}</p>
+          </div>
         </section>
         <div className="space-y-3">
           {items.map(([slug, label, description]) => (
-            <Link key={slug} href={`${basePath}/${slug}`} className="block rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm active:scale-[0.99]">
-              <p className="text-lg font-black text-slate-950">{label}</p>
-              <p className="mt-1 text-sm leading-5 text-slate-500">{description}</p>
+            <Link key={slug} href={`${basePath}/${slug}`} className="group flex min-h-[82px] items-center gap-4 rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 transition hover:-translate-y-0.5 hover:border-teal-200 hover:bg-teal-50/40 hover:shadow-lg active:scale-[0.99]">
+              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-slate-50 text-slate-600 ring-1 ring-slate-200 transition group-hover:bg-white group-hover:text-teal-700">
+                <Icon className="h-5 w-5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-lg font-black leading-6 text-slate-950">{label}</span>
+                <span className="mt-1 block text-sm font-semibold leading-5 text-slate-500">{description}</span>
+              </span>
+              <ChevronRight className="h-5 w-5 shrink-0 text-slate-300 transition group-hover:text-teal-600" />
             </Link>
           ))}
         </div>
@@ -12490,46 +12591,90 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
       );
     }
     if (subPath === '2fa') {
+      const setupStarted = Boolean(twoFactorRecord?.id && !twoFactorRecord?.enabled);
       return (
-        <div className="space-y-4 px-4 py-4">
-          <section className="rounded-[28px] bg-blue-600 p-5 text-white shadow-xl shadow-blue-600/20">
-            <Shield className="h-10 w-10" />
-            <h2 className="mt-4 text-3xl font-black">Two-Factor Authentication</h2>
-            <p className="mt-2 text-sm leading-6 text-blue-50">Set up the same account protection flow available in the mobile app.</p>
-          </section>
-          <div className="rounded-[24px] bg-white p-5 shadow-sm ring-1 ring-slate-200">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-lg font-black text-slate-950">{twoFactorRecord?.enabled ? '2FA is enabled' : '2FA is off'}</p>
-                <p className="mt-1 text-sm text-slate-500">{twoFactorRecord?.enabled ? 'Your account has an extra sign-in check.' : 'Generate a secret and backup codes to enable it.'}</p>
+        <div className="space-y-5 bg-slate-50 px-4 pb-28 pt-4">
+          <section className="overflow-hidden rounded-[32px] bg-slate-950 text-white shadow-2xl shadow-slate-950/20">
+            <div className="relative p-5 sm:p-6">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(45,212,191,0.28),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(37,99,235,0.28),transparent_38%)]" />
+              <div className="relative grid h-14 w-14 place-items-center rounded-2xl bg-white/10 text-teal-200 ring-1 ring-white/15">
+                <Shield className="h-7 w-7" />
               </div>
-              <span className={`rounded-full px-3 py-1 text-xs font-black ${twoFactorRecord?.enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                {twoFactorRecord?.enabled ? 'Enabled' : 'Off'}
-              </span>
+              <h2 className="relative mt-5 text-3xl font-black leading-10">Two-factor authentication</h2>
+              <p className="relative mt-2 max-w-xl text-sm font-semibold leading-7 text-slate-300">
+                Add a second sign-in check using the same account protection flow available in the mobile app.
+              </p>
+              <div className="relative mt-5 grid grid-cols-3 gap-2">
+                {[
+                  ['01', 'Setup', true],
+                  ['02', 'Verify', setupStarted || Boolean(twoFactorRecord?.enabled)],
+                  ['03', 'Protected', Boolean(twoFactorRecord?.enabled)],
+                ].map(([number, label, active]) => (
+                  <div key={String(label)} className={`rounded-2xl px-3 py-3 text-center ring-1 ${active ? 'bg-teal-300 text-slate-950 ring-teal-200' : 'bg-white/10 text-slate-300 ring-white/10'}`}>
+                    <p className="text-xs font-black">{number}</p>
+                    <p className="mt-1 text-[11px] font-black">{label}</p>
+                  </div>
+                ))}
+              </div>
             </div>
-            {!twoFactorRecord?.enabled ? (
-              <button type="button" onClick={() => void setupTwoFactor()} disabled={saving} className="mt-4 flex w-full items-center justify-center gap-2 rounded-[18px] bg-blue-600 py-4 font-black text-white disabled:opacity-50">
+          </section>
+
+          <section className="overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-sm shadow-slate-200/70">
+            <div className="border-b border-slate-100 bg-gradient-to-br from-white via-white to-teal-50/60 p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-normal text-teal-700">Security status</p>
+                  <h3 className="mt-1 text-2xl font-black leading-8 text-slate-950">{twoFactorRecord?.enabled ? '2FA is enabled' : setupStarted ? 'Setup in progress' : '2FA is off'}</h3>
+                  <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">
+                    {twoFactorRecord?.enabled
+                      ? 'Your account has an extra sign-in check.'
+                      : setupStarted
+                        ? 'Save your secret and backup codes, then confirm with a 6 digit code.'
+                        : 'Generate a secret and backup codes to begin protecting this account.'}
+                  </p>
+                </div>
+                <span className={`rounded-full px-3 py-1.5 text-xs font-black ${twoFactorRecord?.enabled ? 'bg-emerald-100 text-emerald-700' : setupStarted ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>
+                  {twoFactorRecord?.enabled ? 'Enabled' : setupStarted ? 'Pending' : 'Off'}
+                </span>
+              </div>
+            </div>
+            <div className="p-5">
+              {!twoFactorRecord?.enabled ? (
+              <button type="button" onClick={() => void setupTwoFactor()} disabled={saving} className="flex min-h-[54px] w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 py-4 font-black text-white shadow-lg shadow-slate-950/15 disabled:opacity-50">
                 {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Shield className="h-5 w-5" />}
                 {twoFactorRecord?.id ? 'Regenerate setup' : 'Start setup'}
               </button>
             ) : (
-              <button type="button" onClick={() => void disableTwoFactor()} disabled={saving} className="mt-4 flex w-full items-center justify-center gap-2 rounded-[18px] bg-red-50 py-4 font-black text-red-600 ring-1 ring-red-100 disabled:opacity-50">
+              <button type="button" onClick={() => void disableTwoFactor()} disabled={saving} className="flex min-h-[54px] w-full items-center justify-center gap-2 rounded-2xl bg-red-50 py-4 font-black text-red-600 ring-1 ring-red-100 disabled:opacity-50">
                 {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <X className="h-5 w-5" />}
                 Disable 2FA
               </button>
             )}
-          </div>
+            </div>
+          </section>
+
           {(twoFactorSecret || twoFactorBackupCodes.length) && !twoFactorRecord?.enabled ? (
-            <div className="space-y-4 rounded-[24px] bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <section className="space-y-4 rounded-[30px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
               {twoFactorSecret ? (
                 <div>
-                  <p className="text-sm font-black text-slate-700">Authenticator secret</p>
-                  <p className="mt-2 break-all rounded-[16px] bg-slate-50 p-4 font-mono text-sm font-bold text-slate-700 ring-1 ring-slate-200">{twoFactorSecret}</p>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-black text-slate-700">Authenticator secret</p>
+                    <button type="button" onClick={() => void copyTwoFactorText(twoFactorSecret, 'Secret')} className="rounded-full bg-teal-50 px-3 py-1.5 text-xs font-black text-teal-700 ring-1 ring-teal-100">
+                      Copy
+                    </button>
+                  </div>
+                  <p className="mt-2 break-all rounded-[18px] bg-slate-50 p-4 font-mono text-sm font-bold leading-6 text-slate-700 ring-1 ring-slate-200">{twoFactorSecret}</p>
                 </div>
               ) : null}
               {twoFactorBackupCodes.length ? (
                 <div>
-                  <p className="text-sm font-black text-slate-700">Backup codes</p>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-black text-slate-700">Backup codes</p>
+                    <button type="button" onClick={() => void copyTwoFactorText(twoFactorBackupCodes.join('\n'), 'Backup codes')} className="rounded-full bg-teal-50 px-3 py-1.5 text-xs font-black text-teal-700 ring-1 ring-teal-100">
+                      Copy all
+                    </button>
+                  </div>
+                  <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Save these somewhere private before enabling 2FA.</p>
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     {twoFactorBackupCodes.map((code) => (
                       <span key={code} className="rounded-[14px] bg-slate-50 px-3 py-2 text-center font-mono text-sm font-bold text-slate-700 ring-1 ring-slate-200">{code}</span>
@@ -12538,24 +12683,29 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                 </div>
               ) : null}
               <FormField label="6 digit verification code" value={twoFactorCode} onChange={setTwoFactorCode} inputMode="numeric" placeholder="123456" />
-              <button type="button" onClick={() => void verifyAndEnableTwoFactor()} disabled={saving || twoFactorCode.trim().length !== 6} className="flex w-full items-center justify-center gap-2 rounded-[18px] bg-blue-600 py-4 font-black text-white disabled:opacity-50">
+              <button type="button" onClick={() => void verifyAndEnableTwoFactor()} disabled={saving || !/^\d{6}$/.test(twoFactorCode.trim())} className="flex min-h-[54px] w-full items-center justify-center gap-2 rounded-2xl bg-teal-500 py-4 font-black text-slate-950 shadow-lg shadow-teal-950/10 disabled:opacity-50">
                 {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle2 className="h-5 w-5" />}
                 Enable 2FA
               </button>
-            </div>
+            </section>
           ) : null}
-          <div className="grid grid-cols-2 gap-3">
-            <Link href="/app/verification/email" className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-              <Mail className="h-7 w-7 text-blue-600" />
+
+          <section className="grid gap-3 min-[430px]:grid-cols-2">
+            <Link href="/app/verification/email" className="rounded-[24px] bg-white p-4 shadow-sm shadow-slate-200/70 ring-1 ring-slate-200">
+              <span className="grid h-11 w-11 place-items-center rounded-2xl bg-teal-50 text-teal-700 ring-1 ring-teal-100">
+                <Mail className="h-5 w-5" />
+              </span>
               <p className="mt-3 font-black text-slate-950">Email</p>
-              <p className="text-sm text-slate-500">{user?.email_verified ? 'Verified' : 'Needs verification'}</p>
+              <p className="mt-1 text-sm font-semibold text-slate-500">{user?.email_verified ? 'Verified' : 'Needs verification'}</p>
             </Link>
-            <Link href="/app/verification/phone" className="rounded-[22px] bg-white p-4 shadow-sm ring-1 ring-slate-200">
-              <Phone className="h-7 w-7 text-blue-600" />
+            <Link href="/app/verification/phone" className="rounded-[24px] bg-white p-4 shadow-sm shadow-slate-200/70 ring-1 ring-slate-200">
+              <span className="grid h-11 w-11 place-items-center rounded-2xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
+                <Phone className="h-5 w-5" />
+              </span>
               <p className="mt-3 font-black text-slate-950">Phone</p>
-              <p className="text-sm text-slate-500">{user?.phone_verified ? 'Verified' : 'Needs verification'}</p>
+              <p className="mt-1 text-sm font-semibold text-slate-500">{user?.phone_verified ? 'Verified' : 'Needs verification'}</p>
             </Link>
-          </div>
+          </section>
         </div>
       );
     }

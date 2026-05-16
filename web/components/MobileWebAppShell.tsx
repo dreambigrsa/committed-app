@@ -9085,96 +9085,177 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     );
   };
 
-  const renderHome = () => (
-    <div className="px-4 py-4">
-      <section className="rounded-[28px] bg-gradient-to-br from-blue-600 to-blue-800 px-5 py-6 text-white shadow-xl shadow-blue-700/20">
-        <div className="flex items-center gap-3">
-          <ProfileUserLink viewerUserId={user?.id} subjectUserId={user?.id} className="shrink-0 rounded-full outline-none ring-offset-2 ring-blue-200 focus-visible:ring-2 focus-visible:ring-white">
-            <Avatar src={shellAvatarSrc} name={getUserDisplayName(shellAvatarNameUser)} size="lg" />
-          </ProfileUserLink>
-          <div>
-            <p className="text-sm font-semibold text-blue-100">Welcome back</p>
-            <ProfileUserLink viewerUserId={user?.id} subjectUserId={user?.id} className="inline-block">
-              <h2 className="text-2xl font-black hover:underline">{getUserDisplayName(shellAvatarNameUser)}</h2>
-            </ProfileUserLink>
-          </div>
-        </div>
-        <p className="mt-5 text-sm leading-6 text-blue-50">Verify love, stay accountable, meet meaningful people, and keep every connection in one familiar app experience.</p>
-      </section>
-      <div className="mt-5 grid grid-cols-2 gap-3">
-        {[
-          { href: '/app/relationship/register', label: 'Register', icon: Shield, text: 'Register relationship' },
-          { href: '/app/professionals', label: 'Professional', icon: Briefcase, text: 'Share expertise' },
-          { href: '/app/dating', label: 'Dating', icon: Sparkles, text: 'Find love' },
-          { href: '/app/search', label: 'Search', icon: Search, text: 'Check records' },
-        ].map(({ href, label, icon: Icon, text }) => (
-          <Link key={label} href={href} className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm active:scale-[0.98]">
-            <Icon className="h-7 w-7 text-blue-600" />
-            <p className="mt-4 text-lg font-black text-slate-950">{label}</p>
-            <p className="text-sm text-slate-500">{text}</p>
-          </Link>
-        ))}
-      </div>
-      <section className="mt-5 rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex items-center gap-2">
-          <Shield className="h-6 w-6 text-blue-600" />
-          <h2 className="text-xl font-black text-slate-950">Relationship Status</h2>
-        </div>
-        {relationship ? (
-          <div className="mt-4 rounded-[20px] bg-slate-50 p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-black uppercase text-slate-500">{relationship.status === 'verified' ? 'Verified' : 'Pending confirmation'}</p>
-              <span className={`rounded-full px-3 py-1 text-xs font-black ${relationship.status === 'verified' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{relationship.status}</span>
+  const renderHome = () => {
+    const displayName = getUserDisplayName(shellAvatarNameUser);
+    const verificationSignals = [
+      { label: 'Email', verified: Boolean(user?.email_verified), href: '/app/verification/email' },
+      { label: 'Phone', verified: Boolean(user?.phone_verified), href: '/app/verification/phone' },
+      { label: 'ID', verified: Boolean(user?.id_verified), href: '/app/verification/id' },
+    ];
+    const verifiedCount = verificationSignals.filter((item) => item.verified).length;
+    const quickActions = [
+      { href: '/app/relationship/register', label: 'Register', icon: Shield, text: 'Create or verify a relationship record', tone: 'text-teal-700 bg-teal-50 ring-teal-100' },
+      { href: '/app/dating', label: 'Dating', icon: Sparkles, text: 'Meet people with clearer intentions', tone: 'text-blue-700 bg-blue-50 ring-blue-100' },
+      { href: '/app/search', label: 'Trust check', icon: Search, text: 'Search public relationship records', tone: 'text-slate-700 bg-white ring-slate-200' },
+      { href: '/app/professionals', label: 'Professional', icon: Briefcase, text: 'Offer support or book help', tone: 'text-pink-700 bg-pink-50 ring-pink-100' },
+    ];
+
+    return (
+      <div className="space-y-5 bg-slate-50 px-4 pb-28 pt-4">
+        <section className="overflow-hidden rounded-[32px] bg-slate-950 text-white shadow-2xl shadow-slate-950/20">
+          <div className="relative p-5 sm:p-6">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(45,212,191,0.3),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(37,99,235,0.32),transparent_36%)]" />
+            <div className="relative flex items-start justify-between gap-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <ProfileUserLink viewerUserId={user?.id} subjectUserId={user?.id} className="shrink-0 rounded-full outline-none ring-offset-2 ring-offset-slate-950 focus-visible:ring-2 focus-visible:ring-teal-300">
+                  <div className="rounded-full bg-white/10 p-1 ring-1 ring-white/15">
+                    <Avatar src={shellAvatarSrc} name={displayName} size="lg" />
+                  </div>
+                </ProfileUserLink>
+                <div className="min-w-0">
+                  <p className="text-xs font-black uppercase tracking-normal text-teal-200">Welcome back</p>
+                  <ProfileUserLink viewerUserId={user?.id} subjectUserId={user?.id} className="inline-block min-w-0">
+                    <h2 className="truncate text-3xl font-black leading-9 text-white hover:underline">{displayName}</h2>
+                  </ProfileUserLink>
+                </div>
+              </div>
+              <Link href="/app/profile/settings" className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white/10 text-white ring-1 ring-white/15 transition hover:bg-white/15">
+                <Settings className="h-5 w-5" />
+              </Link>
             </div>
-            {relationship.partner_user_id ? (
-              <ProfileUserLink viewerUserId={user?.id} subjectUserId={relationship.partner_user_id} className="mt-3 block min-w-0">
-                <p className="truncate text-2xl font-black text-slate-950 hover:underline">{relationship.partner_name || 'Partner'}</p>
-              </ProfileUserLink>
-            ) : (
-              <p className="mt-3 text-2xl font-black text-slate-950">{relationship.partner_name || 'Partner'}</p>
-            )}
-            <p className="text-sm font-semibold capitalize text-slate-500">{relationship.type || 'relationship'}</p>
+            <p className="relative mt-5 max-w-xl text-sm font-semibold leading-7 text-slate-200">
+              Your trust dashboard for relationships, dating, verification, records, and support.
+            </p>
+            <div className="relative mt-5 rounded-[24px] bg-white/10 p-3 ring-1 ring-white/15 backdrop-blur">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-normal text-slate-300">Trust signals</p>
+                  <p className="mt-1 text-sm font-black text-white">{verifiedCount} of {verificationSignals.length} complete</p>
+                </div>
+                <Link href="/app/verification" className="rounded-full bg-teal-300 px-4 py-2 text-xs font-black text-slate-950">
+                  Verify
+                </Link>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                {verificationSignals.map((item) => (
+                  <Link key={item.label} href={item.href} className={`rounded-2xl px-3 py-2 text-center text-xs font-black ring-1 ${item.verified ? 'bg-teal-300 text-slate-950 ring-teal-200' : 'bg-white/10 text-slate-300 ring-white/10'}`}>
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            </div>
           </div>
-        ) : (
-          <div className="mt-4 text-center">
-            <Heart className="mx-auto h-14 w-14 fill-red-500 text-red-500" />
-            <p className="mt-3 text-lg font-black text-slate-950">Ready to build something special?</p>
-            <p className="mt-2 text-sm leading-6 text-slate-500">Registering your relationship creates a foundation of trust and transparency.</p>
-            <Link href="/app/relationship/register" className="mt-4 inline-flex items-center gap-2 rounded-[18px] bg-blue-600 px-5 py-3 font-black text-white">
-              <Plus className="h-5 w-5" />
-              Get Started
+        </section>
+
+        {renderStatusStrip(true)}
+
+        <section className="grid gap-3 min-[430px]:grid-cols-2">
+          {quickActions.map(({ href, label, icon: Icon, text, tone }) => (
+            <Link key={label} href={href} className="group min-h-[128px] rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-slate-200/80 active:scale-[0.99]">
+              <span className={`grid h-12 w-12 place-items-center rounded-2xl ring-1 ${tone}`}>
+                <Icon className="h-6 w-6" />
+              </span>
+              <p className="mt-4 text-lg font-black leading-6 text-slate-950">{label}</p>
+              <p className="mt-1 text-sm font-semibold leading-5 text-slate-500">{text}</p>
+            </Link>
+          ))}
+        </section>
+
+        <section className="overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-sm shadow-slate-200/70">
+          <div className="border-b border-slate-100 bg-gradient-to-br from-white via-white to-rose-50/70 p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-normal text-rose-600">Relationship record</p>
+                <h2 className="mt-1 text-2xl font-black leading-8 text-slate-950">Relationship status</h2>
+              </div>
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-rose-100 text-rose-600">
+                <Heart className="h-5 w-5" />
+              </span>
+            </div>
+          </div>
+          {relationship ? (
+            <div className="p-5">
+              <div className="rounded-[24px] bg-slate-50 p-4 ring-1 ring-slate-200">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-black uppercase tracking-normal text-slate-500">{relationship.status === 'verified' ? 'Verified relationship' : 'Pending confirmation'}</p>
+                  <span className={`rounded-full px-3 py-1 text-xs font-black capitalize ${relationship.status === 'verified' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{relationship.status}</span>
+                </div>
+                {relationship.partner_user_id ? (
+                  <ProfileUserLink viewerUserId={user?.id} subjectUserId={relationship.partner_user_id} className="mt-3 block min-w-0">
+                    <p className="truncate text-2xl font-black leading-8 text-slate-950 hover:underline">{relationship.partner_name || 'Partner'}</p>
+                  </ProfileUserLink>
+                ) : (
+                  <p className="mt-3 text-2xl font-black leading-8 text-slate-950">{relationship.partner_name || 'Partner'}</p>
+                )}
+                <p className="mt-1 text-sm font-semibold capitalize text-slate-500">{relationship.type || 'relationship'}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="p-5 text-center">
+              <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-rose-50 text-rose-500">
+                <Heart className="h-10 w-10 fill-current" />
+              </div>
+              <p className="mt-4 text-xl font-black leading-7 text-slate-950">Ready to build something special?</p>
+              <p className="mx-auto mt-2 max-w-sm text-sm font-semibold leading-6 text-slate-500">
+                Registering a relationship creates a clear foundation of trust, consent, and transparency.
+              </p>
+              <Link href="/app/relationship/register" className="mt-5 inline-flex min-h-[52px] items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 font-black text-white shadow-lg shadow-slate-950/15">
+                <Plus className="h-5 w-5" />
+                Register relationship
+              </Link>
+            </div>
+          )}
+        </section>
+
+        {isAdminRole(user?.role) ? (
+          <Link href="/app/admin" className="flex items-center gap-4 rounded-[28px] bg-slate-950 p-5 text-white shadow-xl shadow-slate-950/15">
+            <span className="grid h-12 w-12 place-items-center rounded-2xl bg-white/10 ring-1 ring-white/15">
+              <Settings className="h-6 w-6" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-lg font-black">Admin dashboard</p>
+              <p className="mt-1 text-sm font-semibold text-slate-300">Open operational controls</p>
+            </div>
+            <ChevronRight className="h-5 w-5 shrink-0 text-slate-400" />
+          </Link>
+        ) : null}
+
+        <section className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-normal text-slate-500">Community</p>
+              <h2 className="text-xl font-black text-slate-950">Latest from your feed</h2>
+            </div>
+            <Link href="/app/feed" className="rounded-full bg-white px-4 py-2 text-xs font-black text-blue-700 ring-1 ring-slate-200">
+              View feed
             </Link>
           </div>
-        )}
-      </section>
-      {isAdminRole(user?.role) ? (
-        <Link href="/app/admin" className="mt-5 flex items-center gap-3 rounded-[24px] bg-slate-950 p-5 text-white shadow-sm">
-          <Settings className="h-7 w-7" />
-          <div>
-            <p className="text-lg font-black">Admin Dashboard</p>
-            <p className="text-sm text-slate-300">Control panel</p>
-          </div>
-        </Link>
-      ) : null}
-      <div className="mt-5">
-        {posts.slice(0, 1).map((post) => (
-          <PostCard
-            key={post.id}
-            post={post}
-            user={user}
-            onLike={togglePostLike}
-            onShare={shareText}
-            onEditPost={goToEditPost}
-            onDeletePost={deleteOwnedPost}
-            onBoostPost={openBoostPostFlow}
-            onReportPost={reportPostFromFeed}
-            onAdminDeletePost={adminDeletePostFromFeed}
-            onAdminRejectPost={adminRejectPostFromFeed}
-          />
-        ))}
+          {posts.slice(0, 1).map((post) => (
+            <PostCard
+              key={post.id}
+              post={post}
+              user={user}
+              onLike={togglePostLike}
+              onShare={shareText}
+              onEditPost={goToEditPost}
+              onDeletePost={deleteOwnedPost}
+              onBoostPost={openBoostPostFlow}
+              onReportPost={reportPostFromFeed}
+              onAdminDeletePost={adminDeletePostFromFeed}
+              onAdminRejectPost={adminRejectPostFromFeed}
+            />
+          ))}
+          {!posts.length ? (
+            <div className="rounded-[28px] border border-slate-200 bg-white p-6 text-center shadow-sm">
+              <MessageCircle className="mx-auto h-10 w-10 text-blue-600" />
+              <p className="mt-3 text-lg font-black text-slate-950">No feed updates yet</p>
+              <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">When members share updates, they will appear here.</p>
+            </div>
+          ) : null}
+        </section>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderFeed = () => {
     const visiblePosts = posts.slice(0, feedLimit);
@@ -12099,7 +12180,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
     ];
 
     return (
-      <div className="mx-auto w-full max-w-3xl space-y-5 px-4 pb-28 pt-4 sm:px-6 sm:pt-6">
+      <div className="mx-auto w-full max-w-3xl space-y-5 bg-slate-50 px-4 pb-28 pt-4 sm:px-6 sm:pt-6">
         {renderAvatarHardDebugPanel()}
         <section className="overflow-hidden rounded-[30px] bg-slate-950 text-white shadow-2xl shadow-slate-950/20">
           <div className="relative p-5 sm:p-6">
@@ -12150,15 +12231,22 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           ) : null}
         </section>
 
-        <section className="rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-          <div className="mb-5 flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-lg font-black text-slate-950">Personal details</h3>
-              <p className="mt-1 text-sm font-semibold leading-5 text-slate-500">Keep your profile identity consistent across web and mobile.</p>
+        <section className="overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-sm shadow-slate-200/70">
+          <div className="border-b border-slate-100 bg-gradient-to-br from-white via-white to-teal-50/60 p-5 sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase tracking-normal text-teal-700">Account identity</p>
+                <h3 className="mt-1 text-2xl font-black leading-8 text-slate-950">Personal details</h3>
+                <p className="mt-2 max-w-xl text-sm font-semibold leading-6 text-slate-500">
+                  Keep your name, contact details, and discovery profile consistent across web and mobile.
+                </p>
+              </div>
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-teal-500 text-slate-950 shadow-lg shadow-teal-500/20">
+                <User className="h-5 w-5" />
+              </span>
             </div>
-            <User className="h-6 w-6 shrink-0 text-teal-600" />
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 p-5 min-[760px]:grid-cols-2 sm:p-6">
             <FormField label="Full name" value={settingsForm.fullName} onChange={(fullName) => setSettingsForm((prev) => ({ ...prev, fullName }))} />
             <FormField label="Username" value={settingsForm.username} onChange={(username) => setSettingsForm((prev) => ({ ...prev, username }))} placeholder="Optional" />
             <FormField label="Phone number" value={settingsForm.phoneNumber} onChange={(phoneNumber) => setSettingsForm((prev) => ({ ...prev, phoneNumber }))} />
@@ -12184,28 +12272,35 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           </div>
         </section>
 
-        <section className="rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h3 className="text-lg font-black text-slate-950">Verification</h3>
-              <p className="mt-1 text-sm font-semibold leading-5 text-slate-500">Complete trust signals other members can rely on.</p>
+        <section className="overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-sm shadow-slate-200/70">
+          <div className="border-b border-slate-100 bg-gradient-to-br from-white via-white to-blue-50/70 p-5 sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase tracking-normal text-blue-700">Trust signals</p>
+                <h3 className="mt-1 text-2xl font-black leading-8 text-slate-950">Verification</h3>
+                <p className="mt-2 max-w-xl text-sm font-semibold leading-6 text-slate-500">
+                  Complete the checks other members use to understand who they are connecting with.
+                </p>
+              </div>
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20">
+                <ShieldCheck className="h-5 w-5" />
+              </span>
             </div>
-            <ShieldCheck className="h-6 w-6 shrink-0 text-blue-600" />
           </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 p-5 min-[720px]:grid-cols-2 sm:p-6">
             {[
               ...verificationItems,
               { label: 'Couple selfie', href: '/app/verification/couple-selfie', verified: false, icon: Camera },
             ].map((item) => {
               const Icon = item.icon;
               return (
-                <Link key={item.label} href={item.href} className="flex items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3 ring-1 ring-slate-200 transition hover:bg-teal-50 hover:ring-teal-200">
-                  <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl ${item.verified ? 'bg-emerald-100 text-emerald-700' : 'bg-white text-slate-500 ring-1 ring-slate-200'}`}>
+                <Link key={item.label} href={item.href} className="group flex min-h-[74px] items-center gap-4 rounded-[22px] bg-slate-50 px-4 py-3 ring-1 ring-slate-200 transition hover:bg-teal-50 hover:ring-teal-200 active:scale-[0.99]">
+                  <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl transition ${item.verified ? 'bg-emerald-100 text-emerald-700' : 'bg-white text-slate-500 ring-1 ring-slate-200 group-hover:text-teal-700'}`}>
                     <Icon className="h-5 w-5" />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-black text-slate-900">{item.label}</span>
-                    <span className={`mt-0.5 block text-xs font-bold ${item.verified ? 'text-emerald-700' : 'text-slate-500'}`}>
+                    <span className="block text-sm font-black leading-5 text-slate-900">{item.label}</span>
+                    <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-black ${item.verified ? 'bg-emerald-100 text-emerald-700' : 'bg-white text-slate-500 ring-1 ring-slate-200'}`}>
                       {item.verified ? 'Verified' : 'Needs attention'}
                     </span>
                   </span>
@@ -12258,7 +12353,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
             </div>
             <Bell className="h-6 w-6 shrink-0 text-blue-600" />
           </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="mt-4 grid gap-3 min-[720px]:grid-cols-2">
             {[
               ['relationshipUpdates', 'Relationship updates'],
               ['cheatingAlerts', 'Integrity alerts'],
@@ -12282,7 +12377,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
         <section className="rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <h3 className="text-lg font-black text-slate-950">Security shortcuts</h3>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="mt-4 grid gap-3 min-[720px]:grid-cols-2">
             {shortcutItems.map((item) => {
               const Icon = item.icon;
               return (
@@ -12313,10 +12408,10 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
           </button>
         </div>
 
-        <section className="rounded-[26px] border border-red-100 bg-red-50 p-4 shadow-sm sm:p-5">
-          <h3 className="text-lg font-black text-red-950">Account access</h3>
-          <p className="mt-1 text-sm font-semibold leading-5 text-red-700">Sign out of this browser or permanently remove your account.</p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <section className="rounded-[30px] border border-red-100 bg-red-50 p-5 shadow-sm shadow-red-100/60 sm:p-6">
+          <h3 className="text-xl font-black text-red-950">Account access</h3>
+          <p className="mt-2 text-sm font-semibold leading-6 text-red-700">Sign out of this browser or permanently remove your account.</p>
+          <div className="mt-4 grid gap-3 min-[720px]:grid-cols-2">
             <button
               type="button"
               onClick={() => void signOutWebUser()}
@@ -15776,11 +15871,11 @@ function FormField({
   hint?: string;
 }) {
   const fieldClass = readOnly
-    ? 'cursor-not-allowed rounded-[20px] border border-slate-200 bg-slate-100 px-4 text-base font-semibold text-slate-600 outline-none'
-    : 'rounded-[20px] border border-slate-200 bg-white px-4 text-base font-semibold text-slate-950 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100';
+    ? 'cursor-not-allowed rounded-[18px] border border-slate-200 bg-slate-100 px-4 text-base font-bold text-slate-600 outline-none'
+    : 'rounded-[18px] border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-4 focus:ring-teal-100';
   return (
-    <label className="block">
-      <span className="mb-2 block text-sm font-black text-slate-700">{label}</span>
+    <label className="block min-w-0">
+      <span className="mb-2 block text-sm font-black leading-5 text-slate-700">{label}</span>
       {multiline ? (
         <textarea
           value={value}
@@ -15798,10 +15893,10 @@ function FormField({
           placeholder={placeholder}
           inputMode={inputMode}
           type={type}
-          className={`h-14 w-full ${fieldClass}`}
+          className={`h-14 w-full min-w-0 overflow-hidden text-ellipsis whitespace-nowrap ${fieldClass}`}
         />
       )}
-      {hint ? <p className="mt-1.5 text-xs font-semibold text-slate-500">{hint}</p> : null}
+      {hint ? <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">{hint}</p> : null}
     </label>
   );
 }

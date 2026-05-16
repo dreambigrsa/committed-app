@@ -9170,7 +9170,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
                   </ProfileUserLink>
                 </div>
               </div>
-              <Link href="/app/profile/settings" className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white/10 text-white ring-1 ring-white/15 transition hover:bg-white/15">
+              <Link href="/app/settings" className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white/10 text-white ring-1 ring-white/15 transition hover:bg-white/15">
                 <Settings className="h-5 w-5" />
               </Link>
             </div>
@@ -15818,7 +15818,7 @@ export default function MobileWebAppShell({ initialTab = 'home' }: { initialTab?
 
   return (
     <WebShellSupabaseContext.Provider value={supabase}>
-      <div className="min-h-screen bg-slate-200 text-slate-950">
+      <div className="committed-app-shell min-h-screen bg-slate-200 text-slate-950">
         <div className="mx-auto min-h-screen max-w-[430px] bg-slate-50 shadow-2xl md:my-4 md:min-h-[calc(100vh-2rem)] md:overflow-hidden md:rounded-[28px]">
           {renderHeader()}
           <main className="pb-[76px]">{renderContent()}</main>
